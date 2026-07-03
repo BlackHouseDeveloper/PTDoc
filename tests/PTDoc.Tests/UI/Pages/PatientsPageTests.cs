@@ -274,8 +274,10 @@ public sealed class PatientsPageTests : TestContext
         patientService
             .Setup(service => service.SearchAsync("archived-filter", 200, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<PatientListItemResponse>());
+        CreatePatientRequest? capturedCreateRequest = null;
         patientService
             .Setup(service => service.CreateAsync(It.IsAny<CreatePatientRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<CreatePatientRequest, CancellationToken>((request, _) => capturedCreateRequest = request)
             .ReturnsAsync(createdPatient);
         var eligiblePatient = new PatientListItemResponse
         {
@@ -332,6 +334,8 @@ public sealed class PatientsPageTests : TestContext
         cut.Find("#lastName").Change("Created");
         cut.Find("#email").Change("casey.created@example.com");
         cut.Find("#dob").Change("1992-02-02");
+        cut.Find("#referringPhysician").Change(" ");
+        cut.Find("#authorizationNumber").Change(" ");
         cut.Find("form").Submit();
 
         cut.WaitForAssertion(() =>
@@ -340,6 +344,9 @@ public sealed class PatientsPageTests : TestContext
             Assert.Equal(string.Empty, cut.Find(".patient-search-input-field").GetAttribute("value"));
             Assert.NotEmpty(cut.FindAll($"button[data-testid='patient-card-{patientId}']"));
             Assert.DoesNotContain("Send Intake Form", cut.Markup, StringComparison.Ordinal);
+            Assert.NotNull(capturedCreateRequest);
+            Assert.Null(capturedCreateRequest!.ReferringPhysician);
+            Assert.Null(capturedCreateRequest.AuthorizationNumber);
         });
     }
 

@@ -292,5 +292,53 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
             .Returns(new HeaderConfiguration());
 
         Services.AddSingleton(headerConfigurationService.Object);
+        Services.AddSingleton<IPatientChartStorageService>(new FakePatientChartStorageService());
+    }
+
+    private sealed class FakePatientChartStorageService : IPatientChartStorageService
+    {
+        public Task<IReadOnlyList<PatientDocumentResponse>> ListDocumentsAsync(
+            Guid patientId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<PatientDocumentResponse>>(Array.Empty<PatientDocumentResponse>());
+
+        public Task<PatientDocumentResponse> UploadDocumentAsync(
+            Guid patientId,
+            Microsoft.AspNetCore.Components.Forms.IBrowserFile file,
+            string documentType,
+            string? notes,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new PatientDocumentResponse
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patientId,
+                DocumentType = documentType,
+                FileName = file.Name,
+                ContentType = file.ContentType,
+                SizeBytes = file.Size,
+                UploadedAtUtc = DateTime.UtcNow
+            });
+
+        public Task<IReadOnlyList<PatientCommunicationLogEntryResponse>> ListCommunicationLogEntriesAsync(
+            Guid patientId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<PatientCommunicationLogEntryResponse>>(Array.Empty<PatientCommunicationLogEntryResponse>());
+
+        public Task<PatientCommunicationLogEntryResponse> CreateCommunicationLogEntryAsync(
+            Guid patientId,
+            CreatePatientCommunicationLogEntryRequest request,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new PatientCommunicationLogEntryResponse
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patientId,
+                Channel = request.Channel,
+                Direction = request.Direction,
+                Summary = request.Summary,
+                Details = request.Details,
+                ContactName = request.ContactName,
+                OccurredAtUtc = request.OccurredAtUtc ?? DateTime.UtcNow,
+                CreatedAtUtc = DateTime.UtcNow
+            });
     }
 }

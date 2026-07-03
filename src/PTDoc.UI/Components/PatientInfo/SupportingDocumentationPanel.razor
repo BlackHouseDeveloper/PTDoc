@@ -1,4 +1,4 @@
-@* SupportingDocumentationPanel — case manager contact info and referring physician *@
+@* SupportingDocumentationPanel — case manager contact info, PCP, and referring physician *@
 @using PTDoc.UI.Components.PatientInfo.Models
 
 <PatientInfoSectionPanel Title="Supporting Documentation">
@@ -17,10 +17,11 @@
                                  HasError="@HasError("caseManager")" />
         </PatientInfoField>
 
-        <PatientInfoField Label="Primary Care Provider Name" ForId="pi-primary-care-provider" Error="@GetError("primaryCareProvider")">
+        <PatientInfoField Label="Primary Care Provider" ForId="pi-primary-care-provider" Error="@GetError("primaryCareProvider")">
             <PatientInfoTextInput Id="pi-primary-care-provider"
                                   Value="@Model.PrimaryCareProviderName"
                                   ValueChanged="@(v => SetField(v, f => f.PrimaryCareProviderName = v))"
+                                  Placeholder="PCP name"
                                   HasError="@HasError("primaryCareProvider")" />
         </PatientInfoField>
 

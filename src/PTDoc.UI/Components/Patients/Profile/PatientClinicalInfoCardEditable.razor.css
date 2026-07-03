@@ -58,7 +58,7 @@
 
 .patient-clinical-info-tabs {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     background: var(--muted);
     border-radius: var(--radius-xl);
     padding: var(--spacing-1);
@@ -239,6 +239,146 @@
     gap: var(--spacing-2);
 }
 
+.patient-clinical-info-workflow-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-4);
+    padding: var(--spacing-6);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+}
+
+.patient-clinical-info-workflow-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-1);
+}
+
+.patient-clinical-info-workflow-header h4,
+.patient-clinical-info-workflow-header p,
+.patient-clinical-info-workflow-note {
+    margin: 0;
+}
+
+.patient-clinical-info-workflow-header h4 {
+    color: var(--card-foreground);
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-semibold);
+}
+
+.patient-clinical-info-workflow-header p,
+.patient-clinical-info-workflow-note {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    line-height: 20px;
+}
+
+.patient-clinical-info-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+}
+
+.patient-clinical-info-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: var(--spacing-1) var(--spacing-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--muted);
+    color: var(--card-foreground);
+    font-size: var(--text-xs);
+    line-height: 16px;
+}
+
+.patient-clinical-info-workflow-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-4);
+    width: 100%;
+}
+
+.patient-clinical-info-form-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    color: var(--card-foreground);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+}
+
+.patient-clinical-info-form-field--wide {
+    grid-column: 1 / -1;
+}
+
+.patient-clinical-info-input {
+    min-height: 40px;
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--input-background);
+    color: var(--foreground);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    padding: var(--spacing-2) var(--spacing-3);
+}
+
+.patient-clinical-info-input:focus {
+    border-color: var(--ring);
+    box-shadow: 0 0 0 1px var(--ring);
+    outline: none;
+}
+
+.patient-clinical-info-textarea {
+    min-height: 88px;
+    resize: vertical;
+}
+
+.patient-clinical-info-file-button {
+    justify-self: flex-start;
+}
+
+.patient-clinical-info-workflow-error {
+    margin: 0;
+    color: var(--destructive);
+    font-size: var(--text-sm);
+    line-height: 20px;
+}
+
+.patient-clinical-info-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-3);
+    width: 100%;
+}
+
+.patient-clinical-info-list-item {
+    padding: var(--spacing-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--muted);
+}
+
+.patient-clinical-info-list-item h4,
+.patient-clinical-info-list-item p {
+    margin: 0;
+}
+
+.patient-clinical-info-list-item h4 {
+    color: var(--card-foreground);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+}
+
+.patient-clinical-info-list-item p {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    line-height: 20px;
+}
+
 @media (max-width: 767px) {
     .patient-clinical-info-tabs {
         grid-template-columns: 1fr;
@@ -264,5 +404,9 @@
 
     .patient-clinical-info-note-actions {
         justify-content: flex-start;
+    }
+
+    .patient-clinical-info-workflow-form {
+        grid-template-columns: 1fr;
     }
 }
