@@ -118,6 +118,64 @@ public sealed class DischargeDocumentationComponentsTests : TestContext
     }
 
     [Fact]
+    public void DischargePlanSection_PreservesExplicitNonBillableFlag_WhenModeIsStandard()
+    {
+        var plan = new PlanVm
+        {
+            DischargeDocumentationMode = DischargeDocumentationOptions.StandardBillableMode,
+            IsNonBillableDischarge = true
+        };
+
+        var cut = RenderComponent<DischargePlanSection>(parameters => parameters
+            .Add(component => component.Vm, plan)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => plan = updated))
+            .Add(component => component.LinkedHepItems, Array.Empty<string>())
+            .Add(component => component.IsReadOnly, false));
+
+        Assert.True(plan.IsNonBillableDischarge);
+        Assert.Contains("Non-billable discharge", cut.Markup, StringComparison.Ordinal);
+
+        cut.Find("#discharge-recommendations").Input("Continue HEP independently.");
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(DischargeDocumentationOptions.StandardBillableMode, plan.DischargeDocumentationMode);
+            Assert.True(plan.IsNonBillableDischarge);
+            Assert.Equal("Continue HEP independently.", plan.DischargeRecommendations);
+        });
+    }
+
+    [Fact]
+    public void DischargePlanSection_DocumentationModeChangeCanReturnPlanToBillable()
+    {
+        var plan = new PlanVm();
+
+        var cut = RenderComponent<DischargePlanSection>(parameters => parameters
+            .Add(component => component.Vm, plan)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, updated => plan = updated))
+            .Add(component => component.LinkedHepItems, Array.Empty<string>())
+            .Add(component => component.IsReadOnly, false));
+
+        cut.Find("#discharge-documentation-mode").Change(DischargeDocumentationOptions.PatientSelfDischargeMode);
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(DischargeDocumentationOptions.PatientSelfDischargeMode, plan.DischargeDocumentationMode);
+            Assert.True(plan.IsNonBillableDischarge);
+            Assert.Contains("Non-billable discharge", cut.Markup, StringComparison.Ordinal);
+        });
+
+        cut.Find("#discharge-documentation-mode").Change(DischargeDocumentationOptions.StandardBillableMode);
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(DischargeDocumentationOptions.StandardBillableMode, plan.DischargeDocumentationMode);
+            Assert.False(plan.IsNonBillableDischarge);
+            Assert.DoesNotContain("Non-billable discharge", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
     public void DischargeSummaryCards_RenderBoundDataInsteadOfHardCodedExamples()
     {
         var outcomes = RenderComponent<FinalOutcomesSummaryCard>(parameters => parameters

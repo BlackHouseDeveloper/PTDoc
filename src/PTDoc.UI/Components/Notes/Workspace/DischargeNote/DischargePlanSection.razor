@@ -8,14 +8,14 @@
         </header>
 
         <label class="discharge-plan__label" for="discharge-documentation-mode">Documentation Mode *</label>
-        <select id="discharge-documentation-mode" class="discharge-plan__select" disabled="@IsReadOnly" @bind="Vm.DischargeDocumentationMode" @bind:after="HandleChangedAsync">
+        <select id="discharge-documentation-mode" class="discharge-plan__select" disabled="@IsReadOnly" @bind="Vm.DischargeDocumentationMode" @bind:after="HandleDocumentationModeChangedAsync">
             @foreach (var option in DischargeDocumentationOptions.DocumentationModeOptions)
             {
                 <option value="@option">@option</option>
             }
         </select>
 
-        @if (IsNonBillableMode)
+        @if (IsNonBillableDischarge)
         {
             <div class="discharge-plan__billing-note" data-testid="non-billable-discharge-callout">
                 <strong>Non-billable discharge</strong>
@@ -197,6 +197,7 @@
 
     private bool IsOtherReason => string.Equals(Vm.PrimaryDischargeReason, "Other", StringComparison.OrdinalIgnoreCase);
     private bool IsNonBillableMode => DischargeDocumentationOptions.IsNonBillableMode(Vm.DischargeDocumentationMode);
+    private bool IsNonBillableDischarge => Vm.IsNonBillableDischarge || IsNonBillableMode;
     private int CompletedChecklistCount => _checklistItems.Count(item => item.IsComplete);
     private int ChecklistProgressPercent => _checklistItems.Count == 0
         ? 0
@@ -204,12 +205,9 @@
 
     protected override void OnParametersSet()
     {
-        if (string.IsNullOrWhiteSpace(Vm.DischargeDocumentationMode))
-        {
-            Vm.DischargeDocumentationMode = DischargeDocumentationOptions.StandardBillableMode;
-        }
+        EnsureDischargeDocumentationMode();
 
-        Vm.IsNonBillableDischarge = IsNonBillableMode;
+        Vm.IsNonBillableDischarge = ResolveIsNonBillableDischarge(preserveExplicitFlag: true);
         Vm.CompletedDischargeChecklistItems ??= new();
 
         var completed = new HashSet<string>(Vm.CompletedDischargeChecklistItems, StringComparer.OrdinalIgnoreCase);
@@ -229,14 +227,13 @@
         await HandleChangedAsync();
     }
 
-    private async Task HandleChangedAsync()
-    {
-        if (string.IsNullOrWhiteSpace(Vm.DischargeDocumentationMode))
-        {
-            Vm.DischargeDocumentationMode = DischargeDocumentationOptions.StandardBillableMode;
-        }
+    private Task HandleDocumentationModeChangedAsync() => HandleChangedAsync(preserveExplicitFlag: false);
 
-        Vm.IsNonBillableDischarge = IsNonBillableMode;
+    private async Task HandleChangedAsync(bool preserveExplicitFlag = true)
+    {
+        EnsureDischargeDocumentationMode();
+
+        Vm.IsNonBillableDischarge = ResolveIsNonBillableDischarge(preserveExplicitFlag);
 
         if (!IsOtherReason)
         {
@@ -250,6 +247,17 @@
 
         await VmChanged.InvokeAsync(Vm);
     }
+
+    private void EnsureDischargeDocumentationMode()
+    {
+        if (string.IsNullOrWhiteSpace(Vm.DischargeDocumentationMode))
+        {
+            Vm.DischargeDocumentationMode = DischargeDocumentationOptions.StandardBillableMode;
+        }
+    }
+
+    private bool ResolveIsNonBillableDischarge(bool preserveExplicitFlag) =>
+        (preserveExplicitFlag && Vm.IsNonBillableDischarge) || IsNonBillableMode;
 
     private async Task HandleChecklistChanged(ChecklistItem item, ChangeEventArgs args)
     {
