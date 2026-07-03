@@ -10,84 +10,15 @@
 <section class="daily-plan @(IsDarkMode ? "daily-plan--dark" : string.Empty)" data-testid="daily-plan-section">
     <div class="daily-grid">
         <div class="daily-col-12">
-            <FormSection Title="Plan for Today's Session">
-                <EditableTextArea Label="Treatment Plan *"
-                                  Value="@(_vm.HomeExerciseProgramNotes ?? string.Empty)"
-                                  ValueChanged="UpdateTreatmentPlan"
+            <FormSection Title="Plan for next visit">
+                <EditableTextArea Label="Plan for next visit *"
+                                  Value="@GetPlanForNextVisitText()"
+                                  ValueChanged="UpdatePlanForNextVisit"
                                   IsReadOnly="IsReadOnly"
-                                  Placeholder="Document today's treatment plan (modalities, therapeutic exercises, manual therapy, patient education, etc.)..."
+                                  Placeholder="Document what should happen at the next visit or next 1-2 visits."
                                   Rows="6"
                                   IsRequired="true"
-                                  ShowValidation="@string.IsNullOrWhiteSpace(_vm.HomeExerciseProgramNotes)" />
-            </FormSection>
-        </div>
-
-        <div class="daily-col-12">
-            <FormSection Title="Treatment / Intervention Entries" Subtitle="Document skilled interventions performed today">
-                <div class="daily-plan__summary-header">
-                    @if (!IsReadOnly)
-                    {
-                        <button type="button" @onclick="AddIntervention">Add Intervention</button>
-                    }
-                </div>
-
-                @if (_vm.GeneralInterventions.Count == 0)
-                {
-                    <p class="daily-plan__message" role="note">No interventions documented yet.</p>
-                }
-                else
-                {
-                    <div class="daily-plan__intervention-list" data-testid="daily-plan-interventions">
-                        @for (var i = 0; i < _vm.GeneralInterventions.Count; i++)
-                        {
-                            var index = i;
-                            var intervention = _vm.GeneralInterventions[index];
-                            <div class="daily-plan__intervention-row">
-                                <label>
-                                    <span>Intervention</span>
-                                    <input type="text"
-                                           value="@intervention.Name"
-                                           disabled="@IsReadOnly"
-                                           @oninput="e => UpdateInterventionName(index, e.Value?.ToString())" />
-                                </label>
-                                <label>
-                                    <span>Notes</span>
-                                    <textarea rows="2"
-                                              value="@intervention.Notes"
-                                              disabled="@IsReadOnly"
-                                              @oninput="e => UpdateInterventionNotes(index, e.Value?.ToString())"></textarea>
-                                </label>
-                                @if (!IsReadOnly)
-                                {
-                                    <button type="button" @onclick="() => RemoveIntervention(index)">Remove</button>
-                                }
-                            </div>
-                        }
-                    </div>
-                }
-            </FormSection>
-        </div>
-
-        <div class="daily-col-12">
-            <FormSection Title="Response to Treatment">
-                <EditableTextArea Label="Response to Treatment"
-                                  Id="daily-response-to-treatment"
-                                  Value="@_dailyTreatment.ResponseToTreatment"
-                                  ValueChanged="UpdateResponseToTreatment"
-                                  IsReadOnly="IsReadOnly"
-                                  Placeholder="Document tolerance, symptom response, performance quality, and safety response."
-                                  Rows="4" />
-            </FormSection>
-        </div>
-
-        <div class="daily-col-12">
-            <FormSection Title="Follow-Up &amp; Next Appointments">
-                <EditableTextArea Label="Next Visit Schedule"
-                                  Value="@(_vm.FollowUpInstructions ?? string.Empty)"
-                                  ValueChanged="UpdateFollowUpInstructions"
-                                  IsReadOnly="IsReadOnly"
-                                  Placeholder="Next PT visit scheduled for [date], next Progress Note due [date], next MD follow-up [date]..."
-                                  Rows="4" />
+                                  ShowValidation="@string.IsNullOrWhiteSpace(GetPlanForNextVisitText())" />
             </FormSection>
         </div>
 
@@ -157,15 +88,12 @@
     }
 
     private Task NotifyChangedAsync() => VmChanged.InvokeAsync(_vm);
-    private Task NotifyDailyChangedAsync() => DailyTreatmentChanged.InvokeAsync(_dailyTreatment);
+    private string GetPlanForNextVisitText() =>
+        !string.IsNullOrWhiteSpace(_vm.FollowUpInstructions)
+            ? _vm.FollowUpInstructions
+            : _vm.HomeExerciseProgramNotes ?? string.Empty;
 
-    private Task UpdateTreatmentPlan(string value)
-    {
-        _vm.HomeExerciseProgramNotes = value;
-        return NotifyChangedAsync();
-    }
-
-    private Task UpdateFollowUpInstructions(string value)
+    private Task UpdatePlanForNextVisit(string value)
     {
         _vm.FollowUpInstructions = value;
         return NotifyChangedAsync();
@@ -175,54 +103,6 @@
     {
         _vm.ClinicalSummary = value;
         return NotifyChangedAsync();
-    }
-
-    private Task AddIntervention()
-    {
-        _vm.GeneralInterventions.Add(new GeneralInterventionEntry
-        {
-            Name = "Skilled intervention"
-        });
-        return NotifyChangedAsync();
-    }
-
-    private Task UpdateInterventionName(int index, string? value)
-    {
-        if (index < 0 || index >= _vm.GeneralInterventions.Count)
-        {
-            return Task.CompletedTask;
-        }
-
-        _vm.GeneralInterventions[index].Name = value ?? string.Empty;
-        return NotifyChangedAsync();
-    }
-
-    private Task UpdateInterventionNotes(int index, string? value)
-    {
-        if (index < 0 || index >= _vm.GeneralInterventions.Count)
-        {
-            return Task.CompletedTask;
-        }
-
-        _vm.GeneralInterventions[index].Notes = value;
-        return NotifyChangedAsync();
-    }
-
-    private Task RemoveIntervention(int index)
-    {
-        if (index < 0 || index >= _vm.GeneralInterventions.Count)
-        {
-            return Task.CompletedTask;
-        }
-
-        _vm.GeneralInterventions.RemoveAt(index);
-        return NotifyChangedAsync();
-    }
-
-    private Task UpdateResponseToTreatment(string value)
-    {
-        _dailyTreatment.ResponseToTreatment = value;
-        return NotifyDailyChangedAsync();
     }
 
     private async Task GenerateSummaryAsync()
@@ -312,7 +192,18 @@
 
     private static string FormatIntervention(GeneralInterventionEntry intervention)
     {
-        var parts = new[] { intervention.Name, intervention.Category, intervention.Notes }
+        var parts = new[]
+        {
+            intervention.Name,
+            intervention.Category,
+            intervention.CptCode is null ? null : $"CPT {intervention.CptCode}",
+            intervention.TimeMinutes.HasValue ? $"{intervention.TimeMinutes.Value} min" : null,
+            intervention.AssistanceLevel,
+            intervention.Cueing,
+            intervention.Response,
+            intervention.IncludeInHomeExerciseProgram ? "HEP linked" : null,
+            intervention.Notes
+        }
             .Where(value => !string.IsNullOrWhiteSpace(value));
         return string.Join(" - ", parts);
     }

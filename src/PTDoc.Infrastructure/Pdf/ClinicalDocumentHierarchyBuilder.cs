@@ -191,8 +191,8 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                 Field("Functional Goal Addressed", FirstNonEmpty(
                     JoinList(daily?.FocusedActivities),
                     JoinSet(workspace?.Plan.TreatmentFocuses))),
-                Field("VC", BuildCueSummary(daily)),
-                Field("Assistance", BuildAssistanceSummary(daily)),
+                Field("VC", FirstNonEmpty(BuildCueSummary(daily), BuildWorkspaceCueSummary(workspace))),
+                Field("Assistance", FirstNonEmpty(BuildAssistanceSummary(daily), BuildWorkspaceAssistanceSummary(workspace))),
                 Field("Visual Instruction", BuildVisualInstructionSummary(daily)),
                 Field("Education", BuildEducationSummary(daily, workspace)),
                 Field("Response", daily?.TreatmentResponse.HasValue == true
@@ -231,6 +231,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             BuildHeaderSection(noteData, "Physical Therapy Dry Needling Note"),
             Section("Dry Needling Treatment", ClinicalDocumentSourceKind.Note,
                 Field("Date Of Treatment", FormatDate(FirstNonNull(dryNeedling?.DateOfTreatment, noteData.DateOfService))),
+                Field("Billing Designation", NormalizeBillingDesignation(dryNeedling?.BillingDesignation)),
                 Field("Location", dryNeedling?.Location),
                 Field("Needling Type", dryNeedling?.NeedlingType),
                 Field("Pain Before", FormatPainScore(dryNeedling?.PainBefore)),
@@ -249,7 +250,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                     workspace?.Plan.HomeExerciseProgramNotes,
                     dryNeedling?.AdditionalNotes))),
             noteData.IncludeSignatureBlock ? BuildClinicianSignatureSection(noteData) : null,
-            noteData.IncludeMedicareCompliance ? BuildChargesSection(noteData, context.CptCodes) : null);
+            ShouldIncludeCharges(noteData, context) ? BuildChargesSection(noteData, context.CptCodes) : null);
     }
 
     private static ClinicalDocumentHierarchy BuildDischargeSummary(NoteExportDto noteData, ExportDocumentContext context)
@@ -286,18 +287,19 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                     discharge?.ProgressSummary))),
             BuildGoalsSection(context),
             Section("Discharge Plan Of Care", ClinicalDocumentSourceKind.Note,
-                Field("Reason For Discharge", FirstNonEmpty(
-                    discharge?.ReasonForDischarge,
-                    workspace?.Plan.ClinicalSummary,
-                    BuildLegacyJsonValue(noteData.ContentJson, "reasonForDischarge"))),
+                Field("Documentation Mode", GetDischargeDocumentationMode(workspace?.Plan)),
+                Field("Billing Status", GetDischargeBillingStatus(workspace?.Plan)),
+                Field("Reason For Discharge", BuildDischargeReason(workspace?.Plan, discharge, noteData.ContentJson)),
                 Field("Discharge Prognosis", workspace?.Assessment.OverallPrognosis),
                 Paragraph("Discharge Instructions", FirstNonEmpty(
                     discharge?.FollowUpRecommendations,
                     discharge?.HepRecommendations,
+                    workspace?.Plan.DischargeRecommendations,
+                    workspace?.Plan.PostDischargeInstructions,
                     workspace?.Plan.FollowUpInstructions,
                     workspace?.Plan.DischargePlanningNotes))),
             noteData.IncludeSignatureBlock ? BuildClinicianSignatureSection(noteData) : null,
-            noteData.IncludeMedicareCompliance ? BuildChargesSection(noteData, context.CptCodes) : null);
+            ShouldIncludeCharges(noteData, context) ? BuildChargesSection(noteData, context.CptCodes) : null);
     }
 
     private static ClinicalDocumentHierarchy BuildFallbackDocument(NoteExportDto noteData, ExportDocumentContext context)
@@ -649,12 +651,22 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         }
         else if (workspace?.Objective.ExerciseRows.Count > 0)
         {
-            rows.Add(Row("Exercise Program", JoinList(workspace.Objective.ExerciseRows.Select(BuildExerciseRowSummary).ToList()), "Yes"));
+            rows.AddRange(workspace.Objective.ExerciseRows
+                .Where(row => !string.IsNullOrWhiteSpace(FirstNonEmpty(row.ActualExercisePerformed, row.SuggestedExercise)))
+                .Select(row => Row(
+                    FirstNonEmpty(row.ActualExercisePerformed, row.SuggestedExercise),
+                    BuildExerciseRowDetails(row),
+                    BuildExercisePerformedValue(row))));
         }
 
         if (workspace?.Plan.GeneralInterventions.Count > 0)
         {
-            rows.Add(Row("Skilled Interventions", JoinList(workspace.Plan.GeneralInterventions.Select(entry => entry.Name).ToList()), "Yes"));
+            rows.AddRange(workspace.Plan.GeneralInterventions
+                .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
+                .Select(entry => Row(
+                    entry.Name,
+                    BuildGeneralInterventionDetails(entry),
+                    "Yes")));
         }
 
         var education = BuildEducationSummary(daily, workspace);
@@ -1283,6 +1295,32 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             ? string.Empty
             : string.Join(", ", daily.AssistanceLevels.Select(value => ((AssistanceLevel)value).ToString()));
 
+    private static string BuildWorkspaceCueSummary(NoteWorkspaceV2Payload? workspace)
+    {
+        if (workspace is null)
+        {
+            return string.Empty;
+        }
+
+        var values = NonEmptyValues(workspace.Objective.ExerciseRows.Select(row => row.Cueing))
+            .Concat(NonEmptyValues(workspace.Plan.GeneralInterventions.Select(entry => entry.Cueing)));
+
+        return JoinList(values);
+    }
+
+    private static string BuildWorkspaceAssistanceSummary(NoteWorkspaceV2Payload? workspace)
+    {
+        if (workspace is null)
+        {
+            return string.Empty;
+        }
+
+        var values = NonEmptyValues(workspace.Objective.ExerciseRows.Select(row => row.AssistanceLevel))
+            .Concat(NonEmptyValues(workspace.Plan.GeneralInterventions.Select(entry => entry.AssistanceLevel)));
+
+        return JoinList(values);
+    }
+
     private static string BuildVisualInstructionSummary(DailyNoteContentDto? daily)
         => daily is null || !daily.CueTypes.Contains((int)CueType.Visual)
             ? string.Empty
@@ -1441,10 +1479,16 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
     private static string BuildExerciseRowDetails(ExerciseRowV2 row)
     {
         var values = new List<string>();
+        AddIfPresent(values, row.CptCode, "CPT");
+        AddIfPresent(values, row.AssistanceLevel, "Assistance");
+        AddIfPresent(values, row.Cueing, "Cueing");
+        if (row.IncludeInHomeExerciseProgram)
+        {
+            values.Add("HEP linked");
+        }
         AddIfPresent(values, row.SetsRepsDuration, "Dosage");
         AddIfPresent(values, row.ResistanceOrWeight, "Resistance");
         AddIfPresent(values, row.TimeMinutes?.ToString(CultureInfo.InvariantCulture), "Minutes");
-        AddIfPresent(values, row.CptCode, "CPT");
         AddIfPresent(values, row.CptDescription, "Description");
         return string.Join("; ", values);
     }
@@ -1459,20 +1503,85 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
     private static string BuildGeneralInterventionDetails(GeneralInterventionEntryV2 entry)
     {
         var values = new List<string>();
+        AddIfPresent(values, entry.CptCode, "CPT");
+        AddIfPresent(values, entry.AssistanceLevel, "Assistance");
+        AddIfPresent(values, entry.Response, "Response");
+        if (entry.IncludeInHomeExerciseProgram)
+        {
+            values.Add("HEP linked");
+        }
+        AddIfPresent(values, entry.Cueing, "Cueing");
         AddIfPresent(values, entry.Category, "Category");
+        AddIfPresent(values, entry.CptDescription, "Description");
+        AddIfPresent(values, entry.TimeMinutes?.ToString(CultureInfo.InvariantCulture), "Minutes");
         AddIfPresent(values, entry.Notes, "Notes");
         return string.Join("; ", values);
     }
 
-    private static string BuildExerciseRowSummary(ExerciseRowV2 row)
+    private static bool ShouldIncludeCharges(NoteExportDto noteData, ExportDocumentContext context)
     {
-        var values = new List<string>();
-        AddIfPresent(values, FirstNonEmpty(row.ActualExercisePerformed, row.SuggestedExercise), null);
-        AddIfPresent(values, row.SetsRepsDuration, "Dosage");
-        AddIfPresent(values, row.ResistanceOrWeight, "Resistance");
-        AddIfPresent(values, row.TimeMinutes?.ToString(CultureInfo.InvariantCulture), "Minutes");
-        return string.Join("; ", values);
+        if (!noteData.IncludeMedicareCompliance)
+        {
+            return false;
+        }
+
+        if (noteData.NoteType == NoteType.Discharge
+            && IsNonBillableDischarge(context.WorkspacePayload?.Plan))
+        {
+            return false;
+        }
+
+        if (context.WorkspacePayload?.DryNeedling is { } dryNeedling
+            && string.Equals(NormalizeBillingDesignation(dryNeedling.BillingDesignation), "Non-billable", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return true;
     }
+
+    private static string GetDischargeDocumentationMode(WorkspacePlanV2? plan)
+    {
+        if (string.IsNullOrWhiteSpace(plan?.DischargeDocumentationMode))
+        {
+            return "Standard billable discharge";
+        }
+
+        return plan.DischargeDocumentationMode.Trim();
+    }
+
+    private static string GetDischargeBillingStatus(WorkspacePlanV2? plan) =>
+        IsNonBillableDischarge(plan)
+            ? $"Non-billable - {GetDischargeDocumentationMode(plan)}"
+            : "Billable";
+
+    private static string BuildDischargeReason(WorkspacePlanV2? plan, DischargeContent? discharge, string? contentJson)
+    {
+        if (!string.IsNullOrWhiteSpace(plan?.PrimaryDischargeReason))
+        {
+            if (string.Equals(plan.PrimaryDischargeReason, "Other", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(plan.OtherDischargeReasonExplanation))
+            {
+                return $"Other: {plan.OtherDischargeReasonExplanation.Trim()}";
+            }
+
+            return plan.PrimaryDischargeReason.Trim();
+        }
+
+        return FirstNonEmpty(
+            discharge?.ReasonForDischarge,
+            BuildLegacyJsonValue(contentJson ?? string.Empty, "reasonForDischarge"));
+    }
+
+    private static bool IsNonBillableDischarge(WorkspacePlanV2? plan) =>
+        plan is not null
+        && (plan.IsNonBillableDischarge
+            || !string.Equals(GetDischargeDocumentationMode(plan), "Standard billable discharge", StringComparison.OrdinalIgnoreCase));
+
+    private static string NormalizeBillingDesignation(string? value) =>
+        string.Equals(value?.Trim(), "Non-billable", StringComparison.OrdinalIgnoreCase)
+            ? "Non-billable"
+            : "Billable";
 
     private static string FormatPainScore(int? value)
         => value.HasValue ? $"{value.Value}/10" : string.Empty;
@@ -1576,6 +1685,11 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
 
     private static string JoinList(IEnumerable<string>? values)
         => values is null ? string.Empty : string.Join(", ", values.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+    private static IEnumerable<string> NonEmptyValues(IEnumerable<string?> values) =>
+        values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim());
 
     private static string FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;

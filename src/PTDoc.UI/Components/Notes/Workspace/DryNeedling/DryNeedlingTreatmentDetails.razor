@@ -28,6 +28,16 @@
                 }
             </select>
         </div>
+
+        <div class="dry-treatment__field">
+            <label for="dry-billing-designation">Billing Designation *</label>
+            <select id="dry-billing-designation" disabled="@IsReadOnly" @bind="BillingDesignation" @bind:after="NotifyChanged">
+                @foreach (var option in _billingDesignations)
+                {
+                    <option value="@option">@option</option>
+                }
+            </select>
+        </div>
     </div>
 
     <h4 class="dry-treatment__section-title">Patient's Response</h4>
@@ -99,9 +109,17 @@
         "Static retention"
     ];
 
+    private static readonly string[] _billingDesignations =
+    [
+        "Billable",
+        "Non-billable"
+    ];
+
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public DateTime? DateOfTreatment { get; set; }
     [Parameter] public EventCallback<DateTime?> DateOfTreatmentChanged { get; set; }
+    [Parameter] public string BillingDesignation { get; set; } = "Billable";
+    [Parameter] public EventCallback<string> BillingDesignationChanged { get; set; }
     [Parameter] public string Location { get; set; } = string.Empty;
     [Parameter] public EventCallback<string> LocationChanged { get; set; }
     [Parameter] public string NeedlingType { get; set; } = string.Empty;
@@ -132,7 +150,12 @@
 
     private async Task NotifyChanged()
     {
+        var billingDesignation = string.IsNullOrWhiteSpace(BillingDesignation)
+            ? "Billable"
+            : BillingDesignation;
+
         await DateOfTreatmentChanged.InvokeAsync(DateOfTreatment);
+        await BillingDesignationChanged.InvokeAsync(billingDesignation);
         await LocationChanged.InvokeAsync(Location);
         await NeedlingTypeChanged.InvokeAsync(NeedlingType);
         await ResponseDescriptionChanged.InvokeAsync(ResponseDescription);

@@ -1,0 +1,37 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.DailyTreatment
+@using PTDoc.UI.Components.Notes.Models
+
+<section class="daily-assessment @(IsDarkMode ? "daily-assessment--dark" : string.Empty)" data-testid="daily-progress-simple-assessment-section">
+    <div class="daily-grid">
+        <div class="daily-col-12">
+            <FormSection Title="Additional Notes" Subtitle="Document the visit-specific clinical assessment">
+                <EditableTextArea Label="Additional Notes"
+                                  Value="@_vm.AssessmentNarrative"
+                                  ValueChanged="UpdateAdditionalNotes"
+                                  IsReadOnly="IsReadOnly"
+                                  Placeholder="Document the assessment for this visit based on today's subjective, objective, and intervention response."
+                                  Rows="6" />
+            </FormSection>
+        </div>
+    </div>
+</section>
+
+@code {
+    private AssessmentWorkspaceVm _vm = new();
+
+    [Parameter, EditorRequired] public AssessmentWorkspaceVm Vm { get; set; } = new();
+    [Parameter, EditorRequired] public EventCallback<AssessmentWorkspaceVm> VmChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public bool IsDarkMode { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        _vm = Vm;
+    }
+
+    private Task UpdateAdditionalNotes(string value)
+    {
+        _vm.AssessmentNarrative = value;
+        return VmChanged.InvokeAsync(_vm);
+    }
+}

@@ -4,26 +4,34 @@
 <section class="daily-subjective @(IsDarkMode ? "daily-subjective--dark" : string.Empty)" data-testid="daily-subjective-section">
     <div class="daily-grid">
         <div class="daily-col-12">
-            <FormSection Title="Chief Complaint &amp; Pain Location" Subtitle="Select body part(s) with pain">
+            <FormSection Title="Chief Complaint / Carry-Forward Context" Subtitle="Confirm carried-forward complaint and add today's update">
+                @if (!string.IsNullOrWhiteSpace(GetCarriedForwardComplaint()))
+                {
+                    <div class="daily-subjective__progress-note" data-testid="daily-carried-forward-chief-complaint">
+                        <strong>Carried-forward chief complaint</strong>
+                        <p>@GetCarriedForwardComplaint()</p>
+                    </div>
+                }
+
                 <CheckboxGrid Options="_bodyParts"
                               Selected="_vm.Locations"
                               SelectedChanged="UpdateLocations"
                               IsReadOnly="IsReadOnly"
                               Columns="2" />
 
-                <EditableTextArea Label="Additional Details / Elaboration"
+                <EditableTextArea Label="Today's update/additions"
                                   Value="@(_vm.OtherProblem ?? string.Empty)"
                                   ValueChanged="UpdateOtherProblem"
                                   IsReadOnly="IsReadOnly"
-                                  Placeholder="Add specific details about onset, mechanism of injury, symptoms not captured above..."
+                                  Placeholder="Add today's patient-reported update or additions to the carried-forward complaint."
                                   Rows="3" />
             </FormSection>
         </div>
 
         <div class="daily-col-12">
             <div class="daily-subjective__progress-note">
-                <strong>Progress Note</strong>
-                <p>Document changes since last visit and compare to baseline.</p>
+                <strong>Daily Visit Update</strong>
+                <p>Document patient-reported changes since the last visit.</p>
             </div>
         </div>
 
@@ -98,24 +106,14 @@
                 <EditableTextArea Value="@(_vm.AdditionalFunctionalLimitations ?? string.Empty)"
                                   ValueChanged="UpdateAdditionalFunctionalLimitations"
                                   IsReadOnly="IsReadOnly"
-                                  Placeholder="Activities patient is unable to perform or finds difficult..."
-                                  Rows="3" />
-            </FormSection>
-        </div>
-
-        <div class="daily-col-12">
-            <FormSection Title="Previous Treatment">
-                <EditableTextArea Value="@_dailyTreatment.PreviousTreatment"
-                                  ValueChanged="UpdatePreviousTreatment"
-                                  IsReadOnly="IsReadOnly"
-                                  Placeholder="Prior therapy, medications, surgeries, etc..."
+                                  Placeholder="Activities the patient has difficulty with or can perform with changed tolerance..."
                                   Rows="3" />
             </FormSection>
         </div>
 
         <div class="daily-col-12">
             <FormSection Title="Progress Since Last Visit">
-                <EditableTextArea Label="Changes Since Last Visit *"
+                <EditableTextArea Label="Visit changes since last visit *"
                                   Value="@_dailyTreatment.ChangesSinceLastVisit"
                                   ValueChanged="UpdateChangesSinceLastVisit"
                                   IsReadOnly="IsReadOnly"
@@ -123,13 +121,6 @@
                                   Rows="3"
                                   IsRequired="true"
                                   ShowValidation="@string.IsNullOrWhiteSpace(_dailyTreatment.ChangesSinceLastVisit)" />
-
-                <EditableTextArea Label="Pain Level Changes"
-                                  Value="@_dailyTreatment.PainLevelChanges"
-                                  ValueChanged="UpdatePainLevelChanges"
-                                  IsReadOnly="IsReadOnly"
-                                  Placeholder="Compare current pain to baseline and previous visit."
-                                  Rows="3" />
 
                 <EditableTextArea Label="Subjective Update"
                                   Value="@_dailyTreatment.SubjectiveUpdate"
@@ -164,7 +155,7 @@
                                   Value="@_dailyTreatment.FunctionalImprovements"
                                   ValueChanged="UpdateFunctionalImprovements"
                                   IsReadOnly="IsReadOnly"
-                                  Placeholder="What activities can patient now do that they couldn't before?"
+                                  Placeholder="What activities can the patient now do that they had difficulty with before?"
                                   Rows="3" />
 
                 <EditableTextArea Label="New or Changed Symptoms"
@@ -217,6 +208,20 @@
         {
             _baselinePainLevel = _vm.BestPainScore;
         }
+    }
+
+    private string GetCarriedForwardComplaint()
+    {
+        var values = _vm.Problems
+            .Concat(_vm.Locations)
+            .Append(_vm.OtherLocation)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return values.Count == 0 ? string.Empty : string.Join("; ", values);
     }
 
     private Task UpdateLocations(HashSet<string> value)

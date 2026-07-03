@@ -277,87 +277,25 @@ public class PdfIntegrationTests : IAsyncDisposable
     }
 
     [Fact]
+    public void Hierarchy_Export_DailyWorkspaceV2_IncludesRowLevelTreatmentDetails()
+    {
+        var hierarchy = _hierarchyBuilder.Build(CreateDailyWorkspaceV2ExportDto());
+        var hierarchyText = FlattenNodeText(hierarchy.Root);
+
+        Assert.Contains("CPT: 97110", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CPT: 97140", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Assistance: Standby Assist", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Assistance: Contact Guard", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Verbal cueing", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Tactile cueing", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Response: Improved mobility", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("HEP linked", hierarchyText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task PDF_Export_DailyWorkspaceV2_UsesCanonicalStructuredContent()
     {
-        var noteData = new NoteExportDto
-        {
-            NoteId = Guid.NewGuid(),
-            NoteType = NoteType.Daily,
-            DateOfService = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
-            NoteTypeDisplayName = "Physical Therapy Daily Note",
-            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
-            {
-                NoteType = NoteType.Daily,
-                Subjective = new WorkspaceSubjectiveV2
-                {
-                    NarrativeContext = new SubjectNarrativeContextV2
-                    {
-                        ChiefComplaint = "Pain with walking"
-                    },
-                    CurrentPainScore = 4,
-                    WorstPainScore = 7,
-                    FunctionalLimitations =
-                    [
-                        new FunctionalLimitationEntryV2
-                        {
-                            Description = "Walking longer than 10 minutes"
-                        }
-                    ]
-                },
-                Objective = new WorkspaceObjectiveV2
-                {
-                    ExerciseRows =
-                    [
-                        new ExerciseRowV2
-                        {
-                            ActualExercisePerformed = "Bridges",
-                            SetsRepsDuration = "2 x 10"
-                        }
-                    ]
-                },
-                Assessment = new WorkspaceAssessmentV2
-                {
-                    AssessmentNarrative = "Improving activity tolerance",
-                    OverallPrognosis = "Good",
-                    DiagnosisCodes =
-                    [
-                        new DiagnosisCodeV2
-                        {
-                            Code = "R10.2",
-                            Description = "Pelvic and perineal pain"
-                        }
-                    ],
-                    Goals =
-                    [
-                        new WorkspaceGoalEntryV2
-                        {
-                            Description = "Walk 30 minutes without increased pain",
-                            Timeframe = GoalTimeframe.ShortTerm,
-                            Status = GoalStatus.Active
-                        }
-                    ]
-                },
-                Plan = new WorkspacePlanV2
-                {
-                    TreatmentFocuses = ["Gait training"],
-                    GeneralInterventions =
-                    [
-                        new GeneralInterventionEntryV2
-                        {
-                            Name = "Manual therapy"
-                        }
-                    ],
-                    HomeExerciseProgramNotes = "Continue bridges at home",
-                    FollowUpInstructions = "Progress as tolerated"
-                }
-            }),
-            CptCodesJson = """[{"code":"97140","units":1,"minutes":10}]""",
-            PatientFirstName = "Daily",
-            PatientLastName = "Patient",
-            PatientMedicalRecordNumber = "MRN-300",
-            IncludeSignatureBlock = true,
-            IncludeMedicareCompliance = true
-        };
+        var noteData = CreateDailyWorkspaceV2ExportDto();
 
         var result = await _renderer.ExportNoteToPdfAsync(noteData);
         var pdfText = ExtractPdfText(result.PdfBytes);
@@ -366,6 +304,13 @@ public class PdfIntegrationTests : IAsyncDisposable
         Assert.Contains("Walking longer than 10 minutes", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Bridges", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Gait training", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CPT: 97110", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CPT: 97140", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Assistance: Standby Assist", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Assistance: Contact Guard", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Verbal cueing", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Response: Improved mobility", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("HEP linked", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Walk 30 minutes without increased pain", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Good", pdfText, StringComparison.OrdinalIgnoreCase);
     }
@@ -506,6 +451,7 @@ public class PdfIntegrationTests : IAsyncDisposable
                 DryNeedling = new WorkspaceDryNeedlingV2
                 {
                     DateOfTreatment = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
+                    BillingDesignation = "Non-billable",
                     Location = "Gluteal region",
                     NeedlingType = "Deep dry needling",
                     PainBefore = 6,
@@ -536,15 +482,19 @@ public class PdfIntegrationTests : IAsyncDisposable
             IncludeMedicareCompliance = true
         };
 
+        var hierarchy = _hierarchyBuilder.Build(noteData);
         var result = await _renderer.ExportNoteToPdfAsync(noteData);
         var pdfText = ExtractPdfText(result.PdfBytes);
 
+        AssertNodeValueContains(hierarchy.Root, "Billing Designation", "Non-billable");
         Assert.Contains("Physical Therapy Dry Needling Note", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Non-billable", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Gluteal region", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Deep dry needling", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("6/10", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("3/10", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Monitor soreness for 24 hours", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Charges & Reporting", pdfText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -620,6 +570,44 @@ public class PdfIntegrationTests : IAsyncDisposable
         Assert.NotEmpty(result.PdfBytes);
         AssertNodeValueContains(hierarchy.Root, "Reason For Discharge", "Goals met");
         AssertNodeValueContains(hierarchy.Root, "Final Functional Changes Narrative", "independent community ambulation");
+    }
+
+    [Fact]
+    public void Hierarchy_Export_DischargeWorkspace_IncludesNonBillableModeAndReason()
+    {
+        var noteData = new NoteExportDto
+        {
+            NoteId = Guid.NewGuid(),
+            NoteType = NoteType.Discharge,
+            NoteStatus = NoteStatus.Signed,
+            DateOfService = new DateTime(2026, 4, 15, 0, 0, 0, DateTimeKind.Utc),
+            NoteTypeDisplayName = "Physical Therapy Discharge Summary",
+            ExportStatusLabel = "Signed",
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Discharge,
+                Plan = new WorkspacePlanV2
+                {
+                    DischargeDocumentationMode = "Patient unreachable",
+                    IsNonBillableDischarge = true,
+                    PrimaryDischargeReason = "Other",
+                    OtherDischargeReasonExplanation = "Patient could not be reached after repeated follow-up attempts.",
+                    DischargeRecommendations = "Continue last issued home program as tolerated."
+                }
+            }),
+            PatientFirstName = "Discharge",
+            PatientLastName = "Workspace",
+            PatientDiagnosisCodesJson = """[{"icdCode":"R26.2","description":"Difficulty in walking","isPrimary":true}]""",
+            IncludeSignatureBlock = true,
+            IncludeMedicareCompliance = true
+        };
+
+        var hierarchy = _hierarchyBuilder.Build(noteData);
+
+        AssertNodeValueContains(hierarchy.Root, "Documentation Mode", "Patient unreachable");
+        AssertNodeValueContains(hierarchy.Root, "Billing Status", "Non-billable - Patient unreachable");
+        AssertNodeValueContains(hierarchy.Root, "Reason For Discharge", "Patient could not be reached");
+        Assert.DoesNotContain("Charges & Reporting", FlattenNodeText(hierarchy.Root), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -813,6 +801,100 @@ public class PdfIntegrationTests : IAsyncDisposable
         Assert.True(result.FileSizeBytes > 500);
     }
 
+    private static NoteExportDto CreateDailyWorkspaceV2ExportDto() => new()
+    {
+        NoteId = Guid.NewGuid(),
+        NoteType = NoteType.Daily,
+        DateOfService = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
+        NoteTypeDisplayName = "Physical Therapy Daily Note",
+        ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            Subjective = new WorkspaceSubjectiveV2
+            {
+                NarrativeContext = new SubjectNarrativeContextV2
+                {
+                    ChiefComplaint = "Pain with walking"
+                },
+                CurrentPainScore = 4,
+                WorstPainScore = 7,
+                FunctionalLimitations =
+                [
+                    new FunctionalLimitationEntryV2
+                    {
+                        Description = "Walking longer than 10 minutes"
+                    }
+                ]
+            },
+            Objective = new WorkspaceObjectiveV2
+            {
+                ExerciseRows =
+                [
+                    new ExerciseRowV2
+                    {
+                        ActualExercisePerformed = "Bridges",
+                        SetsRepsDuration = "2 x 10",
+                        CptCode = "97110",
+                        CptDescription = "Therapeutic exercise",
+                        TimeMinutes = 12,
+                        AssistanceLevel = "Standby Assist",
+                        Cueing = "Verbal cueing",
+                        IncludeInHomeExerciseProgram = true
+                    }
+                ]
+            },
+            Assessment = new WorkspaceAssessmentV2
+            {
+                AssessmentNarrative = "Improving activity tolerance",
+                OverallPrognosis = "Good",
+                DiagnosisCodes =
+                [
+                    new DiagnosisCodeV2
+                    {
+                        Code = "R10.2",
+                        Description = "Pelvic and perineal pain"
+                    }
+                ],
+                Goals =
+                [
+                    new WorkspaceGoalEntryV2
+                    {
+                        Description = "Walk 30 minutes without increased pain",
+                        Timeframe = GoalTimeframe.ShortTerm,
+                        Status = GoalStatus.Active
+                    }
+                ]
+            },
+            Plan = new WorkspacePlanV2
+            {
+                TreatmentFocuses = ["Gait training"],
+                GeneralInterventions =
+                [
+                    new GeneralInterventionEntryV2
+                    {
+                        Name = "Manual therapy",
+                        Category = "Manual",
+                        CptCode = "97140",
+                        CptDescription = "Manual therapy",
+                        TimeMinutes = 10,
+                        AssistanceLevel = "Contact Guard",
+                        Cueing = "Tactile cueing",
+                        Response = "Improved mobility",
+                        IncludeInHomeExerciseProgram = true
+                    }
+                ],
+                HomeExerciseProgramNotes = "Continue bridges at home",
+                FollowUpInstructions = "Progress as tolerated"
+            }
+        }),
+        CptCodesJson = """[{"code":"97140","units":1,"minutes":10}]""",
+        PatientFirstName = "Daily",
+        PatientLastName = "Patient",
+        PatientMedicalRecordNumber = "MRN-300",
+        IncludeSignatureBlock = true,
+        IncludeMedicareCompliance = true
+    };
+
     private static string ExtractPdfText(byte[] pdfBytes)
     {
         using var stream = new MemoryStream(pdfBytes);
@@ -847,6 +929,32 @@ public class PdfIntegrationTests : IAsyncDisposable
         }
 
         return null;
+    }
+
+    private static string FlattenNodeText(ClinicalDocumentNode node)
+    {
+        var values = new List<string>
+        {
+            node.Title,
+            node.Value ?? string.Empty
+        };
+
+        if (node.Table is not null)
+        {
+            values.AddRange(node.Table.ColumnGroups.Select(group => group.Title));
+            values.AddRange(node.Table.Columns.Select(column => column.Title));
+            values.AddRange(node.Table.Rows
+                .SelectMany(row => row.Values)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value!));
+        }
+
+        foreach (var child in node.Children)
+        {
+            values.Add(FlattenNodeText(child));
+        }
+
+        return string.Join(" ", values);
     }
 
     public async ValueTask DisposeAsync()
