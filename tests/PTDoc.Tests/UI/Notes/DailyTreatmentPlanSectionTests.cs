@@ -79,8 +79,8 @@ public sealed class DailyTreatmentPlanSectionTests : TestContext
                 EventCallback.Factory.Create<DailyTreatmentVm>(this, updated => dailyTreatment = updated))
             .Add(component => component.IsReadOnly, false));
 
+        cut.Find("[data-testid='daily-progress-intervention-minutes']").Change("30");
         cut.Find("[data-testid='daily-progress-intervention-cpt']").Change("97530");
-        cut.Find("[data-testid='daily-progress-intervention-minutes']").Change("10");
         cut.Find("[data-testid='daily-progress-intervention-assistance']").Change("Standby Assist");
         cut.Find("[data-testid='daily-progress-intervention-cueing']").Change("Visual cueing");
         cut.Find("[data-testid='daily-progress-intervention-response']").Input("Better eccentric control");
@@ -91,7 +91,7 @@ public sealed class DailyTreatmentPlanSectionTests : TestContext
             var intervention = Assert.Single(vm.GeneralInterventions);
             Assert.Equal("97530", intervention.CptCode);
             Assert.Equal("Functional activities", intervention.CptDescription);
-            Assert.Equal(10, intervention.TimeMinutes);
+            Assert.Equal(30, intervention.TimeMinutes);
             Assert.Equal("Standby Assist", intervention.AssistanceLevel);
             Assert.Equal("Visual cueing", intervention.Cueing);
             Assert.Equal("Better eccentric control", intervention.Response);
@@ -99,6 +99,8 @@ public sealed class DailyTreatmentPlanSectionTests : TestContext
 
             var selected = Assert.Single(vm.SelectedCptCodes);
             Assert.Equal("97530", selected.Code);
+            Assert.Equal(2, selected.Units);
+            Assert.Equal(30, selected.Minutes);
         });
     }
 

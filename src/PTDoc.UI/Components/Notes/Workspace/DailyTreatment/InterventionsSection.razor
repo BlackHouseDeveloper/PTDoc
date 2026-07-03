@@ -335,7 +335,7 @@
             {
                 Code = option.Code,
                 Description = option.Label,
-                Units = 1,
+                Units = CalculateUnits(_vm.GeneralInterventions[index].TimeMinutes),
                 Minutes = _vm.GeneralInterventions[index].TimeMinutes
             });
         }
