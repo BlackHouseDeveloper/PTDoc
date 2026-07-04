@@ -445,10 +445,19 @@ public sealed class OpenAiService : IAiService
             sb.AppendLine($"Prognosis is expected to be fair to good based on {string.Join(", ", factors)}.");
         }
 
-        if (!string.IsNullOrWhiteSpace(request.PriorLevelOfFunction) || !string.IsNullOrWhiteSpace(request.CurrentLevelOfFunction))
+        if (!string.IsNullOrWhiteSpace(request.PriorLevelOfFunction)
+            && !string.IsNullOrWhiteSpace(request.CurrentLevelOfFunction))
         {
             sb.AppendLine(
                 $"Recovery potential should be interpreted against prior function ({Sanitize(request.PriorLevelOfFunction)}) and current function ({Sanitize(request.CurrentLevelOfFunction)}).");
+        }
+        else if (!string.IsNullOrWhiteSpace(request.PriorLevelOfFunction))
+        {
+            sb.AppendLine($"Recovery potential should be interpreted against prior function ({Sanitize(request.PriorLevelOfFunction)}).");
+        }
+        else if (!string.IsNullOrWhiteSpace(request.CurrentLevelOfFunction))
+        {
+            sb.AppendLine($"Recovery potential should be interpreted against current function ({Sanitize(request.CurrentLevelOfFunction)}).");
         }
 
         sb.AppendLine("Expected recovery may improve with consistent participation, appropriate support, and measurable progress toward functional goals.");

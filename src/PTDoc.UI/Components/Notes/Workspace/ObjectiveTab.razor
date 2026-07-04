@@ -310,7 +310,7 @@
                             <label class="objective-tab__checkbox-chip">
                                 <input type="checkbox"
                                        checked="@isSelected"
-                                       disabled="@IsReadOnly"
+                                       disabled="@(IsReadOnly || _vm.IsPalpationUnremarkable)"
                                        @onchange="e => ToggleTenderMuscle(muscle, (bool)e.Value!)" />
                                 @muscle
                             </label>
@@ -322,7 +322,7 @@
                     <textarea class="objective-tab__textarea"
                               rows="2"
                               placeholder="Add palpation details or comments..."
-                              disabled="@IsReadOnly"
+                              disabled="@(IsReadOnly || _vm.IsPalpationUnremarkable)"
                               value="@_vm.PalpationComments"
                               @onchange="e => SetAndNotify(v => v.PalpationComments = e.Value?.ToString())"></textarea>
                 </label>
@@ -344,7 +344,7 @@
                         <label class="objective-tab__checkbox-chip">
                             <input type="checkbox"
                                    checked="@isSelected"
-                                   disabled="@IsReadOnly"
+                                   disabled="@(IsReadOnly || _vm.IsPostureUnremarkable)"
                                    @onchange="e => TogglePostureFinding(posture, (bool)e.Value!)" />
                             @posture
                         </label>
@@ -355,7 +355,7 @@
                     <textarea class="objective-tab__textarea"
                               rows="2"
                               placeholder="Add posture details not covered by the chips..."
-                              disabled="@IsReadOnly"
+                              disabled="@(IsReadOnly || _vm.IsPostureUnremarkable)"
                               value="@_vm.OtherPostureFinding"
                               @onchange="e => SetAndNotify(v => v.OtherPostureFinding = e.Value?.ToString())"></textarea>
                 </label>
@@ -380,7 +380,7 @@
                                    name="gait-pattern"
                                    value="@pattern.Value"
                                    checked="@(_vm.PrimaryGaitPattern == pattern.Value)"
-                                   disabled="@IsReadOnly"
+                                   disabled="@(IsReadOnly || _vm.IsGaitUnremarkable)"
                                    @onchange="_ => SetAndNotify(v => v.PrimaryGaitPattern = pattern.Value)" />
                             <span class="objective-tab__radio-label">
                                 <strong>@pattern.Label</strong>
@@ -398,7 +398,7 @@
                             <input type="checkbox"
                                    name="gait-deviations"
                                    checked="@_vm.GaitDeviations.Contains(deviation)"
-                                   disabled="@IsReadOnly"
+                                   disabled="@(IsReadOnly || _vm.IsGaitUnremarkable)"
                                    @onchange="e => ToggleDeviation(deviation, (bool)e.Value!)" />
                             @deviation
                         </label>
@@ -411,7 +411,7 @@
                           class="objective-tab__textarea"
                           rows="3"
                           placeholder="Add details about walking distance, endurance, specific deviations..."
-                          disabled="@IsReadOnly"
+                          disabled="@(IsReadOnly || _vm.IsGaitUnremarkable)"
                           value="@_vm.AdditionalGaitObservations"
                           @onchange="e => SetAndNotify(v => v.AdditionalGaitObservations = e.Value?.ToString())"></textarea>
             </div>
@@ -890,14 +890,6 @@
             _vm.OtherPostureFinding = null;
         }
 
-        return VmChanged.InvokeAsync(_vm);
-    }
-
-    private Task HandlePostureFindingsChanged(ChangeEventArgs args)
-    {
-        var tokens = SplitDelimitedValues(args.Value?.ToString());
-        _vm.PostureFindings = tokens.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        _vm.OtherPostureFinding = null;
         return VmChanged.InvokeAsync(_vm);
     }
 

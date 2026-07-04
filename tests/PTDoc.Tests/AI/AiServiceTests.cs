@@ -97,6 +97,24 @@ public class AiServiceTests
     }
 
     [Fact]
+    public async Task GeneratePrognosis_WithOnlyCurrentFunction_AvoidsEmptyPriorFunctionParentheses()
+    {
+        var request = new AiPrognosisRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Lumbar strain",
+            SelectedBodyPart = "Lumbar",
+            CurrentLevelOfFunction = "Unable to tolerate full shift"
+        };
+
+        var result = await _aiService.GeneratePrognosisAsync(request);
+
+        Assert.True(result.Success);
+        Assert.Contains("current function (Unable to tolerate full shift)", result.GeneratedText, StringComparison.Ordinal);
+        Assert.DoesNotContain("prior function ()", result.GeneratedText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task GenerateAssessment_WithMinimalRequest_ReturnsSuccess()
     {
         // Arrange

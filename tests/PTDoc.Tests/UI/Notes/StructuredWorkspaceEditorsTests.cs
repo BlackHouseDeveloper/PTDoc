@@ -305,6 +305,24 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
             Assert.Null(vm.AdditionalGaitObservations);
         });
 
+        var palpationSection = cut.Find("[data-testid='objective-tender-muscles-section']");
+        Assert.All(
+            palpationSection.QuerySelectorAll("input[type='checkbox']").Skip(1),
+            input => Assert.NotNull(input.GetAttribute("disabled")));
+        Assert.NotNull(palpationSection.QuerySelector("textarea")?.GetAttribute("disabled"));
+
+        var postureSection = cut.Find("[data-testid='objective-posture-section']");
+        Assert.All(
+            postureSection.QuerySelectorAll("input[type='checkbox']").Skip(1),
+            input => Assert.NotNull(input.GetAttribute("disabled")));
+        Assert.NotNull(postureSection.QuerySelector("textarea")?.GetAttribute("disabled"));
+
+        var gaitSection = cut.Find("[data-testid='gait-analysis-section']");
+        Assert.All(
+            gaitSection.QuerySelectorAll("input[type='radio'], input[type='checkbox']").Skip(1),
+            input => Assert.NotNull(input.GetAttribute("disabled")));
+        Assert.NotNull(gaitSection.QuerySelector("textarea")?.GetAttribute("disabled"));
+
         workspaceService.VerifyAll();
         outcomeRegistry.VerifyAll();
     }
