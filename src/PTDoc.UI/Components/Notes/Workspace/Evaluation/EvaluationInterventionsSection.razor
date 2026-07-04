@@ -113,15 +113,29 @@
                                 </div>
                                 @if (!IsReadOnly)
                                 {
-                                    <button type="button" class="pt-card__remove-btn" @onclick="() => RemoveCptCode(entry)">x</button>
+                                    <button type="button"
+                                            class="pt-card__remove-btn"
+                                            aria-label="Remove CPT code @entry.Code"
+                                            title="Remove CPT code"
+                                            @onclick="() => RemoveCptCode(entry)">x</button>
                                 }
                             </div>
 
                             <div class="pt-card__cpt-detail-grid">
                                 <div class="pt-card__cpt-units-row">
-                                    <button type="button" class="pt-card__stepper" disabled="@(IsReadOnly || entry.Units <= 1)" @onclick="() => ChangeUnits(entry, -1)">-</button>
+                                    <button type="button"
+                                            class="pt-card__stepper"
+                                            aria-label="Decrease units"
+                                            title="Decrease units"
+                                            disabled="@(IsReadOnly || entry.Units <= 1)"
+                                            @onclick="() => ChangeUnits(entry, -1)">-</button>
                                     <span class="pt-card__unit-value">@entry.Units</span>
-                                    <button type="button" class="pt-card__stepper" disabled="@IsReadOnly" @onclick="() => ChangeUnits(entry, 1)">+</button>
+                                    <button type="button"
+                                            class="pt-card__stepper"
+                                            aria-label="Increase units"
+                                            title="Increase units"
+                                            disabled="@IsReadOnly"
+                                            @onclick="() => ChangeUnits(entry, 1)">+</button>
                                     <span class="pt-card__unit-label">units</span>
                                 </div>
                                 @if (IsTimedCode(entry.Code))
@@ -221,7 +235,11 @@
                             <strong>@(string.IsNullOrWhiteSpace(row.SuggestedExercise) ? "Intervention row" : row.SuggestedExercise)</strong>
                             @if (!IsReadOnly)
                             {
-                                <button type="button" class="pt-card__remove-btn" @onclick="() => RemoveExerciseRow(row)">x</button>
+                                <button type="button"
+                                        class="pt-card__remove-btn"
+                                        aria-label="Remove intervention row"
+                                        title="Remove intervention row"
+                                        @onclick="() => RemoveExerciseRow(row)">x</button>
                             }
                         </div>
                         <div class="pt-card__row-2col">
@@ -321,7 +339,11 @@
                             <strong>@(string.IsNullOrWhiteSpace(intervention.Name) ? "Intervention" : intervention.Name)</strong>
                             @if (!IsReadOnly)
                             {
-                                <button type="button" class="pt-card__remove-btn" @onclick="() => RemoveGeneralIntervention(intervention)">x</button>
+                                <button type="button"
+                                        class="pt-card__remove-btn"
+                                        aria-label="Remove general intervention"
+                                        title="Remove general intervention"
+                                        @onclick="() => RemoveGeneralIntervention(intervention)">x</button>
                             }
                         </div>
                         <div class="pt-card__row-2col">

@@ -79,7 +79,7 @@
                                     <label>
                                         <span>Body part</span>
                                         <select class="objective-tab__select"
-                                                value="@(metric.BodyPart ?? _vm.SelectedBodyPart ?? string.Empty)"
+                                                value="@(metric.BodyPart ?? string.Empty)"
                                                 disabled="@IsReadOnly"
                                                 @onchange="e => UpdateMetric(metric, row => row.BodyPart = e.Value?.ToString())">
                                             <option value="">Use primary body part</option>
@@ -145,7 +145,7 @@
                                     <label>
                                         <span>Body part</span>
                                         <select class="objective-tab__select"
-                                                value="@(metric.BodyPart ?? _vm.SelectedBodyPart ?? string.Empty)"
+                                                value="@(metric.BodyPart ?? string.Empty)"
                                                 disabled="@IsReadOnly"
                                                 @onchange="e => UpdateMetric(metric, row => row.BodyPart = e.Value?.ToString())">
                                             <option value="">Use primary body part</option>

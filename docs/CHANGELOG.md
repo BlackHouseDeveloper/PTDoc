@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - AI prognosis PR review follow-up
 
 - **AI prognosis and evaluation workspace** — Routed prognosis-generation failures to the Prognosis card, made symptom-frequency DOM IDs unique, allowed objective metrics to reset to the primary body part, corrected CPT quick-pick unit labels, returned CPT edit callbacks as tracked tasks, and made prognosis endpoint metadata handling null-safe. Reason: validated Copilot review feedback identified misplaced errors, accessibility risks, stale body-part persistence, misleading CPT labels, unobserved callbacks, and brittle AI response handling.
+- **Evaluation workspace accessibility follow-up** — Kept per-metric body-part selectors visually blank when a metric uses the primary body part and added descriptive accessible labels for CPT unit steppers and remove actions. Reason: validated Copilot review feedback identified misleading implicit body-part display and icon-only controls without accessible names.
 
 ### Added - AI prognosis generation
 

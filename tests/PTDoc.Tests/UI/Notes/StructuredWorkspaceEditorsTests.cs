@@ -1,4 +1,5 @@
 using Bunit;
+using AngleSharp.Html.Dom;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using PTDoc.Application.ReferenceData;
@@ -238,6 +239,71 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
             Assert.Single(vm.ExerciseRows);
             Assert.Equal("Heel slides", vm.ExerciseRows[0].SuggestedExercise);
             Assert.True(vm.ExerciseRows[0].IsSourceBacked);
+        });
+
+        workspaceService.VerifyAll();
+        outcomeRegistry.VerifyAll();
+    }
+
+    [Fact]
+    public void ObjectiveTab_BodyPartEditorsShowPrimaryFallbackAsBlankSelection()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var outcomeRegistry = new Mock<IOutcomeMeasureRegistry>(MockBehavior.Strict);
+        var vm = new ObjectiveVm
+        {
+            SelectedBodyPart = BodyPart.Knee.ToString(),
+            Metrics =
+            [
+                new ObjectiveMetricRowEntry
+                {
+                    Name = "Knee flexion",
+                    MetricType = MetricType.ROM,
+                    BodyPart = null,
+                    Value = "120"
+                },
+                new ObjectiveMetricRowEntry
+                {
+                    Name = "Knee extension strength",
+                    MetricType = MetricType.MMT,
+                    BodyPart = null,
+                    Value = "4/5"
+                }
+            ]
+        };
+
+        workspaceService
+            .Setup(service => service.GetBodyRegionCatalogAsync(BodyPart.Knee, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BodyRegionCatalog
+            {
+                BodyPart = BodyPart.Knee
+            });
+
+        outcomeRegistry
+            .Setup(registry => registry.GetMeasuresForBodyPart(BodyPart.Knee))
+            .Returns(Array.Empty<OutcomeMeasureDefinition>());
+
+        Services.AddLogging();
+        Services.AddSingleton(workspaceService.Object);
+        Services.AddSingleton(outcomeRegistry.Object);
+
+        var cut = RenderComponent<ObjectiveTab>(parameters => parameters
+            .Add(component => component.Vm, vm)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<ObjectiveVm>(this, updated => vm = updated))
+            .Add(component => component.PatientId, Guid.NewGuid().ToString())
+            .Add(component => component.IsReadOnly, false));
+
+        cut.WaitForAssertion(() =>
+        {
+            var romBodyPartSelect = Assert.IsAssignableFrom<IHtmlSelectElement>(
+                cut.Find("[data-testid='objective-rom-row'] select.objective-tab__select"));
+            var mmtBodyPartSelect = Assert.IsAssignableFrom<IHtmlSelectElement>(
+                cut.Find("[data-testid='objective-mmt-row'] select.objective-tab__select"));
+
+            Assert.Equal(string.Empty, romBodyPartSelect.Value);
+            Assert.Equal(string.Empty, mmtBodyPartSelect.Value);
+            Assert.Contains("Use primary body part", romBodyPartSelect.TextContent, StringComparison.Ordinal);
+            Assert.Contains("Use primary body part", mmtBodyPartSelect.TextContent, StringComparison.Ordinal);
         });
 
         workspaceService.VerifyAll();

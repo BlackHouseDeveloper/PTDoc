@@ -36,4 +36,51 @@ public sealed class EvaluationInterventionsSectionTests : TestContext
         Assert.Contains("2 units", tileText, StringComparison.Ordinal);
         Assert.DoesNotContain("2 min", tileText, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void EditableIconButtons_ExposeDescriptiveAccessibleLabels()
+    {
+        var objective = new ObjectiveVm
+        {
+            ExerciseRows =
+            [
+                new ExerciseRowEntry
+                {
+                    SuggestedExercise = "Heel slides"
+                }
+            ]
+        };
+        var plan = new PlanVm
+        {
+            SelectedCptCodes =
+            [
+                new CptCodeEntry
+                {
+                    Code = "97110",
+                    Description = "Therapeutic exercise",
+                    Units = 2
+                }
+            ],
+            GeneralInterventions =
+            [
+                new GeneralInterventionEntry
+                {
+                    Name = "Manual therapy"
+                }
+            ]
+        };
+
+        var cut = RenderComponent<EvaluationInterventionsSection>(parameters => parameters
+            .Add(component => component.Objective, objective)
+            .Add(component => component.ObjectiveChanged, EventCallback.Factory.Create<ObjectiveVm>(this, value => objective = value))
+            .Add(component => component.Plan, plan)
+            .Add(component => component.PlanChanged, EventCallback.Factory.Create<PlanVm>(this, value => plan = value))
+            .Add(component => component.IsReadOnly, false));
+
+        Assert.NotEmpty(cut.FindAll("button[aria-label='Remove CPT code 97110']"));
+        Assert.NotEmpty(cut.FindAll("button[aria-label='Decrease units']"));
+        Assert.NotEmpty(cut.FindAll("button[aria-label='Increase units']"));
+        Assert.NotEmpty(cut.FindAll("button[aria-label='Remove intervention row']"));
+        Assert.NotEmpty(cut.FindAll("button[aria-label='Remove general intervention']"));
+    }
 }
