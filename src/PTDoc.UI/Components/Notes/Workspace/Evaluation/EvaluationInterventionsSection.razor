@@ -91,10 +91,12 @@
         }
         else
         {
-            @if (GetBillingAdvisories().Count > 0)
+            var billingAdvisories = GetBillingAdvisories();
+
+            if (billingAdvisories.Count > 0)
             {
                 <div class="pt-card__advisory-list" role="status" aria-live="polite">
-                    @foreach (var advisory in GetBillingAdvisories())
+                    @foreach (var advisory in billingAdvisories)
                     {
                         <p class="pt-card__advisory-item">@advisory</p>
                     }

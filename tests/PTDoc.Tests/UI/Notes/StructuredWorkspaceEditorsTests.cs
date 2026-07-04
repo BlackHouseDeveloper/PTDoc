@@ -357,4 +357,91 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
         workspaceService.VerifyAll();
         outcomeRegistry.VerifyAll();
     }
+
+    [Fact]
+    public void ObjectiveTab_AllowsEditingMetricNormalAndPreviousValuesWhenEditable()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var outcomeRegistry = new Mock<IOutcomeMeasureRegistry>(MockBehavior.Strict);
+        var vm = new ObjectiveVm
+        {
+            SelectedBodyPart = BodyPart.Knee.ToString(),
+            Metrics =
+            [
+                new ObjectiveMetricRowEntry
+                {
+                    Name = "Knee flexion",
+                    MetricType = MetricType.ROM,
+                    Value = "120",
+                    NormValue = "135",
+                    PreviousValue = "110"
+                },
+                new ObjectiveMetricRowEntry
+                {
+                    Name = "Knee extension strength",
+                    MetricType = MetricType.MMT,
+                    Value = "4/5",
+                    NormValue = "5/5",
+                    PreviousValue = "3/5"
+                }
+            ]
+        };
+
+        workspaceService
+            .Setup(service => service.GetBodyRegionCatalogAsync(BodyPart.Knee, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BodyRegionCatalog
+            {
+                BodyPart = BodyPart.Knee
+            });
+
+        outcomeRegistry
+            .Setup(registry => registry.GetMeasuresForBodyPart(BodyPart.Knee))
+            .Returns(Array.Empty<OutcomeMeasureDefinition>());
+
+        Services.AddLogging();
+        Services.AddSingleton(workspaceService.Object);
+        Services.AddSingleton(outcomeRegistry.Object);
+
+        var cut = RenderComponent<ObjectiveTab>(parameters => parameters
+            .Add(component => component.Vm, vm)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<ObjectiveVm>(this, updated => vm = updated))
+            .Add(component => component.PatientId, Guid.NewGuid().ToString())
+            .Add(component => component.IsReadOnly, false));
+
+        var romInputs = cut.Find("[data-testid='objective-rom-row']")
+            .QuerySelectorAll("input.objective-tab__text-input")
+            .OfType<IHtmlInputElement>()
+            .ToList();
+        var mmtInputs = cut.Find("[data-testid='objective-mmt-row']")
+            .QuerySelectorAll("input.objective-tab__text-input")
+            .OfType<IHtmlInputElement>()
+            .ToList();
+
+        Assert.Null(romInputs[1].GetAttribute("disabled"));
+        Assert.Null(romInputs[2].GetAttribute("disabled"));
+        Assert.Null(mmtInputs[1].GetAttribute("disabled"));
+        Assert.Null(mmtInputs[2].GetAttribute("disabled"));
+
+        FindMetricInputs("objective-rom-row")[1].Change("140");
+        FindMetricInputs("objective-rom-row")[2].Change("115");
+        FindMetricInputs("objective-mmt-row")[1].Change("5-/5");
+        FindMetricInputs("objective-mmt-row")[2].Change("4-/5");
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("140", vm.Metrics[0].NormValue);
+            Assert.Equal("115", vm.Metrics[0].PreviousValue);
+            Assert.Equal("5-/5", vm.Metrics[1].NormValue);
+            Assert.Equal("4-/5", vm.Metrics[1].PreviousValue);
+        });
+
+        workspaceService.VerifyAll();
+        outcomeRegistry.VerifyAll();
+
+        List<IHtmlInputElement> FindMetricInputs(string testId) =>
+            cut.Find($"[data-testid='{testId}']")
+                .QuerySelectorAll("input.objective-tab__text-input")
+                .OfType<IHtmlInputElement>()
+                .ToList();
+    }
 }

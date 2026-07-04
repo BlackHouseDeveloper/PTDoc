@@ -100,13 +100,15 @@
                                         <span>Normal value</span>
                                         <input class="objective-tab__text-input"
                                                value="@metric.NormValue"
-                                               disabled="true" />
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateMetric(metric, row => row.NormValue = e.Value?.ToString())" />
                                     </label>
                                     <label>
                                         <span>Previous value</span>
                                         <input class="objective-tab__text-input"
                                                value="@metric.PreviousValue"
-                                               disabled="true" />
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateMetric(metric, row => row.PreviousValue = e.Value?.ToString())" />
                                     </label>
                                     <label class="objective-tab__checkbox-item">
                                         <input type="checkbox"
@@ -179,13 +181,15 @@
                                         <span>Normal value</span>
                                         <input class="objective-tab__text-input"
                                                value="@metric.NormValue"
-                                               disabled="true" />
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateMetric(metric, row => row.NormValue = e.Value?.ToString())" />
                                     </label>
                                     <label>
                                         <span>Previous value</span>
                                         <input class="objective-tab__text-input"
                                                value="@metric.PreviousValue"
-                                               disabled="true" />
+                                               disabled="@IsReadOnly"
+                                               @onchange="e => UpdateMetric(metric, row => row.PreviousValue = e.Value?.ToString())" />
                                     </label>
                                     @if (!IsReadOnly)
                                     {

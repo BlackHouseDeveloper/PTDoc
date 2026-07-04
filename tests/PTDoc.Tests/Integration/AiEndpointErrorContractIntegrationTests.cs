@@ -345,6 +345,7 @@ public sealed class AiEndpointErrorContractIntegrationTests
             using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             var root = payload.RootElement;
             Assert.Equal("Expected to progress with skilled PT.", root.GetProperty("generatedText").GetString());
+            Assert.Equal("unknown", root.GetProperty("metadata").GetProperty("templateVersion").GetString());
             Assert.Equal("unknown", root.GetProperty("metadata").GetProperty("model").GetString());
             Assert.Equal(0, root.GetProperty("metadata").GetProperty("tokenCount").GetInt32());
         }

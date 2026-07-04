@@ -324,7 +324,7 @@ public static class AiEndpoints
             generatedText = result.GeneratedText,
             metadata = new
             {
-                templateVersion = result.Metadata?.TemplateVersion,
+                templateVersion = result.Metadata?.TemplateVersion ?? "unknown",
                 model = result.Metadata?.Model ?? "unknown",
                 generatedAt = result.Metadata?.GeneratedAtUtc,
                 tokenCount = result.Metadata?.TokenCount ?? 0
