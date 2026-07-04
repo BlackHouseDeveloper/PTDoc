@@ -1415,6 +1415,11 @@ public sealed class NoteWorkspacePayloadMapper
 
     private static BodyPart ResolveMetricBodyPart(string? visibleBodyPart, BodyPart? preservedBodyPart, BodyPart defaultBodyPart)
     {
+        if (string.IsNullOrWhiteSpace(visibleBodyPart))
+        {
+            return defaultBodyPart;
+        }
+
         var parsed = ParseBodyPart(visibleBodyPart);
         if (parsed != BodyPart.Other)
         {

@@ -158,6 +158,33 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
     }
 
     [Fact]
+    public void SubjectiveTab_ContextualFrequencyDeduplicatesProblemsAndUsesUniqueIds()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var vm = new SubjectiveVm
+        {
+            Problems = ["Pain", "A-B", "AB"],
+            OtherProblem = "Pain"
+        };
+
+        Services.AddLogging();
+        Services.AddSingleton(workspaceService.Object);
+
+        var cut = RenderComponent<SubjectiveTab>(parameters => parameters
+            .Add(component => component.Vm, vm)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<SubjectiveVm>(this, updated => vm = updated))
+            .Add(component => component.IsReadOnly, false));
+
+        var frequencySection = cut.Find("[data-testid='subjective-contextual-frequency']");
+        var labels = frequencySection.QuerySelectorAll("label").Select(label => label.TextContent.Trim()).ToList();
+        var ids = frequencySection.QuerySelectorAll("select").Select(select => select.Id).ToList();
+
+        Assert.Equal(3, labels.Count);
+        Assert.Equal(1, labels.Count(label => string.Equals(label, "Pain", StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(ids.Count, ids.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    }
+
+    [Fact]
     public void ObjectiveTab_LoadsCatalogBackedEditors()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - AI prognosis PR review follow-up
+
+- **AI prognosis and evaluation workspace** — Routed prognosis-generation failures to the Prognosis card, made symptom-frequency DOM IDs unique, allowed objective metrics to reset to the primary body part, corrected CPT quick-pick unit labels, returned CPT edit callbacks as tracked tasks, and made prognosis endpoint metadata handling null-safe. Reason: validated Copilot review feedback identified misplaced errors, accessibility risks, stale body-part persistence, misleading CPT labels, unobserved callbacks, and brittle AI response handling.
+
 ### Added - AI prognosis generation
 
 - **AI prognosis generation** — Added a dedicated prognosis prompt, clinical generation service contract, API endpoint support, UI client integration, and assessment-workspace generation controls with focused tests. Reason: split AI-assisted prognosis drafting into its own reviewable feature PR.

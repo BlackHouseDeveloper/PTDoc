@@ -304,6 +304,57 @@ public sealed class NoteWorkspacePayloadMapperTests
     }
 
     [Fact]
+    public void MapToV2Payload_BlankMetricBodyPartResetsToPrimaryBodyPart()
+    {
+        var uiPayload = new NoteWorkspacePayload
+        {
+            WorkspaceNoteType = "Evaluation Note",
+            StructuredPayload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Evaluation,
+                Objective = new WorkspaceObjectiveV2
+                {
+                    PrimaryBodyPart = BodyPart.Knee,
+                    Metrics =
+                    [
+                        new ObjectiveMetricInputV2
+                        {
+                            Name = "Shoulder flexion",
+                            BodyPart = BodyPart.Shoulder,
+                            MetricType = MetricType.ROM,
+                            Value = "120"
+                        }
+                    ]
+                }
+            },
+            Subjective = new SubjectiveVm
+            {
+                SelectedBodyPart = "Knee"
+            },
+            Objective = new ObjectiveVm
+            {
+                SelectedBodyPart = "Knee",
+                Metrics =
+                [
+                    new ObjectiveMetricRowEntry
+                    {
+                        Name = "Shoulder flexion",
+                        BodyPart = string.Empty,
+                        MetricType = MetricType.ROM,
+                        Value = "120"
+                    }
+                ]
+            },
+            Assessment = new AssessmentWorkspaceVm(),
+            Plan = new PlanVm()
+        };
+
+        var structuredPayload = _mapper.MapToV2Payload(uiPayload, NoteType.Evaluation);
+
+        Assert.Equal(BodyPart.Knee, Assert.Single(structuredPayload.Objective.Metrics).BodyPart);
+    }
+
+    [Fact]
     public void MapToUiPayload_NormalizesRecommendedOutcomeMeasures()
     {
         var payload = new NoteWorkspaceV2Payload

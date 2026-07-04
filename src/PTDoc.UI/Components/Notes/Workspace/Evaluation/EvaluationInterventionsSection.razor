@@ -78,7 +78,7 @@
                         data-testid="evaluation-cpt-quick-pick">
                     <span class="pt-card__cpt-code">@quickPick.Code</span>
                     <span class="pt-card__cpt-name">@quickPick.ShortName</span>
-                    <span class="pt-card__cpt-unit">@quickPick.DefaultUnits min</span>
+                    <span class="pt-card__cpt-unit">@quickPick.DefaultUnits units</span>
                 </button>
             }
         </div>
@@ -779,19 +779,19 @@
         return PlanChanged.InvokeAsync(Plan);
     }
 
-    private void ChangeUnits(UiCptCodeEntry entry, int delta)
+    private Task ChangeUnits(UiCptCodeEntry entry, int delta)
     {
         entry.Units = Math.Max(1, entry.Units + delta);
-        PlanChanged.InvokeAsync(Plan);
+        return PlanChanged.InvokeAsync(Plan);
     }
 
-    private void RemoveCptCode(UiCptCodeEntry entry)
+    private Task RemoveCptCode(UiCptCodeEntry entry)
     {
         Plan.SelectedCptCodes.Remove(entry);
-        PlanChanged.InvokeAsync(Plan);
+        return PlanChanged.InvokeAsync(Plan);
     }
 
-    private void ToggleModifier(UiCptCodeEntry entry, string modifier)
+    private Task ToggleModifier(UiCptCodeEntry entry, string modifier)
     {
         if (entry.Modifiers.Contains(modifier, StringComparer.OrdinalIgnoreCase))
         {
@@ -802,13 +802,13 @@
             entry.Modifiers.Add(modifier);
         }
 
-        PlanChanged.InvokeAsync(Plan);
+        return PlanChanged.InvokeAsync(Plan);
     }
 
-    private void UpdateCptMinutes(UiCptCodeEntry entry, object? value)
+    private Task UpdateCptMinutes(UiCptCodeEntry entry, object? value)
     {
         entry.Minutes = int.TryParse(value?.ToString(), out var minutes) ? Math.Max(0, minutes) : null;
-        PlanChanged.InvokeAsync(Plan);
+        return PlanChanged.InvokeAsync(Plan);
     }
 
     private static string FormatExerciseForHep(ExerciseRowEntry row)

@@ -430,6 +430,10 @@
                   disabled="@IsReadOnly"
                   value="@Vm.PrognosisNarrative"
                   @onchange="e => SetAndNotify(vm => vm.PrognosisNarrative = e.Value?.ToString())"></textarea>
+        @if (!string.IsNullOrWhiteSpace(_prognosisGenerationError))
+        {
+            <p class="aws-card__empty-hint" role="alert">@_prognosisGenerationError</p>
+        }
     </div>
 
     <div class="aws-card" data-testid="findings-summary-card">
@@ -455,6 +459,7 @@
     private bool _isGeneratingPrognosis;
     private string _icdSearchQuery = string.Empty;
     private string? _goalGenerationError;
+    private string? _prognosisGenerationError;
     private bool _isSearchingIcd;
     private string? _icdLookupError;
     private List<CodeLookupEntry> _icdResults = [];
@@ -646,7 +651,7 @@
         if (IsReadOnly) return;
 
         _isGeneratingPrognosis = true;
-        _goalGenerationError = null;
+        _prognosisGenerationError = null;
         StateHasChanged();
 
         try
@@ -678,8 +683,8 @@
 
             if (!result.Success)
             {
-                _goalGenerationError = result.ErrorMessage ?? "Unable to generate AI prognosis.";
-                ToastService.ShowError(_goalGenerationError, "AI generation failed");
+                _prognosisGenerationError = result.ErrorMessage ?? "Unable to generate AI prognosis.";
+                ToastService.ShowError(_prognosisGenerationError, "AI generation failed");
                 return;
             }
 
@@ -690,8 +695,8 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "Prognosis generation failed for note {NoteId}", NoteId);
-            _goalGenerationError = "Unable to generate AI prognosis.";
-            ToastService.ShowError(_goalGenerationError, "AI generation failed");
+            _prognosisGenerationError = "Unable to generate AI prognosis.";
+            ToastService.ShowError(_prognosisGenerationError, "AI generation failed");
         }
         finally
         {

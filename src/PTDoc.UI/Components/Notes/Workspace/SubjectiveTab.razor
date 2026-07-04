@@ -799,14 +799,28 @@
     {
         get
         {
-            var labels = _vm.Problems
+            var labels = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var problem in _vm.Problems
                 .Where(problem => !string.Equals(problem, "Other", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(problem => problem, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+                .Select(problem => problem.Trim())
+                .Where(problem => !string.IsNullOrWhiteSpace(problem)))
+            {
+                if (seen.Add(problem))
+                {
+                    labels.Add(problem);
+                }
+            }
 
             if (!string.IsNullOrWhiteSpace(_vm.OtherProblem))
             {
-                labels.Add(_vm.OtherProblem.Trim());
+                var otherProblem = _vm.OtherProblem.Trim();
+                if (seen.Add(otherProblem))
+                {
+                    labels.Add(otherProblem);
+                }
             }
 
             return labels;
@@ -942,8 +956,31 @@
         return VmChanged.InvokeAsync(_vm);
     }
 
-    private static string GetProblemFrequencyId(string problem) =>
-        $"symptom-frequency-{new string(problem.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant()}";
+    private static string GetProblemFrequencyId(string problem)
+    {
+        var slug = new string(problem.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(slug))
+        {
+            slug = "problem";
+        }
+
+        return $"symptom-frequency-{slug}-{GetStableIdSuffix(problem)}";
+    }
+
+    private static string GetStableIdSuffix(string value)
+    {
+        unchecked
+        {
+            var hash = 2166136261u;
+            foreach (var character in value.Trim())
+            {
+                hash ^= char.ToUpperInvariant(character);
+                hash *= 16777619u;
+            }
+
+            return hash.ToString("x8");
+        }
+    }
 
     private Task ToggleCatalogSelectionAsync(HashSet<string> set, string item)
     {

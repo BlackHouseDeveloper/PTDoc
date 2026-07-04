@@ -302,11 +302,11 @@ public static class AiEndpoints
             var auditEvent = AuditEvent.AiGenerationAttempt(
                 noteId: request.NoteId,
                 generationType: "Prognosis",
-                model: result.Metadata.Model,
+                model: result.Metadata?.Model ?? "unknown",
                 userId: userGuid,
                 success: result.Success,
                 errorMessage: result.Success ? null : result.ErrorMessage);
-            auditEvent.Metadata["TokenCount"] = result.Metadata.TokenCount ?? 0;
+            auditEvent.Metadata["TokenCount"] = result.Metadata?.TokenCount ?? 0;
             await auditService.LogAiGenerationAttemptAsync(auditEvent, cancellationToken);
         }
 
@@ -324,10 +324,10 @@ public static class AiEndpoints
             generatedText = result.GeneratedText,
             metadata = new
             {
-                templateVersion = result.Metadata.TemplateVersion,
-                model = result.Metadata.Model,
-                generatedAt = result.Metadata.GeneratedAtUtc,
-                tokenCount = result.Metadata.TokenCount
+                templateVersion = result.Metadata?.TemplateVersion,
+                model = result.Metadata?.Model ?? "unknown",
+                generatedAt = result.Metadata?.GeneratedAtUtc,
+                tokenCount = result.Metadata?.TokenCount ?? 0
             }
         });
     }
