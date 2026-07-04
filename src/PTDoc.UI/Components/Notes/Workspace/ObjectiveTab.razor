@@ -294,7 +294,7 @@
                     <input type="checkbox"
                            checked="@_vm.IsPalpationUnremarkable"
                            disabled="@IsReadOnly"
-                           @onchange="e => SetAndNotify(v => v.IsPalpationUnremarkable = (bool)e.Value!)" />
+                           @onchange="e => SetPalpationUnremarkable((bool)e.Value!)" />
                     Unremarkable
                 </label>
                 @if (TenderMuscleOptions.Count == 0)
@@ -334,7 +334,7 @@
                     <input type="checkbox"
                            checked="@_vm.IsPostureUnremarkable"
                            disabled="@IsReadOnly"
-                           @onchange="e => SetAndNotify(v => v.IsPostureUnremarkable = (bool)e.Value!)" />
+                           @onchange="e => SetPostureUnremarkable((bool)e.Value!)" />
                     Unremarkable
                 </label>
                 <div class="objective-tab__option-grid" data-testid="objective-posture-options">
@@ -367,7 +367,7 @@
                     <input type="checkbox"
                            checked="@_vm.IsGaitUnremarkable"
                            disabled="@IsReadOnly"
-                           @onchange="e => SetAndNotify(v => v.IsGaitUnremarkable = (bool)e.Value!)" />
+                           @onchange="e => SetGaitUnremarkable((bool)e.Value!)" />
                     Unremarkable
                 </label>
 
@@ -855,6 +855,18 @@
         return VmChanged.InvokeAsync(_vm);
     }
 
+    private Task SetPalpationUnremarkable(bool isUnremarkable)
+    {
+        _vm.IsPalpationUnremarkable = isUnremarkable;
+        if (isUnremarkable)
+        {
+            _vm.TenderMuscles.Clear();
+            _vm.PalpationComments = null;
+        }
+
+        return VmChanged.InvokeAsync(_vm);
+    }
+
     private Task TogglePostureFinding(string name, bool add)
     {
         if (add)
@@ -869,11 +881,36 @@
         return VmChanged.InvokeAsync(_vm);
     }
 
+    private Task SetPostureUnremarkable(bool isUnremarkable)
+    {
+        _vm.IsPostureUnremarkable = isUnremarkable;
+        if (isUnremarkable)
+        {
+            _vm.PostureFindings.Clear();
+            _vm.OtherPostureFinding = null;
+        }
+
+        return VmChanged.InvokeAsync(_vm);
+    }
+
     private Task HandlePostureFindingsChanged(ChangeEventArgs args)
     {
         var tokens = SplitDelimitedValues(args.Value?.ToString());
         _vm.PostureFindings = tokens.ToHashSet(StringComparer.OrdinalIgnoreCase);
         _vm.OtherPostureFinding = null;
+        return VmChanged.InvokeAsync(_vm);
+    }
+
+    private Task SetGaitUnremarkable(bool isUnremarkable)
+    {
+        _vm.IsGaitUnremarkable = isUnremarkable;
+        if (isUnremarkable)
+        {
+            _vm.PrimaryGaitPattern = null;
+            _vm.GaitDeviations.Clear();
+            _vm.AdditionalGaitObservations = null;
+        }
+
         return VmChanged.InvokeAsync(_vm);
     }
 

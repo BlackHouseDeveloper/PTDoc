@@ -108,4 +108,36 @@ public sealed class EvaluationInterventionsSectionTests : TestContext
             service => service.SearchCptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
+
+    [Fact]
+    public void LinkedHepActivities_DoNotRenderLeadingSeparatorForBlankExerciseTitles()
+    {
+        var objective = new ObjectiveVm
+        {
+            ExerciseRows =
+            [
+                new ExerciseRowEntry
+                {
+                    IncludeInHomeExerciseProgram = true,
+                    SuggestedExercise = " ",
+                    ActualExercisePerformed = " ",
+                    SetsRepsDuration = "3x10",
+                    CptCode = "97110"
+                }
+            ]
+        };
+        var plan = new PlanVm();
+
+        var cut = RenderComponent<EvaluationInterventionsSection>(parameters => parameters
+            .Add(component => component.Objective, objective)
+            .Add(component => component.ObjectiveChanged, EventCallback.Factory.Create<ObjectiveVm>(this, value => objective = value))
+            .Add(component => component.Plan, plan)
+            .Add(component => component.PlanChanged, EventCallback.Factory.Create<PlanVm>(this, value => plan = value))
+            .Add(component => component.IsReadOnly, false));
+
+        var linkedHepText = cut.Find("[data-testid='evaluation-hep-card']").TextContent;
+
+        Assert.Contains("Linked HEP activities: 3x10 - CPT 97110", linkedHepText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Linked HEP activities:  - ", linkedHepText, StringComparison.Ordinal);
+    }
 }

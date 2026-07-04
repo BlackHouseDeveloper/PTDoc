@@ -839,15 +839,22 @@
     private static string FormatExerciseForHep(ExerciseRowEntry row)
     {
         var title = string.IsNullOrWhiteSpace(row.ActualExercisePerformed) ? row.SuggestedExercise : row.ActualExercisePerformed;
-        var parts = new List<string> { title.Trim() };
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(title))
+        {
+            parts.Add(title.Trim());
+        }
+
         if (!string.IsNullOrWhiteSpace(row.SetsRepsDuration))
         {
             parts.Add(row.SetsRepsDuration.Trim());
         }
+
         if (!string.IsNullOrWhiteSpace(row.CptCode))
         {
             parts.Add($"CPT {row.CptCode.Trim()}");
         }
+
         return string.Join(" - ", parts);
     }
 
