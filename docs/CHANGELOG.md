@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Evaluation workspace review follow-up** — Restored editable ROM/MMT normal and previous value fields, reused computed billing advisories during render, and returned a nonblank prognosis metadata template fallback. Reason: validated Copilot review feedback identified disabled editable fields, duplicate render work, and inconsistent metadata fallbacks.
 - **Objective and HEP consistency follow-up** — Cleared contradictory palpation, posture, and gait details when marking those sections unremarkable, and omitted blank exercise-title segments from linked HEP activity summaries. Reason: validated Copilot review feedback identified contradictory objective state and misleading HEP summary formatting.
 - **Objective normal-state gating follow-up** — Disabled palpation, posture, and gait detail editors while their unremarkable toggles are checked, removed dead posture-helper code, and cleaned up mock prognosis prior/current function wording. Reason: validated Copilot review feedback identified remaining contradictory-entry paths and awkward fallback text.
+- **Evaluation intervention catalog follow-up** — Cleared the cached selected body part after evaluation-intervention catalog load failures so prior successful body-part catalogs can reload when revisited. Reason: validated Copilot review feedback identified a stale-cache path after switching body parts through a failed catalog load.
 
 ### Added - AI prognosis generation
 

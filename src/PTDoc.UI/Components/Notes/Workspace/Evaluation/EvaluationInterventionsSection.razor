@@ -523,6 +523,7 @@
             Logger.LogWarning(ex, "Unable to load evaluation interventions catalog for {BodyPart}", SelectedBodyPart);
             _catalog = null;
             _errorMessage = "Unable to load the structured intervention catalog right now.";
+            _loadedCatalogBodyPart = null;
         }
     }
 
