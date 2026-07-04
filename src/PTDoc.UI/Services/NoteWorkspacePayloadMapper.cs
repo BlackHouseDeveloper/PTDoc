@@ -1412,9 +1412,10 @@ public sealed class NoteWorkspacePayloadMapper
     private static Dictionary<string, string> CloneDictionary(IDictionary<string, string>? values) =>
         (values ?? new Dictionary<string, string>())
             .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && !string.IsNullOrWhiteSpace(pair.Value))
+            .GroupBy(pair => pair.Key.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
-                pair => pair.Key.Trim(),
-                pair => pair.Value.Trim(),
+                group => group.Key,
+                group => group.Last().Value.Trim(),
                 StringComparer.OrdinalIgnoreCase);
 
     private static BodyPart ResolveMetricBodyPart(string? visibleBodyPart, BodyPart? preservedBodyPart, BodyPart defaultBodyPart)

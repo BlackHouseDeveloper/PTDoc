@@ -67,7 +67,8 @@ public sealed class AssessmentWorkspaceSectionPrognosisTests : TestContext
             .Add(component => component.ExaminationFindings, "Lumbar flexion limited")
             .Add(component => component.SubjectiveInputs, new[]
             {
-                new AiStructuredInput { Label = "Prior level of function", Value = "Independent with work", BodyPart = "Lumbar" }
+                new AiStructuredInput { Label = "Prior functional level", Value = "Independent with work", BodyPart = "Lumbar" },
+                new AiStructuredInput { Label = "Current level of function", Value = "Unable to tolerate full shift", BodyPart = "Lumbar" }
             })
             .Add(component => component.ObjectiveInputs, new[]
             {
@@ -86,7 +87,9 @@ public sealed class AssessmentWorkspaceSectionPrognosisTests : TestContext
             Assert.Equal("Difficulty lifting and prolonged sitting", capturedRequest.FunctionalLimitations);
             Assert.Contains("Return to work duties", capturedRequest.Goals, StringComparison.Ordinal);
             Assert.Contains("Work schedule conflicts", capturedRequest.Barriers, StringComparison.Ordinal);
-            Assert.Contains(capturedRequest.StructuredInputs, input => input.Label == "Prior level of function");
+            Assert.Equal("Independent with work", capturedRequest.PriorLevelOfFunction);
+            Assert.Equal("Unable to tolerate full shift", capturedRequest.CurrentLevelOfFunction);
+            Assert.Contains(capturedRequest.StructuredInputs, input => input.Label == "Prior functional level");
         });
 
         aiService.Verify(service => service.GeneratePrognosisAsync(It.IsAny<PrognosisGenerationRequest>(), It.IsAny<CancellationToken>()), Times.Once);

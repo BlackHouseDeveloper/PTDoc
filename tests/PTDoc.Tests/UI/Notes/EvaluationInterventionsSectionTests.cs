@@ -83,4 +83,29 @@ public sealed class EvaluationInterventionsSectionTests : TestContext
         Assert.NotEmpty(cut.FindAll("button[aria-label='Remove intervention row']"));
         Assert.NotEmpty(cut.FindAll("button[aria-label='Remove general intervention']"));
     }
+
+    [Fact]
+    public void BlankCptSearchClearsResultsWithoutCallingLookup()
+    {
+        var objective = new ObjectiveVm();
+        var plan = new PlanVm();
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+
+        Services.AddSingleton(noteWorkspaceService.Object);
+
+        var cut = RenderComponent<EvaluationInterventionsSection>(parameters => parameters
+            .Add(component => component.Objective, objective)
+            .Add(component => component.ObjectiveChanged, EventCallback.Factory.Create<ObjectiveVm>(this, value => objective = value))
+            .Add(component => component.Plan, plan)
+            .Add(component => component.PlanChanged, EventCallback.Factory.Create<PlanVm>(this, value => plan = value))
+            .Add(component => component.IsReadOnly, false));
+
+        cut.Find("[data-testid='evaluation-cpt-search']").Input(" ");
+
+        Assert.Empty(cut.FindAll("[data-testid='evaluation-cpt-search-result']"));
+        Assert.DoesNotContain("Searching CPT codes", cut.Markup, StringComparison.Ordinal);
+        noteWorkspaceService.Verify(
+            service => service.SearchCptAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
 }

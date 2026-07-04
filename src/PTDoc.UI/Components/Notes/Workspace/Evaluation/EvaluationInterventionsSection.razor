@@ -614,8 +614,7 @@
         _cptSearchQuery = args.Value?.ToString() ?? string.Empty;
         _cptSearchCts?.Cancel();
         _cptSearchCts?.Dispose();
-        _cptSearchCts = new CancellationTokenSource();
-        var cancellationToken = _cptSearchCts.Token;
+        _cptSearchCts = null;
 
         if (string.IsNullOrWhiteSpace(_cptSearchQuery))
         {
@@ -625,6 +624,8 @@
             return;
         }
 
+        _cptSearchCts = new CancellationTokenSource();
+        var cancellationToken = _cptSearchCts.Token;
         _isSearchingCpt = true;
         _cptLookupError = null;
         try

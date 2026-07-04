@@ -62,6 +62,29 @@ public sealed class NoteWorkspacePayloadMapperTests
     }
 
     [Fact]
+    public void MapToUiPayload_ClonesTrimmedSymptomFrequencyKeysWithoutDuplicateKeyFailure()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Subjective = new WorkspaceSubjectiveV2
+            {
+                SymptomFrequencies = new Dictionary<string, string>
+                {
+                    ["Pain"] = "Constant",
+                    [" Pain "] = "Only with activity"
+                }
+            }
+        };
+
+        var uiPayload = _mapper.MapToUiPayload(payload);
+
+        var frequency = Assert.Single(uiPayload.Subjective.SymptomFrequencies);
+        Assert.Equal("Pain", frequency.Key);
+        Assert.Equal("Only with activity", frequency.Value);
+    }
+
+    [Fact]
     public void MapToUiPayload_NormalizesCptModifierSource()
     {
         var payload = new NoteWorkspaceV2Payload

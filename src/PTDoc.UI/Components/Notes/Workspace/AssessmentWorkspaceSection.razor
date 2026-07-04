@@ -675,8 +675,8 @@
                 Comorbidities = GetStructuredInputValue("Comorbid"),
                 SupportContext = BuildSupportContext(),
                 Barriers = string.Join("; ", Vm.BarriersToRecovery),
-                PriorLevelOfFunction = GetStructuredInputValue("Prior level of function"),
-                CurrentLevelOfFunction = BuildFunctionalLimitationsSummary(),
+                PriorLevelOfFunction = GetStructuredInputValue("Prior functional level"),
+                CurrentLevelOfFunction = GetStructuredInputValue("Current level of function") ?? BuildFunctionalLimitationsSummary(),
                 StructuredInputs = structuredInputs,
                 IsNoteSigned = IsReadOnly
             });
