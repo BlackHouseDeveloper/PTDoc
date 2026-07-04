@@ -140,7 +140,11 @@ public sealed class NoteWorkspacePayloadMapper
                     .Select(metric => new ObjectiveMetricRowEntry
                     {
                         Name = ResolveMetricName(metric),
-                        BodyPart = metric.BodyPart == BodyPart.Other ? null : metric.BodyPart.ToString(),
+                        BodyPart = metric.BodyPart == BodyPart.Other
+                            || (payload.Objective.PrimaryBodyPart != BodyPart.Other
+                                && metric.BodyPart == payload.Objective.PrimaryBodyPart)
+                                ? null
+                                : metric.BodyPart.ToString(),
                         MetricType = metric.MetricType,
                         Value = metric.Value,
                         PreviousValue = metric.PreviousValue,

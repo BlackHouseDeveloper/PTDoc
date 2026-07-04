@@ -765,7 +765,7 @@
             _vm.Metrics.Add(new ObjectiveMetricRowEntry
             {
                 Name = name,
-                BodyPart = _vm.SelectedBodyPart,
+                BodyPart = null,
                 MetricType = metricType,
                 NormValue = ResolveNormalValue(name, metricType)
             });
@@ -778,7 +778,7 @@
     {
         _vm.Metrics.Add(new ObjectiveMetricRowEntry
         {
-            BodyPart = _vm.SelectedBodyPart,
+            BodyPart = null,
             MetricType = MetricType.MMT,
             NormValue = "5/5"
         });

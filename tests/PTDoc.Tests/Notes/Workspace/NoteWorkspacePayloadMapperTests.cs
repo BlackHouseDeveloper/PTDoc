@@ -297,7 +297,7 @@ public sealed class NoteWorkspacePayloadMapperTests
         Assert.True(roundTrippedUiPayload.Objective.IsPostureUnremarkable);
         Assert.True(roundTrippedUiPayload.Objective.IsPalpationUnremarkable);
         Assert.Equal("No focal tenderness.", roundTrippedUiPayload.Objective.PalpationComments);
-        Assert.Equal("Knee", Assert.Single(roundTrippedUiPayload.Objective.Metrics).BodyPart);
+        Assert.Null(Assert.Single(roundTrippedUiPayload.Objective.Metrics).BodyPart);
         Assert.Equal("Key findings summary.", roundTrippedUiPayload.Assessment.FindingsSummary);
         Assert.Equal("Expected to progress with plan of care.", roundTrippedUiPayload.Assessment.PrognosisNarrative);
         Assert.False(roundTrippedUiPayload.BillingSettings.AutoApplySuggestedModifiers);
@@ -352,6 +352,41 @@ public sealed class NoteWorkspacePayloadMapperTests
         var structuredPayload = _mapper.MapToV2Payload(uiPayload, NoteType.Evaluation);
 
         Assert.Equal(BodyPart.Knee, Assert.Single(structuredPayload.Objective.Metrics).BodyPart);
+    }
+
+    [Fact]
+    public void MapToUiPayload_PrimaryMetricBodyPartRendersAsPrimaryFallback()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Objective = new WorkspaceObjectiveV2
+            {
+                PrimaryBodyPart = BodyPart.Knee,
+                Metrics =
+                [
+                    new ObjectiveMetricInputV2
+                    {
+                        Name = "Knee flexion",
+                        BodyPart = BodyPart.Knee,
+                        MetricType = MetricType.ROM,
+                        Value = "120"
+                    },
+                    new ObjectiveMetricInputV2
+                    {
+                        Name = "Shoulder flexion",
+                        BodyPart = BodyPart.Shoulder,
+                        MetricType = MetricType.ROM,
+                        Value = "150"
+                    }
+                ]
+            }
+        };
+
+        var result = _mapper.MapToUiPayload(payload);
+
+        Assert.Null(result.Objective.Metrics[0].BodyPart);
+        Assert.Equal(BodyPart.Shoulder.ToString(), result.Objective.Metrics[1].BodyPart);
     }
 
     [Fact]

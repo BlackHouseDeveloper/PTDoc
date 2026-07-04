@@ -237,8 +237,56 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
             Assert.Single(vm.Metrics);
             Assert.Single(vm.SpecialTests);
             Assert.Single(vm.ExerciseRows);
+            Assert.Null(vm.Metrics[0].BodyPart);
             Assert.Equal("Heel slides", vm.ExerciseRows[0].SuggestedExercise);
             Assert.True(vm.ExerciseRows[0].IsSourceBacked);
+        });
+
+        workspaceService.VerifyAll();
+        outcomeRegistry.VerifyAll();
+    }
+
+    [Fact]
+    public void ObjectiveTab_BlankMmtRowsDefaultToPrimaryBodyPartFallback()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var outcomeRegistry = new Mock<IOutcomeMeasureRegistry>(MockBehavior.Strict);
+        var vm = new ObjectiveVm
+        {
+            SelectedBodyPart = BodyPart.Knee.ToString()
+        };
+
+        workspaceService
+            .Setup(service => service.GetBodyRegionCatalogAsync(BodyPart.Knee, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BodyRegionCatalog
+            {
+                BodyPart = BodyPart.Knee
+            });
+
+        outcomeRegistry
+            .Setup(registry => registry.GetMeasuresForBodyPart(BodyPart.Knee))
+            .Returns(Array.Empty<OutcomeMeasureDefinition>());
+
+        Services.AddLogging();
+        Services.AddSingleton(workspaceService.Object);
+        Services.AddSingleton(outcomeRegistry.Object);
+
+        var cut = RenderComponent<ObjectiveTab>(parameters => parameters
+            .Add(component => component.Vm, vm)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<ObjectiveVm>(this, updated => vm = updated))
+            .Add(component => component.PatientId, Guid.NewGuid().ToString())
+            .Add(component => component.IsReadOnly, false));
+
+        cut.FindAll("button")
+            .First(button => button.TextContent.Contains("+ Add Row", StringComparison.Ordinal))
+            .Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            var metric = Assert.Single(vm.Metrics);
+
+            Assert.Equal(MetricType.MMT, metric.MetricType);
+            Assert.Null(metric.BodyPart);
         });
 
         workspaceService.VerifyAll();
