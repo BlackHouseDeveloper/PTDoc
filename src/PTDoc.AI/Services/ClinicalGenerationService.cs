@@ -245,7 +245,7 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
         }
 
         _logger.LogInformation(
-            "Prognosis generation attempt for note {NoteId}, template v1",
+            "Prognosis generation attempt for note {NoteId}",
             request.NoteId);
 
         try

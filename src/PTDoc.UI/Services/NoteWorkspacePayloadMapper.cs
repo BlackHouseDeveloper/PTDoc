@@ -180,7 +180,7 @@ public sealed class NoteWorkspacePayloadMapper
                 PalpationComments = payload.Objective.PalpationObservation.Other,
                 IsPostureUnremarkable = payload.Objective.PostureObservation.IsNormal,
                 PostureFindings = CloneSet(payload.Objective.PostureObservation.Findings),
-                OtherPostureFinding = payload.Objective.PostureObservation.Other,
+                OtherPostureFinding = TrimToNull(payload.Objective.PostureObservation.Other),
                 ExerciseRows = payload.Objective.ExerciseRows
                     .Select(row => new ExerciseRowEntry
                     {
@@ -454,7 +454,7 @@ public sealed class NoteWorkspacePayloadMapper
             payload.Objective.SpecialTests);
         preservedPayload.Objective.PostureObservation ??= new PostureObservationV2();
         preservedPayload.Objective.PostureObservation.Findings = CloneSet(payload.Objective.PostureFindings);
-        preservedPayload.Objective.PostureObservation.Other = payload.Objective.OtherPostureFinding;
+        preservedPayload.Objective.PostureObservation.Other = TrimToNull(payload.Objective.OtherPostureFinding);
         preservedPayload.Objective.PostureObservation.IsNormal = payload.Objective.IsPostureUnremarkable;
         preservedPayload.Objective.PalpationObservation ??= new PalpationObservationV2();
         preservedPayload.Objective.PalpationObservation.TenderMuscles = CloneSet(payload.Objective.TenderMuscles);

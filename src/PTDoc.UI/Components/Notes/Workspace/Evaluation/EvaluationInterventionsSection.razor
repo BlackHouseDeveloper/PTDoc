@@ -532,8 +532,7 @@
         var existing = Plan.SelectedCptCodes.FirstOrDefault(c => CodesMatch(c.Code, quickPick.Code));
         if (existing is not null)
         {
-            Plan.SelectedCptCodes.Remove(existing);
-            await PlanChanged.InvokeAsync(Plan);
+            await RemoveSelectedCptCodeAsync(existing);
             return;
         }
 
@@ -811,10 +810,35 @@
         return PlanChanged.InvokeAsync(Plan);
     }
 
-    private Task RemoveCptCode(UiCptCodeEntry entry)
+    private Task RemoveCptCode(UiCptCodeEntry entry) => RemoveSelectedCptCodeAsync(entry);
+
+    private async Task RemoveSelectedCptCodeAsync(UiCptCodeEntry entry)
     {
+        var removedCode = NormalizeCode(entry.Code);
         Plan.SelectedCptCodes.Remove(entry);
-        return PlanChanged.InvokeAsync(Plan);
+        var objectiveChanged = false;
+
+        foreach (var row in Objective.ExerciseRows.Where(row => CodesMatch(row.CptCode, removedCode)))
+        {
+            row.CptCode = null;
+            row.CptDescription = null;
+            row.TimeMinutes = null;
+            objectiveChanged = true;
+        }
+
+        foreach (var intervention in Plan.GeneralInterventions.Where(intervention => CodesMatch(intervention.CptCode, removedCode)))
+        {
+            intervention.CptCode = null;
+            intervention.CptDescription = null;
+            intervention.TimeMinutes = null;
+        }
+
+        if (objectiveChanged)
+        {
+            await ObjectiveChanged.InvokeAsync(Objective);
+        }
+
+        await PlanChanged.InvokeAsync(Plan);
     }
 
     private Task ToggleModifier(UiCptCodeEntry entry, string modifier)

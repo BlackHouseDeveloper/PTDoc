@@ -87,6 +87,66 @@ public sealed class EvaluationInterventionsSectionTests : TestContext
     }
 
     [Fact]
+    public void RemoveCptCode_ClearsInterventionRowsReferencingRemovedCode()
+    {
+        var objective = new ObjectiveVm
+        {
+            ExerciseRows =
+            [
+                new ExerciseRowEntry
+                {
+                    SuggestedExercise = "Heel slides",
+                    CptCode = "97110",
+                    CptDescription = "Exercise",
+                    TimeMinutes = 12
+                }
+            ]
+        };
+        var plan = new PlanVm
+        {
+            SelectedCptCodes =
+            [
+                new CptCodeEntry
+                {
+                    Code = "97110",
+                    Description = "Therapeutic exercise",
+                    Units = 1
+                }
+            ],
+            GeneralInterventions =
+            [
+                new GeneralInterventionEntry
+                {
+                    Name = "Manual therapy",
+                    CptCode = "97110",
+                    CptDescription = "Exercise",
+                    TimeMinutes = 8
+                }
+            ]
+        };
+
+        var cut = RenderComponent<EvaluationInterventionsSection>(parameters => parameters
+            .Add(component => component.Objective, objective)
+            .Add(component => component.ObjectiveChanged, EventCallback.Factory.Create<ObjectiveVm>(this, value => objective = value))
+            .Add(component => component.Plan, plan)
+            .Add(component => component.PlanChanged, EventCallback.Factory.Create<PlanVm>(this, value => plan = value))
+            .Add(component => component.IsReadOnly, false));
+
+        cut.Find("button[aria-label='Remove CPT code 97110']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Empty(plan.SelectedCptCodes);
+            Assert.Null(objective.ExerciseRows[0].CptCode);
+            Assert.Null(objective.ExerciseRows[0].CptDescription);
+            Assert.Null(objective.ExerciseRows[0].TimeMinutes);
+            Assert.Null(plan.GeneralInterventions[0].CptCode);
+            Assert.Null(plan.GeneralInterventions[0].CptDescription);
+            Assert.Null(plan.GeneralInterventions[0].TimeMinutes);
+        });
+    }
+
+    [Fact]
     public void BlankCptSearchClearsResultsWithoutCallingLookup()
     {
         var objective = new ObjectiveVm();

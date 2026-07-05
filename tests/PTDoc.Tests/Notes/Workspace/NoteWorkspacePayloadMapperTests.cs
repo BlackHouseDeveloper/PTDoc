@@ -85,6 +85,26 @@ public sealed class NoteWorkspacePayloadMapperTests
     }
 
     [Fact]
+    public void MapToUiPayload_TrimsBlankOtherPostureFinding()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Objective = new WorkspaceObjectiveV2
+            {
+                PostureObservation = new PostureObservationV2
+                {
+                    Other = "   "
+                }
+            }
+        };
+
+        var uiPayload = _mapper.MapToUiPayload(payload);
+
+        Assert.Null(uiPayload.Objective.OtherPostureFinding);
+    }
+
+    [Fact]
     public void MapToUiPayload_NormalizesCptModifierSource()
     {
         var payload = new NoteWorkspaceV2Payload
@@ -147,6 +167,26 @@ public sealed class NoteWorkspacePayloadMapperTests
         var result = _mapper.MapToV2Payload(uiPayload, NoteType.Evaluation);
 
         Assert.Equal(CptSource, Assert.Single(result.Plan.SelectedCptCodes).ModifierSource);
+    }
+
+    [Fact]
+    public void MapToV2Payload_TrimsOtherPostureFinding()
+    {
+        var uiPayload = new NoteWorkspacePayload
+        {
+            StructuredPayload = new NoteWorkspaceV2Payload(),
+            Objective = new ObjectiveVm
+            {
+                OtherPostureFinding = "  Forward trunk lean  "
+            },
+            Subjective = new SubjectiveVm(),
+            Assessment = new AssessmentWorkspaceVm(),
+            Plan = new PlanVm()
+        };
+
+        var result = _mapper.MapToV2Payload(uiPayload, NoteType.Evaluation);
+
+        Assert.Equal("Forward trunk lean", result.Objective.PostureObservation.Other);
     }
 
     [Fact]

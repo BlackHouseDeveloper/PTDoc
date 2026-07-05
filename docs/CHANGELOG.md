@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Objective and HEP consistency follow-up** — Cleared contradictory palpation, posture, and gait details when marking those sections unremarkable, and omitted blank exercise-title segments from linked HEP activity summaries. Reason: validated Copilot review feedback identified contradictory objective state and misleading HEP summary formatting.
 - **Objective normal-state gating follow-up** — Disabled palpation, posture, and gait detail editors while their unremarkable toggles are checked, removed dead posture-helper code, and cleaned up mock prognosis prior/current function wording. Reason: validated Copilot review feedback identified remaining contradictory-entry paths and awkward fallback text.
 - **Evaluation intervention catalog follow-up** — Cleared the cached selected body part after evaluation-intervention catalog load failures so prior successful body-part catalogs can reload when revisited. Reason: validated Copilot review feedback identified a stale-cache path after switching body parts through a failed catalog load.
+- **Evaluation workspace cleanup follow-up** — Normalized posture free-text on load/save, cleared row-level CPT references when a selected CPT code is removed, and removed hard-coded prognosis template version text from the generation-attempt log. Reason: validated Copilot review feedback identified whitespace persistence, billing/intervention desynchronization, and stale log wording.
 
 ### Added - AI prognosis generation
 
