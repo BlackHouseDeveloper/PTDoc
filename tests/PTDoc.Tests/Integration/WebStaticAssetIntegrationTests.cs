@@ -84,8 +84,9 @@ public sealed class WebStaticAssetIntegrationTests
         Assert.Equal(HttpStatusCode.Found, response.StatusCode);
         Assert.NotNull(response.Headers.Location);
         var redirectUri = response.Headers.Location!;
-        Assert.Equal("/login", redirectUri.AbsolutePath);
-        Assert.Contains($"ReturnUrl={Uri.EscapeDataString(path)}", redirectUri.Query, StringComparison.OrdinalIgnoreCase);
+        var resolvedRedirect = redirectUri.IsAbsoluteUri ? redirectUri : new Uri(client.BaseAddress!, redirectUri);
+        Assert.Equal("/login", resolvedRedirect.AbsolutePath);
+        Assert.Contains($"ReturnUrl={Uri.EscapeDataString(path)}", resolvedRedirect.Query, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class PTDocWebFactory : WebApplicationFactory<PTDoc.Web.Components.App>

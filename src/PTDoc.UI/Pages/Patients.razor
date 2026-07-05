@@ -237,11 +237,8 @@
 
         _lastAppliedRouteAction = uri.Query;
 
-        if (TryGetQueryParameter(uri.Query, "action", out var action)
-            && string.Equals(action, "add", StringComparison.OrdinalIgnoreCase))
-        {
-            isAddPatientModalOpen = true;
-        }
+        isAddPatientModalOpen = TryGetQueryParameter(uri.Query, "action", out var action)
+            && string.Equals(action, "add", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TryGetQueryParameter(string query, string key, out string value)

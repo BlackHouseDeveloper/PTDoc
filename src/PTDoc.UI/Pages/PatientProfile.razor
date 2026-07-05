@@ -434,6 +434,8 @@
         }
 
         lastAppliedRouteQuery = uri.Query;
+        selectedProfileTab = "timeline";
+        isNoteTypeChooserOpen = false;
 
         if (TryGetQueryParameter(uri.Query, "tab", out var tab)
             && IsValidProfileTab(tab))

@@ -398,6 +398,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
             Assert.Equal(
                 $"/patient/{patient.Id}/info",
                 cut.Find("[data-testid='patient-profile-tab-insurance-authorization']").GetAttribute("href"));
+            Assert.Empty(cut.Find("[data-testid='patient-profile-tabs']").QuerySelectorAll("[data-testid='patient-profile-tab-insurance-authorization']"));
         });
     }
 

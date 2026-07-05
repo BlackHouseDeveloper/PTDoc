@@ -86,16 +86,17 @@
             </svg>
             <span>Communications</span>
         </a>
-        <a href="@GetPatientInfoHref()"
-           class="patient-clinical-info-tab patient-clinical-info-tab--link"
-           data-testid="patient-profile-tab-insurance-authorization">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path d="M3 3.33333C3 2.59695 3.59695 2 4.33333 2H11.6667C12.403 2 13 2.59695 13 3.33333V12.6667C13 13.403 12.403 14 11.6667 14H4.33333C3.59695 14 3 13.403 3 12.6667V3.33333Z" stroke="currentColor" stroke-width="1.75" />
-                <path d="M5.33333 6H10.6667M5.33333 8.66667H10.6667M5.33333 11.3333H8" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
-            </svg>
-            <span>Insurance &amp; Authorization</span>
-        </a>
     </div>
+
+    <a href="@GetPatientInfoHref()"
+       class="patient-clinical-info-tab patient-clinical-info-tab--link"
+       data-testid="patient-profile-tab-insurance-authorization">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M3 3.33333C3 2.59695 3.59695 2 4.33333 2H11.6667C12.403 2 13 2.59695 13 3.33333V12.6667C13 13.403 12.403 14 11.6667 14H4.33333C3.59695 14 3 13.403 3 12.6667V3.33333Z" stroke="currentColor" stroke-width="1.75" />
+            <path d="M5.33333 6H10.6667M5.33333 8.66667H10.6667M5.33333 11.3333H8" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
+        </svg>
+        <span>Insurance &amp; Authorization</span>
+    </a>
 
     <div class="patient-clinical-info-content"
          id="patient-profile-panel-current"
@@ -437,6 +438,7 @@
         {
             CurrentPatientId = Patient.Id;
             ResetPatientScopedStorageState();
+            lastAppliedInitialTab = null;
         }
 
         if (!string.Equals(lastAppliedInitialTab, InitialTab, StringComparison.OrdinalIgnoreCase)
