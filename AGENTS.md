@@ -91,7 +91,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - Optional patient-chart override for the upload QA: set `PTDOC_UI_QA_PATIENT_CHART_PATH=/patient/<patient-id>` when a different seeded patient should be used.
 - Optional PT-role override for audit-remediation note-entry coverage: set `PTDOC_UI_QA_PT_USERNAME` and `PTDOC_UI_QA_PT_PIN`.
 - Optional intake-route override for audit-remediation coverage: set `PTDOC_UI_QA_INTAKE_PATH=/intake/<patient-id>` when a safe editable intake is available.
-- Optional seeded note-workspace coverage: set `PTDOC_UI_QA_NOTE_WORKSPACE_PATH=/patients/<patient-id>/notes/<note-id>`
+- Optional seeded note-workspace coverage: set `PTDOC_UI_QA_NOTE_WORKSPACE_PATH=/patient/<patient-id>/notes/<note-id>`
 - Optional writable draft-note override for audit-remediation coverage: set `PTDOC_UI_QA_WRITABLE_NOTE_WORKSPACE_PATH=/patient/<patient-id>/notes/<note-id>` only for a safe PT-role draft note.
 - Optional viewport overlay toggle without the env var: add `?ptdocViewportDiagnostics=1` to enable it and `?ptdocViewportDiagnostics=0` to disable it on a fresh page load.
 - Browser QA artifacts are written under `tests/PTDoc.Web.UiQa/test-results/` and `tests/PTDoc.Web.UiQa/playwright-report/`; do not commit them.

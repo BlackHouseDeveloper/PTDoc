@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed - Agent and QA guidance for split audit remediation
 
-- **Repository guidance** — Updated agent-facing instructions, Copilot guidance, and ignored local QA/runtime artifacts. Reason: split workflow and QA documentation changes out of the functional remediation PRs.
+- **Repository guidance** — Updated agent-facing instructions, Copilot guidance, and ignored local QA/runtime artifacts. Reason: split workflow and QA documentation changes from the functional remediation PRs.
 
 ### Fixed - Live audit route, intake, notes, and accessibility hardening
 
