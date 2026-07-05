@@ -89,6 +89,21 @@ public sealed class LoginBaseValidationTests
     }
 
     [Fact]
+    public void LoginValidationQuery_WhenMalformed_DoesNotThrow()
+    {
+        var method = typeof(LoginBase).GetMethod(
+            "TryGetQueryParameter",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        var arguments = new object[] { "/login?%ZZ=pinRequired", "loginValidation", string.Empty };
+        var result = (bool)method!.Invoke(null, arguments)!;
+
+        Assert.False(result);
+        Assert.Equal(string.Empty, arguments[2]);
+    }
+
+    [Fact]
     public void SignUpGuidance_IsExposedThroughAssociatedHelperText()
     {
         var repoRoot = FindRepoRoot();

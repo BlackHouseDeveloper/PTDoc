@@ -1,6 +1,7 @@
 using System.Reflection;
 using Bunit;
 using Microsoft.AspNetCore.Authorization;
+using PTDoc.Application.Services;
 using PTDoc.UI.Pages;
 
 namespace PTDoc.Tests.UI.Pages;
@@ -9,12 +10,13 @@ namespace PTDoc.Tests.UI.Pages;
 public sealed class NotFoundRouteTests : TestContext
 {
     [Fact]
-    public void NotFoundPage_AllowsAnonymousAccess()
+    public void NotFoundPage_RequiresClinicalStaffAccess()
     {
         var attributes = typeof(NotFound).GetCustomAttributes(inherit: false);
 
-        Assert.Contains(attributes, attribute => attribute is AllowAnonymousAttribute);
-        Assert.DoesNotContain(attributes, attribute => attribute is AuthorizeAttribute);
+        var authorize = Assert.IsType<AuthorizeAttribute>(Assert.Single(attributes.OfType<AuthorizeAttribute>()));
+        Assert.Equal(AuthorizationPolicies.ClinicalStaff, authorize.Policy);
+        Assert.DoesNotContain(attributes, attribute => attribute is AllowAnonymousAttribute);
     }
 
     [Fact]

@@ -360,14 +360,15 @@ public sealed class AppointmentComponentsTests : TestContext
     }
 
     [Fact]
-    public void AppointmentsViewTabs_ExposeSelectedTabState()
+    public void AppointmentsViewTabs_ExposeSelectedNavigationState()
     {
         var cut = RenderComponent<AppointmentsViewTabs>(parameters => parameters
             .Add(component => component.SelectedView, AppointmentsView.Week));
 
-        var tabs = cut.FindAll("[role='tab']");
-        Assert.Equal("false", tabs[0].GetAttribute("aria-selected"));
-        Assert.Equal("true", tabs[1].GetAttribute("aria-selected"));
+        var links = cut.FindAll(".tab-button");
+        Assert.Null(links[0].GetAttribute("aria-current"));
+        Assert.Equal("page", links[1].GetAttribute("aria-current"));
+        Assert.Empty(cut.FindAll("[role='tab']"));
     }
 
     [Fact]
@@ -407,6 +408,7 @@ public sealed class AppointmentComponentsTests : TestContext
         var cut = RenderComponent<ClinicianScheduler>(parameters => parameters
             .Add(component => component.SelectedDate, selectedDate)
             .Add(component => component.View, AppointmentsView.Week)
+            .Add(component => component.WeekGrouping, AppointmentsWeekGrouping.Day)
             .Add(component => component.Clinicians, new List<ClinicianSchedule>
             {
                 new() { Name = "Dr. Taylor", AppointmentCount = 1 }

@@ -37,6 +37,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected bool showPendingConfirmation;
     protected bool showPasswordResetConfirmation;
     protected bool isDarkTheme;
+    protected readonly Dictionary<string, string> loginFieldErrors = new(StringComparer.Ordinal);
     protected int forgotPasswordFormKey;
     protected bool supportsExternalIdentityLogin => UserService.SupportsExternalIdentityLogin;
     protected string AuthPageTitle => authMode switch
@@ -152,6 +153,62 @@ public abstract class LoginBase : ComponentBase, IDisposable
             StateHasChanged();
         }
     }
+
+    protected async Task HandleLoginSubmitAsync()
+    {
+        errorMessage = null;
+        loginFieldErrors.Clear();
+
+        var username = loginModel.Username?.Trim() ?? string.Empty;
+        var pin = loginModel.Pin?.Trim() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            loginFieldErrors[nameof(loginModel.Username)] = "Username or email is required.";
+        }
+
+        if (string.IsNullOrWhiteSpace(pin))
+        {
+            loginFieldErrors[nameof(loginModel.Pin)] = "PIN is required.";
+        }
+        else if (pin.Length != 4 || pin.Any(static ch => !char.IsDigit(ch)))
+        {
+            loginFieldErrors[nameof(loginModel.Pin)] = "PIN must be 4 digits.";
+        }
+
+        if (loginFieldErrors.Count > 0)
+        {
+            isLoading = false;
+            return;
+        }
+
+        isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            await JS.InvokeVoidAsync("ptdocAuth.submitLogin", username, pin, LoginReturnUrl);
+        }
+        catch (JSDisconnectedException)
+        {
+            // The browser is navigating or the circuit was disconnected during submit.
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Login form helper failed.");
+            errorMessage = "Unable to submit login right now. Please try again.";
+            isLoading = false;
+        }
+    }
+
+    protected bool HasLoginFieldError(string fieldName) =>
+        loginFieldErrors.ContainsKey(fieldName);
+
+    protected string? GetLoginFieldError(string fieldName) =>
+        loginFieldErrors.TryGetValue(fieldName, out var error) ? error : null;
+
+    protected string BuildLoginInputClass(string fieldName) =>
+        HasLoginFieldError(fieldName) ? "auth-input auth-input--invalid" : "auth-input";
 
     private void OnThemeChanged()
     {
@@ -497,6 +554,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
         if (authMode == AuthMode.Login)
         {
             ResetLoginModel();
+            ApplyLoginValidationStateFromUri(uri);
             _pendingLoginFieldReset = true;
         }
         else if (authMode == AuthMode.ForgotPassword)
@@ -509,6 +567,79 @@ public abstract class LoginBase : ComponentBase, IDisposable
     {
         loginModel.Username = string.Empty;
         loginModel.Pin = string.Empty;
+        loginFieldErrors.Clear();
+    }
+
+    private void ApplyLoginValidationStateFromUri(string uri)
+    {
+        if (!TryGetQueryParameter(uri, "loginValidation", out var validationValue))
+        {
+            return;
+        }
+
+        errorMessage = null;
+        foreach (var code in validationValue.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (string.Equals(code, "usernameRequired", StringComparison.OrdinalIgnoreCase))
+            {
+                loginFieldErrors[nameof(loginModel.Username)] = "Username or email is required.";
+            }
+            else if (string.Equals(code, "pinRequired", StringComparison.OrdinalIgnoreCase))
+            {
+                loginFieldErrors[nameof(loginModel.Pin)] = "PIN is required.";
+            }
+            else if (string.Equals(code, "pinFormat", StringComparison.OrdinalIgnoreCase))
+            {
+                loginFieldErrors[nameof(loginModel.Pin)] = "PIN must be 4 digits.";
+            }
+        }
+    }
+
+    private static bool TryGetQueryParameter(string uri, string key, out string value)
+    {
+        value = string.Empty;
+        var queryStart = uri.IndexOf('?', StringComparison.Ordinal);
+        if (queryStart < 0 || queryStart == uri.Length - 1)
+        {
+            return false;
+        }
+
+        var query = uri[(queryStart + 1)..];
+        foreach (var pair in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length == 0
+                || !TryDecodeQueryPart(parts[0], out var decodedKey)
+                || !string.Equals(decodedKey, key, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (parts.Length <= 1)
+            {
+                value = string.Empty;
+                return true;
+            }
+
+            return TryDecodeQueryPart(parts[1], out value);
+        }
+
+        return false;
+    }
+
+    private static bool TryDecodeQueryPart(string rawValue, out string decodedValue)
+    {
+        decodedValue = string.Empty;
+
+        try
+        {
+            decodedValue = Uri.UnescapeDataString(rawValue.Replace("+", " ", StringComparison.Ordinal));
+            return !string.IsNullOrWhiteSpace(decodedValue);
+        }
+        catch (Exception ex) when (ex is UriFormatException or ArgumentException)
+        {
+            return false;
+        }
     }
 
     private void ResetSignUpModel()

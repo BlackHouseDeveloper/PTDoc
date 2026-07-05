@@ -1,8 +1,25 @@
 @* Appointments Left Column - Composition Component *@
 
 <div class="appointments-left-column">
-    <AppointmentsViewTabs SelectedView="@SelectedView" 
-                          OnViewChanged="OnViewChanged" />
+    <AppointmentsViewTabs SelectedView="@SelectedView" />
+
+    @if (SelectedView == AppointmentsView.Week)
+    {
+        <div class="week-grouping-control" role="group" aria-label="Week grouping">
+            <button type="button"
+                    class="week-grouping-control__button @(WeekGrouping == AppointmentsWeekGrouping.Clinician ? "selected" : "")"
+                    aria-pressed="@(WeekGrouping == AppointmentsWeekGrouping.Clinician)"
+                    @onclick="() => SelectWeekGrouping(AppointmentsWeekGrouping.Clinician)">
+                Clinician
+            </button>
+            <button type="button"
+                    class="week-grouping-control__button @(WeekGrouping == AppointmentsWeekGrouping.Day ? "selected" : "")"
+                    aria-pressed="@(WeekGrouping == AppointmentsWeekGrouping.Day)"
+                    @onclick="() => SelectWeekGrouping(AppointmentsWeekGrouping.Day)">
+                Day
+            </button>
+        </div>
+    }
     
     <button type="button" 
             class="filters-button @(IsFiltersOpen ? "active" : "")" 
@@ -39,7 +56,10 @@
     public AppointmentsView SelectedView { get; set; } = AppointmentsView.Today;
 
     [Parameter]
-    public EventCallback<AppointmentsView> OnViewChanged { get; set; }
+    public AppointmentsWeekGrouping WeekGrouping { get; set; } = AppointmentsWeekGrouping.Clinician;
+
+    [Parameter]
+    public EventCallback<AppointmentsWeekGrouping> OnWeekGroupingChanged { get; set; }
 
     [Parameter]
     public DateTime SelectedDate { get; set; } = DateTime.Today;
@@ -80,5 +100,13 @@
     private async Task ToggleFilters()
     {
         await IsFiltersOpenChanged.InvokeAsync(!IsFiltersOpen);
+    }
+
+    private async Task SelectWeekGrouping(AppointmentsWeekGrouping grouping)
+    {
+        if (WeekGrouping != grouping)
+        {
+            await OnWeekGroupingChanged.InvokeAsync(grouping);
+        }
     }
 }

@@ -188,13 +188,23 @@
             <div class="intake-step-shell__severity-value" aria-live="polite">@PainSeverityDisplay</div>
 
             <input type="range"
+                   @ref="_painSeveritySlider"
                    min="0"
                    max="10"
                    step="1"
                    class="intake-step-shell__severity-slider"
                    value="@PainSeveritySliderValue"
                    aria-label="Pain severity from 0 to 10"
+                   aria-invalid="@ShouldShowPainSeverityValidation"
+                   aria-describedby="@(ShouldShowPainSeverityValidation ? "pain-severity-validation" : null)"
                    @oninput="HandlePainSeverityChangedAsync" />
+
+            @if (ShouldShowPainSeverityValidation)
+            {
+                <p id="pain-severity-validation" class="intake-step-shell__validation" role="alert">
+                    Select a pain severity score before continuing.
+                </p>
+            }
 
             <div class="intake-step-shell__severity-ticks" aria-hidden="true">
                 @for (var tick = 0; tick <= 10; tick++)
@@ -211,7 +221,7 @@
         PrimaryDisabled="@(!CanContinue)"
         PrimaryTestId="continue-button"
         OnBack="OnBack"
-        OnPrimary="OnContinue" />
+        OnPrimary="HandleContinueAsync" />
 </section>
 
 @code {
@@ -222,6 +232,8 @@
     [Parameter] public bool ShowOutcomeMeasureRecommendations { get; set; }
 
     private string _bodyPartSearch = string.Empty;
+    private bool _showPainSeverityValidation;
+    private ElementReference _painSeveritySlider;
 
     private IntakeStructuredDataDto StructuredData => State.EnsureStructuredData(IntakeReferenceData.GetCatalog().Version);
 
@@ -276,6 +288,7 @@
         .ToList();
 
     private bool CanContinue => StructuredData.BodyPartSelections.Count > 0;
+    private bool ShouldShowPainSeverityValidation => _showPainSeverityValidation && !State.PainSeverityProvided;
     private int PainSeveritySliderValue => Math.Clamp(State.PainSeverityScore ?? 0, 0, 10);
     private string PainSeverityDisplay => State.PainSeverityProvided && State.PainSeverityScore.HasValue
         ? State.PainSeverityScore.Value.ToString()
@@ -371,8 +384,29 @@
             ? Math.Clamp(value, 0, 10)
             : null;
         State.PainSeverityProvided = State.PainSeverityScore.HasValue;
+        _showPainSeverityValidation = false;
 
         await NotifyStateChangedAsync();
+    }
+
+    private async Task HandleContinueAsync()
+    {
+        if (!State.PainSeverityProvided)
+        {
+            _showPainSeverityValidation = true;
+            try
+            {
+                await _painSeveritySlider.FocusAsync();
+            }
+            catch (InvalidOperationException)
+            {
+                // The slider is not yet available during prerender or teardown.
+            }
+
+            return;
+        }
+
+        await OnContinue.InvokeAsync();
     }
 
     private void RecalculateOutcomeMeasures()

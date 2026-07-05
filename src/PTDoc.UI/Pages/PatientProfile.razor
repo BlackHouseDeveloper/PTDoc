@@ -43,7 +43,7 @@
 
                 <PatientPrimaryActionButton
                     Label="Start New Note"
-                    OnClick="@HandleStartNote" />
+                    Href="@($"/patient/{Uri.EscapeDataString(Id ?? string.Empty)}?action=new-note")" />
 
                 @if (isNoteTypeChooserOpen)
                 {
@@ -75,6 +75,7 @@
                     TimelineErrorMessage="@timelineErrorMessage"
                     IntakeStateMessage="@intakeStateMessage"
                     IntakeStatusVariant="@intakeStatusVariant"
+                    InitialTab="@selectedProfileTab"
                     OnRetry="ReloadTimelineAsync"
                     OnReviewIntake="HandleReviewIntake"
                     OnViewNote="HandleViewNote"
@@ -96,6 +97,8 @@
     private string? timelineErrorMessage;
     private string? intakeStateMessage;
     private string intakeStatusVariant = "default";
+    private string selectedProfileTab = "timeline";
+    private string? lastAppliedRouteQuery;
     private Guid currentPatientId;
     private bool isNoteTypeChooserOpen;
     private static readonly TimeSpan TimelineLookbackWindow = TimeSpan.FromDays(180);
@@ -110,7 +113,13 @@
 
     protected override async Task OnInitializedAsync()
     {
+        ApplyRouteQuery();
         await ReloadProfileAsync();
+    }
+
+    protected override void OnParametersSet()
+    {
+        ApplyRouteQuery();
     }
 
     private async Task ReloadProfileAsync()
@@ -410,9 +419,81 @@
         };
     }
 
-    private void HandleStartNote()
+    private void ApplyRouteQuery()
     {
-        isNoteTypeChooserOpen = true;
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        var routeKey = uri.PathAndQuery;
+        if (string.Equals(lastAppliedRouteQuery, routeKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        lastAppliedRouteQuery = routeKey;
+        selectedProfileTab = "timeline";
+        isNoteTypeChooserOpen = false;
+
+        if (TryGetQueryParameter(uri.Query, "tab", out var tab)
+            && IsValidProfileTab(tab))
+        {
+            selectedProfileTab = tab.ToLowerInvariant();
+        }
+
+        if (TryGetQueryParameter(uri.Query, "action", out var action)
+            && string.Equals(action, "new-note", StringComparison.OrdinalIgnoreCase))
+        {
+            isNoteTypeChooserOpen = true;
+        }
+    }
+
+    private static bool IsValidProfileTab(string tab) =>
+        string.Equals(tab, "timeline", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(tab, "notes", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(tab, "documents", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(tab, "communications", StringComparison.OrdinalIgnoreCase);
+
+    private static bool TryGetQueryParameter(string query, string key, out string value)
+    {
+        value = string.Empty;
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return false;
+        }
+
+        foreach (var pair in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length == 0
+                || !TryDecodeQueryPart(parts[0], out var decodedKey)
+                || !string.Equals(decodedKey, key, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (parts.Length <= 1)
+            {
+                value = string.Empty;
+                return true;
+            }
+
+            return TryDecodeQueryPart(parts[1], out value);
+        }
+
+        return false;
+    }
+
+    private static bool TryDecodeQueryPart(string rawValue, out string decodedValue)
+    {
+        decodedValue = string.Empty;
+
+        try
+        {
+            decodedValue = Uri.UnescapeDataString(rawValue.Replace("+", " ", StringComparison.Ordinal));
+            return !string.IsNullOrWhiteSpace(decodedValue);
+        }
+        catch (Exception ex) when (ex is UriFormatException or ArgumentException)
+        {
+            return false;
+        }
     }
 
     private void HandleCreateNoteType(string noteType)

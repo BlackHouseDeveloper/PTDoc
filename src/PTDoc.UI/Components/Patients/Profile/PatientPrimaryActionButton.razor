@@ -1,22 +1,29 @@
 @* Patient Primary Action Button Component - Main action button *@
 
-<button type="button" 
-        class="patient-primary-action-button" 
-        data-testid="patient-primary-action"
-        @onclick="OnClick"
-        aria-label="@Label">
-    @if (!string.IsNullOrEmpty(IconSvg))
-    {
-        <span class="patient-primary-action-icon" aria-hidden="true">
-            @((MarkupString)IconSvg)
-        </span>
-    }
-    <span>@Label</span>
-</button>
+@if (!string.IsNullOrWhiteSpace(Href))
+{
+    <a href="@Href"
+       class="patient-primary-action-button"
+       data-testid="patient-primary-action"
+       aria-label="@Label">
+        @RenderContent()
+    </a>
+}
+else
+{
+    <button type="button"
+            class="patient-primary-action-button"
+            data-testid="patient-primary-action"
+            @onclick="OnClick"
+            aria-label="@Label">
+        @RenderContent()
+    </button>
+}
 
 @code {
     [Parameter] public string Label { get; set; } = "Start New Note";
     [Parameter] public string? IconSvg { get; set; }
+    [Parameter] public string? Href { get; set; }
     [Parameter] public EventCallback OnClick { get; set; }
 
     protected override void OnInitialized()
@@ -29,4 +36,21 @@
             </svg>";
         }
     }
+
+    private RenderFragment RenderContent() => builder =>
+    {
+        var sequence = 0;
+        if (!string.IsNullOrEmpty(IconSvg))
+        {
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "patient-primary-action-icon");
+            builder.AddAttribute(sequence++, "aria-hidden", "true");
+            builder.AddContent(sequence++, (MarkupString)IconSvg);
+            builder.CloseElement();
+        }
+
+        builder.OpenElement(sequence++, "span");
+        builder.AddContent(sequence++, Label);
+        builder.CloseElement();
+    };
 }

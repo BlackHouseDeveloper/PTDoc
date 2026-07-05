@@ -19,7 +19,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
     }
 
     [Fact]
-    public void TimelineAndNotesTabs_UseStableTabSemanticsAndPanels()
+    public void TimelineAndNotesSections_UseStableNavigationSemanticsAndPanels()
     {
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, CreatePatient())
@@ -47,24 +47,21 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
             }));
 
         var tabList = cut.Find("[data-testid='patient-profile-tabs']");
-        Assert.Equal("tablist", tabList.GetAttribute("role"));
-        Assert.Equal("tab", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("role"));
-        Assert.Equal("tab", cut.Find("[data-testid='patient-profile-tab-documents']").GetAttribute("role"));
-        Assert.Equal("tab", cut.Find("[data-testid='patient-profile-tab-communications']").GetAttribute("role"));
-        Assert.Equal("true", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-selected"));
-        Assert.Equal("patient-profile-panel-current", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-controls"));
-        Assert.Equal("tabpanel", cut.Find("[data-testid='patient-profile-panel-timeline']").GetAttribute("role"));
+        Assert.Null(tabList.GetAttribute("role"));
+        Assert.Empty(tabList.QuerySelectorAll("[role='tab']"));
+        Assert.Equal("page", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-current"));
+        Assert.Equal("region", cut.Find("[data-testid='patient-profile-panel-timeline']").GetAttribute("role"));
+        Assert.Equal("Patient timeline", cut.Find("[data-testid='patient-profile-panel-timeline']").GetAttribute("aria-label"));
         Assert.Equal("patient-profile-panel-current", cut.Find("[data-testid='patient-profile-panel-timeline']").Id);
         Assert.Contains("Evaluation signed", cut.Markup, StringComparison.Ordinal);
 
-        cut.Find("[data-testid='patient-profile-tab-notes']").Click();
+        SelectInitialTab(cut, "notes");
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Equal("false", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-selected"));
-            Assert.Equal("true", cut.Find("[data-testid='patient-profile-tab-notes']").GetAttribute("aria-selected"));
-            Assert.Equal("patient-profile-panel-current", cut.Find("[data-testid='patient-profile-tab-notes']").GetAttribute("aria-controls"));
-            Assert.Equal("patient-profile-tab-notes", cut.Find("[data-testid='patient-profile-panel-notes']").GetAttribute("aria-labelledby"));
+            Assert.Null(cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-current"));
+            Assert.Equal("page", cut.Find("[data-testid='patient-profile-tab-notes']").GetAttribute("aria-current"));
+            Assert.Equal("Patient notes", cut.Find("[data-testid='patient-profile-panel-notes']").GetAttribute("aria-label"));
             Assert.Equal("patient-profile-panel-current", cut.Find("[data-testid='patient-profile-panel-notes']").Id);
             Assert.Contains("Daily", cut.Markup, StringComparison.Ordinal);
         });
@@ -76,12 +73,12 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, CreatePatient()));
 
-        cut.Find("[data-testid='patient-profile-tab-documents']").Click();
+        SelectInitialTab(cut, "documents");
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Equal("true", cut.Find("[data-testid='patient-profile-tab-documents']").GetAttribute("aria-selected"));
-            Assert.Equal("patient-profile-tab-documents", cut.Find("[data-testid='patient-profile-panel-documents']").GetAttribute("aria-labelledby"));
+            Assert.Equal("page", cut.Find("[data-testid='patient-profile-tab-documents']").GetAttribute("aria-current"));
+            Assert.Equal("Patient documents", cut.Find("[data-testid='patient-profile-panel-documents']").GetAttribute("aria-label"));
             Assert.Contains("Patient Documents", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Insurance card", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Upload document", cut.Markup, StringComparison.Ordinal);
@@ -89,12 +86,12 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
             Assert.NotNull(cut.Find("#patient-document-file"));
         });
 
-        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(cut, "communications");
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Equal("true", cut.Find("[data-testid='patient-profile-tab-communications']").GetAttribute("aria-selected"));
-            Assert.Equal("patient-profile-tab-communications", cut.Find("[data-testid='patient-profile-panel-communications']").GetAttribute("aria-labelledby"));
+            Assert.Equal("page", cut.Find("[data-testid='patient-profile-tab-communications']").GetAttribute("aria-current"));
+            Assert.Equal("Patient communications", cut.Find("[data-testid='patient-profile-panel-communications']").GetAttribute("aria-label"));
             Assert.Contains("Communication Log", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Portal", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("No patient communications have been logged", cut.Markup, StringComparison.Ordinal);
@@ -110,7 +107,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, CreatePatient()));
 
-        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(cut, "communications");
         cut.Find("#patient-communication-contact").Input("Local QA");
         cut.Find("#patient-communication-summary").Input("Called patient about referral status.");
         cut.Find("#patient-communication-details").Input("Synthetic communication log storage validation.");
@@ -133,7 +130,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, CreatePatient()));
 
-        cut.Find("[data-testid='patient-profile-tab-documents']").Click();
+        SelectInitialTab(cut, "documents");
 
         cut.WaitForAssertion(() => Assert.Contains("Loading documents...", cut.Markup, StringComparison.Ordinal));
         chartStorageService.PendingDocumentList.SetResult(Array.Empty<PatientDocumentResponse>());
@@ -167,19 +164,20 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, firstPatient));
 
-        cut.Find("[data-testid='patient-profile-tab-documents']").Click();
+        SelectInitialTab(cut, "documents");
         cut.WaitForAssertion(() => Assert.Contains("first-patient-private-document.pdf", cut.Markup, StringComparison.Ordinal));
 
         cut.SetParametersAndRender(parameters => parameters
-            .Add(component => component.Patient, secondPatient));
+            .Add(component => component.Patient, secondPatient)
+            .Add(component => component.InitialTab, "timeline"));
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Equal("true", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-selected"));
+            Assert.Equal("page", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-current"));
             Assert.DoesNotContain("first-patient-private-document.pdf", cut.Markup, StringComparison.Ordinal);
         });
 
-        cut.Find("[data-testid='patient-profile-tab-documents']").Click();
+        SelectInitialTab(cut, "documents");
         cut.WaitForAssertion(() =>
         {
             Assert.DoesNotContain("first-patient-private-document.pdf", cut.Markup, StringComparison.Ordinal);
@@ -195,7 +193,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, CreatePatient()));
 
-        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(cut, "communications");
 
         cut.WaitForAssertion(() => Assert.Contains("Loading communications...", cut.Markup, StringComparison.Ordinal));
         chartStorageService.PendingCommunicationList.SetResult(Array.Empty<PatientCommunicationLogEntryResponse>());
@@ -212,7 +210,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
     {
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, CreatePatient()));
-        cut.Find("[data-testid='patient-profile-tab-documents']").Click();
+        SelectInitialTab(cut, "documents");
         cut.WaitForAssertion(() => Assert.Contains("Patient Documents", cut.Markup, StringComparison.Ordinal));
         SetPrivateProperty(cut.Instance, "DocumentStatusMessage", "Document uploaded.");
         chartStorageService.FailDocumentList = true;
@@ -238,7 +236,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
             }));
         SetPrivateProperty(cut.Instance, "DocumentStatusMessage", "Document uploaded.");
 
-        cut.Find("[data-testid='patient-profile-tab-documents']").Click();
+        SelectInitialTab(cut, "documents");
 
         cut.WaitForAssertion(() =>
         {
@@ -252,7 +250,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
     {
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, CreatePatient()));
-        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(cut, "communications");
         cut.WaitForAssertion(() => Assert.Contains("Communication Log", cut.Markup, StringComparison.Ordinal));
         SetPrivateProperty(cut.Instance, "CommunicationStatusMessage", "Communication logged.");
         chartStorageService.FailCommunicationList = true;
@@ -278,7 +276,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
             }));
         SetPrivateProperty(cut.Instance, "CommunicationStatusMessage", "Communication logged.");
 
-        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(cut, "communications");
 
         cut.WaitForAssertion(() =>
         {
@@ -292,7 +290,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
     {
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, CreatePatient()));
-        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(cut, "communications");
         cut.WaitForAssertion(() => Assert.Contains("Communication Log", cut.Markup, StringComparison.Ordinal));
         SetPrivateProperty(cut.Instance, "CommunicationStatusMessage", "Communication logged.");
 
@@ -314,7 +312,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
                 Id = "not-a-guid",
                 DisplayName = "Legacy Patient"
             }));
-        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(cut, "communications");
         cut.WaitForAssertion(() => Assert.Contains("Communication Log", cut.Markup, StringComparison.Ordinal));
         SetPrivateProperty(cut.Instance, "CommunicationStatusMessage", "Communication logged.");
         cut.Find("#patient-communication-summary").Input("Called patient about authorization.");
@@ -335,7 +333,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         var firstRender = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, patient));
 
-        firstRender.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(firstRender, "communications");
         firstRender.Find("#patient-communication-summary").Input("Reload persistence call marker.");
         firstRender.Find("#patient-communication-details").Input("Communication persists after component reopen.");
         firstRender.FindAll("button").Single(button => button.TextContent.Contains("Add communication", StringComparison.Ordinal)).Click();
@@ -349,7 +347,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         var reopened = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, patient));
 
-        reopened.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(reopened, "communications");
 
         reopened.WaitForAssertion(() =>
         {
@@ -380,11 +378,40 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         Assert.DoesNotContain("Should not render while errored", cut.Markup, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void RoutedInitialTabAndInsuranceLink_AreRenderedAsChartNavigation()
+    {
+        var patient = CreatePatient();
+        var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
+            .Add(component => component.Patient, patient)
+            .Add(component => component.InitialTab, "documents"));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("page", cut.Find("[data-testid='patient-profile-tab-documents']").GetAttribute("aria-current"));
+            Assert.Contains("Patient Documents", cut.Markup, StringComparison.Ordinal);
+            Assert.Equal(
+                $"/patient/{patient.Id}?tab=documents",
+                cut.Find("[data-testid='patient-profile-tab-documents']").GetAttribute("href"));
+            Assert.Equal(
+                $"/patient/{patient.Id}/info",
+                cut.Find("[data-testid='patient-profile-tab-insurance-authorization']").GetAttribute("href"));
+            Assert.Empty(cut.Find("[data-testid='patient-profile-tabs']").QuerySelectorAll("[data-testid='patient-profile-tab-insurance-authorization']"));
+        });
+    }
+
     private static PatientProfileVm CreatePatient() => new()
     {
         Id = Guid.NewGuid().ToString("D"),
         DisplayName = "Alex Patient"
     };
+
+    private static void SelectInitialTab(
+        IRenderedComponent<PatientClinicalInfoCardEditable> cut,
+        string tab)
+    {
+        cut.SetParametersAndRender(parameters => parameters.Add(component => component.InitialTab, tab));
+    }
 
     private static void SetPrivateProperty(
         PatientClinicalInfoCardEditable component,
