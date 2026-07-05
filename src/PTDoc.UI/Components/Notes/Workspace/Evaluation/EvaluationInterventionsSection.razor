@@ -512,15 +512,27 @@
             return;
         }
 
+        var requestedBodyPart = SelectedBodyPart;
         try
         {
-            _catalog = await NoteWorkspaceService.GetBodyRegionCatalogAsync(ParseBodyPart(SelectedBodyPart));
+            var catalog = await NoteWorkspaceService.GetBodyRegionCatalogAsync(ParseBodyPart(requestedBodyPart));
+            if (!string.Equals(SelectedBodyPart, requestedBodyPart, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _catalog = catalog;
             _errorMessage = null;
-            _loadedCatalogBodyPart = SelectedBodyPart;
+            _loadedCatalogBodyPart = requestedBodyPart;
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Unable to load evaluation interventions catalog for {BodyPart}", SelectedBodyPart);
+            Logger.LogWarning(ex, "Unable to load evaluation interventions catalog for {BodyPart}", requestedBodyPart);
+            if (!string.Equals(SelectedBodyPart, requestedBodyPart, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
             _catalog = null;
             _errorMessage = "Unable to load the structured intervention catalog right now.";
             _loadedCatalogBodyPart = null;

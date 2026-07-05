@@ -249,4 +249,49 @@ public sealed class EvaluationInterventionsSectionTests : TestContext
             service => service.GetBodyRegionCatalogAsync(BodyPart.Knee, It.IsAny<CancellationToken>()),
             Times.Exactly(2));
     }
+
+    [Fact]
+    public void CatalogLoad_IgnoresStaleResultWhenBodyPartChangesBeforeCompletion()
+    {
+        var objective = new ObjectiveVm();
+        var plan = new PlanVm();
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var kneeCatalogCompletion = new TaskCompletionSource<BodyRegionCatalog>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        noteWorkspaceService
+            .Setup(service => service.GetBodyRegionCatalogAsync(BodyPart.Knee, It.IsAny<CancellationToken>()))
+            .Returns(kneeCatalogCompletion.Task);
+        noteWorkspaceService
+            .Setup(service => service.GetBodyRegionCatalogAsync(BodyPart.Shoulder, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BodyRegionCatalog
+            {
+                BodyPart = BodyPart.Shoulder,
+                TreatmentInterventionOptions = ["Scapular stabilization"]
+            });
+
+        Services.AddSingleton(noteWorkspaceService.Object);
+
+        var cut = RenderComponent<EvaluationInterventionsSection>(parameters => parameters
+            .Add(component => component.Objective, objective)
+            .Add(component => component.ObjectiveChanged, EventCallback.Factory.Create<ObjectiveVm>(this, value => objective = value))
+            .Add(component => component.Plan, plan)
+            .Add(component => component.PlanChanged, EventCallback.Factory.Create<PlanVm>(this, value => plan = value))
+            .Add(component => component.IsReadOnly, false)
+            .Add(component => component.SelectedBodyPart, BodyPart.Knee.ToString()));
+
+        cut.SetParametersAndRender(parameters => parameters.Add(component => component.SelectedBodyPart, BodyPart.Shoulder.ToString()));
+        cut.WaitForAssertion(() => Assert.Contains("Scapular stabilization", cut.Markup, StringComparison.Ordinal));
+
+        kneeCatalogCompletion.SetResult(new BodyRegionCatalog
+        {
+            BodyPart = BodyPart.Knee,
+            TreatmentInterventionOptions = ["Knee mobilization"]
+        });
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Scapular stabilization", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Knee mobilization", cut.Markup, StringComparison.Ordinal);
+        });
+    }
 }

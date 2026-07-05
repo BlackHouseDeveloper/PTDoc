@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Evaluation intervention catalog follow-up** — Cleared the cached selected body part after evaluation-intervention catalog load failures so prior successful body-part catalogs can reload when revisited. Reason: validated Copilot review feedback identified a stale-cache path after switching body parts through a failed catalog load.
 - **Evaluation workspace cleanup follow-up** — Normalized posture free-text on load/save, cleared row-level CPT references when a selected CPT code is removed, and removed hard-coded prognosis template version text from the generation-attempt log. Reason: validated Copilot review feedback identified whitespace persistence, billing/intervention desynchronization, and stale log wording.
 - **Evaluation workspace safety follow-up** — Defaulted missing billing settings while mapping legacy workspace payloads and removed raw CPT search text from lookup warning logs. Reason: validated Copilot review feedback identified a legacy null-load crash and PHI-sensitive free-text logging risk.
+- **Evaluation intervention catalog race follow-up** — Ignored stale body-region catalog responses when the selected body part changes before an earlier catalog request completes. Reason: validated Copilot review feedback identified that rapid body-part changes could render incorrect intervention options.
 
 ### Added - AI prognosis generation
 
