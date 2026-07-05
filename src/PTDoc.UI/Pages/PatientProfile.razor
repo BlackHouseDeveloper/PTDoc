@@ -43,8 +43,7 @@
 
                 <PatientPrimaryActionButton
                     Label="Start New Note"
-                    Href="@($"/patient/{Uri.EscapeDataString(Id ?? string.Empty)}?action=new-note")"
-                    OnClick="@HandleStartNote" />
+                    Href="@($"/patient/{Uri.EscapeDataString(Id ?? string.Empty)}?action=new-note")" />
 
                 @if (isNoteTypeChooserOpen)
                 {
@@ -418,11 +417,6 @@
             InvalidOperationException invalidOperationException when !string.IsNullOrWhiteSpace(invalidOperationException.Message) => invalidOperationException.Message,
             _ => fallback
         };
-    }
-
-    private void HandleStartNote()
-    {
-        isNoteTypeChooserOpen = true;
     }
 
     private void ApplyRouteQuery()

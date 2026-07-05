@@ -155,6 +155,64 @@ public sealed class AppointmentsPageTests : TestContext
     }
 
     [Fact]
+    public void AppointmentsPage_ClearNeedsNoteFilter_NormalizesRoute()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var clinicianId = Guid.NewGuid();
+        var scheduledStart = DateTime.SpecifyKind(DateTime.Today.AddHours(10), DateTimeKind.Local);
+
+        RegisterServices(new AppointmentsOverviewResponse
+        {
+            Appointments =
+            [
+                new AppointmentListItemResponse
+                {
+                    Id = Guid.NewGuid(),
+                    PatientRecordId = Guid.NewGuid(),
+                    PatientName = "Scheduled Only",
+                    ClinicianId = clinicianId,
+                    ClinicianName = "Taylor PT",
+                    StartTimeUtc = scheduledStart.ToUniversalTime(),
+                    EndTimeUtc = scheduledStart.AddMinutes(45).ToUniversalTime(),
+                    AppointmentType = "Follow-up",
+                    AppointmentStatus = "Scheduled",
+                    VisitWorkflowStatus = "Scheduled",
+                    IntakeStatus = "Complete"
+                }
+            ],
+            Clinicians =
+            [
+                new AppointmentClinicianResponse
+                {
+                    Id = clinicianId,
+                    DisplayName = "Taylor PT"
+                }
+            ]
+        });
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/appointments?needsNote=true&dateRange=today");
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("No appointments need notes for this period", cut.Markup, StringComparison.Ordinal);
+        });
+
+        cut.FindAll("button")
+            .Single(button => button.TextContent.Contains("Clear filters", StringComparison.Ordinal))
+            .Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Scheduled Only", cut.Markup, StringComparison.Ordinal);
+        });
+        Assert.EndsWith(
+            "/appointments?dateRange=today",
+            Services.GetRequiredService<NavigationManager>().Uri,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AppointmentsPage_WeekView_DefaultsToClinicianGroupingAndCanSwitchToDay()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;

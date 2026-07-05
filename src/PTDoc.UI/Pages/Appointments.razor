@@ -805,8 +805,27 @@
     private void ClearFilters()
     {
         currentFilter = new AppointmentsFilter();
-        showNeedsNoteOnly = false;
+        if (showNeedsNoteOnly)
+        {
+            showNeedsNoteOnly = false;
+            RebuildSchedulerState();
+            NavigationManager.NavigateTo(GetCurrentViewRouteWithoutQueueFilter());
+            return;
+        }
+
         RebuildSchedulerState();
+    }
+
+    private string GetCurrentViewRouteWithoutQueueFilter()
+    {
+        if (selectedView == AppointmentsView.Week)
+        {
+            return weekGrouping == AppointmentsWeekGrouping.Day
+                ? "/appointments?dateRange=week&groupBy=day"
+                : "/appointments?dateRange=week";
+        }
+
+        return "/appointments?dateRange=today";
     }
 
     private bool HasActiveFilters =>
