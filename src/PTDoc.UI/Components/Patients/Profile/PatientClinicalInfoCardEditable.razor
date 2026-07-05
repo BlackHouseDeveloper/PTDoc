@@ -446,11 +446,11 @@
             selectedTab = InitialTab.ToLowerInvariant();
         }
 
-        if (selectedTab == "documents")
+        if (selectedTab == "documents" && !HasLoadedDocuments)
         {
             await LoadDocumentsAsync();
         }
-        else if (selectedTab == "communications")
+        else if (selectedTab == "communications" && !HasLoadedCommunications)
         {
             await LoadCommunicationsAsync();
         }

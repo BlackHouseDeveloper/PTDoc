@@ -45,7 +45,9 @@ public sealed class WebLoginEndpointIntegrationTests
         }));
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/login?loginValidation=usernameRequired&ReturnUrl=%2Fpatients", response.Headers.Location?.OriginalString);
+        Assert.Equal(
+            $"/login?loginValidation=usernameRequired&ReturnUrl={WebUtility.UrlEncode("/patients")}",
+            response.Headers.Location?.OriginalString);
         Assert.Empty(recordingFactory.RequestPayloads);
     }
 

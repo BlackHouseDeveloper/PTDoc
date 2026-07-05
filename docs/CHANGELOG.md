@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - Live audit route, intake, notes, and accessibility hardening
 
 - **Live audit remediation** — Added route-backed `/dashboard` and protected fallback behavior, inline login validation, appointments needs-note/week grouping controls, intake pain severity/body-map accessibility, notes pagination, route-backed patient actions, ARIA link cleanup, and sanitized route-derived note logging. Reason: split the live UI audit remediation and PR review follow-up fixes into a focused reviewable PR.
+- **Live audit PR review follow-up** — Removed patient/note identifiers from note-workspace error logs, made login redirect validation build its expected URL encoding through the framework encoder, and avoided redundant document/communication tab loads after patient chart storage has already loaded. Reason: validated review feedback identified HIPAA-sensitive identifiers in logs, brittle URL encoding assertions, and duplicate fetch risk.
 
 ### Fixed - AI prognosis PR review follow-up
 

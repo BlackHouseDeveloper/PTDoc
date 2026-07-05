@@ -966,10 +966,6 @@ else
             : null;
     }
 
-    private static string SanitizeForLog(object? value)
-        => value?.ToString()?.Replace("\r", string.Empty, StringComparison.Ordinal)
-            .Replace("\n", string.Empty, StringComparison.Ordinal) ?? string.Empty;
-
     private async Task HandleSectionChanged(SoapSection next)
     {
         if (next == SoapSection.Review && !await EnsureDraftPersistedAsync(forceIfClean: !_note.NoteId.HasValue))
@@ -1003,9 +999,7 @@ else
         {
             Logger.LogError(
                 ex,
-                "Note section change failed (patientId={PatientId}, noteId={NoteId}, noteType={NoteType}, noteIdPresent={HasNoteId}, section={Section})",
-                SanitizeForLog(PatientId),
-                SanitizeForLog(_note.NoteId),
+                "Note section change failed (noteType={NoteType}, noteIdPresent={HasNoteId}, section={Section})",
                 _note.NoteType,
                 _note.NoteId.HasValue,
                 next);
@@ -1483,9 +1477,7 @@ else
         {
             Logger.LogError(
                 ex,
-                "Manual draft save failed (patientId={PatientId}, noteId={NoteId}, noteType={NoteType}, noteIdPresent={HasNoteId})",
-                SanitizeForLog(PatientId),
-                SanitizeForLog(_note.NoteId),
+                "Manual draft save failed (noteType={NoteType}, noteIdPresent={HasNoteId})",
                 _note.NoteType,
                 _note.NoteId.HasValue);
             _note.MarkSaveError();
@@ -1744,9 +1736,7 @@ else
         {
             Logger.LogError(
                 ex,
-                "Note submit action failed (patientId={PatientId}, noteId={NoteId}, noteType={NoteType}, noteIdPresent={HasNoteId})",
-                SanitizeForLog(PatientId),
-                SanitizeForLog(_note.NoteId),
+                "Note submit action failed (noteType={NoteType}, noteIdPresent={HasNoteId})",
                 _note.NoteType,
                 _note.NoteId.HasValue);
             _note.MarkSaveError();
