@@ -68,6 +68,7 @@ public sealed class AppointmentsPageTests : TestContext
         var dueStart = DateTime.SpecifyKind(today.AddHours(9), DateTimeKind.Local);
         var scheduledStart = DateTime.SpecifyKind(today.AddHours(10), DateTimeKind.Local);
         var startedStart = DateTime.SpecifyKind(today.AddHours(11), DateTimeKind.Local);
+        var completedStart = DateTime.SpecifyKind(today.AddHours(12), DateTimeKind.Local);
 
         RegisterServices(new AppointmentsOverviewResponse
         {
@@ -115,6 +116,20 @@ public sealed class AppointmentsPageTests : TestContext
                     VisitWorkflowStatus = "Note Started",
                     VisitNoteId = Guid.NewGuid(),
                     IntakeStatus = "Complete"
+                },
+                new AppointmentListItemResponse
+                {
+                    Id = Guid.NewGuid(),
+                    PatientRecordId = Guid.NewGuid(),
+                    PatientName = "Completed Without Note",
+                    ClinicianId = clinicianId,
+                    ClinicianName = "Taylor PT",
+                    StartTimeUtc = completedStart.ToUniversalTime(),
+                    EndTimeUtc = completedStart.AddMinutes(45).ToUniversalTime(),
+                    AppointmentType = "Follow-up",
+                    AppointmentStatus = "Completed",
+                    VisitWorkflowStatus = null,
+                    IntakeStatus = "Complete"
                 }
             ],
             Clinicians =
@@ -133,6 +148,7 @@ public sealed class AppointmentsPageTests : TestContext
         cut.WaitForAssertion(() =>
         {
             Assert.Contains("Needs Note", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Completed Without Note", cut.Markup, StringComparison.Ordinal);
             Assert.DoesNotContain("Scheduled Only", cut.Markup, StringComparison.Ordinal);
             Assert.DoesNotContain("Started Note", cut.Markup, StringComparison.Ordinal);
         });

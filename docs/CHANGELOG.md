@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Live audit PR review follow-up** — Reloaded appointments when route query changes alter the appointment load window and reset week grouping to the route default when `groupBy` is absent. Reason: validated review feedback identified stale route-backed appointment data and grouping state drift.
 - **Live audit PR review follow-up** — Changed route-backed appointment and patient chart section controls from ARIA tabs to current-page links and made the Playwright intake pain-severity check update the range input through an input event. Reason: validated review feedback identified mismatched link/tab semantics and flaky range-input filling.
 - **Live audit PR review follow-up** — Removed duplicate view-change loading from route-backed appointment links and made body-map keyboard-guard teardown null-safe. Reason: validated review feedback identified redundant appointment reloads and a possible null interop cleanup failure.
+- **Live audit PR review follow-up** — Kept completed appointments without a linked visit note visible in the notes-due queue. Reason: validated review feedback identified an unreachable completed-appointment branch when workflow status falls back to appointment status.
 
 ### Fixed - AI prognosis PR review follow-up
 
