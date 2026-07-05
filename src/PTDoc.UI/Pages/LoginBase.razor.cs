@@ -608,18 +608,38 @@ public abstract class LoginBase : ComponentBase, IDisposable
         foreach (var pair in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
         {
             var parts = pair.Split('=', 2);
-            if (parts.Length == 0 || !string.Equals(Uri.UnescapeDataString(parts[0]), key, StringComparison.OrdinalIgnoreCase))
+            if (parts.Length == 0
+                || !TryDecodeQueryPart(parts[0], out var decodedKey)
+                || !string.Equals(decodedKey, key, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            value = parts.Length > 1
-                ? Uri.UnescapeDataString(parts[1].Replace("+", " ", StringComparison.Ordinal))
-                : string.Empty;
-            return true;
+            if (parts.Length <= 1)
+            {
+                value = string.Empty;
+                return true;
+            }
+
+            return TryDecodeQueryPart(parts[1], out value);
         }
 
         return false;
+    }
+
+    private static bool TryDecodeQueryPart(string rawValue, out string decodedValue)
+    {
+        decodedValue = string.Empty;
+
+        try
+        {
+            decodedValue = Uri.UnescapeDataString(rawValue.Replace("+", " ", StringComparison.Ordinal));
+            return !string.IsNullOrWhiteSpace(decodedValue);
+        }
+        catch (Exception ex) when (ex is UriFormatException or ArgumentException)
+        {
+            return false;
+        }
     }
 
     private void ResetSignUpModel()

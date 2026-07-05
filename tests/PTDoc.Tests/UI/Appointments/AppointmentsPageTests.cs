@@ -128,7 +128,7 @@ public sealed class AppointmentsPageTests : TestContext
                     EndTimeUtc = completedStart.AddMinutes(45).ToUniversalTime(),
                     AppointmentType = "Follow-up",
                     AppointmentStatus = "Completed",
-                    VisitWorkflowStatus = null,
+                    VisitWorkflowStatus = string.Empty,
                     IntakeStatus = "Complete"
                 }
             ],

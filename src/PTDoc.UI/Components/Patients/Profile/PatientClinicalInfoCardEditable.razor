@@ -33,8 +33,7 @@
            class="patient-clinical-info-tab @(selectedTab == "timeline" ? "active" : "")"
            id="patient-profile-tab-timeline"
            aria-current="@GetCurrentSectionValue("timeline")"
-           data-testid="patient-profile-tab-timeline"
-           @onclick="@(() => SelectTabAsync("timeline"))">
+           data-testid="patient-profile-tab-timeline">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2"/>
                 <path d="M8 4V8L11 11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -45,8 +44,7 @@
            class="patient-clinical-info-tab @(selectedTab == "notes" ? "active" : "")"
            id="patient-profile-tab-notes"
            aria-current="@GetCurrentSectionValue("notes")"
-           data-testid="patient-profile-tab-notes"
-           @onclick="@(() => SelectTabAsync("notes"))">
+           data-testid="patient-profile-tab-notes">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M10 2H3.33333C2.59695 2 2 2.59695 2 3.33333V12.6667C2 13.403 2.59695 14 3.33333 14H12.6667C13.403 14 14 13.403 14 12.6667V6L10 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 <path d="M10 2V6H14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -57,8 +55,7 @@
            class="patient-clinical-info-tab @(selectedTab == "documents" ? "active" : "")"
            id="patient-profile-tab-documents"
            aria-current="@GetCurrentSectionValue("documents")"
-           data-testid="patient-profile-tab-documents"
-           @onclick="@(() => SelectTabAsync("documents"))">
+           data-testid="patient-profile-tab-documents">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M9.33333 2H4C3.26362 2 2.66667 2.59695 2.66667 3.33333V12.6667C2.66667 13.403 3.26362 14 4 14H12C12.7364 14 13.3333 13.403 13.3333 12.6667V6L9.33333 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                 <path d="M9.33333 2V6H13.3333" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -70,8 +67,7 @@
            class="patient-clinical-info-tab @(selectedTab == "communications" ? "active" : "")"
            id="patient-profile-tab-communications"
            aria-current="@GetCurrentSectionValue("communications")"
-           data-testid="patient-profile-tab-communications"
-           @onclick="@(() => SelectTabAsync("communications"))">
+           data-testid="patient-profile-tab-communications">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M14 7.66667C14.0023 8.54657 13.7944 9.41408 13.3933 10.1973C12.9178 11.1487 12.1871 11.9484 11.2832 12.5177C10.3793 13.087 9.33789 13.4034 8.26667 13.4333C7.38677 13.4356 6.51926 13.2277 5.736 12.8267L2 14L3.17333 10.264C2.7723 9.48074 2.56441 8.61323 2.56667 7.73333C2.59658 6.66211 2.91299 5.6207 3.48229 4.7168C4.05159 3.8129 4.85131 3.08223 5.80267 2.60667C6.58592 2.20563 7.45343 1.99774 8.33333 2H8.66667C10.0812 2.07666 11.4169 2.66011 12.3755 3.61873C13.3341 4.57735 13.9176 5.91302 14 7.33333V7.66667Z" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
@@ -468,24 +464,6 @@
         IsLoadingCommunications = false;
         IsSavingCommunication = false;
         HasLoadedCommunications = false;
-    }
-
-    private async Task SelectTabAsync(string tab)
-    {
-        if (!IsKnownTab(tab))
-        {
-            return;
-        }
-
-        selectedTab = tab.ToLowerInvariant();
-        if (selectedTab == "documents")
-        {
-            await LoadDocumentsAsync();
-        }
-        else if (selectedTab == "communications")
-        {
-            await LoadCommunicationsAsync();
-        }
     }
 
     private static bool IsKnownTab(string? tab)

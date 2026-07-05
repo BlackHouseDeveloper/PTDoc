@@ -422,12 +422,13 @@
     private void ApplyRouteQuery()
     {
         var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
-        if (string.Equals(lastAppliedRouteQuery, uri.Query, StringComparison.Ordinal))
+        var routeKey = uri.PathAndQuery;
+        if (string.Equals(lastAppliedRouteQuery, routeKey, StringComparison.Ordinal))
         {
             return;
         }
 
-        lastAppliedRouteQuery = uri.Query;
+        lastAppliedRouteQuery = routeKey;
         selectedProfileTab = "timeline";
         isNoteTypeChooserOpen = false;
 

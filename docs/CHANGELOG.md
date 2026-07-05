@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Live audit PR review follow-up** — Kept completed appointments without a linked visit note visible in the notes-due queue. Reason: validated review feedback identified an unreachable completed-appointment branch when workflow status falls back to appointment status.
 - **Live audit PR review follow-up** — Removed the redundant patient primary-action click handler from route-backed note entry and normalized the appointments URL when clearing the notes-due queue filter. Reason: validated review feedback identified an ignored click callback and route/UI state drift after clearing filters.
 - **Live audit PR review follow-up** — Made patient-list and patient-profile route query decoding ignore malformed query values instead of throwing during render. Reason: validated review feedback identified fragile route-backed action parsing for copied or malformed links.
+- **Live audit PR review follow-up** — Reapplied patient-profile route state across same-query patient navigation, hardened login validation query decoding, and removed local click side effects from route-backed patient chart section links. Reason: validated review feedback identified path-insensitive route caching, malformed pre-auth login query fragility, and duplicate route/link state updates.
 
 ### Fixed - AI prognosis PR review follow-up
 

@@ -55,7 +55,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         Assert.Equal("patient-profile-panel-current", cut.Find("[data-testid='patient-profile-panel-timeline']").Id);
         Assert.Contains("Evaluation signed", cut.Markup, StringComparison.Ordinal);
 
-        cut.Find("[data-testid='patient-profile-tab-notes']").Click();
+        SelectInitialTab(cut, "notes");
 
         cut.WaitForAssertion(() =>
         {
@@ -73,7 +73,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, CreatePatient()));
 
-        cut.Find("[data-testid='patient-profile-tab-documents']").Click();
+        SelectInitialTab(cut, "documents");
 
         cut.WaitForAssertion(() =>
         {
@@ -86,7 +86,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
             Assert.NotNull(cut.Find("#patient-document-file"));
         });
 
-        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(cut, "communications");
 
         cut.WaitForAssertion(() =>
         {
@@ -107,7 +107,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, CreatePatient()));
 
-        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(cut, "communications");
         cut.Find("#patient-communication-contact").Input("Local QA");
         cut.Find("#patient-communication-summary").Input("Called patient about referral status.");
         cut.Find("#patient-communication-details").Input("Synthetic communication log storage validation.");
@@ -130,7 +130,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, CreatePatient()));
 
-        cut.Find("[data-testid='patient-profile-tab-documents']").Click();
+        SelectInitialTab(cut, "documents");
 
         cut.WaitForAssertion(() => Assert.Contains("Loading documents...", cut.Markup, StringComparison.Ordinal));
         chartStorageService.PendingDocumentList.SetResult(Array.Empty<PatientDocumentResponse>());
@@ -164,11 +164,12 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, firstPatient));
 
-        cut.Find("[data-testid='patient-profile-tab-documents']").Click();
+        SelectInitialTab(cut, "documents");
         cut.WaitForAssertion(() => Assert.Contains("first-patient-private-document.pdf", cut.Markup, StringComparison.Ordinal));
 
         cut.SetParametersAndRender(parameters => parameters
-            .Add(component => component.Patient, secondPatient));
+            .Add(component => component.Patient, secondPatient)
+            .Add(component => component.InitialTab, "timeline"));
 
         cut.WaitForAssertion(() =>
         {
@@ -176,7 +177,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
             Assert.DoesNotContain("first-patient-private-document.pdf", cut.Markup, StringComparison.Ordinal);
         });
 
-        cut.Find("[data-testid='patient-profile-tab-documents']").Click();
+        SelectInitialTab(cut, "documents");
         cut.WaitForAssertion(() =>
         {
             Assert.DoesNotContain("first-patient-private-document.pdf", cut.Markup, StringComparison.Ordinal);
@@ -192,7 +193,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, CreatePatient()));
 
-        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(cut, "communications");
 
         cut.WaitForAssertion(() => Assert.Contains("Loading communications...", cut.Markup, StringComparison.Ordinal));
         chartStorageService.PendingCommunicationList.SetResult(Array.Empty<PatientCommunicationLogEntryResponse>());
@@ -209,7 +210,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
     {
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, CreatePatient()));
-        cut.Find("[data-testid='patient-profile-tab-documents']").Click();
+        SelectInitialTab(cut, "documents");
         cut.WaitForAssertion(() => Assert.Contains("Patient Documents", cut.Markup, StringComparison.Ordinal));
         SetPrivateProperty(cut.Instance, "DocumentStatusMessage", "Document uploaded.");
         chartStorageService.FailDocumentList = true;
@@ -235,7 +236,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
             }));
         SetPrivateProperty(cut.Instance, "DocumentStatusMessage", "Document uploaded.");
 
-        cut.Find("[data-testid='patient-profile-tab-documents']").Click();
+        SelectInitialTab(cut, "documents");
 
         cut.WaitForAssertion(() =>
         {
@@ -249,7 +250,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
     {
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, CreatePatient()));
-        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(cut, "communications");
         cut.WaitForAssertion(() => Assert.Contains("Communication Log", cut.Markup, StringComparison.Ordinal));
         SetPrivateProperty(cut.Instance, "CommunicationStatusMessage", "Communication logged.");
         chartStorageService.FailCommunicationList = true;
@@ -275,7 +276,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
             }));
         SetPrivateProperty(cut.Instance, "CommunicationStatusMessage", "Communication logged.");
 
-        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(cut, "communications");
 
         cut.WaitForAssertion(() =>
         {
@@ -289,7 +290,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
     {
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, CreatePatient()));
-        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(cut, "communications");
         cut.WaitForAssertion(() => Assert.Contains("Communication Log", cut.Markup, StringComparison.Ordinal));
         SetPrivateProperty(cut.Instance, "CommunicationStatusMessage", "Communication logged.");
 
@@ -311,7 +312,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
                 Id = "not-a-guid",
                 DisplayName = "Legacy Patient"
             }));
-        cut.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(cut, "communications");
         cut.WaitForAssertion(() => Assert.Contains("Communication Log", cut.Markup, StringComparison.Ordinal));
         SetPrivateProperty(cut.Instance, "CommunicationStatusMessage", "Communication logged.");
         cut.Find("#patient-communication-summary").Input("Called patient about authorization.");
@@ -332,7 +333,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         var firstRender = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, patient));
 
-        firstRender.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(firstRender, "communications");
         firstRender.Find("#patient-communication-summary").Input("Reload persistence call marker.");
         firstRender.Find("#patient-communication-details").Input("Communication persists after component reopen.");
         firstRender.FindAll("button").Single(button => button.TextContent.Contains("Add communication", StringComparison.Ordinal)).Click();
@@ -346,7 +347,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         var reopened = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, patient));
 
-        reopened.Find("[data-testid='patient-profile-tab-communications']").Click();
+        SelectInitialTab(reopened, "communications");
 
         reopened.WaitForAssertion(() =>
         {
@@ -404,6 +405,13 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         Id = Guid.NewGuid().ToString("D"),
         DisplayName = "Alex Patient"
     };
+
+    private static void SelectInitialTab(
+        IRenderedComponent<PatientClinicalInfoCardEditable> cut,
+        string tab)
+    {
+        cut.SetParametersAndRender(parameters => parameters.Add(component => component.InitialTab, tab));
+    }
 
     private static void SetPrivateProperty(
         PatientClinicalInfoCardEditable component,
