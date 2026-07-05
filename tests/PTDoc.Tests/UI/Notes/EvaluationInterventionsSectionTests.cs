@@ -251,6 +251,36 @@ public sealed class EvaluationInterventionsSectionTests : TestContext
     }
 
     [Fact]
+    public void CatalogLoadFailure_DoesNotRetrySameBodyPartOnUnrelatedRerender()
+    {
+        var objective = new ObjectiveVm();
+        var plan = new PlanVm();
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+
+        noteWorkspaceService
+            .Setup(service => service.GetBodyRegionCatalogAsync(BodyPart.Shoulder, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Catalog unavailable."));
+
+        Services.AddSingleton(noteWorkspaceService.Object);
+
+        var cut = RenderComponent<EvaluationInterventionsSection>(parameters => parameters
+            .Add(component => component.Objective, objective)
+            .Add(component => component.ObjectiveChanged, EventCallback.Factory.Create<ObjectiveVm>(this, value => objective = value))
+            .Add(component => component.Plan, plan)
+            .Add(component => component.PlanChanged, EventCallback.Factory.Create<PlanVm>(this, value => plan = value))
+            .Add(component => component.IsReadOnly, false)
+            .Add(component => component.SelectedBodyPart, BodyPart.Shoulder.ToString()));
+
+        cut.WaitForAssertion(() => Assert.Contains("Unable to load the structured intervention catalog right now.", cut.Markup, StringComparison.Ordinal));
+
+        cut.SetParametersAndRender(parameters => parameters.Add(component => component.IsReadOnly, true));
+
+        noteWorkspaceService.Verify(
+            service => service.GetBodyRegionCatalogAsync(BodyPart.Shoulder, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public void CatalogLoad_IgnoresStaleResultWhenBodyPartChangesBeforeCompletion()
     {
         var objective = new ObjectiveVm();
