@@ -27,15 +27,12 @@
     }
 
     <div class="patient-clinical-info-tabs"
-         role="tablist"
          aria-label="Patient profile sections"
          data-testid="patient-profile-tabs">
         <a href="@GetTabHref("timeline")"
            class="patient-clinical-info-tab @(selectedTab == "timeline" ? "active" : "")"
            id="patient-profile-tab-timeline"
-           role="tab"
-           aria-selected="@IsSelectedTab("timeline")"
-           aria-controls="patient-profile-panel-current"
+           aria-current="@GetCurrentSectionValue("timeline")"
            data-testid="patient-profile-tab-timeline"
            @onclick="@(() => SelectTabAsync("timeline"))">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -47,9 +44,7 @@
         <a href="@GetTabHref("notes")"
            class="patient-clinical-info-tab @(selectedTab == "notes" ? "active" : "")"
            id="patient-profile-tab-notes"
-           role="tab"
-           aria-selected="@IsSelectedTab("notes")"
-           aria-controls="patient-profile-panel-current"
+           aria-current="@GetCurrentSectionValue("notes")"
            data-testid="patient-profile-tab-notes"
            @onclick="@(() => SelectTabAsync("notes"))">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -61,9 +56,7 @@
         <a href="@GetTabHref("documents")"
            class="patient-clinical-info-tab @(selectedTab == "documents" ? "active" : "")"
            id="patient-profile-tab-documents"
-           role="tab"
-           aria-selected="@IsSelectedTab("documents")"
-           aria-controls="patient-profile-panel-current"
+           aria-current="@GetCurrentSectionValue("documents")"
            data-testid="patient-profile-tab-documents"
            @onclick="@(() => SelectTabAsync("documents"))">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -76,9 +69,7 @@
         <a href="@GetTabHref("communications")"
            class="patient-clinical-info-tab @(selectedTab == "communications" ? "active" : "")"
            id="patient-profile-tab-communications"
-           role="tab"
-           aria-selected="@IsSelectedTab("communications")"
-           aria-controls="patient-profile-panel-current"
+           aria-current="@GetCurrentSectionValue("communications")"
            data-testid="patient-profile-tab-communications"
            @onclick="@(() => SelectTabAsync("communications"))">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -100,8 +91,8 @@
 
     <div class="patient-clinical-info-content"
          id="patient-profile-panel-current"
-         role="tabpanel"
-         aria-labelledby="@SelectedTabId"
+         role="region"
+         aria-label="@SelectedSectionLabel"
          data-testid="@SelectedPanelTestId">
         @if (selectedTab == "timeline")
         {
@@ -519,12 +510,18 @@
             : $"/patient/{Uri.EscapeDataString(patientId)}/info";
     }
 
-    private string IsSelectedTab(string tab)
-        => string.Equals(selectedTab, tab, StringComparison.Ordinal) ? "true" : "false";
-
-    private string SelectedTabId => $"patient-profile-tab-{selectedTab}";
+    private string? GetCurrentSectionValue(string tab)
+        => string.Equals(selectedTab, tab, StringComparison.Ordinal) ? "page" : null;
 
     private string SelectedPanelTestId => $"patient-profile-panel-{selectedTab}";
+
+    private string SelectedSectionLabel => selectedTab switch
+    {
+        "notes" => "Patient notes",
+        "documents" => "Patient documents",
+        "communications" => "Patient communications",
+        _ => "Patient timeline"
+    };
 
     private bool TryGetPatientId(out Guid patientId)
         => Guid.TryParse(Patient.Id, out patientId);

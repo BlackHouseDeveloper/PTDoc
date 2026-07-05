@@ -19,7 +19,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
     }
 
     [Fact]
-    public void TimelineAndNotesTabs_UseStableTabSemanticsAndPanels()
+    public void TimelineAndNotesSections_UseStableNavigationSemanticsAndPanels()
     {
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
             .Add(component => component.Patient, CreatePatient())
@@ -47,13 +47,11 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
             }));
 
         var tabList = cut.Find("[data-testid='patient-profile-tabs']");
-        Assert.Equal("tablist", tabList.GetAttribute("role"));
-        Assert.Equal("tab", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("role"));
-        Assert.Equal("tab", cut.Find("[data-testid='patient-profile-tab-documents']").GetAttribute("role"));
-        Assert.Equal("tab", cut.Find("[data-testid='patient-profile-tab-communications']").GetAttribute("role"));
-        Assert.Equal("true", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-selected"));
-        Assert.Equal("patient-profile-panel-current", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-controls"));
-        Assert.Equal("tabpanel", cut.Find("[data-testid='patient-profile-panel-timeline']").GetAttribute("role"));
+        Assert.Null(tabList.GetAttribute("role"));
+        Assert.Empty(tabList.QuerySelectorAll("[role='tab']"));
+        Assert.Equal("page", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-current"));
+        Assert.Equal("region", cut.Find("[data-testid='patient-profile-panel-timeline']").GetAttribute("role"));
+        Assert.Equal("Patient timeline", cut.Find("[data-testid='patient-profile-panel-timeline']").GetAttribute("aria-label"));
         Assert.Equal("patient-profile-panel-current", cut.Find("[data-testid='patient-profile-panel-timeline']").Id);
         Assert.Contains("Evaluation signed", cut.Markup, StringComparison.Ordinal);
 
@@ -61,10 +59,9 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Equal("false", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-selected"));
-            Assert.Equal("true", cut.Find("[data-testid='patient-profile-tab-notes']").GetAttribute("aria-selected"));
-            Assert.Equal("patient-profile-panel-current", cut.Find("[data-testid='patient-profile-tab-notes']").GetAttribute("aria-controls"));
-            Assert.Equal("patient-profile-tab-notes", cut.Find("[data-testid='patient-profile-panel-notes']").GetAttribute("aria-labelledby"));
+            Assert.Null(cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-current"));
+            Assert.Equal("page", cut.Find("[data-testid='patient-profile-tab-notes']").GetAttribute("aria-current"));
+            Assert.Equal("Patient notes", cut.Find("[data-testid='patient-profile-panel-notes']").GetAttribute("aria-label"));
             Assert.Equal("patient-profile-panel-current", cut.Find("[data-testid='patient-profile-panel-notes']").Id);
             Assert.Contains("Daily", cut.Markup, StringComparison.Ordinal);
         });
@@ -80,8 +77,8 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Equal("true", cut.Find("[data-testid='patient-profile-tab-documents']").GetAttribute("aria-selected"));
-            Assert.Equal("patient-profile-tab-documents", cut.Find("[data-testid='patient-profile-panel-documents']").GetAttribute("aria-labelledby"));
+            Assert.Equal("page", cut.Find("[data-testid='patient-profile-tab-documents']").GetAttribute("aria-current"));
+            Assert.Equal("Patient documents", cut.Find("[data-testid='patient-profile-panel-documents']").GetAttribute("aria-label"));
             Assert.Contains("Patient Documents", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Insurance card", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Upload document", cut.Markup, StringComparison.Ordinal);
@@ -93,8 +90,8 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Equal("true", cut.Find("[data-testid='patient-profile-tab-communications']").GetAttribute("aria-selected"));
-            Assert.Equal("patient-profile-tab-communications", cut.Find("[data-testid='patient-profile-panel-communications']").GetAttribute("aria-labelledby"));
+            Assert.Equal("page", cut.Find("[data-testid='patient-profile-tab-communications']").GetAttribute("aria-current"));
+            Assert.Equal("Patient communications", cut.Find("[data-testid='patient-profile-panel-communications']").GetAttribute("aria-label"));
             Assert.Contains("Communication Log", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Portal", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("No patient communications have been logged", cut.Markup, StringComparison.Ordinal);
@@ -175,7 +172,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Equal("true", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-selected"));
+            Assert.Equal("page", cut.Find("[data-testid='patient-profile-tab-timeline']").GetAttribute("aria-current"));
             Assert.DoesNotContain("first-patient-private-document.pdf", cut.Markup, StringComparison.Ordinal);
         });
 
@@ -390,7 +387,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Equal("true", cut.Find("[data-testid='patient-profile-tab-documents']").GetAttribute("aria-selected"));
+            Assert.Equal("page", cut.Find("[data-testid='patient-profile-tab-documents']").GetAttribute("aria-current"));
             Assert.Contains("Patient Documents", cut.Markup, StringComparison.Ordinal);
             Assert.Equal(
                 $"/patient/{patient.Id}?tab=documents",

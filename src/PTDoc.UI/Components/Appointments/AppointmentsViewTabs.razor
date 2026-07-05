@@ -1,22 +1,20 @@
 @* Today/Week View Tabs Component *@
 
 <div class="appointments-view-tabs">
-    <div class="tab-list" role="tablist" aria-label="Appointment view">
+    <nav class="tab-list" aria-label="Appointment view">
         <a href="/appointments?dateRange=today"
            class="tab-button @(SelectedView == AppointmentsView.Today ? "selected" : "")"
-           role="tab"
-           aria-selected="@(SelectedView == AppointmentsView.Today ? "true" : "false")"
+           aria-current="@(SelectedView == AppointmentsView.Today ? "page" : null)"
            @onclick="SelectTodayView">
             Today
         </a>
         <a href="/appointments?dateRange=week"
            class="tab-button @(SelectedView == AppointmentsView.Week ? "selected" : "")"
-           role="tab"
-           aria-selected="@(SelectedView == AppointmentsView.Week ? "true" : "false")"
+           aria-current="@(SelectedView == AppointmentsView.Week ? "page" : null)"
            @onclick="SelectWeekView">
             Week View
         </a>
-    </div>
+    </nav>
 </div>
 
 @code {

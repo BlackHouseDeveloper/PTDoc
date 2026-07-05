@@ -53,8 +53,8 @@ async function gotoPatientChart(page: import('@playwright/test').Page) {
 }
 
 async function openDocumentsTab(page: import('@playwright/test').Page) {
-  await page.getByRole('tab', { name: 'Documents' }).click();
-  await expect(page.getByRole('tabpanel', { name: 'Documents' })).toBeVisible();
+  await page.getByRole('link', { name: 'Documents' }).click();
+  await expect(page.getByRole('region', { name: 'Patient documents' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Patient Documents' })).toBeVisible();
 }
 

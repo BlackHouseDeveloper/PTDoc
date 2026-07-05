@@ -60,7 +60,7 @@ test.describe('PTDoc audit remediation QA', () => {
     await page.goto('/appointments');
     await page.waitForLoadState('domcontentloaded');
 
-    const weekView = page.getByRole('tab', { name: 'Week View' });
+    const weekView = page.getByRole('link', { name: 'Week View' });
     await expect(weekView).toHaveAttribute('href', '/appointments?dateRange=week');
     await weekView.click();
 
@@ -97,8 +97,8 @@ test.describe('PTDoc audit remediation QA', () => {
     await expect(page.getByTestId('patient-primary-action')).toHaveAttribute('href', /\/patient\/[^?]+\?action=new-note$/);
 
     for (const tabName of ['Notes', 'Documents', 'Communications']) {
-      await page.getByRole('tab', { name: tabName }).click();
-      await expect(page.getByRole('tabpanel', { name: tabName })).toBeVisible();
+      await page.getByRole('link', { name: tabName }).click();
+      await expect(page.getByRole('region', { name: new RegExp(`Patient ${tabName.toLowerCase()}`, 'i') })).toBeVisible();
       await expect(page).toHaveURL(new RegExp(`\\/patient\\/[^?]+\\?tab=${tabName.toLowerCase()}$`));
     }
 
@@ -149,7 +149,11 @@ test.describe('PTDoc audit remediation QA', () => {
     if (await continueButton.isEnabled()) {
       await continueButton.click();
       await expect(page.getByText('Select a pain severity score before continuing.')).toBeVisible();
-      await page.locator("input[type='range'][aria-label='Pain severity from 0 to 10']").fill('0');
+      const slider = page.locator("input[type='range'][aria-label='Pain severity from 0 to 10']");
+      await slider.evaluate(element => {
+        (element as HTMLInputElement).value = '0';
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+      });
       await continueButton.click();
       await expect(page.getByText('Select a pain severity score before continuing.')).toHaveCount(0);
     }

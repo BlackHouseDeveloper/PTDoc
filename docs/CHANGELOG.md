@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Live audit PR review follow-up** — Aligned appointment view-tab loading with route-default date/filter state and added in-flight guards for patient document and communication tab loads. Reason: validated review feedback identified stale appointment-window loads and duplicate route-backed patient chart fetch risk.
 - **Live audit PR review follow-up** — Resolved relative login redirects before static-asset fallback assertions, made route-backed patient and profile state reset when query parameters are removed, reapplied patient chart initial tabs after patient changes, and moved Insurance & Authorization out of the ARIA tablist. Reason: validated review feedback identified brittle redirect assertions, sticky route-backed UI state, and tablist semantics drift.
 - **Live audit PR review follow-up** — Reloaded appointments when route query changes alter the appointment load window and reset week grouping to the route default when `groupBy` is absent. Reason: validated review feedback identified stale route-backed appointment data and grouping state drift.
+- **Live audit PR review follow-up** — Changed route-backed appointment and patient chart section controls from ARIA tabs to current-page links and made the Playwright intake pain-severity check update the range input through an input event. Reason: validated review feedback identified mismatched link/tab semantics and flaky range-input filling.
 
 ### Fixed - AI prognosis PR review follow-up
 
