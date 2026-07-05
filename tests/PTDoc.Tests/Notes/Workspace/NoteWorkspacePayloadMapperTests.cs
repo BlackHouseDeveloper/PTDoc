@@ -62,6 +62,66 @@ public sealed class NoteWorkspacePayloadMapperTests
     }
 
     [Fact]
+    public void MapToUiPayload_ClonesTrimmedSymptomFrequencyKeysWithoutDuplicateKeyFailure()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Subjective = new WorkspaceSubjectiveV2
+            {
+                SymptomFrequencies = new Dictionary<string, string>
+                {
+                    ["Pain"] = "Constant",
+                    [" Pain "] = "Only with activity"
+                }
+            }
+        };
+
+        var uiPayload = _mapper.MapToUiPayload(payload);
+
+        var frequency = Assert.Single(uiPayload.Subjective.SymptomFrequencies);
+        Assert.Equal("Pain", frequency.Key);
+        Assert.Equal("Only with activity", frequency.Value);
+    }
+
+    [Fact]
+    public void MapToUiPayload_TrimsBlankOtherPostureFinding()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Objective = new WorkspaceObjectiveV2
+            {
+                PostureObservation = new PostureObservationV2
+                {
+                    Other = "   "
+                }
+            }
+        };
+
+        var uiPayload = _mapper.MapToUiPayload(payload);
+
+        Assert.Null(uiPayload.Objective.OtherPostureFinding);
+    }
+
+    [Fact]
+    public void MapToUiPayload_UsesDefaultBillingSettingsWhenPayloadOmitsThem()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            BillingSettings = null!
+        };
+        var defaults = new WorkspaceBillingSettingsV2();
+
+        var uiPayload = _mapper.MapToUiPayload(payload);
+
+        Assert.Equal(defaults.ModifierWorkflowEnabled, uiPayload.BillingSettings.ModifierWorkflowEnabled);
+        Assert.Equal(defaults.AutoApplySuggestedModifiers, uiPayload.BillingSettings.AutoApplySuggestedModifiers);
+        Assert.Equal(defaults.RequireSuggestedModifierReview, uiPayload.BillingSettings.RequireSuggestedModifierReview);
+    }
+
+    [Fact]
     public void MapToUiPayload_NormalizesCptModifierSource()
     {
         var payload = new NoteWorkspaceV2Payload
@@ -124,6 +184,26 @@ public sealed class NoteWorkspacePayloadMapperTests
         var result = _mapper.MapToV2Payload(uiPayload, NoteType.Evaluation);
 
         Assert.Equal(CptSource, Assert.Single(result.Plan.SelectedCptCodes).ModifierSource);
+    }
+
+    [Fact]
+    public void MapToV2Payload_TrimsOtherPostureFinding()
+    {
+        var uiPayload = new NoteWorkspacePayload
+        {
+            StructuredPayload = new NoteWorkspaceV2Payload(),
+            Objective = new ObjectiveVm
+            {
+                OtherPostureFinding = "  Forward trunk lean  "
+            },
+            Subjective = new SubjectiveVm(),
+            Assessment = new AssessmentWorkspaceVm(),
+            Plan = new PlanVm()
+        };
+
+        var result = _mapper.MapToV2Payload(uiPayload, NoteType.Evaluation);
+
+        Assert.Equal("Forward trunk lean", result.Objective.PostureObservation.Other);
     }
 
     [Fact]
@@ -199,6 +279,194 @@ public sealed class NoteWorkspacePayloadMapperTests
         Assert.Equal("Basement laundry", roundTrippedUiPayload.Subjective.OtherLivingSituation);
         Assert.Contains("Zestril / Lisinopril", roundTrippedUiPayload.Subjective.SelectedMedicationLabels);
         Assert.Equal("Fish oil", roundTrippedUiPayload.Subjective.MedicationDetails);
+    }
+
+    [Fact]
+    public void MapToV2Payload_RoundTripsEvaluationCleanupFields()
+    {
+        var uiPayload = new NoteWorkspacePayload
+        {
+            WorkspaceNoteType = "Evaluation Note",
+            StructuredPayload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Evaluation
+            },
+            Subjective = new SubjectiveVm
+            {
+                SelectedBodyPart = "Knee",
+                Problems = ["Pain"],
+                PainDescriptors = ["Achy", "Sharp"],
+                OtherPainDescriptor = "Radiating",
+                PainFrequency = "Intermittent",
+                SymptomFrequencies = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["Pain"] = "Only with specific activities"
+                },
+                SymptomTimeOfDay = ["Morning", "Night"],
+                HasImaging = true,
+                ImagingModalities = ["MRI", "Other"],
+                OtherImagingModality = "Diagnostic ultrasound report",
+                ImagingFindings = "Mild tendinopathy."
+            },
+            Objective = new ObjectiveVm
+            {
+                SelectedBodyPart = "Knee",
+                IsGaitUnremarkable = true,
+                IsPostureUnremarkable = true,
+                IsPalpationUnremarkable = true,
+                PalpationComments = "No focal tenderness.",
+                Metrics =
+                [
+                    new ObjectiveMetricRowEntry
+                    {
+                        Name = "Knee flexion 0-135",
+                        BodyPart = "Knee",
+                        MetricType = MetricType.ROM,
+                        Value = "120",
+                        PreviousValue = "110",
+                        NormValue = "0-135"
+                    }
+                ]
+            },
+            Assessment = new AssessmentWorkspaceVm
+            {
+                AssessmentNarrative = "Evaluation assessment.",
+                FindingsSummary = "Key findings summary.",
+                OverallPrognosis = "Good - significant improvement expected",
+                PrognosisNarrative = "Expected to progress with plan of care."
+            },
+            Plan = new PlanVm(),
+            BillingSettings = new BillingModifierSettingsVm
+            {
+                ModifierWorkflowEnabled = true,
+                AutoApplySuggestedModifiers = false,
+                RequireSuggestedModifierReview = true
+            }
+        };
+
+        var structuredPayload = _mapper.MapToV2Payload(uiPayload, NoteType.Evaluation);
+
+        Assert.Contains("Achy", structuredPayload.Subjective.PainDescriptors);
+        Assert.Equal("Radiating", structuredPayload.Subjective.OtherPainDescriptor);
+        Assert.Equal("Only with specific activities", structuredPayload.Subjective.SymptomFrequencies["Pain"]);
+        Assert.Contains("Morning", structuredPayload.Subjective.SymptomTimeOfDay);
+        Assert.True(structuredPayload.Subjective.Imaging.HasImaging);
+        Assert.Contains("MRI", structuredPayload.Subjective.Imaging.Modalities);
+        Assert.Equal("Diagnostic ultrasound report", structuredPayload.Subjective.Imaging.OtherModality);
+        Assert.Equal("Mild tendinopathy.", structuredPayload.Subjective.Imaging.Findings);
+        Assert.True(structuredPayload.Objective.GaitObservation.IsNormal);
+        Assert.True(structuredPayload.Objective.PostureObservation.IsNormal);
+        Assert.True(structuredPayload.Objective.PalpationObservation.IsNormal);
+        Assert.Equal("No focal tenderness.", structuredPayload.Objective.PalpationObservation.Other);
+        var metric = Assert.Single(structuredPayload.Objective.Metrics);
+        Assert.Equal(BodyPart.Knee, metric.BodyPart);
+        Assert.Equal("110", metric.PreviousValue);
+        Assert.Equal("0-135", metric.NormValue);
+        Assert.Equal("Key findings summary.", structuredPayload.Assessment.FindingsSummary);
+        Assert.Equal("Expected to progress with plan of care.", structuredPayload.Assessment.PrognosisNarrative);
+        Assert.False(structuredPayload.BillingSettings.AutoApplySuggestedModifiers);
+
+        var roundTrippedUiPayload = _mapper.MapToUiPayload(structuredPayload);
+
+        Assert.Contains("Sharp", roundTrippedUiPayload.Subjective.PainDescriptors);
+        Assert.Equal("Only with specific activities", roundTrippedUiPayload.Subjective.SymptomFrequencies["Pain"]);
+        Assert.Contains("Night", roundTrippedUiPayload.Subjective.SymptomTimeOfDay);
+        Assert.Contains("Other", roundTrippedUiPayload.Subjective.ImagingModalities);
+        Assert.Equal("Mild tendinopathy.", roundTrippedUiPayload.Subjective.ImagingFindings);
+        Assert.True(roundTrippedUiPayload.Objective.IsGaitUnremarkable);
+        Assert.True(roundTrippedUiPayload.Objective.IsPostureUnremarkable);
+        Assert.True(roundTrippedUiPayload.Objective.IsPalpationUnremarkable);
+        Assert.Equal("No focal tenderness.", roundTrippedUiPayload.Objective.PalpationComments);
+        Assert.Null(Assert.Single(roundTrippedUiPayload.Objective.Metrics).BodyPart);
+        Assert.Equal("Key findings summary.", roundTrippedUiPayload.Assessment.FindingsSummary);
+        Assert.Equal("Expected to progress with plan of care.", roundTrippedUiPayload.Assessment.PrognosisNarrative);
+        Assert.False(roundTrippedUiPayload.BillingSettings.AutoApplySuggestedModifiers);
+    }
+
+    [Fact]
+    public void MapToV2Payload_BlankMetricBodyPartResetsToPrimaryBodyPart()
+    {
+        var uiPayload = new NoteWorkspacePayload
+        {
+            WorkspaceNoteType = "Evaluation Note",
+            StructuredPayload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Evaluation,
+                Objective = new WorkspaceObjectiveV2
+                {
+                    PrimaryBodyPart = BodyPart.Knee,
+                    Metrics =
+                    [
+                        new ObjectiveMetricInputV2
+                        {
+                            Name = "Shoulder flexion",
+                            BodyPart = BodyPart.Shoulder,
+                            MetricType = MetricType.ROM,
+                            Value = "120"
+                        }
+                    ]
+                }
+            },
+            Subjective = new SubjectiveVm
+            {
+                SelectedBodyPart = "Knee"
+            },
+            Objective = new ObjectiveVm
+            {
+                SelectedBodyPart = "Knee",
+                Metrics =
+                [
+                    new ObjectiveMetricRowEntry
+                    {
+                        Name = "Shoulder flexion",
+                        BodyPart = string.Empty,
+                        MetricType = MetricType.ROM,
+                        Value = "120"
+                    }
+                ]
+            },
+            Assessment = new AssessmentWorkspaceVm(),
+            Plan = new PlanVm()
+        };
+
+        var structuredPayload = _mapper.MapToV2Payload(uiPayload, NoteType.Evaluation);
+
+        Assert.Equal(BodyPart.Knee, Assert.Single(structuredPayload.Objective.Metrics).BodyPart);
+    }
+
+    [Fact]
+    public void MapToUiPayload_PrimaryMetricBodyPartRendersAsPrimaryFallback()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Objective = new WorkspaceObjectiveV2
+            {
+                PrimaryBodyPart = BodyPart.Knee,
+                Metrics =
+                [
+                    new ObjectiveMetricInputV2
+                    {
+                        Name = "Knee flexion",
+                        BodyPart = BodyPart.Knee,
+                        MetricType = MetricType.ROM,
+                        Value = "120"
+                    },
+                    new ObjectiveMetricInputV2
+                    {
+                        Name = "Shoulder flexion",
+                        BodyPart = BodyPart.Shoulder,
+                        MetricType = MetricType.ROM,
+                        Value = "150"
+                    }
+                ]
+            }
+        };
+
+        var result = _mapper.MapToUiPayload(payload);
+
+        Assert.Null(result.Objective.Metrics[0].BodyPart);
+        Assert.Equal(BodyPart.Shoulder.ToString(), result.Objective.Metrics[1].BodyPart);
     }
 
     [Fact]

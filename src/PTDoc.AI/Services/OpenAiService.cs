@@ -131,6 +131,55 @@ public sealed class OpenAiService : IAiService
         }
     }
 
+    public async Task<AiResult> GeneratePrognosisAsync(AiPrognosisRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        try
+        {
+            var model = ResolveModelIdentifier();
+            var deployment = ResolveAzureDeployment();
+            var prompt = await BuildPrognosisPromptAsync(request, cancellationToken);
+
+            _logger.LogInformation(
+                "Generating AI prognosis with model label {ModelLabel}, Azure deployment {AzureDeployment}, template version {Version}",
+                model,
+                deployment ?? "not-configured",
+                TemplateVersion);
+
+            var generatedText = await GenerateTextAsync(prompt, () => GenerateMockPrognosis(request), cancellationToken);
+
+            return new AiResult
+            {
+                Success = true,
+                GeneratedText = generatedText,
+                Metadata = new AiPromptMetadata
+                {
+                    TemplateVersion = TemplateVersion,
+                    Model = model,
+                    GeneratedAtUtc = DateTime.UtcNow,
+                    TokenCount = EstimateTokenCount(generatedText)
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate AI prognosis");
+            return new AiResult
+            {
+                Success = false,
+                GeneratedText = string.Empty,
+                ErrorMessage = "AI generation failed. Please try again or contact support.",
+                Metadata = new AiPromptMetadata
+                {
+                    TemplateVersion = TemplateVersion,
+                    Model = ResolveModelIdentifier(),
+                    GeneratedAtUtc = DateTime.UtcNow
+                }
+            };
+        }
+    }
+
     public async Task<AiResult> GenerateGoalsAsync(AiGoalsRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -252,6 +301,80 @@ public sealed class OpenAiService : IAiService
         return prompt;
     }
 
+    private async Task<string> BuildPrognosisPromptAsync(AiPrognosisRequest request, CancellationToken cancellationToken)
+    {
+        var templatePath = Path.Combine(AppContext.BaseDirectory, "Prompts", "Prognosis", $"{TemplateVersion}.txt");
+        var template = await File.ReadAllTextAsync(templatePath, cancellationToken);
+
+        var prompt = template.Replace("{Diagnosis}", Sanitize(request.Diagnosis));
+        prompt = string.Join(
+            Environment.NewLine,
+            prompt,
+            string.Empty,
+            $"Selected Body Part: {Sanitize(request.SelectedBodyPart)}",
+            "Use only the selected body part and structured fields provided. Do not generate for any other body part.",
+            "Generate prognosis only. Do not write plan-of-care interventions, CPT codes, visit frequency, or HEP instructions.");
+
+        if (!string.IsNullOrWhiteSpace(request.AssessmentSummary))
+            prompt = prompt.Replace("{AssessmentSummary:Assessment Summary: {0}}", $"Assessment Summary: {Sanitize(request.AssessmentSummary)}");
+        else
+            prompt = prompt.Replace("{AssessmentSummary:Assessment Summary: {0}}", string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(request.FindingsSummary))
+            prompt = prompt.Replace("{FindingsSummary:Findings Summary: {0}}", $"Findings Summary: {Sanitize(request.FindingsSummary)}");
+        else
+            prompt = prompt.Replace("{FindingsSummary:Findings Summary: {0}}", string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(request.SubjectiveSummary))
+            prompt = prompt.Replace("{SubjectiveSummary:Subjective Summary: {0}}", $"Subjective Summary: {Sanitize(request.SubjectiveSummary)}");
+        else
+            prompt = prompt.Replace("{SubjectiveSummary:Subjective Summary: {0}}", string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(request.ObjectiveSummary))
+            prompt = prompt.Replace("{ObjectiveSummary:Objective Summary: {0}}", $"Objective Summary: {Sanitize(request.ObjectiveSummary)}");
+        else
+            prompt = prompt.Replace("{ObjectiveSummary:Objective Summary: {0}}", string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(request.FunctionalLimitations))
+            prompt = prompt.Replace("{FunctionalLimitations:Functional Limitations: {0}}", $"Functional Limitations: {Sanitize(request.FunctionalLimitations)}");
+        else
+            prompt = prompt.Replace("{FunctionalLimitations:Functional Limitations: {0}}", string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(request.Goals))
+            prompt = prompt.Replace("{Goals:Patient Goals: {0}}", $"Patient Goals: {Sanitize(request.Goals)}");
+        else
+            prompt = prompt.Replace("{Goals:Patient Goals: {0}}", string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(request.Comorbidities))
+            prompt = prompt.Replace("{Comorbidities:Comorbidities/Clinical Factors: {0}}", $"Comorbidities/Clinical Factors: {Sanitize(request.Comorbidities)}");
+        else
+            prompt = prompt.Replace("{Comorbidities:Comorbidities/Clinical Factors: {0}}", string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(request.SupportContext))
+            prompt = prompt.Replace("{SupportContext:Support Context: {0}}", $"Support Context: {Sanitize(request.SupportContext)}");
+        else
+            prompt = prompt.Replace("{SupportContext:Support Context: {0}}", string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(request.Barriers))
+            prompt = prompt.Replace("{Barriers:Barriers/Precautions: {0}}", $"Barriers/Precautions: {Sanitize(request.Barriers)}");
+        else
+            prompt = prompt.Replace("{Barriers:Barriers/Precautions: {0}}", string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(request.PriorLevelOfFunction))
+            prompt = prompt.Replace("{PriorLevelOfFunction:Prior Level of Function: {0}}", $"Prior Level of Function: {Sanitize(request.PriorLevelOfFunction)}");
+        else
+            prompt = prompt.Replace("{PriorLevelOfFunction:Prior Level of Function: {0}}", string.Empty);
+
+        if (!string.IsNullOrWhiteSpace(request.CurrentLevelOfFunction))
+            prompt = prompt.Replace("{CurrentLevelOfFunction:Current Level of Function: {0}}", $"Current Level of Function: {Sanitize(request.CurrentLevelOfFunction)}");
+        else
+            prompt = prompt.Replace("{CurrentLevelOfFunction:Current Level of Function: {0}}", string.Empty);
+
+        prompt = AppendStructuredInputs(prompt, "Structured Prognosis Inputs", request.StructuredInputs, request.SelectedBodyPart);
+
+        return prompt;
+    }
+
     private static string GenerateMockAssessment(AiAssessmentRequest request)
     {
         var sb = new StringBuilder();
@@ -292,6 +415,52 @@ public sealed class OpenAiService : IAiService
         sb.AppendLine("- Improved functional mobility");
         sb.AppendLine("- Return to prior level of function");
 
+        return sb.ToString();
+    }
+
+    private static string GenerateMockPrognosis(AiPrognosisRequest request)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("PROGNOSIS:");
+        if (!string.IsNullOrWhiteSpace(request.SelectedBodyPart))
+            sb.AppendLine($"Selected body part: {Sanitize(request.SelectedBodyPart)}.");
+        sb.AppendLine($"Diagnosis: {Sanitize(request.Diagnosis)}.");
+
+        var factors = new List<string>();
+        if (!string.IsNullOrWhiteSpace(request.FunctionalLimitations))
+            factors.Add($"functional limitations with {Sanitize(request.FunctionalLimitations)}");
+        if (!string.IsNullOrWhiteSpace(request.Goals))
+            factors.Add($"documented goals of {Sanitize(request.Goals)}");
+        if (!string.IsNullOrWhiteSpace(request.SupportContext))
+            factors.Add($"support context of {Sanitize(request.SupportContext)}");
+        if (!string.IsNullOrWhiteSpace(request.Barriers))
+            factors.Add($"recovery barriers including {Sanitize(request.Barriers)}");
+
+        if (factors.Count == 0)
+        {
+            sb.AppendLine("Patient prognosis is expected to be fair to good based on available clinical information and response to skilled physical therapy.");
+        }
+        else
+        {
+            sb.AppendLine($"Prognosis is expected to be fair to good based on {string.Join(", ", factors)}.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.PriorLevelOfFunction)
+            && !string.IsNullOrWhiteSpace(request.CurrentLevelOfFunction))
+        {
+            sb.AppendLine(
+                $"Recovery potential should be interpreted against prior function ({Sanitize(request.PriorLevelOfFunction)}) and current function ({Sanitize(request.CurrentLevelOfFunction)}).");
+        }
+        else if (!string.IsNullOrWhiteSpace(request.PriorLevelOfFunction))
+        {
+            sb.AppendLine($"Recovery potential should be interpreted against prior function ({Sanitize(request.PriorLevelOfFunction)}).");
+        }
+        else if (!string.IsNullOrWhiteSpace(request.CurrentLevelOfFunction))
+        {
+            sb.AppendLine($"Recovery potential should be interpreted against current function ({Sanitize(request.CurrentLevelOfFunction)}).");
+        }
+
+        sb.AppendLine("Expected recovery may improve with consistent participation, appropriate support, and measurable progress toward functional goals.");
         return sb.ToString();
     }
 
@@ -344,7 +513,7 @@ public sealed class OpenAiService : IAiService
             result = result.Replace(token, string.Empty, StringComparison.OrdinalIgnoreCase);
         }
 
-        return System.Text.RegularExpressions.Regex.Replace(result, @"\s{2,}", " ");
+        return System.Text.RegularExpressions.Regex.Replace(result, @"\s{2,}", " ").Trim();
     }
 
     private async Task<string> BuildGoalsPromptAsync(AiGoalsRequest request, CancellationToken cancellationToken)

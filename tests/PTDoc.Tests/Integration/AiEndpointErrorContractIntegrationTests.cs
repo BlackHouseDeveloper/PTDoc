@@ -20,6 +20,7 @@ public sealed class AiEndpointErrorContractIntegrationTests
     [Theory]
     [InlineData("/api/v1/ai/assessment", """{"noteId":"11111111-1111-1111-1111-111111111111","chiefComplaint":"Shoulder pain","selectedBodyPart":"Shoulder"}""")]
     [InlineData("/api/v1/ai/plan", """{"noteId":"11111111-1111-1111-1111-111111111111","diagnosis":"Lumbar strain","selectedBodyPart":"Lumbar"}""")]
+    [InlineData("/api/v1/ai/prognosis", """{"noteId":"11111111-1111-1111-1111-111111111111","diagnosis":"Lumbar strain","selectedBodyPart":"Lumbar"}""")]
     [InlineData("/api/v1/ai/goals", """{"noteId":"11111111-1111-1111-1111-111111111111","diagnosis":"Lumbar strain","functionalLimitations":"Walking"}""")]
     public async Task AiEndpoints_WhenFeatureDisabled_ReturnStructured403(string path, string payload)
     {
@@ -217,6 +218,136 @@ public sealed class AiEndpointErrorContractIntegrationTests
 
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
             await AssertErrorResponseAsync(response, "Select a body part before generating AI content.", "ai_body_part_required");
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task PrognosisEndpoint_WhenDiagnosisMissing_ReturnsStructured400()
+    {
+        using var env = CreateAiEnabledEnvironment();
+
+        var factory = new PtDocApiFactory();
+        try
+        {
+            await factory.InitializeAsync();
+            using var client = factory.CreateClientWithRole(Roles.PT);
+
+            using var response = await client.PostAsync(
+                "/api/v1/ai/prognosis",
+                CreateJson("""{"noteId":"11111111-1111-1111-1111-111111111111","diagnosis":"   ","selectedBodyPart":"Lumbar"}"""));
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            await AssertErrorResponseAsync(response, "Diagnosis is required", "ai_request_invalid");
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task PrognosisEndpoint_WhenBodyPartMissing_ReturnsStructured400()
+    {
+        using var env = CreateAiEnabledEnvironment();
+
+        var factory = new PtDocApiFactory();
+        try
+        {
+            await factory.InitializeAsync();
+            using var client = factory.CreateClientWithRole(Roles.PT);
+
+            using var response = await client.PostAsync(
+                "/api/v1/ai/prognosis",
+                CreateJson("""{"noteId":"11111111-1111-1111-1111-111111111111","diagnosis":"Lumbar strain","selectedBodyPart":"Other"}"""));
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            await AssertErrorResponseAsync(response, "Select a body part before generating AI content.", "ai_body_part_required");
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task PrognosisEndpoint_WhenProviderFailsWithoutMetadata_ReturnsStructured500()
+    {
+        using var env = CreateAiEnabledEnvironment();
+
+        var factory = new PtDocApiFactory();
+        try
+        {
+            await factory.InitializeAsync();
+            var noteId = await SeedNoteAsync(factory, isSigned: false);
+
+            using (var scope = factory.Services.CreateScope())
+            {
+                var aiService = scope.ServiceProvider.GetRequiredService<IAiService>();
+                Mock.Get(aiService)
+                    .Setup(service => service.GeneratePrognosisAsync(It.IsAny<AiPrognosisRequest>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(new AiResult
+                    {
+                        GeneratedText = string.Empty,
+                        Success = false,
+                        ErrorMessage = "AI generation failed. Please try again or contact support.",
+                        Metadata = null!
+                    });
+            }
+
+            using var client = factory.CreateClientWithRole(Roles.PT);
+            using var response = await client.PostAsync(
+                "/api/v1/ai/prognosis",
+                CreateJson($$"""{"noteId":"{{noteId}}","diagnosis":"Lumbar strain","selectedBodyPart":"Lumbar"}"""));
+
+            Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+            await AssertErrorResponseAsync(response, "AI generation failed. Please try again or contact support.", "ai_generation_failed");
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task PrognosisEndpoint_WhenProviderSucceedsWithoutMetadata_ReturnsFallbackMetadata()
+    {
+        using var env = CreateAiEnabledEnvironment();
+
+        var factory = new PtDocApiFactory();
+        try
+        {
+            await factory.InitializeAsync();
+            var noteId = await SeedNoteAsync(factory, isSigned: false);
+
+            using (var scope = factory.Services.CreateScope())
+            {
+                var aiService = scope.ServiceProvider.GetRequiredService<IAiService>();
+                Mock.Get(aiService)
+                    .Setup(service => service.GeneratePrognosisAsync(It.IsAny<AiPrognosisRequest>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(new AiResult
+                    {
+                        GeneratedText = "Expected to progress with skilled PT.",
+                        Success = true,
+                        Metadata = null!
+                    });
+            }
+
+            using var client = factory.CreateClientWithRole(Roles.PT);
+            using var response = await client.PostAsync(
+                "/api/v1/ai/prognosis",
+                CreateJson($$"""{"noteId":"{{noteId}}","diagnosis":"Lumbar strain","selectedBodyPart":"Lumbar"}"""));
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var root = payload.RootElement;
+            Assert.Equal("Expected to progress with skilled PT.", root.GetProperty("generatedText").GetString());
+            Assert.Equal("unknown", root.GetProperty("metadata").GetProperty("templateVersion").GetString());
+            Assert.Equal("unknown", root.GetProperty("metadata").GetProperty("model").GetString());
+            Assert.Equal(0, root.GetProperty("metadata").GetProperty("tokenCount").GetInt32());
         }
         finally
         {

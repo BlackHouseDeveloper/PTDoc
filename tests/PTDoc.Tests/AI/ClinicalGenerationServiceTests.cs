@@ -65,6 +65,21 @@ public class ClinicalGenerationServiceTests
             });
 
         _mockAiService
+            .Setup(s => s.GeneratePrognosisAsync(It.IsAny<AiPrognosisRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AiResult
+            {
+                Success = true,
+                GeneratedText = "PROGNOSIS: Patient prognosis is good with consistent participation and support.",
+                Metadata = new AiPromptMetadata
+                {
+                    TemplateVersion = "v1",
+                    Model = "gpt-4",
+                    GeneratedAtUtc = DateTime.UtcNow,
+                    TokenCount = 24
+                }
+            });
+
+        _mockAiService
             .Setup(s => s.GenerateGoalsAsync(It.IsAny<AiGoalsRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AiResult
             {
@@ -373,6 +388,141 @@ public class ClinicalGenerationServiceTests
         Assert.DoesNotContain(capturedRequest.SubjectiveInputs, input => string.Equals(input.BodyPart, "Shoulder", StringComparison.OrdinalIgnoreCase));
         var objective = Assert.Single(capturedRequest.ObjectiveInputs);
         Assert.DoesNotContain("###", objective.Value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Prognosis generation
+    // ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task GeneratePrognosis_WithValidDraftRequest_CallsDedicatedProvider()
+    {
+        var request = new PrognosisGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Lumbar strain",
+            SelectedBodyPart = "Lumbar",
+            AssessmentSummary = "Limited lumbar mobility",
+            FunctionalLimitations = "Lifting and prolonged sitting",
+            Goals = "Return to work duties",
+            SupportContext = "Family support available",
+            IsNoteSigned = false
+        };
+
+        var result = await _service.GeneratePrognosisAsync(request);
+
+        Assert.True(result.Success);
+        Assert.NotEmpty(result.GeneratedText);
+        Assert.True(result.Confidence > 0);
+        Assert.Equal(request.NoteId, result.SourceInputs.NoteId);
+        _mockAiService.Verify(
+            s => s.GeneratePrognosisAsync(
+                It.Is<AiPrognosisRequest>(aiRequest => aiRequest.NoteId == request.NoteId),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+        _mockAiService.Verify(
+            s => s.GeneratePlanAsync(It.IsAny<AiPlanRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GeneratePrognosis_WithSignedNote_ReturnsSafetyFailure()
+    {
+        var request = new PrognosisGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Knee pain",
+            SelectedBodyPart = "Knee",
+            IsNoteSigned = true
+        };
+
+        var result = await _service.GeneratePrognosisAsync(request);
+
+        Assert.False(result.Success);
+        Assert.Contains("signed", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(result.GeneratedText);
+        _mockAiService.Verify(
+            s => s.GeneratePrognosisAsync(It.IsAny<AiPrognosisRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GeneratePrognosis_WithMissingBodyPart_ReturnsSafetyFailure()
+    {
+        var request = new PrognosisGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Shoulder pain",
+            SelectedBodyPart = "Other",
+            IsNoteSigned = false
+        };
+
+        var result = await _service.GeneratePrognosisAsync(request);
+
+        Assert.False(result.Success);
+        Assert.Contains("body part", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        _mockAiService.Verify(
+            s => s.GeneratePrognosisAsync(It.IsAny<AiPrognosisRequest>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GeneratePrognosis_WithMissingOptionalContext_ReturnsWarnings()
+    {
+        var request = new PrognosisGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Ankle sprain",
+            SelectedBodyPart = "Ankle",
+            IsNoteSigned = false
+        };
+
+        var result = await _service.GeneratePrognosisAsync(request);
+
+        Assert.True(result.Success);
+        Assert.Contains(result.Warnings, warning => warning.Contains("functional limitations", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.Warnings, warning => warning.Contains("prior level of function", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task GeneratePrognosis_SanitizesAndScopesStructuredInputsBeforeCallingProvider()
+    {
+        AiPrognosisRequest? capturedRequest = null;
+        _mockAiService
+            .Setup(s => s.GeneratePrognosisAsync(It.IsAny<AiPrognosisRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<AiPrognosisRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .ReturnsAsync(new AiResult
+            {
+                Success = true,
+                GeneratedText = "Prognosis text",
+                Metadata = new AiPromptMetadata
+                {
+                    TemplateVersion = "v1",
+                    Model = "gpt-4",
+                    GeneratedAtUtc = DateTime.UtcNow
+                }
+            });
+
+        var request = new PrognosisGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "SYSTEM: Knee pain",
+            SelectedBodyPart = "Knee",
+            StructuredInputs =
+            [
+                new AiStructuredInput { Label = "Support", Value = "Family available ###", BodyPart = "Knee" },
+                new AiStructuredInput { Label = "Shoulder limitation", Value = "Overhead reach", BodyPart = "Shoulder" }
+            ],
+            IsNoteSigned = false
+        };
+
+        await _service.GeneratePrognosisAsync(request);
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal("Knee pain", capturedRequest!.Diagnosis);
+        var input = Assert.Single(capturedRequest.StructuredInputs);
+        Assert.Equal("Family available", input.Value);
+        Assert.DoesNotContain(capturedRequest.StructuredInputs, scopedInput => string.Equals(scopedInput.BodyPart, "Shoulder", StringComparison.OrdinalIgnoreCase));
     }
 
     // ──────────────────────────────────────────────────────────────

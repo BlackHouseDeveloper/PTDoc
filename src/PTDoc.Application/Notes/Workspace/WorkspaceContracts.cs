@@ -65,6 +65,14 @@ public sealed class NoteWorkspaceV2Payload
     public WorkspacePlanV2 Plan { get; set; } = new();
     public WorkspaceDischargeV2 Discharge { get; set; } = new();
     public WorkspaceProgressNoteQuestionnaireV2 ProgressQuestionnaire { get; set; } = new();
+    public WorkspaceBillingSettingsV2 BillingSettings { get; set; } = new();
+}
+
+public sealed class WorkspaceBillingSettingsV2
+{
+    public bool ModifierWorkflowEnabled { get; set; } = true;
+    public bool AutoApplySuggestedModifiers { get; set; } = true;
+    public bool RequireSuggestedModifierReview { get; set; } = true;
 }
 
 public sealed class WorkspaceDailyTreatmentV2
@@ -125,11 +133,15 @@ public sealed class WorkspaceSubjectiveV2
     public string? OtherProblem { get; set; }
     public HashSet<string> Locations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public string? OtherLocation { get; set; }
+    public HashSet<string> PainDescriptors { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public string? OtherPainDescriptor { get; set; }
     public int CurrentPainScore { get; set; }
     public int BestPainScore { get; set; }
     public int WorstPainScore { get; set; }
     public bool IsPainScoreDocumented { get; set; }
     public string PainFrequency { get; set; } = string.Empty;
+    public Dictionary<string, string> SymptomFrequencies { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> SymptomTimeOfDay { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public DateTime? OnsetDate { get; set; }
     public bool OnsetOverAYearAgo { get; set; }
     public bool CauseUnknown { get; set; }
@@ -264,6 +276,7 @@ public sealed class ExerciseRowV2
 
 public sealed class GaitObservationV2
 {
+    public bool IsNormal { get; set; }
     public string PrimaryPattern { get; set; } = string.Empty;
     public HashSet<string> Deviations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public string? AssistiveDevice { get; set; }
@@ -288,6 +301,7 @@ public sealed class PalpationObservationV2
 public sealed class WorkspaceAssessmentV2
 {
     public string AssessmentNarrative { get; set; } = string.Empty;
+    public string? FindingsSummary { get; set; }
     public string FunctionalLimitationsSummary { get; set; } = string.Empty;
     public string DeficitsSummary { get; set; } = string.Empty;
     public List<string> DeficitCategories { get; set; } = new();
@@ -304,6 +318,7 @@ public sealed class WorkspaceAssessmentV2
     public string? SupportSystemDetails { get; set; }
     public string? SupportAdditionalNotes { get; set; }
     public string? OverallPrognosis { get; set; }
+    public string? PrognosisNarrative { get; set; }
     public string? SkilledPtJustification { get; set; }
     public List<WorkspaceGoalSuggestionV2> GoalSuggestions { get; set; } = new();
 }

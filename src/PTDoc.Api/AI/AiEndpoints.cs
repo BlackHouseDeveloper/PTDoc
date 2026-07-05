@@ -40,6 +40,11 @@ public static class AiEndpoints
             .WithSummary("Generate AI plan of care text")
             .WithDescription("Stateless AI generation - does NOT save to database");
 
+        group.MapPost("/prognosis", GeneratePrognosis)
+            .WithName("GeneratePrognosis")
+            .WithSummary("Generate AI prognosis text")
+            .WithDescription("Stateless AI generation - does NOT save to database");
+
         group.MapPost("/goals", GenerateGoals)
             .WithName("GenerateGoals")
             .WithSummary("Generate AI goal narratives")
@@ -240,6 +245,89 @@ public static class AiEndpoints
                 model = result.Metadata.Model,
                 generatedAt = result.Metadata.GeneratedAtUtc,
                 tokenCount = result.Metadata.TokenCount
+            }
+        });
+    }
+
+    private static async Task<IResult> GeneratePrognosis(
+        [FromBody] AiPrognosisRequest request,
+        [FromServices] IAiService aiService,
+        [FromServices] IAuditService auditService,
+        [FromServices] IConfiguration configuration,
+        [FromServices] PTDoc.Infrastructure.Data.ApplicationDbContext db,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        using var _ = BeginAiScope(httpContext, "Prognosis", request.NoteId);
+
+        var enableAi = configuration.GetValue<bool>("FeatureFlags:EnableAiGeneration", false);
+        if (!enableAi)
+        {
+            return EndpointError(
+                httpContext,
+                StatusCodes.Status403Forbidden,
+                "AI generation is currently disabled.",
+                AiFeatureDisabledCode);
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Diagnosis))
+        {
+            return EndpointError(
+                httpContext,
+                StatusCodes.Status400BadRequest,
+                "Diagnosis is required",
+                AiRequestInvalidCode);
+        }
+
+        if (!HasConcreteBodyPart(request.SelectedBodyPart))
+        {
+            return EndpointError(
+                httpContext,
+                StatusCodes.Status400BadRequest,
+                "Select a body part before generating AI content.",
+                AiBodyPartRequiredCode);
+        }
+
+        var validationFailure = await ValidateDraftNoteAsync(request.NoteId, db, httpContext, cancellationToken);
+        if (validationFailure is not null)
+        {
+            return validationFailure;
+        }
+
+        var result = await aiService.GeneratePrognosisAsync(request, cancellationToken);
+
+        var currentUserId = TryGetCurrentUserId(httpContext);
+        if (currentUserId is Guid userGuid)
+        {
+            var auditEvent = AuditEvent.AiGenerationAttempt(
+                noteId: request.NoteId,
+                generationType: "Prognosis",
+                model: result.Metadata?.Model ?? "unknown",
+                userId: userGuid,
+                success: result.Success,
+                errorMessage: result.Success ? null : result.ErrorMessage);
+            auditEvent.Metadata["TokenCount"] = result.Metadata?.TokenCount ?? 0;
+            await auditService.LogAiGenerationAttemptAsync(auditEvent, cancellationToken);
+        }
+
+        if (!result.Success)
+        {
+            return EndpointError(
+                httpContext,
+                StatusCodes.Status500InternalServerError,
+                result.ErrorMessage ?? "AI generation failed. Please try again or contact support.",
+                AiGenerationFailedCode);
+        }
+
+        return Results.Ok(new
+        {
+            generatedText = result.GeneratedText,
+            metadata = new
+            {
+                templateVersion = result.Metadata?.TemplateVersion ?? "unknown",
+                model = result.Metadata?.Model ?? "unknown",
+                generatedAt = result.Metadata?.GeneratedAtUtc,
+                tokenCount = result.Metadata?.TokenCount ?? 0
             }
         });
     }

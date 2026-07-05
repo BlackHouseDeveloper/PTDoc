@@ -386,6 +386,13 @@
                 </svg>
                 <h3 class="aws-card__title">Prognosis</h3>
             </div>
+            @if (!IsReadOnly)
+            {
+                <AiGenerateButton ButtonLabel="AI Suggest"
+                                  IsGenerating="@_isGeneratingPrognosis"
+                                  OnGenerate="HandleAiSuggestPrognosisAsync"
+                                  TestId="ai-suggest-prognosis-btn" />
+            }
         </div>
         <p class="aws-card__subtitle">Expected outcome based on clinical findings, motivation, and support</p>
 
@@ -414,14 +421,45 @@
                 <li>✓ Response to initial treatment</li>
             </ul>
         </div>
+
+        <label class="aws-card__field-label" for="prognosis-narrative">AI prognosis narrative / clinician notes</label>
+        <textarea id="prognosis-narrative"
+                  class="aws-card__textarea"
+                  rows="3"
+                  placeholder="Summarize prognosis drivers, expected progress, barriers, and support context..."
+                  disabled="@IsReadOnly"
+                  value="@Vm.PrognosisNarrative"
+                  @onchange="e => SetAndNotify(vm => vm.PrognosisNarrative = e.Value?.ToString())"></textarea>
+        @if (!string.IsNullOrWhiteSpace(_prognosisGenerationError))
+        {
+            <p class="aws-card__empty-hint" role="alert">@_prognosisGenerationError</p>
+        }
+    </div>
+
+    <div class="aws-card" data-testid="findings-summary-card">
+        <div class="aws-card__header">
+            <div>
+                <h3 class="aws-card__title">Findings Summary</h3>
+                <p class="aws-card__subtitle">Bottom-line clinical findings paragraph for the Evaluation assessment.</p>
+            </div>
+        </div>
+        <textarea id="findings-summary"
+                  class="aws-card__textarea"
+                  rows="4"
+                  placeholder="Summarize key subjective and objective findings that support the assessment..."
+                  disabled="@IsReadOnly"
+                  value="@Vm.FindingsSummary"
+                  @onchange="e => SetAndNotify(vm => vm.FindingsSummary = e.Value?.ToString())"></textarea>
     </div>
 
 </section>
 
 @code {
     private bool _isGeneratingGoals;
+    private bool _isGeneratingPrognosis;
     private string _icdSearchQuery = string.Empty;
     private string? _goalGenerationError;
+    private string? _prognosisGenerationError;
     private bool _isSearchingIcd;
     private string? _icdLookupError;
     private List<CodeLookupEntry> _icdResults = [];
@@ -607,6 +645,149 @@
             _isGeneratingGoals = false;
         }
     }
+
+    private async Task HandleAiSuggestPrognosisAsync()
+    {
+        if (IsReadOnly) return;
+
+        _isGeneratingPrognosis = true;
+        _prognosisGenerationError = null;
+        StateHasChanged();
+
+        try
+        {
+            var structuredInputs = SubjectiveInputs
+                .Concat(ObjectiveInputs)
+                .Concat(BuildAssessmentPrognosisInputs())
+                .ToList();
+
+            var result = await AiService.GeneratePrognosisAsync(new PrognosisGenerationRequest
+            {
+                NoteId = NoteId,
+                Diagnosis = BuildDiagnosisSummary(),
+                SelectedBodyPart = SelectedBodyPart,
+                AssessmentSummary = Vm.AssessmentNarrative,
+                FindingsSummary = Vm.FindingsSummary,
+                SubjectiveSummary = ChiefComplaint,
+                ObjectiveSummary = ExaminationFindings,
+                FunctionalLimitations = BuildFunctionalLimitationsSummary(),
+                Goals = string.Join("; ", Vm.Goals.Select(goal => goal.Description).Where(text => !string.IsNullOrWhiteSpace(text))),
+                Comorbidities = GetStructuredInputValue("Comorbid"),
+                SupportContext = BuildSupportContext(),
+                Barriers = string.Join("; ", Vm.BarriersToRecovery),
+                PriorLevelOfFunction = GetStructuredInputValue("Prior functional level"),
+                CurrentLevelOfFunction = GetStructuredInputValue("Current level of function") ?? BuildFunctionalLimitationsSummary(),
+                StructuredInputs = structuredInputs,
+                IsNoteSigned = IsReadOnly
+            });
+
+            if (!result.Success)
+            {
+                _prognosisGenerationError = result.ErrorMessage ?? "Unable to generate AI prognosis.";
+                ToastService.ShowError(_prognosisGenerationError, "AI generation failed");
+                return;
+            }
+
+            Vm.PrognosisNarrative = result.GeneratedText;
+            await VmChanged.InvokeAsync(Vm);
+            ToastService.ShowSuccess("AI prognosis generated. Review it before saving.", "AI generation complete");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Prognosis generation failed for note {NoteId}", NoteId);
+            _prognosisGenerationError = "Unable to generate AI prognosis.";
+            ToastService.ShowError(_prognosisGenerationError, "AI generation failed");
+        }
+        finally
+        {
+            _isGeneratingPrognosis = false;
+        }
+    }
+
+    private string? BuildSupportContext()
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(Vm.SupportSystemLevel))
+        {
+            parts.Add(Vm.SupportSystemLevel);
+        }
+
+        if (Vm.AvailableResources.Count > 0)
+        {
+            parts.Add(string.Join("; ", Vm.AvailableResources));
+        }
+
+        if (!string.IsNullOrWhiteSpace(Vm.SupportSystemDetails))
+        {
+            parts.Add(Vm.SupportSystemDetails);
+        }
+
+        if (!string.IsNullOrWhiteSpace(Vm.SupportAdditionalNotes))
+        {
+            parts.Add(Vm.SupportAdditionalNotes);
+        }
+
+        return parts.Count == 0 ? null : string.Join("; ", parts);
+    }
+
+    private string? GetStructuredInputValue(string label)
+    {
+        return SubjectiveInputs
+            .Concat(ObjectiveInputs)
+            .FirstOrDefault(input => input.Label.Contains(label, StringComparison.OrdinalIgnoreCase))
+            ?.Value;
+    }
+
+    private IEnumerable<AiStructuredInput> BuildAssessmentPrognosisInputs()
+    {
+        if (!string.IsNullOrWhiteSpace(Vm.AssessmentNarrative))
+        {
+            yield return BuildPrognosisInput("Assessment narrative", Vm.AssessmentNarrative);
+        }
+        if (!string.IsNullOrWhiteSpace(Vm.FunctionalLimitations))
+        {
+            yield return BuildPrognosisInput("Functional limitations", Vm.FunctionalLimitations);
+        }
+        if (!string.IsNullOrWhiteSpace(Vm.DeficitsSummary))
+        {
+            yield return BuildPrognosisInput("Objective-derived clinical deficits", Vm.DeficitsSummary);
+        }
+        if (!string.IsNullOrWhiteSpace(Vm.MotivationLevel))
+        {
+            yield return BuildPrognosisInput("Motivation", Vm.MotivationLevel);
+        }
+        if (Vm.MotivatingFactors.Count > 0)
+        {
+            yield return BuildPrognosisInput("Motivating factors", string.Join("; ", Vm.MotivatingFactors));
+        }
+        if (!string.IsNullOrWhiteSpace(Vm.PatientPersonalGoals))
+        {
+            yield return BuildPrognosisInput("Patient personal goals", Vm.PatientPersonalGoals);
+        }
+        if (!string.IsNullOrWhiteSpace(Vm.AdditionalMotivationNotes))
+        {
+            yield return BuildPrognosisInput("Motivation notes", Vm.AdditionalMotivationNotes);
+        }
+        if (!string.IsNullOrWhiteSpace(Vm.SupportSystemLevel))
+        {
+            yield return BuildPrognosisInput("Support", Vm.SupportSystemLevel);
+        }
+        if (Vm.AvailableResources.Count > 0)
+        {
+            yield return BuildPrognosisInput("Available resources", string.Join("; ", Vm.AvailableResources));
+        }
+        foreach (var barrier in Vm.BarriersToRecovery)
+        {
+            yield return BuildPrognosisInput("Barrier", barrier);
+        }
+    }
+
+    private AiStructuredInput BuildPrognosisInput(string label, string value) => new()
+    {
+        Label = label,
+        Value = value,
+        BodyPart = SelectedBodyPart
+    };
 
     private string BuildDiagnosisSummary()
     {
