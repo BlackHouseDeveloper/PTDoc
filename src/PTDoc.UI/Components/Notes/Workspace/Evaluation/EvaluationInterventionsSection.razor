@@ -127,15 +127,15 @@
                                 <div class="pt-card__cpt-units-row">
                                     <button type="button"
                                             class="pt-card__stepper"
-                                            aria-label="Decrease units"
-                                            title="Decrease units"
+                                            aria-label="@GetDecreaseUnitsLabel(entry)"
+                                            title="@GetDecreaseUnitsLabel(entry)"
                                             disabled="@(IsReadOnly || entry.Units <= 1)"
                                             @onclick="() => ChangeUnits(entry, -1)">-</button>
                                     <span class="pt-card__unit-value">@entry.Units</span>
                                     <button type="button"
                                             class="pt-card__stepper"
-                                            aria-label="Increase units"
-                                            title="Increase units"
+                                            aria-label="@GetIncreaseUnitsLabel(entry)"
+                                            title="@GetIncreaseUnitsLabel(entry)"
                                             disabled="@IsReadOnly"
                                             @onclick="() => ChangeUnits(entry, 1)">+</button>
                                     <span class="pt-card__unit-label">units</span>
@@ -823,6 +823,22 @@
     {
         entry.Units = Math.Max(1, entry.Units + delta);
         return PlanChanged.InvokeAsync(Plan);
+    }
+
+    private static string GetDecreaseUnitsLabel(UiCptCodeEntry entry) => $"Decrease units for {FormatCptLabel(entry)}";
+
+    private static string GetIncreaseUnitsLabel(UiCptCodeEntry entry) => $"Increase units for {FormatCptLabel(entry)}";
+
+    private static string FormatCptLabel(UiCptCodeEntry entry)
+    {
+        if (!string.IsNullOrWhiteSpace(entry.Code))
+        {
+            return $"CPT {entry.Code.Trim()}";
+        }
+
+        return string.IsNullOrWhiteSpace(entry.Description)
+            ? "selected CPT code"
+            : entry.Description.Trim();
     }
 
     private Task RemoveCptCode(UiCptCodeEntry entry) => RemoveSelectedCptCodeAsync(entry);

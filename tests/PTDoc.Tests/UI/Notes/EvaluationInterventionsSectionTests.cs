@@ -80,8 +80,8 @@ public sealed class EvaluationInterventionsSectionTests : TestContext
             .Add(component => component.IsReadOnly, false));
 
         Assert.NotEmpty(cut.FindAll("button[aria-label='Remove CPT code 97110']"));
-        Assert.NotEmpty(cut.FindAll("button[aria-label='Decrease units']"));
-        Assert.NotEmpty(cut.FindAll("button[aria-label='Increase units']"));
+        Assert.NotEmpty(cut.FindAll("button[aria-label='Decrease units for CPT 97110']"));
+        Assert.NotEmpty(cut.FindAll("button[aria-label='Increase units for CPT 97110']"));
         Assert.NotEmpty(cut.FindAll("button[aria-label='Remove intervention row']"));
         Assert.NotEmpty(cut.FindAll("button[aria-label='Remove general intervention']"));
     }
