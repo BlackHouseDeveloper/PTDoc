@@ -1,8 +1,7 @@
 @* Appointments Left Column - Composition Component *@
 
 <div class="appointments-left-column">
-    <AppointmentsViewTabs SelectedView="@SelectedView" 
-                          OnViewChanged="OnViewChanged" />
+    <AppointmentsViewTabs SelectedView="@SelectedView" />
 
     @if (SelectedView == AppointmentsView.Week)
     {
@@ -55,9 +54,6 @@
 @code {
     [Parameter]
     public AppointmentsView SelectedView { get; set; } = AppointmentsView.Today;
-
-    [Parameter]
-    public EventCallback<AppointmentsView> OnViewChanged { get; set; }
 
     [Parameter]
     public AppointmentsWeekGrouping WeekGrouping { get; set; } = AppointmentsWeekGrouping.Clinician;

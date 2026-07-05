@@ -4,14 +4,12 @@
     <nav class="tab-list" aria-label="Appointment view">
         <a href="/appointments?dateRange=today"
            class="tab-button @(SelectedView == AppointmentsView.Today ? "selected" : "")"
-           aria-current="@(SelectedView == AppointmentsView.Today ? "page" : null)"
-           @onclick="SelectTodayView">
+           aria-current="@(SelectedView == AppointmentsView.Today ? "page" : null)">
             Today
         </a>
         <a href="/appointments?dateRange=week"
            class="tab-button @(SelectedView == AppointmentsView.Week ? "selected" : "")"
-           aria-current="@(SelectedView == AppointmentsView.Week ? "page" : null)"
-           @onclick="SelectWeekView">
+           aria-current="@(SelectedView == AppointmentsView.Week ? "page" : null)">
             Week View
         </a>
     </nav>
@@ -20,23 +18,4 @@
 @code {
     [Parameter]
     public AppointmentsView SelectedView { get; set; } = AppointmentsView.Today;
-
-    [Parameter]
-    public EventCallback<AppointmentsView> OnViewChanged { get; set; }
-
-    private async Task SelectTodayView()
-    {
-        if (SelectedView != AppointmentsView.Today)
-        {
-            await OnViewChanged.InvokeAsync(AppointmentsView.Today);
-        }
-    }
-
-    private async Task SelectWeekView()
-    {
-        if (SelectedView != AppointmentsView.Week)
-        {
-            await OnViewChanged.InvokeAsync(AppointmentsView.Week);
-        }
-    }
 }

@@ -33,7 +33,6 @@
     {
         <div class="appointments-content" aria-busy="@isLoadingAppointments">
             <AppointmentsLeftColumn SelectedView="@selectedView"
-                                   OnViewChanged="HandleViewChanged"
                                    WeekGrouping="@weekGrouping"
                                    OnWeekGroupingChanged="HandleWeekGroupingChanged"
                                    SelectedDate="@selectedDate"
@@ -156,15 +155,6 @@
         {
             Logger.LogWarning(ex, "Failed to normalize the appointments route action URL.");
         }
-    }
-
-    private async Task HandleViewChanged(AppointmentsView view)
-    {
-        selectedView = view;
-        selectedDate = DateTime.Today;
-        showNeedsNoteOnly = false;
-        weekGrouping = AppointmentsWeekGrouping.Clinician;
-        await LoadAppointmentsAsync();
     }
 
     private void HandleWeekGroupingChanged(AppointmentsWeekGrouping grouping)

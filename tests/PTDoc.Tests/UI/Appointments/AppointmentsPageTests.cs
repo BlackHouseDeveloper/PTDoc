@@ -236,7 +236,8 @@ public sealed class AppointmentsPageTests : TestContext
 
         Assert.Equal("/appointments?dateRange=week", weekTab.GetAttribute("href"));
 
-        weekTab.Click();
+        Services.GetRequiredService<NavigationManager>().NavigateTo(weekTab.GetAttribute("href")!);
+        cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
 
         cut.WaitForAssertion(() =>
         {

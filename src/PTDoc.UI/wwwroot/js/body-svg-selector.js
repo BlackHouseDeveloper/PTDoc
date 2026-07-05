@@ -21,8 +21,12 @@ export function attachKeyboardGuards(root) {
 }
 
 export function detachKeyboardGuards(root) {
+  if (!root) {
+    return;
+  }
+
   const handler = guardedRoots.get(root);
-  if (!root || !handler) {
+  if (!handler) {
     return;
   }
 
