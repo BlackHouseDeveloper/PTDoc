@@ -45,6 +45,7 @@ public sealed class NoteWorkspacePayloadMapper
         var medicationSelections = _subjectiveCatalogNormalizer.ParseMedicationSelections(payload.Subjective.Medications);
         var selectedBodyPart = ResolveEffectiveSelectedBodyPart(payload);
         var structuredPayload = ClonePayload(payload);
+        var billingSettings = payload.BillingSettings ?? new WorkspaceBillingSettingsV2();
         NormalizePlannedCptCodeSources(structuredPayload?.Plan?.SelectedCptCodes);
 
         return new NoteWorkspacePayload
@@ -53,9 +54,9 @@ public sealed class NoteWorkspacePayloadMapper
             StructuredPayload = structuredPayload,
             BillingSettings = new BillingModifierSettingsVm
             {
-                ModifierWorkflowEnabled = payload.BillingSettings.ModifierWorkflowEnabled,
-                AutoApplySuggestedModifiers = payload.BillingSettings.AutoApplySuggestedModifiers,
-                RequireSuggestedModifierReview = payload.BillingSettings.RequireSuggestedModifierReview
+                ModifierWorkflowEnabled = billingSettings.ModifierWorkflowEnabled,
+                AutoApplySuggestedModifiers = billingSettings.AutoApplySuggestedModifiers,
+                RequireSuggestedModifierReview = billingSettings.RequireSuggestedModifierReview
             },
             DryNeedling = payload.DryNeedling is null
                 ? new DryNeedlingVm()

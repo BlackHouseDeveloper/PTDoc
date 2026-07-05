@@ -644,7 +644,10 @@
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "CPT lookup failed for evaluation interventions query {Query}", _cptSearchQuery);
+            Logger.LogWarning(
+                ex,
+                "CPT lookup failed for evaluation interventions CPT search (query length {QueryLength})",
+                _cptSearchQuery.Trim().Length);
             _cptLookupError = "Unable to search CPT codes.";
             _cptResults = [];
         }

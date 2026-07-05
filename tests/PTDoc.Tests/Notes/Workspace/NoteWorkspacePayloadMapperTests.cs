@@ -105,6 +105,23 @@ public sealed class NoteWorkspacePayloadMapperTests
     }
 
     [Fact]
+    public void MapToUiPayload_UsesDefaultBillingSettingsWhenPayloadOmitsThem()
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            BillingSettings = null!
+        };
+        var defaults = new WorkspaceBillingSettingsV2();
+
+        var uiPayload = _mapper.MapToUiPayload(payload);
+
+        Assert.Equal(defaults.ModifierWorkflowEnabled, uiPayload.BillingSettings.ModifierWorkflowEnabled);
+        Assert.Equal(defaults.AutoApplySuggestedModifiers, uiPayload.BillingSettings.AutoApplySuggestedModifiers);
+        Assert.Equal(defaults.RequireSuggestedModifierReview, uiPayload.BillingSettings.RequireSuggestedModifierReview);
+    }
+
+    [Fact]
     public void MapToUiPayload_NormalizesCptModifierSource()
     {
         var payload = new NoteWorkspaceV2Payload
