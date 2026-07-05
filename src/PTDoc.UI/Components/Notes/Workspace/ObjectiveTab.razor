@@ -338,7 +338,7 @@
                     Unremarkable
                 </label>
                 <div class="objective-tab__option-grid" data-testid="objective-posture-options">
-                    @foreach (var posture in PostureFindingOptions)
+                    @foreach (var posture in PostureOptions)
                     {
                         var isSelected = _vm.PostureFindings.Contains(posture);
                         <label class="objective-tab__checkbox-chip">
@@ -699,6 +699,12 @@
     private List<string> TenderMuscleOptions => _catalog?.TenderMuscleOptions
         .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
         .ToList() ?? [];
+
+    private List<string> PostureOptions => PostureFindingOptions
+        .Concat(_vm.PostureFindings.Where(value => !string.IsNullOrWhiteSpace(value)))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+        .ToList();
 
     private List<string> ExerciseOptions => _catalog?.ExerciseOptions
         .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)

@@ -328,6 +328,54 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
     }
 
     [Fact]
+    public void ObjectiveTab_RendersExistingCustomPostureFindings()
+    {
+        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var outcomeRegistry = new Mock<IOutcomeMeasureRegistry>(MockBehavior.Strict);
+        var vm = new ObjectiveVm
+        {
+            SelectedBodyPart = BodyPart.Knee.ToString()
+        };
+        vm.PostureFindings.Add("Legacy pelvic shift");
+
+        workspaceService
+            .Setup(service => service.GetBodyRegionCatalogAsync(BodyPart.Knee, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BodyRegionCatalog
+            {
+                BodyPart = BodyPart.Knee
+            });
+
+        outcomeRegistry
+            .Setup(registry => registry.GetMeasuresForBodyPart(BodyPart.Knee))
+            .Returns(Array.Empty<OutcomeMeasureDefinition>());
+
+        Services.AddLogging();
+        Services.AddSingleton(workspaceService.Object);
+        Services.AddSingleton(outcomeRegistry.Object);
+
+        var cut = RenderComponent<ObjectiveTab>(parameters => parameters
+            .Add(component => component.Vm, vm)
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<ObjectiveVm>(this, updated => vm = updated))
+            .Add(component => component.PatientId, Guid.NewGuid().ToString())
+            .Add(component => component.IsReadOnly, false));
+
+        var postureOptions = cut.Find("[data-testid='objective-posture-options']");
+        var customFindingInput = postureOptions
+            .QuerySelectorAll("label")
+            .First(label => label.TextContent.Contains("Legacy pelvic shift", StringComparison.Ordinal))
+            .QuerySelector("input");
+
+        Assert.NotNull(customFindingInput);
+        Assert.NotNull(customFindingInput.GetAttribute("checked"));
+
+        customFindingInput.Change(false);
+
+        cut.WaitForAssertion(() => Assert.DoesNotContain("Legacy pelvic shift", vm.PostureFindings));
+        workspaceService.VerifyAll();
+        outcomeRegistry.VerifyAll();
+    }
+
+    [Fact]
     public void ObjectiveTab_BlankMmtRowsDefaultToPrimaryBodyPartFallback()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
