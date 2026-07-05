@@ -155,6 +155,8 @@
     private async Task HandleViewChanged(AppointmentsView view)
     {
         selectedView = view;
+        selectedDate = DateTime.Today;
+        showNeedsNoteOnly = false;
         await LoadAppointmentsAsync();
     }
 

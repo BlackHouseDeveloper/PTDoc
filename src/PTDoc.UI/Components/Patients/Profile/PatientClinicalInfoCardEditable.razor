@@ -446,11 +446,11 @@
             selectedTab = InitialTab.ToLowerInvariant();
         }
 
-        if (selectedTab == "documents" && !HasLoadedDocuments)
+        if (selectedTab == "documents" && !HasLoadedDocuments && !IsLoadingDocuments)
         {
             await LoadDocumentsAsync();
         }
-        else if (selectedTab == "communications" && !HasLoadedCommunications)
+        else if (selectedTab == "communications" && !HasLoadedCommunications && !IsLoadingCommunications)
         {
             await LoadCommunicationsAsync();
         }
@@ -529,7 +529,7 @@
 
     private async Task LoadDocumentsAsync(bool force = false)
     {
-        if (!force && HasLoadedDocuments)
+        if (!force && (HasLoadedDocuments || IsLoadingDocuments))
         {
             return;
         }
@@ -594,7 +594,7 @@
 
     private async Task LoadCommunicationsAsync(bool force = false)
     {
-        if (!force && HasLoadedCommunications)
+        if (!force && (HasLoadedCommunications || IsLoadingCommunications))
         {
             return;
         }
