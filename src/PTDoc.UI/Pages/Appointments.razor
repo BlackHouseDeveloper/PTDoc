@@ -126,10 +126,16 @@
         await LoadAppointmentsAsync();
     }
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
-        ApplyRouteQuery();
+        var previousLoadWindow = GetAppointmentLoadWindow();
+        var queryChanged = ApplyRouteQuery();
         HandleRouteAction();
+
+        if (queryChanged && !previousLoadWindow.Equals(GetAppointmentLoadWindow()))
+        {
+            await LoadAppointmentsAsync();
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -157,6 +163,7 @@
         selectedView = view;
         selectedDate = DateTime.Today;
         showNeedsNoteOnly = false;
+        weekGrouping = AppointmentsWeekGrouping.Clinician;
         await LoadAppointmentsAsync();
     }
 
@@ -357,17 +364,18 @@
         shouldNormalizeRouteAction = true;
     }
 
-    private void ApplyRouteQuery()
+    private bool ApplyRouteQuery()
     {
         var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
         if (string.Equals(lastAppliedRouteQuery, uri.Query, StringComparison.Ordinal))
         {
-            return;
+            return false;
         }
 
         lastAppliedRouteQuery = uri.Query;
         showNeedsNoteOnly = TryGetQueryParameter(uri.Query, "needsNote", out var needsNote)
             && string.Equals(needsNote, "true", StringComparison.OrdinalIgnoreCase);
+        weekGrouping = AppointmentsWeekGrouping.Clinician;
 
         if (TryGetQueryParameter(uri.Query, "dateRange", out var dateRange))
         {
@@ -389,6 +397,7 @@
         }
 
         RebuildSchedulerState();
+        return true;
     }
 
     private void ApplyDateRangeQuery(string dateRange)
