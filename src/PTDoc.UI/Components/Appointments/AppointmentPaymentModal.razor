@@ -59,6 +59,7 @@
                 <button type="button"
                         class="appointment-payment-modal__primary AcceptUI"
                         disabled="@IsPayButtonDisabled"
+                        @onclick="HandlePaymentButtonClicked"
                         data-billingAddressOptions='{"show":true,"required":false}'
                         data-apiLoginID="@Configuration?.ApiLoginId"
                         data-clientKey="@Configuration?.ClientKey"
@@ -110,7 +111,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (IsOpen && !modalAccessibilityActive)
+        if (IsOpen && !modalAccessibilityActive && !isPaymentFormUnavailable)
         {
             try
             {
@@ -196,7 +197,16 @@
     {
         localErrorMessage = null;
         isPaymentFormUnavailable = false;
+        isTokenizing = false;
         await IsOpenChanged.InvokeAsync(false);
+    }
+
+    private void HandlePaymentButtonClicked()
+    {
+        if (!IsPayButtonDisabled)
+        {
+            isTokenizing = true;
+        }
     }
 
     private async Task CleanupModalAsync()

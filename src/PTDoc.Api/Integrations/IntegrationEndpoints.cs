@@ -26,7 +26,7 @@ public static class IntegrationEndpoints
         group.MapGet("/payment/configuration", GetPaymentConfiguration)
             .WithName("GetPaymentConfiguration")
             .WithSummary("Get client-safe payment configuration for Authorize.net AcceptUI")
-            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff);
+            .RequireAuthorization(AuthorizationPolicies.SchedulingAccess);
 
         group.MapPost("/payment/process", ProcessPaymentAsync)
             .WithName("ProcessPayment")

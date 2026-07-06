@@ -244,6 +244,7 @@ public class IntegrationServicesTests
             Assert.Equal("50.00", transactionRequest.GetProperty("amount").GetString());
             Assert.Equal("COMMON.ACCEPT.INAPP.PAYMENT", transactionRequest.GetProperty("payment").GetProperty("opaqueData").GetProperty("dataDescriptor").GetString());
             Assert.Equal("token123", transactionRequest.GetProperty("payment").GetProperty("opaqueData").GetProperty("dataValue").GetString());
+            Assert.Equal("CP-123", transactionRequest.GetProperty("order").GetProperty("invoiceNumber").GetString());
             Assert.DoesNotContain("cardNumber", requestBody, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("cardCode", requestBody, StringComparison.OrdinalIgnoreCase);
 
@@ -295,6 +296,58 @@ public class IntegrationServicesTests
         Assert.Equal("AUTH42", result.AuthorizationCode);
         Assert.Equal(50.00m, result.Amount);
         Assert.NotNull(requestBody);
+    }
+
+    [Fact]
+    public async Task PaymentService_ProcessPayment_TruncatesInvoiceNumberForGateway()
+    {
+        var config = CreateTestConfiguration(enabled: true);
+        string? invoiceNumber = null;
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            var requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+            using var document = JsonDocument.Parse(requestBody);
+            invoiceNumber = document.RootElement
+                .GetProperty("createTransactionRequest")
+                .GetProperty("transactionRequest")
+                .GetProperty("order")
+                .GetProperty("invoiceNumber")
+                .GetString();
+
+            return StubHttpMessageHandler.JsonResponse("""
+                {
+                  "transactionResponse": {
+                    "responseCode": "1",
+                    "authCode": "AUTH42",
+                    "transId": "60123456789"
+                  },
+                  "messages": {
+                    "resultCode": "Ok",
+                    "message": [
+                      {
+                        "code": "I00001",
+                        "text": "Successful."
+                      }
+                    ]
+                  }
+                }
+                """);
+        });
+        var service = new AuthorizeNetPaymentService(new MockHttpClientFactory(new HttpClient(handler)), config);
+
+        var result = await service.ProcessPaymentAsync(new PaymentRequest
+        {
+            OpaqueDataToken = "token123",
+            OpaqueDataDescriptor = "COMMON.ACCEPT.INAPP.PAYMENT",
+            Amount = 50.00m,
+            PatientId = Guid.NewGuid(),
+            AppointmentId = Guid.NewGuid(),
+            InvoiceNumber = "CP-123456789012345678901234567890"
+        });
+
+        Assert.True(result.Success);
+        Assert.Equal("CP-12345678901234567", invoiceNumber);
+        Assert.Equal(20, invoiceNumber!.Length);
     }
 
     [Fact]
@@ -385,6 +438,28 @@ public class IntegrationServicesTests
         Assert.Equal("E00003", result.ErrorCode);
         Assert.Equal("The element 'createTransactionRequest' has invalid child element.", result.ErrorMessage);
         Assert.Equal(50.00m, result.Amount);
+    }
+
+    [Fact]
+    public async Task PaymentService_ProcessPayment_UsesSafeMessageForGatewayTransportFailure()
+    {
+        var config = CreateTestConfiguration(enabled: true);
+        var handler = new StubHttpMessageHandler(_ => throw new HttpRequestException("upstream host leaked detail"));
+        var service = new AuthorizeNetPaymentService(new MockHttpClientFactory(new HttpClient(handler)), config);
+
+        var result = await service.ProcessPaymentAsync(new PaymentRequest
+        {
+            OpaqueDataToken = "token123",
+            OpaqueDataDescriptor = "COMMON.ACCEPT.INAPP.PAYMENT",
+            Amount = 50.00m,
+            PatientId = Guid.NewGuid(),
+            AppointmentId = Guid.NewGuid()
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("GATEWAY_REQUEST_FAILED", result.ErrorCode);
+        Assert.Equal("Payment gateway request failed", result.ErrorMessage);
+        Assert.DoesNotContain("upstream", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

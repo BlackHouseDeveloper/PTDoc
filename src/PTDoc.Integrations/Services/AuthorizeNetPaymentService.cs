@@ -106,12 +106,12 @@ public class AuthorizeNetPaymentService : IPaymentService
         {
             throw;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             return new PaymentResult
             {
                 Success = false,
-                ErrorMessage = $"Payment gateway request failed: {ex.Message}",
+                ErrorMessage = "Payment gateway request failed",
                 ErrorCode = "GATEWAY_REQUEST_FAILED",
                 ProcessedAt = DateTime.UtcNow,
                 Amount = request.Amount
@@ -171,9 +171,10 @@ public class AuthorizeNetPaymentService : IPaymentService
     private object BuildCreateTransactionPayload(PaymentRequest request)
     {
         var appointmentReference = request.AppointmentId?.ToString("N") ?? Guid.NewGuid().ToString("N");
-        var invoiceNumber = string.IsNullOrWhiteSpace(request.InvoiceNumber)
+        var trimmedInvoiceNumber = request.InvoiceNumber?.Trim();
+        var invoiceNumber = string.IsNullOrWhiteSpace(trimmedInvoiceNumber)
             ? appointmentReference[..Math.Min(20, appointmentReference.Length)]
-            : request.InvoiceNumber.Trim();
+            : trimmedInvoiceNumber[..Math.Min(20, trimmedInvoiceNumber.Length)];
 
         return new
         {

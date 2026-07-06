@@ -415,7 +415,8 @@ public static class AppointmentEndpoints
             return Results.NotFound(new { error = $"Patient {appointment.PatientId} not found." });
         }
 
-        if (await GetSuccessfulPaymentTransactionIdAsync(db, appointment.Id, cancellationToken) is { } existingTransactionId)
+        var existingTransactionId = await GetSuccessfulPaymentTransactionIdAsync(db, appointment.Id, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(existingTransactionId))
         {
             if (request.CheckInAfterPayment)
             {
@@ -512,7 +513,9 @@ public static class AppointmentEndpoints
         await db.AppointmentPaymentTransactions
             .AsNoTracking()
             .Where(payment => payment.AppointmentId == appointmentId
-                && payment.Status == AppointmentPaymentStatus.Succeeded)
+                && payment.Status == AppointmentPaymentStatus.Succeeded
+                && payment.TransactionId != null
+                && payment.TransactionId != string.Empty)
             .OrderByDescending(payment => payment.ProcessedAtUtc ?? payment.CreatedAtUtc)
             .Select(payment => payment.TransactionId)
             .FirstOrDefaultAsync(cancellationToken);
@@ -523,7 +526,8 @@ public static class AppointmentEndpoints
         Guid appointmentId,
         CancellationToken cancellationToken)
     {
-        if (await GetSuccessfulPaymentTransactionIdAsync(db, appointmentId, cancellationToken) is not null)
+        var successfulTransactionId = await GetSuccessfulPaymentTransactionIdAsync(db, appointmentId, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(successfulTransactionId))
         {
             return false;
         }
@@ -556,7 +560,7 @@ public static class AppointmentEndpoints
     }
 
     private static string BuildCopayInvoiceNumber(Guid appointmentId) =>
-        $"CP-{appointmentId:N}"[..23];
+        $"CP-{appointmentId:N}"[..20];
 
     private static bool IsPaymentConfigured(IConfiguration configuration) =>
         configuration.GetValue<bool>("Integrations:Payments:Enabled")
@@ -624,7 +628,9 @@ public static class AppointmentEndpoints
                 SuccessfulPaymentTransactionId = db.AppointmentPaymentTransactions
                     .AsNoTracking()
                     .Where(payment => payment.AppointmentId == appointment.Id
-                        && payment.Status == AppointmentPaymentStatus.Succeeded)
+                        && payment.Status == AppointmentPaymentStatus.Succeeded
+                        && payment.TransactionId != null
+                        && payment.TransactionId != string.Empty)
                     .OrderByDescending(payment => payment.ProcessedAtUtc ?? payment.CreatedAtUtc)
                     .Select(payment => payment.TransactionId)
                     .FirstOrDefault(),

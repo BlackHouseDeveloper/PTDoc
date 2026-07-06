@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Beta E2E testing plan
+
+- **Beta end-to-end testing plan** — Added a hosted-beta E2E plan covering environment gates, seeded roles, dashboard, appointments, patient chart, intake, SOAP documentation, payments, responsive/accessibility, regression coverage, PR verification, and release readiness. Reason: QA needs an execution-ready beta plan aligned to client feedback, live-audit findings, and recent PR intent without committing beta PINs or real patient data.
+
 ### Added - Patient check-in copay payments
 
 - **Authorize.net check-in payment flow** — Added tokenized AcceptUI copay collection during appointment check-in, appointment payment transaction persistence, client-safe payment configuration lookup, provider migrations for SQLite/SQL Server/PostgreSQL, payment-aware appointment projections, and focused API/service/UI tests. Reason: copay-required appointments now prompt for payment before check-in without storing card data in PTDoc.
+- **Authorize.net PR review follow-up** — Widened client-safe payment configuration access to scheduling roles, hardened gateway error/invoice handling, prevented repeated failed AcceptUI initialization, made AcceptUI script loading environment-aware, reset payment modal tokenization state on close, and required nonblank successful transaction ids before bypassing copay collection. Reason: validated PR review feedback identified front-desk payment-blocking authorization, gateway validation, user-safe error, and modal state edge cases.
 
 ### Changed - Agent and QA guidance for split audit remediation
 

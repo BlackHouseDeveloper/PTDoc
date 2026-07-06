@@ -315,7 +315,7 @@ public class AuthorizationCoverageTests
         new("DELETE", "/diagnostics/ai-faults", AuthorizationPolicies.AdminOnly),
 
         // ── Integrations (Integrations/IntegrationEndpoints.cs) ───────────────
-        new("GET",  "/api/v1/integrations/payment/configuration",                 AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v1/integrations/payment/configuration",                 AuthorizationPolicies.SchedulingAccess),
         new("POST", "/api/v1/integrations/payment/process",                         AuthorizationPolicies.ClinicalStaff),
         new("POST", "/api/v1/integrations/fax/send",                                AuthorizationPolicies.ClinicalStaff),
         new("POST", "/api/v1/integrations/hep/assign",                              AuthorizationPolicies.ClinicalStaff),

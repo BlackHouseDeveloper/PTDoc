@@ -4,7 +4,7 @@ const scriptUrls = {
 };
 
 const activeModals = new Map();
-let scriptPromise = null;
+const scriptPromises = new Map();
 
 function resolveScriptUrl(environment) {
   return String(environment || "").toLowerCase() === "production"
@@ -19,20 +19,25 @@ function loadScript(environment) {
     return Promise.resolve();
   }
 
-  if (scriptPromise) {
-    return scriptPromise;
+  const cachedPromise = scriptPromises.get(scriptUrl);
+  if (cachedPromise) {
+    return cachedPromise;
   }
 
-  scriptPromise = new Promise((resolve, reject) => {
+  const scriptPromise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.src = scriptUrl;
     script.async = true;
     script.dataset.ptdocAuthorizeNet = "true";
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Authorize.net AcceptUI script failed to load."));
+    script.onerror = () => {
+      scriptPromises.delete(scriptUrl);
+      reject(new Error("Authorize.net AcceptUI script failed to load."));
+    };
     document.head.appendChild(script);
   });
 
+  scriptPromises.set(scriptUrl, scriptPromise);
   return scriptPromise;
 }
 
