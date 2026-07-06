@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Agent and QA guidance for split audit remediation
+
+- **Repository guidance** — Updated agent-facing instructions, Copilot guidance, and ignored local QA/runtime artifacts. Reason: split workflow and QA documentation changes from the functional remediation PRs.
+
 ### Fixed - Live audit route, intake, notes, and accessibility hardening
 
 - **Live audit remediation** — Added route-backed `/dashboard` and protected fallback behavior, inline login validation, appointments needs-note/week grouping controls, intake pain severity/body-map accessibility, notes pagination, route-backed patient actions, ARIA link cleanup, and sanitized route-derived note logging. Reason: split the live UI audit remediation and PR review follow-up fixes into a focused reviewable PR.

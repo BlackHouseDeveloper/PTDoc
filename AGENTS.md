@@ -83,11 +83,29 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 
 - Install the separate Playwright browser QA project: `cd tests/PTDoc.Web.UiQa && npm install && npm run install:browsers`
 - Run the responsive browser suite against local Web/API hosts: `PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> npm run test:responsive`
+- Run the focused patient-document upload browser check: `PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> npm run test:patient-documents`
+- Run the focused audit-remediation browser checks: `PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> npm run test:audit-remediation`
 - Enable the viewport diagnostics overlay during a local Web run: `PTDOC_DEVELOPER_MODE=true dotnet run --project src/PTDoc.Web --urls http://localhost:5145`
+- Manual GitHub Actions browser run: use workflow `UI Responsive QA`; use `http://localhost:5145` to let the workflow boot local hosts, or point it at a deployed environment, with repo secrets `PTDOC_UI_QA_USERNAME` and `PTDOC_UI_QA_PIN`, plus optional repo variable `PTDOC_UI_QA_NOTE_WORKSPACE_PATH`.
 - Optional authenticated-session alternative: set `PTDOC_UI_QA_STORAGE_STATE` to a Playwright storage-state JSON file instead of credentials.
-- Optional seeded note-workspace coverage: set `PTDOC_UI_QA_NOTE_WORKSPACE_PATH=/patients/<patient-id>/notes/<note-id>`
+- Optional patient-chart override for the upload QA: set `PTDOC_UI_QA_PATIENT_CHART_PATH=/patient/<patient-id>` when a different seeded patient should be used.
+- Optional PT-role override for audit-remediation note-entry coverage: set `PTDOC_UI_QA_PT_USERNAME` and `PTDOC_UI_QA_PT_PIN`.
+- Optional intake-route override for audit-remediation coverage: set `PTDOC_UI_QA_INTAKE_PATH=/intake/<patient-id>` when a safe editable intake is available.
+- Optional seeded note-workspace coverage: set `PTDOC_UI_QA_NOTE_WORKSPACE_PATH=/patient/<patient-id>/notes/<note-id>`
+- Optional writable draft-note override for audit-remediation coverage: set `PTDOC_UI_QA_WRITABLE_NOTE_WORKSPACE_PATH=/patient/<patient-id>/notes/<note-id>` only for a safe PT-role draft note.
 - Optional viewport overlay toggle without the env var: add `?ptdocViewportDiagnostics=1` to enable it and `?ptdocViewportDiagnostics=0` to disable it on a fresh page load.
 - Browser QA artifacts are written under `tests/PTDoc.Web.UiQa/test-results/` and `tests/PTDoc.Web.UiQa/playwright-report/`; do not commit them.
+
+## Hosted Beta Workflows
+
+- Beta QA source of truth: `docs/BETA_QA.md`; beta deployment/runbook source of truth: `docs/deployment/BETA_DEPLOYMENT.md`.
+- Hosted beta URLs: Web `https://ptdoc.bhdevsites.com`, API `https://api-ptdoc.bhdevsites.com`.
+- Use `https://api-ptdoc.bhdevsites.com/health/live` for frequent availability probes and reserve `https://api-ptdoc.bhdevsites.com/health/ready` for deployment validation and pre-QA checks.
+- The shared beta PIN is managed outside the repo as `BetaAccess__SeedPin`; get it from the beta environment owner and never commit or paste it into issue text, screenshots, or chat logs.
+- `BetaAccess__AllowStartupSeed=true` is Beta-only and assumes the API App Service remains a controlled single-instance deployment; if scale-out is enabled, disable startup seeding first or verify the SQL lock-protected seed path after deployment.
+- Use the manual GitHub Actions workflows `Deploy Beta` for Azure beta deploys and `UI Responsive QA` for browser evidence outside the normal PR gate.
+- Beta restart order: apply EF Core migrations out-of-band, confirm `/health/ready`, restart the API with `ASPNETCORE_ENVIRONMENT=Beta`, then verify the logs show the seed completed or deliberately skipped.
+- Beta AI generation is disabled by default for cost control; if a beta pass deliberately enables it, use `Ai__RateLimits__PermitLimit` plus `Ai__RateLimits__WindowMinutes` for the committed rate-limit settings.
 
 ## Repo-Specific Environment Variables
 
@@ -102,10 +120,16 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - `PUBLIC_WEB_BASE_URL`: when set for `run-ptdoc.sh`, applies the public browser-reachable Web origin to both `IntakeInvite:PublicWebBaseUrl` and `Communication:PublicBaseUrl` for generated patient links during tunnel/device testing.
 - `DB_PROVIDER`: selects the database-provider smoke-test target (`sqlite`, `sqlserver`, or `postgres`) in `tests/PTDoc.Tests`.
 - `CI_DB_MIGRATIONS_ALREADY_APPLIED=true`: tells the provider smoke tests not to apply runtime migrations again after the SQL Server or PostgreSQL CI-style EF CLI migration step.
+- `BetaAccess__AllowStartupSeed`: enables the Beta-only startup seed path for hosted manual beta validation.
+- `BetaAccess__SeedPin`: shared beta access PIN configured outside the repo for seeded beta accounts.
 - `PTDOC_WEB_BASE_URL`: overrides the Playwright browser QA base URL and defaults to `http://localhost:5145`.
 - `PTDOC_UI_QA_USERNAME` and `PTDOC_UI_QA_PIN`: credentials used by the browser QA suite when a route requires sign-in.
 - `PTDOC_UI_QA_STORAGE_STATE`: Playwright storage-state file used instead of credentials for browser QA.
+- `PTDOC_UI_QA_PATIENT_CHART_PATH`: optional patient-chart route used by the focused patient-document upload Playwright check.
+- `PTDOC_UI_QA_PT_USERNAME` and `PTDOC_UI_QA_PT_PIN`: optional PT-role credentials used by the audit-remediation Playwright coverage for Start New Note flows.
+- `PTDOC_UI_QA_INTAKE_PATH`: optional editable intake route used by the audit-remediation Playwright coverage.
 - `PTDOC_UI_QA_NOTE_WORKSPACE_PATH`: optional seeded note-workspace route included in the responsive browser QA matrix.
+- `PTDOC_UI_QA_WRITABLE_NOTE_WORKSPACE_PATH`: optional safe PT-role draft note route used by the audit-remediation Playwright coverage for save/reload checks.
 - `PTDOC_UI_QA_CHROME_CHANNEL`: optional Chrome channel override for the browser QA Playwright project.
 - `FeatureFlags__EnableAiGeneration`: enables API-side AI draft generation.
 - `AzureOpenAIEndpoint`: base Azure OpenAI resource endpoint consumed by `src/PTDoc.Api`.
@@ -113,6 +137,8 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - `AzureOpenAIDeployment`: Azure OpenAI deployment name used for draft generation.
 - `AzureOpenAIApiVersion`: Azure OpenAI API version used by the API provider.
 - `Ai__MaxOutputTokens`: caps AI draft-generation output tokens.
+- `Ai__RateLimits__PermitLimit`: fixed-window permit limit for hosted AI generation.
+- `Ai__RateLimits__WindowMinutes`: AI generation rate-limit window length in minutes.
 
 ## Platform Notes
 
