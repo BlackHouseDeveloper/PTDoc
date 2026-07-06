@@ -391,6 +391,7 @@ public static class AppointmentEndpoints
         {
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
+                { nameof(request.OpaqueDataDescriptor), ["Payment authorization is required."] },
                 { nameof(request.OpaqueDataToken), ["Payment authorization is required."] }
             });
         }

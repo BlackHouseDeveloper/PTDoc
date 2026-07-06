@@ -230,6 +230,23 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
     }
 
     [Fact]
+    public async Task CheckInPayment_MissingOpaqueData_ReturnsFieldSpecificValidationErrors()
+    {
+        using var factory = CreatePaymentConfiguredFactory(new FixedPaymentService(new PaymentResult { Success = true }));
+        await EnsurePaymentFactoryDatabaseAsync(factory);
+
+        using var client = CreateClientWithRole(factory, Roles.FrontDesk);
+        using var response = await client.PostAsJsonAsync(
+            $"/api/v1/appointments/{Guid.NewGuid():D}/check-in-payment",
+            new AppointmentCheckInPaymentRequest());
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains(nameof(AppointmentCheckInPaymentRequest.OpaqueDataDescriptor), body, StringComparison.Ordinal);
+        Assert.Contains(nameof(AppointmentCheckInPaymentRequest.OpaqueDataToken), body, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task CheckInPayment_WhenPaymentSucceeds_RecordsTransactionAndChecksIn()
     {
         var gatewayTransactionId = new string('T', 130);
