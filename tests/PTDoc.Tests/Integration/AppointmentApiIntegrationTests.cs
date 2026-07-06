@@ -121,11 +121,13 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
     [Fact]
     public async Task CheckInPayment_WhenPaymentFails_RecordsFailureAndKeepsAppointmentScheduled()
     {
+        var gatewayErrorCode = new string('E', 90);
+        var gatewayErrorMessage = new string('M', 550);
         using var factory = CreatePaymentConfiguredFactory(new FixedPaymentService(new PaymentResult
         {
             Success = false,
-            ErrorCode = "2",
-            ErrorMessage = "This transaction has been declined.",
+            ErrorCode = gatewayErrorCode,
+            ErrorMessage = gatewayErrorMessage,
             Amount = 30m
         }));
         await EnsurePaymentFactoryDatabaseAsync(factory);
@@ -159,17 +161,20 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
 
         var transaction = await db.AppointmentPaymentTransactions.SingleAsync(payment => payment.AppointmentId == seeded.AppointmentId);
         Assert.Equal(AppointmentPaymentStatus.Failed, transaction.Status);
-        Assert.Equal("2", transaction.GatewayErrorCode);
+        Assert.Equal(gatewayErrorCode[..80], transaction.GatewayErrorCode);
+        Assert.Equal(gatewayErrorMessage[..500], transaction.GatewayErrorMessage);
     }
 
     [Fact]
     public async Task CheckInPayment_WhenPaymentSucceeds_RecordsTransactionAndChecksIn()
     {
+        var gatewayTransactionId = new string('T', 130);
+        var gatewayAuthorizationCode = new string('A', 90);
         using var factory = CreatePaymentConfiguredFactory(new FixedPaymentService(new PaymentResult
         {
             Success = true,
-            TransactionId = "60123456789",
-            AuthorizationCode = "AUTH42",
+            TransactionId = gatewayTransactionId,
+            AuthorizationCode = gatewayAuthorizationCode,
             Amount = 30m,
             ProcessedAt = DateTime.UtcNow
         }));
@@ -206,8 +211,8 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
 
         var transaction = await db.AppointmentPaymentTransactions.SingleAsync(payment => payment.AppointmentId == seeded.AppointmentId);
         Assert.Equal(AppointmentPaymentStatus.Succeeded, transaction.Status);
-        Assert.Equal("60123456789", transaction.TransactionId);
-        Assert.Equal("AUTH42", transaction.AuthorizationCode);
+        Assert.Equal(gatewayTransactionId[..120], transaction.TransactionId);
+        Assert.Equal(gatewayAuthorizationCode[..80], transaction.AuthorizationCode);
     }
 
     [Fact]

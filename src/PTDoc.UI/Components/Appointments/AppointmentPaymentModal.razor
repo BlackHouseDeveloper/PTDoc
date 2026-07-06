@@ -148,6 +148,10 @@
                     acceptUiInitialized = true;
                 }
             }
+            catch (JSDisconnectedException)
+            {
+                // The circuit can close while the modal is opening.
+            }
             catch (JSException)
             {
                 isPaymentFormUnavailable = true;

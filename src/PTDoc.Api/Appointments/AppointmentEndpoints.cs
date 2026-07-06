@@ -18,6 +18,10 @@ namespace PTDoc.Api.Appointments;
 public static class AppointmentEndpoints
 {
     private const string AppointmentOverbookingErrorCode = "APPOINTMENT_OVERBOOKING";
+    private const int PaymentTransactionIdMaxLength = 120;
+    private const int PaymentAuthorizationCodeMaxLength = 80;
+    private const int PaymentGatewayErrorCodeMaxLength = 80;
+    private const int PaymentGatewayErrorMessageMaxLength = 500;
     private static readonly string[] SchedulableClinicianRoles =
     [
         Roles.PT,
@@ -485,10 +489,10 @@ public static class AppointmentEndpoints
         }, cancellationToken);
 
         transaction.Status = paymentResult.Success ? AppointmentPaymentStatus.Succeeded : AppointmentPaymentStatus.Failed;
-        transaction.TransactionId = paymentResult.TransactionId;
-        transaction.AuthorizationCode = paymentResult.AuthorizationCode;
-        transaction.GatewayErrorCode = paymentResult.ErrorCode;
-        transaction.GatewayErrorMessage = paymentResult.ErrorMessage;
+        transaction.TransactionId = TruncatePaymentField(paymentResult.TransactionId, PaymentTransactionIdMaxLength);
+        transaction.AuthorizationCode = TruncatePaymentField(paymentResult.AuthorizationCode, PaymentAuthorizationCodeMaxLength);
+        transaction.GatewayErrorCode = TruncatePaymentField(paymentResult.ErrorCode, PaymentGatewayErrorCodeMaxLength);
+        transaction.GatewayErrorMessage = TruncatePaymentField(paymentResult.ErrorMessage, PaymentGatewayErrorMessageMaxLength);
         transaction.ProcessedAtUtc = paymentResult.ProcessedAt == default ? DateTime.UtcNow : paymentResult.ProcessedAt;
 
         if (paymentResult.Success && request.CheckInAfterPayment)
@@ -551,6 +555,16 @@ public static class AppointmentEndpoints
         }
 
         return await BuildPaymentInProgressResponseAsync(db, appointmentId, cancellationToken);
+    }
+
+    private static string? TruncatePaymentField(string? value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+        {
+            return value;
+        }
+
+        return value[..maxLength];
     }
 
     private static async Task<IResult> BuildPaymentInProgressResponseAsync(
