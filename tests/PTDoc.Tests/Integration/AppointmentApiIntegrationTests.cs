@@ -119,6 +119,31 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
     }
 
     [Fact]
+    public async Task CheckInAppointment_WithCopayDueAndPaymentsUnconfigured_ReturnsConfigurationError()
+    {
+        await EnsurePaymentFactoryDatabaseAsync(_factory);
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinician = await db.Users.SingleAsync(user => user.Username == "integration-pt");
+        var seeded = SeedAppointmentCase(
+            db,
+            clinician.Id,
+            $"PAY-{Guid.NewGuid():N}",
+            "Unconfigured",
+            new DateTime(2026, 7, 5, 14, 30, 0, DateTimeKind.Utc),
+            AppointmentStatus.Scheduled,
+            payerInfoJson: """{"copayAmount":"30.00"}""");
+        await db.SaveChangesAsync();
+
+        using var client = CreateClientWithRole(_factory, Roles.FrontDesk);
+        using var response = await client.PostAsync($"/api/v1/appointments/{seeded.AppointmentId}/check-in", content: null);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Copay collection is not configured for this appointment.", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task CheckInPayment_WhenPaymentFails_RecordsFailureAndKeepsAppointmentScheduled()
     {
         var gatewayErrorCode = new string('E', 90);
@@ -163,6 +188,45 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         Assert.Equal(AppointmentPaymentStatus.Failed, transaction.Status);
         Assert.Equal(gatewayErrorCode[..80], transaction.GatewayErrorCode);
         Assert.Equal(gatewayErrorMessage[..500], transaction.GatewayErrorMessage);
+    }
+
+    [Fact]
+    public async Task CheckInPayment_WhenPaymentServiceThrows_MarksTransactionFailed()
+    {
+        using var factory = CreatePaymentConfiguredFactory(new ThrowingPaymentService());
+        await EnsurePaymentFactoryDatabaseAsync(factory);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinician = await db.Users.SingleAsync(user => user.Username == "integration-pt");
+        var seeded = SeedAppointmentCase(
+            db,
+            clinician.Id,
+            $"PAY-{Guid.NewGuid():N}",
+            "GatewayException",
+            new DateTime(2026, 7, 5, 15, 30, 0, DateTimeKind.Utc),
+            AppointmentStatus.Scheduled,
+            payerInfoJson: """{"copayAmount":"30.00"}""");
+        await db.SaveChangesAsync();
+
+        using var client = CreateClientWithRole(factory, Roles.FrontDesk);
+        using var response = await client.PostAsJsonAsync(
+            $"/api/v1/appointments/{seeded.AppointmentId}/check-in-payment",
+            new AppointmentCheckInPaymentRequest
+            {
+                OpaqueDataDescriptor = "COMMON.ACCEPT.INAPP.PAYMENT",
+                OpaqueDataToken = "opaque-token"
+            });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<AppointmentCheckInPaymentResponse>();
+        Assert.NotNull(body);
+        Assert.False(body!.Payment.Success);
+        Assert.Equal("GATEWAY_REQUEST_FAILED", body.Payment.ErrorCode);
+
+        var transaction = await db.AppointmentPaymentTransactions.SingleAsync(payment => payment.AppointmentId == seeded.AppointmentId);
+        Assert.Equal(AppointmentPaymentStatus.Failed, transaction.Status);
+        Assert.Equal("GATEWAY_REQUEST_FAILED", transaction.GatewayErrorCode);
+        Assert.Equal("Payment gateway request failed", transaction.GatewayErrorMessage);
     }
 
     [Fact]
@@ -456,6 +520,32 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
             Task.FromResult(new PaymentResult
             {
                 Success = true,
+                TransactionId = transactionId,
+                ProcessedAt = DateTime.UtcNow
+            });
+    }
+
+    private sealed class ThrowingPaymentService : IPaymentService
+    {
+        public Task<PaymentResult> ProcessPaymentAsync(PaymentRequest request, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Gateway transport failed.");
+
+        public Task<PaymentResult> RefundPaymentAsync(string transactionId, decimal amount, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new PaymentResult
+            {
+                Success = false,
+                ErrorCode = "NOT_SUPPORTED",
+                ErrorMessage = "Refunds are not supported by this test service.",
+                Amount = amount,
+                ProcessedAt = DateTime.UtcNow
+            });
+
+        public Task<PaymentResult> GetTransactionDetailsAsync(string transactionId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new PaymentResult
+            {
+                Success = false,
+                ErrorCode = "NOT_SUPPORTED",
+                ErrorMessage = "Transaction lookup is not supported by this test service.",
                 TransactionId = transactionId,
                 ProcessedAt = DateTime.UtcNow
             });

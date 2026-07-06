@@ -360,7 +360,10 @@ public static class AppointmentEndpoints
 
         if (await IsCopayPaymentRequiredAsync(db, appointment.PatientId, appointment.Id, cancellationToken))
         {
-            return Results.UnprocessableEntity(new { error = "Copay payment is required before check-in." });
+            var error = IsPaymentConfigured(configuration)
+                ? "Copay payment is required before check-in."
+                : "Copay collection is not configured for this appointment.";
+            return Results.UnprocessableEntity(new { error });
         }
 
         if (appointment.Status != AppointmentStatus.CheckedIn
@@ -477,16 +480,28 @@ public static class AppointmentEndpoints
             return await BuildConcurrentPaymentResponseAsync(db, appointment.Id, request.CheckInAfterPayment, cancellationToken);
         }
 
-        var paymentResult = await paymentService.ProcessPaymentAsync(new PaymentRequest
+        PaymentResult paymentResult;
+        try
         {
-            AppointmentId = appointment.Id,
-            PatientId = patient.Id,
-            Amount = copayAmount.Value,
-            OpaqueDataDescriptor = request.OpaqueDataDescriptor.Trim(),
-            OpaqueDataToken = request.OpaqueDataToken.Trim(),
-            InvoiceNumber = transaction.InvoiceNumber,
-            Description = $"PTDoc copay for appointment {appointment.Id:D}"
-        }, cancellationToken);
+            paymentResult = await paymentService.ProcessPaymentAsync(new PaymentRequest
+            {
+                AppointmentId = appointment.Id,
+                PatientId = patient.Id,
+                Amount = copayAmount.Value,
+                OpaqueDataDescriptor = request.OpaqueDataDescriptor.Trim(),
+                OpaqueDataToken = request.OpaqueDataToken.Trim(),
+                InvoiceNumber = transaction.InvoiceNumber,
+                Description = $"PTDoc copay for appointment {appointment.Id:D}"
+            }, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            paymentResult = BuildPaymentGatewayFailure(copayAmount.Value, "GATEWAY_REQUEST_CANCELED");
+        }
+        catch (Exception)
+        {
+            paymentResult = BuildPaymentGatewayFailure(copayAmount.Value, "GATEWAY_REQUEST_FAILED");
+        }
 
         transaction.Status = paymentResult.Success ? AppointmentPaymentStatus.Succeeded : AppointmentPaymentStatus.Failed;
         transaction.TransactionId = TruncatePaymentField(paymentResult.TransactionId, PaymentTransactionIdMaxLength);
@@ -500,7 +515,7 @@ public static class AppointmentEndpoints
             await MarkAppointmentCheckedInAsync(db, appointment, cancellationToken, saveChanges: false);
         }
 
-        await db.SaveChangesAsync(cancellationToken);
+        await db.SaveChangesAsync(cancellationToken.IsCancellationRequested ? CancellationToken.None : cancellationToken);
 
         await auditService.LogRuleEvaluationAsync(new PTDoc.Application.Compliance.AuditEvent
         {
@@ -566,6 +581,16 @@ public static class AppointmentEndpoints
 
         return value[..maxLength];
     }
+
+    private static PaymentResult BuildPaymentGatewayFailure(decimal amount, string errorCode) =>
+        new()
+        {
+            Success = false,
+            ErrorCode = errorCode,
+            ErrorMessage = "Payment gateway request failed",
+            ProcessedAt = DateTime.UtcNow,
+            Amount = amount
+        };
 
     private static async Task<IResult> BuildPaymentInProgressResponseAsync(
         ApplicationDbContext db,
