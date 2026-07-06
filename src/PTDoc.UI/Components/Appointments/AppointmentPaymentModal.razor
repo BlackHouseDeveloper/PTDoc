@@ -167,6 +167,11 @@
     public async Task HandleAuthorizeNetResponse(AuthorizeNetAcceptResponse response)
     {
         isTokenizing = false;
+        if (!IsOpen)
+        {
+            return;
+        }
+
         localErrorMessage = null;
 
         if (!string.Equals(response.Messages?.ResultCode, "Ok", StringComparison.OrdinalIgnoreCase)
@@ -202,6 +207,7 @@
         localErrorMessage = null;
         isPaymentFormUnavailable = false;
         isTokenizing = false;
+        await DisposeAcceptHandlerAsync();
         await IsOpenChanged.InvokeAsync(false);
     }
 
@@ -242,7 +248,7 @@
 
             if (acceptModule is not null)
             {
-                await acceptModule.InvokeVoidAsync("dispose", modalId);
+                await DisposeAcceptHandlerAsync();
                 await acceptModule.DisposeAsync();
             }
 
@@ -257,6 +263,25 @@
         }
 
         dotNetRef?.Dispose();
+    }
+
+    private async Task DisposeAcceptHandlerAsync()
+    {
+        try
+        {
+            if (acceptModule is not null)
+            {
+                await acceptModule.InvokeVoidAsync("dispose", modalId);
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore JS cleanup failures during circuit shutdown.
+        }
+        catch (JSException)
+        {
+            // Closing the modal should not be blocked by stale AcceptUI cleanup.
+        }
     }
 
     public sealed class AuthorizeNetAcceptResponse

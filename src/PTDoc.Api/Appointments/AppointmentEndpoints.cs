@@ -7,6 +7,7 @@ using PTDoc.Application.Integrations;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
 
@@ -18,6 +19,7 @@ namespace PTDoc.Api.Appointments;
 public static class AppointmentEndpoints
 {
     private const string AppointmentOverbookingErrorCode = "APPOINTMENT_OVERBOOKING";
+    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> AppointmentPaymentLocks = new();
     private static readonly string[] SchedulableClinicianRoles =
     [
         Roles.PT,
@@ -393,6 +395,32 @@ public static class AppointmentEndpoints
             return Results.BadRequest(new { error = "Payment processing is not configured." });
         }
 
+        var appointmentPaymentLock = AppointmentPaymentLocks.GetOrAdd(id, _ => new SemaphoreSlim(1, 1));
+        await appointmentPaymentLock.WaitAsync(cancellationToken);
+        try
+        {
+            return await CheckInAppointmentWithPaymentLockedAsync(
+                id,
+                request,
+                db,
+                paymentService,
+                auditService,
+                cancellationToken);
+        }
+        finally
+        {
+            appointmentPaymentLock.Release();
+        }
+    }
+
+    private static async Task<IResult> CheckInAppointmentWithPaymentLockedAsync(
+        Guid id,
+        AppointmentCheckInPaymentRequest request,
+        ApplicationDbContext db,
+        IPaymentService paymentService,
+        IAuditService auditService,
+        CancellationToken cancellationToken)
+    {
         var appointment = await db.Appointments
             .FirstOrDefaultAsync(existing => existing.Id == id, cancellationToken);
 

@@ -201,6 +201,46 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         Assert.Equal("AUTH42", transaction.AuthorizationCode);
     }
 
+    [Fact]
+    public async Task CheckInPayment_WhenConcurrentRequests_ChargesGatewayOnce()
+    {
+        var paymentService = new BlockingPaymentService();
+        using var factory = CreatePaymentConfiguredFactory(paymentService);
+        await EnsurePaymentFactoryDatabaseAsync(factory);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinician = await db.Users.SingleAsync(user => user.Username == "integration-pt");
+        var seeded = SeedAppointmentCase(
+            db,
+            clinician.Id,
+            $"PAY-{Guid.NewGuid():N}",
+            "Concurrent",
+            new DateTime(2026, 7, 5, 17, 0, 0, DateTimeKind.Utc),
+            AppointmentStatus.Scheduled,
+            payerInfoJson: """{"copayAmount":"30.00"}""");
+        await db.SaveChangesAsync();
+
+        using var client = CreateClientWithRole(factory, Roles.FrontDesk);
+        var firstRequest = PostCheckInPaymentAsync(client, seeded.AppointmentId);
+        await paymentService.WaitForFirstRequestAsync();
+        var secondRequest = PostCheckInPaymentAsync(client, seeded.AppointmentId);
+        paymentService.Release();
+
+        using var firstResponse = await firstRequest;
+        using var secondResponse = await secondRequest;
+
+        Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
+        Assert.Equal(1, paymentService.CallCount);
+
+        var transactions = await db.AppointmentPaymentTransactions
+            .Where(payment => payment.AppointmentId == seeded.AppointmentId)
+            .ToListAsync();
+        var transaction = Assert.Single(transactions);
+        Assert.Equal(AppointmentPaymentStatus.Succeeded, transaction.Status);
+        Assert.Equal("60123456789", transaction.TransactionId);
+    }
+
     private static SeededAppointmentCase SeedAppointmentCase(
         ApplicationDbContext db,
         Guid clinicianId,
@@ -297,6 +337,15 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         return client;
     }
 
+    private static Task<HttpResponseMessage> PostCheckInPaymentAsync(HttpClient client, Guid appointmentId) =>
+        client.PostAsJsonAsync(
+            $"/api/v1/appointments/{appointmentId}/check-in-payment",
+            new AppointmentCheckInPaymentRequest
+            {
+                OpaqueDataDescriptor = "COMMON.ACCEPT.INAPP.PAYMENT",
+                OpaqueDataToken = "opaque-token"
+            });
+
     private static async Task EnsurePaymentFactoryDatabaseAsync(WebApplicationFactory<Program> factory)
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -331,6 +380,54 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
             result.ProcessedAt = result.ProcessedAt == default ? DateTime.UtcNow : result.ProcessedAt;
             return Task.FromResult(result);
         }
+
+        public Task<PaymentResult> RefundPaymentAsync(string transactionId, decimal amount, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new PaymentResult
+            {
+                Success = true,
+                TransactionId = transactionId,
+                Amount = amount,
+                ProcessedAt = DateTime.UtcNow
+            });
+
+        public Task<PaymentResult> GetTransactionDetailsAsync(string transactionId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new PaymentResult
+            {
+                Success = true,
+                TransactionId = transactionId,
+                ProcessedAt = DateTime.UtcNow
+            });
+    }
+
+    private sealed class BlockingPaymentService : IPaymentService
+    {
+        private readonly TaskCompletionSource firstRequestStarted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource releaseRequest =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int callCount;
+
+        public int CallCount => Volatile.Read(ref callCount);
+
+        public async Task<PaymentResult> ProcessPaymentAsync(PaymentRequest request, CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref callCount);
+            firstRequestStarted.TrySetResult();
+            await releaseRequest.Task.WaitAsync(cancellationToken);
+
+            return new PaymentResult
+            {
+                Success = true,
+                TransactionId = "60123456789",
+                AuthorizationCode = "AUTH42",
+                Amount = request.Amount,
+                ProcessedAt = DateTime.UtcNow
+            };
+        }
+
+        public Task WaitForFirstRequestAsync() => firstRequestStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        public void Release() => releaseRequest.TrySetResult();
 
         public Task<PaymentResult> RefundPaymentAsync(string transactionId, decimal amount, CancellationToken cancellationToken = default) =>
             Task.FromResult(new PaymentResult

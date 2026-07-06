@@ -598,7 +598,7 @@ public sealed class AppointmentsPageTests : TestContext
         cut.Find(".appointment-block").Click();
         cut.WaitForAssertion(() => Assert.Contains("Appointment Details", cut.Markup, StringComparison.Ordinal));
 
-        cut.FindAll("button")
+        cut.FindAll(".appointment-detail-modal__container button")
             .First(button => button.TextContent.Contains("Check In", StringComparison.Ordinal))
             .Click();
 
