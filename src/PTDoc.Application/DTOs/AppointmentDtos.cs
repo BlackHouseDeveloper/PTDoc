@@ -62,9 +62,6 @@ public sealed class AppointmentCheckInPaymentRequest
     public string OpaqueDataDescriptor { get; set; } = string.Empty;
     public string OpaqueDataToken { get; set; } = string.Empty;
     public bool CheckInAfterPayment { get; set; } = true;
-    public string? BillingFirstName { get; set; }
-    public string? BillingLastName { get; set; }
-    public string? BillingZip { get; set; }
 }
 
 public sealed class AppointmentCheckInPaymentResponse

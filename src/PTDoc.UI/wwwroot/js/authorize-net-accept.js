@@ -14,14 +14,14 @@ function resolveScriptUrl(environment) {
 
 function loadScript(environment) {
   const scriptUrl = resolveScriptUrl(environment);
-  const existing = document.querySelector(`script[data-ptdoc-authorize-net="true"][src="${scriptUrl}"]`);
-  if (existing) {
-    return Promise.resolve();
-  }
-
   const cachedPromise = scriptPromises.get(scriptUrl);
   if (cachedPromise) {
     return cachedPromise;
+  }
+
+  const existing = document.querySelector(`script[data-ptdoc-authorize-net="true"][src="${scriptUrl}"]`);
+  if (existing) {
+    return Promise.resolve();
   }
 
   const scriptPromise = new Promise((resolve, reject) => {

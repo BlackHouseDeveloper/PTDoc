@@ -127,7 +127,11 @@
 
                 await modalModule.InvokeVoidAsync("lockBodyScroll");
                 await modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, dotNetRef);
-                await acceptModule.InvokeVoidAsync("initialize", modalId, dotNetRef, Configuration?.Environment ?? "Sandbox");
+                if (Configuration?.Enabled == true)
+                {
+                    await acceptModule.InvokeVoidAsync("initialize", modalId, dotNetRef, Configuration.Environment);
+                }
+
                 modalAccessibilityActive = true;
             }
             catch (JSException)

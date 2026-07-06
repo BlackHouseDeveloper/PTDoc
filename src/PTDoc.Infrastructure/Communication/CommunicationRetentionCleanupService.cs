@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -5,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PTDoc.Application.Communication;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.BackgroundJobs;
 using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Infrastructure.Communication;
@@ -51,6 +53,15 @@ public sealed class CommunicationRetentionCleanupService : BackgroundService
     {
         await using var scope = _scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var schemaStatus = await BackgroundJobDatabaseGuard.GetSchemaStatusAsync(db, cancellationToken);
+        if (!schemaStatus.IsReady)
+        {
+            _logger.LogWarning(
+                "Communication retention cleanup skipped because {Count} database migration(s) are pending: {Migrations}",
+                schemaStatus.PendingMigrations.Count,
+                string.Join(", ", schemaStatus.PendingMigrations));
+            return;
+        }
 
         var now = DateTimeOffset.UtcNow;
         var resetCutoff = now.AddDays(-Math.Max(1, _options.Retention.ResetTokensDays));
@@ -59,51 +70,60 @@ public sealed class CommunicationRetentionCleanupService : BackgroundService
         var logCount = 0;
         var challengeCount = 0;
 
-        if (db.Database.IsRelational())
+        try
         {
-            if (IsSqlite(db))
+            if (db.Database.IsRelational())
             {
-                // EF Core SQLite cannot translate DateTimeOffset retention predicates for these columns.
-                tokenCount = await RemoveExpiredResetTokensForSqliteAsync(db, resetCutoff, cancellationToken);
-                challengeCount = await RemoveExpiredOtpChallengesForSqliteAsync(db, now, cancellationToken);
-                if (tokenCount > 0 || challengeCount > 0)
+                if (IsSqlite(db))
                 {
-                    await db.SaveChangesAsync(cancellationToken);
+                    // EF Core SQLite cannot translate DateTimeOffset retention predicates for these columns.
+                    tokenCount = await RemoveExpiredResetTokensForSqliteAsync(db, resetCutoff, cancellationToken);
+                    challengeCount = await RemoveExpiredOtpChallengesForSqliteAsync(db, now, cancellationToken);
+                    if (tokenCount > 0 || challengeCount > 0)
+                    {
+                        await db.SaveChangesAsync(cancellationToken);
+                    }
                 }
-            }
-            else
-            {
-                tokenCount = await db.PasswordResetTokens
-                    .Where(token =>
-                        token.ExpiresAtUtc < resetCutoff &&
-                        (token.UsedAtUtc == null || token.UsedAtUtc < resetCutoff) &&
-                        (token.RevokedAtUtc == null || token.RevokedAtUtc < resetCutoff))
+                else
+                {
+                    tokenCount = await db.PasswordResetTokens
+                        .Where(token =>
+                            token.ExpiresAtUtc < resetCutoff &&
+                            (token.UsedAtUtc == null || token.UsedAtUtc < resetCutoff) &&
+                            (token.RevokedAtUtc == null || token.RevokedAtUtc < resetCutoff))
+                        .ExecuteDeleteAsync(cancellationToken);
+
+                    challengeCount = await db.IntakeOtpChallenges
+                        .Where(challenge => challenge.ExpiresAtUtc < now)
+                        .ExecuteDeleteAsync(cancellationToken);
+                }
+
+                logCount = await db.CommunicationDeliveryLogs
+                    .Where(log => log.CreatedAtUnixSeconds < logCutoff)
                     .ExecuteDeleteAsync(cancellationToken);
 
-                challengeCount = await db.IntakeOtpChallenges
-                    .Where(challenge => challenge.ExpiresAtUtc < now)
-                    .ExecuteDeleteAsync(cancellationToken);
+                LogCleanupCounts(tokenCount, logCount, challengeCount);
+                return;
             }
 
-            logCount = await db.CommunicationDeliveryLogs
+            tokenCount = await RemoveExpiredResetTokensClientSideAsync(db, resetCutoff, cancellationToken);
+
+            var expiredLogs = await db.CommunicationDeliveryLogs
                 .Where(log => log.CreatedAtUnixSeconds < logCutoff)
-                .ExecuteDeleteAsync(cancellationToken);
+                .ToListAsync(cancellationToken);
+            db.CommunicationDeliveryLogs.RemoveRange(expiredLogs);
 
+            challengeCount = await RemoveExpiredOtpChallengesClientSideAsync(db, now, cancellationToken);
+
+            await db.SaveChangesAsync(cancellationToken);
+            logCount = expiredLogs.Count;
             LogCleanupCounts(tokenCount, logCount, challengeCount);
-            return;
         }
-
-        tokenCount = await RemoveExpiredResetTokensClientSideAsync(db, resetCutoff, cancellationToken);
-
-        var expiredLogs = await db.CommunicationDeliveryLogs
-            .Where(log => log.CreatedAtUnixSeconds < logCutoff)
-            .ToListAsync(cancellationToken);
-        db.CommunicationDeliveryLogs.RemoveRange(expiredLogs);
-
-        challengeCount = await RemoveExpiredOtpChallengesClientSideAsync(db, now, cancellationToken);
-
-        await db.SaveChangesAsync(cancellationToken);
-        LogCleanupCounts(tokenCount, expiredLogs.Count, challengeCount);
+        catch (SqliteException ex) when (ex.SqliteErrorCode == 1 &&
+                                         ex.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning(ex, "Communication retention cleanup skipped because a required table is not available yet.");
+        }
     }
 
     private static bool IsSqlite(ApplicationDbContext db) =>
