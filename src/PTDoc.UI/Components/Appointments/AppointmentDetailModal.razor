@@ -276,7 +276,8 @@
             : Appointment.VisitWorkflowStatus;
 
     private bool CanCheckIn =>
-        string.Equals(EffectiveAppointmentStatus, "Scheduled", StringComparison.OrdinalIgnoreCase);
+        string.Equals(EffectiveAppointmentStatus, "Scheduled", StringComparison.OrdinalIgnoreCase)
+        && !IsCopayBlockingCheckIn;
 
     private bool CanStartVisit =>
         string.Equals(EffectiveAppointmentStatus, "Checked In", StringComparison.OrdinalIgnoreCase)
@@ -299,6 +300,11 @@
     private string? GetTerminalActionDescriptionId() => IsTerminalStatus ? PrimaryActionDisabledReasonId : null;
 
     private bool CanRecordCopay => Appointment?.CanRecordCopay == true;
+
+    private bool IsCopayBlockingCheckIn =>
+        Appointment?.CopayAmount is > 0
+        && !CanRecordCopay
+        && !string.Equals(GetCopayStatusLabel(), "Copay paid", StringComparison.OrdinalIgnoreCase);
 
     private string? GetCopayActionDescriptionId() => CanRecordCopay ? null : CopayActionReasonId;
 
@@ -352,6 +358,11 @@
         if (IsTerminalStatus)
         {
             return "This appointment is closed and cannot be started.";
+        }
+
+        if (IsCopayBlockingCheckIn)
+        {
+            return GetCopayActionUnavailableReason();
         }
 
         return "Check in the patient before starting the visit.";

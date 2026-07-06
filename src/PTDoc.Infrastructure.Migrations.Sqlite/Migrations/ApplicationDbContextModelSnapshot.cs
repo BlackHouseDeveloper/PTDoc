@@ -80,6 +80,69 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("Appointments");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.AppointmentPaymentTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("AppointmentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AuthorizationCode")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GatewayErrorCode")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GatewayErrorMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("InvoiceNumber")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ProcessedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Processor")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TransactionId")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppointmentId");
+
+                    b.HasIndex("PatientId");
+
+                    b.HasIndex("TransactionId");
+
+                    b.HasIndex("AppointmentId", "Status");
+
+                    b.ToTable("AppointmentPaymentTransactions");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1727,6 +1790,25 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Clinic");
+
+                    b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.AppointmentPaymentTransaction", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Appointment", "Appointment")
+                        .WithMany()
+                        .HasForeignKey("AppointmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Appointment");
 
                     b.Navigation("Patient");
                 });

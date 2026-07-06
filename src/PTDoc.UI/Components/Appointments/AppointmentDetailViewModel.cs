@@ -16,6 +16,7 @@ public sealed class AppointmentDetailViewModel
     public string AppointmentStatus { get; init; } = string.Empty;
     public string VisitWorkflowStatus { get; init; } = string.Empty;
     public string? IntakeStatus { get; init; }
+    public decimal? CopayAmount { get; init; }
     public bool CanRecordCopay { get; init; }
     public string CopayStatusLabel { get; init; } = "Copay not configured";
     public string CopayActionUnavailableReason { get; init; } = "Copay collection is not configured for this appointment.";

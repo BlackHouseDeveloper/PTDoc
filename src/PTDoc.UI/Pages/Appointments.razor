@@ -1,6 +1,7 @@
 @page "/appointments"
 @attribute [Authorize(Policy = AuthorizationPolicies.SchedulingAccess)]
 @using PTDoc.Application.DTOs
+@using PTDoc.Application.Integrations
 @using PTDoc.Application.Services
 @using PTDoc.Core.Models
 @using System.Globalization
@@ -82,6 +83,14 @@
                         Appointment="@selectedAppointmentDetail"
                         OnActionRequested="@HandleAppointmentDetailAction" />
 
+<AppointmentPaymentModal IsOpen="@isPaymentModalOpen"
+                         IsOpenChanged="@HandlePaymentModalChanged"
+                         Appointment="@paymentAppointmentDetail"
+                         Configuration="@paymentConfiguration"
+                         IsSubmitting="@isSubmittingPayment"
+                         ErrorMessage="@paymentErrorMessage"
+                         OnPaymentAuthorized="@HandlePaymentAuthorized" />
+
 @code {
     private AppointmentsView selectedView = AppointmentsView.Today;
     private AppointmentsWeekGrouping weekGrouping = AppointmentsWeekGrouping.Clinician;
@@ -90,8 +99,15 @@
     private AppointmentsFilter currentFilter = new();
     private bool isNewAppointmentModalOpen = false;
     private bool isAppointmentDetailModalOpen = false;
+    private bool isPaymentModalOpen = false;
+    private bool isSubmittingPayment = false;
     private bool isRescheduleMode = false;
     private AppointmentDetailViewModel? selectedAppointmentDetail;
+    private AppointmentDetailViewModel? paymentAppointmentDetail;
+    private PaymentClientConfigurationResponse? paymentConfiguration;
+    private string? paymentErrorMessage;
+    private bool paymentShouldCheckInAfterSuccess = true;
+    private bool reopenDetailAfterPaymentModal;
     private NewAppointmentModal.AppointmentFormData? appointmentFormInitialValues;
     private Guid? appointmentBeingEditedId;
     private readonly Dictionary<string, string> appointmentStatusOverrides = new(StringComparer.OrdinalIgnoreCase);
@@ -109,11 +125,12 @@
     private string? lastAppliedRouteQuery;
     private IJSObjectReference? navigationModule;
 
-    private bool IsAnyModalOpen => isNewAppointmentModalOpen || isAppointmentDetailModalOpen;
+    private bool IsAnyModalOpen => isNewAppointmentModalOpen || isAppointmentDetailModalOpen || isPaymentModalOpen;
 
     [Inject] private NavigationManager NavigationManager { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private IAppointmentService AppointmentService { get; set; } = default!;
+    [Inject] private IPaymentClientService PaymentClientService { get; set; } = default!;
     [Inject] private IPatientService PatientService { get; set; } = default!;
     [Inject] private IToastService ToastService { get; set; } = default!;
     [Inject] private ILogger<Appointments> Logger { get; set; } = default!;
@@ -312,7 +329,27 @@
             case "edit-appointment":
                 await HandleEditAppointmentAsync();
                 break;
+            case "record-copay":
+                await OpenPaymentModalAsync(selectedAppointmentDetail, checkInAfterPayment: false);
+                break;
         }
+    }
+
+    private Task HandlePaymentModalChanged(bool isOpen)
+    {
+        isPaymentModalOpen = isOpen;
+
+        if (!isOpen)
+        {
+            var shouldReopenDetail = reopenDetailAfterPaymentModal && selectedAppointmentDetail is not null;
+            paymentAppointmentDetail = null;
+            paymentErrorMessage = null;
+            isSubmittingPayment = false;
+            reopenDetailAfterPaymentModal = false;
+            isAppointmentDetailModalOpen = shouldReopenDetail;
+        }
+
+        return Task.CompletedTask;
     }
 
     private Task HandleNewAppointmentModalChanged(bool isOpen)
@@ -504,6 +541,12 @@
             return;
         }
 
+        if (selectedAppointmentDetail.CanRecordCopay)
+        {
+            await OpenPaymentModalAsync(selectedAppointmentDetail, checkInAfterPayment: true);
+            return;
+        }
+
         try
         {
             var updatedAppointment = await AppointmentService.CheckInAsync(selectedAppointmentDetail.AppointmentId);
@@ -521,6 +564,68 @@
         {
             Logger.LogWarning(ex, "Failed to check in an appointment from the appointments page.");
             ToastService.ShowError("Failed to update the appointment status.");
+        }
+    }
+
+    private async Task OpenPaymentModalAsync(AppointmentDetailViewModel appointment, bool checkInAfterPayment)
+    {
+        paymentErrorMessage = null;
+        paymentAppointmentDetail = appointment;
+        paymentShouldCheckInAfterSuccess = checkInAfterPayment;
+        reopenDetailAfterPaymentModal = isAppointmentDetailModalOpen;
+        isAppointmentDetailModalOpen = false;
+        isPaymentModalOpen = true;
+        StateHasChanged();
+
+        try
+        {
+            paymentConfiguration ??= await PaymentClientService.GetConfigurationAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load payment configuration.");
+            paymentErrorMessage = "Payment configuration could not be loaded. Please retry.";
+        }
+    }
+
+    private async Task HandlePaymentAuthorized(AppointmentCheckInPaymentRequest request)
+    {
+        if (paymentAppointmentDetail is null)
+        {
+            return;
+        }
+
+        isSubmittingPayment = true;
+        paymentErrorMessage = null;
+        request.CheckInAfterPayment = paymentShouldCheckInAfterSuccess;
+
+        try
+        {
+            var response = await AppointmentService.CheckInWithPaymentAsync(paymentAppointmentDetail.AppointmentId, request);
+            if (response.Payment.Success && response.Appointment is not null)
+            {
+                UpsertAppointment(response.Appointment);
+                selectedAppointmentDetail = ToAppointmentDetailViewModel(response.Appointment);
+                reopenDetailAfterPaymentModal = false;
+                await HandlePaymentModalChanged(false);
+                isAppointmentDetailModalOpen = true;
+                var successMessage = paymentShouldCheckInAfterSuccess
+                    ? $"{selectedAppointmentDetail.PatientName} checked in after copay payment."
+                    : $"Copay recorded for {selectedAppointmentDetail.PatientName}.";
+                ToastService.ShowSuccess(successMessage);
+                return;
+            }
+
+            paymentErrorMessage = response.Payment.ErrorMessage ?? "Payment was not approved. Please retry or use another card.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to process appointment copay payment.");
+            paymentErrorMessage = "Payment could not be completed. Please retry.";
+        }
+        finally
+        {
+            isSubmittingPayment = false;
         }
     }
 
@@ -722,6 +827,10 @@
             AppointmentStatus = GetEffectiveAppointmentStatus(appointment),
             VisitWorkflowStatus = GetEffectiveAppointmentStatus(appointment),
             IntakeStatus = appointment.IntakeStatus,
+            CopayAmount = appointment.CopayAmount,
+            CanRecordCopay = appointment.CanRecordCopay,
+            CopayStatusLabel = appointment.CopayStatusLabel,
+            CopayActionUnavailableReason = appointment.CopayActionUnavailableReason,
             Notes = appointment.Notes
         };
     }

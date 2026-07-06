@@ -51,4 +51,12 @@ public interface IAppointmentService
     Task<AppointmentListItemResponse?> CheckInAsync(
         Guid id,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Processes the configured copay and optionally marks an appointment as checked in when payment succeeds.
+    /// </summary>
+    Task<AppointmentCheckInPaymentResponse> CheckInWithPaymentAsync(
+        Guid id,
+        AppointmentCheckInPaymentRequest request,
+        CancellationToken cancellationToken = default);
 }

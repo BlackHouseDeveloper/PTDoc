@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Patient check-in copay payments
+
+- **Authorize.net check-in payment flow** — Added tokenized AcceptUI copay collection during appointment check-in, appointment payment transaction persistence, client-safe payment configuration lookup, provider migrations for SQLite/SQL Server/PostgreSQL, payment-aware appointment projections, and focused API/service/UI tests. Reason: copay-required appointments now prompt for payment before check-in without storing card data in PTDoc.
+
 ### Changed - Agent and QA guidance for split audit remediation
 
 - **Repository guidance** — Updated agent-facing instructions, Copilot guidance, and ignored local QA/runtime artifacts. Reason: split workflow and QA documentation changes from the functional remediation PRs.

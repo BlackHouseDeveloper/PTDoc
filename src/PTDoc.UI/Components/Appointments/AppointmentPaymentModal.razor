@@ -1,0 +1,271 @@
+@using PTDoc.Application.DTOs
+@using PTDoc.Application.Integrations
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@if (IsOpen && Appointment is not null)
+{
+    <div class="appointment-payment-modal__overlay" @onclick="HandleOverlayClick" @onclick:stopPropagation="false">
+        <div id="@modalId"
+             class="appointment-payment-modal__container"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="@TitleId"
+             aria-describedby="@DescriptionId"
+             @onclick:stopPropagation="true">
+            <header class="appointment-payment-modal__header">
+                <div>
+                    <p class="appointment-payment-modal__eyebrow">Payment required</p>
+                    <h2 id="@TitleId">Collect copay before check-in</h2>
+                    <p id="@DescriptionId">Payment must be completed before continuing the visit workflow.</p>
+                </div>
+                <button type="button" class="appointment-payment-modal__close" @onclick="CloseAsync" aria-label="Close payment modal" disabled="@IsSubmitting">
+                    <span aria-hidden="true">×</span>
+                </button>
+            </header>
+
+            <section class="appointment-payment-modal__summary" aria-label="Payment summary">
+                <div>
+                    <span>Patient</span>
+                    <strong>@Appointment.PatientName</strong>
+                </div>
+                <div>
+                    <span>Appointment</span>
+                    <strong>@Appointment.AppointmentDate.ToString("MMM d, yyyy") at @Appointment.StartTime.ToString("h:mm tt")</strong>
+                </div>
+                <div>
+                    <span>Amount due</span>
+                    <strong>@FormatAmount()</strong>
+                </div>
+            </section>
+
+            @if (!string.IsNullOrWhiteSpace(CurrentErrorMessage))
+            {
+                <div class="appointment-payment-modal__alert" role="alert">
+                    @CurrentErrorMessage
+                </div>
+            }
+
+            @if (Configuration is null || !Configuration.Enabled)
+            {
+                <p class="appointment-payment-modal__helper" role="status">
+                    Payment collection is not configured for this environment.
+                </p>
+            }
+
+            <footer class="appointment-payment-modal__footer">
+                <button type="button" class="appointment-payment-modal__secondary" @onclick="CloseAsync" disabled="@IsSubmitting">Cancel</button>
+                <button type="button"
+                        class="appointment-payment-modal__primary AcceptUI"
+                        disabled="@IsPayButtonDisabled"
+                        data-billingAddressOptions='{"show":true,"required":false}'
+                        data-apiLoginID="@Configuration?.ApiLoginId"
+                        data-clientKey="@Configuration?.ClientKey"
+                        data-acceptUIFormBtnTxt="Pay @FormatAmount()"
+                        data-acceptUIFormHeaderTxt="PTDoc copay payment"
+                        data-responseHandler="ptdocAuthorizeNetAcceptResponseHandler">
+                    @if (IsSubmitting || isTokenizing)
+                    {
+                        <span class="appointment-payment-modal__spinner" aria-hidden="true"></span>
+                        <span>Processing...</span>
+                    }
+                    else
+                    {
+                        <span>Pay @FormatAmount()</span>
+                    }
+                </button>
+            </footer>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public AppointmentDetailViewModel? Appointment { get; set; }
+    [Parameter] public PaymentClientConfigurationResponse? Configuration { get; set; }
+    [Parameter] public bool IsSubmitting { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public EventCallback<AppointmentCheckInPaymentRequest> OnPaymentAuthorized { get; set; }
+
+    private readonly string modalId = $"payment-modal-{Guid.NewGuid():N}";
+    private string TitleId => $"{modalId}-title";
+    private string DescriptionId => $"{modalId}-description";
+    private string CurrentErrorMessage => string.IsNullOrWhiteSpace(localErrorMessage) ? ErrorMessage ?? string.Empty : localErrorMessage;
+    private bool IsPayButtonDisabled =>
+        IsSubmitting
+        || isTokenizing
+        || isPaymentFormUnavailable
+        || Configuration is null
+        || !Configuration.Enabled
+        || Appointment?.CopayAmount is null or <= 0;
+    private IJSObjectReference? modalModule;
+    private IJSObjectReference? acceptModule;
+    private DotNetObjectReference<AppointmentPaymentModal>? dotNetRef;
+    private bool modalAccessibilityActive;
+    private bool isTokenizing;
+    private bool isPaymentFormUnavailable;
+    private string? localErrorMessage;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (IsOpen && !modalAccessibilityActive)
+        {
+            try
+            {
+                isPaymentFormUnavailable = false;
+                await EnsureJsModulesAsync();
+                if (modalModule is null || acceptModule is null || dotNetRef is null)
+                {
+                    isPaymentFormUnavailable = true;
+                    localErrorMessage = "Payment form could not be loaded. Please retry.";
+                    StateHasChanged();
+                    return;
+                }
+
+                await modalModule.InvokeVoidAsync("lockBodyScroll");
+                await modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, dotNetRef);
+                await acceptModule.InvokeVoidAsync("initialize", modalId, dotNetRef, Configuration?.Environment ?? "Sandbox");
+                modalAccessibilityActive = true;
+            }
+            catch (JSException)
+            {
+                isPaymentFormUnavailable = true;
+                localErrorMessage = "Payment form could not be loaded. Please retry.";
+                StateHasChanged();
+            }
+        }
+        else if (!IsOpen && modalAccessibilityActive)
+        {
+            await CleanupModalAsync();
+        }
+    }
+
+    private async Task EnsureJsModulesAsync()
+    {
+        modalModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/modal.js");
+        acceptModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/authorize-net-accept.js");
+        dotNetRef ??= DotNetObjectReference.Create(this);
+    }
+
+    [JSInvokable]
+    public async Task CloseFromJs()
+    {
+        if (!IsSubmitting)
+        {
+            await CloseAsync();
+        }
+    }
+
+    [JSInvokable]
+    public async Task HandleAuthorizeNetResponse(AuthorizeNetAcceptResponse response)
+    {
+        isTokenizing = false;
+        localErrorMessage = null;
+
+        if (!string.Equals(response.Messages?.ResultCode, "Ok", StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(response.OpaqueData?.DataValue)
+            || string.IsNullOrWhiteSpace(response.OpaqueData?.DataDescriptor))
+        {
+            localErrorMessage = response.Messages?.Message?.FirstOrDefault()?.Text
+                ?? "Payment authorization failed. Please retry or use another card.";
+            StateHasChanged();
+            return;
+        }
+
+        await OnPaymentAuthorized.InvokeAsync(new AppointmentCheckInPaymentRequest
+        {
+            OpaqueDataDescriptor = response.OpaqueData.DataDescriptor,
+            OpaqueDataToken = response.OpaqueData.DataValue
+        });
+    }
+
+    private string FormatAmount() =>
+        Appointment?.CopayAmount?.ToString("C") ?? "$0.00";
+
+    private async Task HandleOverlayClick()
+    {
+        if (!IsSubmitting)
+        {
+            await CloseAsync();
+        }
+    }
+
+    private async Task CloseAsync()
+    {
+        localErrorMessage = null;
+        isPaymentFormUnavailable = false;
+        await IsOpenChanged.InvokeAsync(false);
+    }
+
+    private async Task CleanupModalAsync()
+    {
+        try
+        {
+            if (modalModule is not null)
+            {
+                await modalModule.InvokeVoidAsync("unlockBodyScroll");
+                await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // The circuit can close while a modal is open.
+        }
+
+        modalAccessibilityActive = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (modalAccessibilityActive)
+            {
+                await CleanupModalAsync();
+            }
+
+            if (acceptModule is not null)
+            {
+                await acceptModule.InvokeVoidAsync("dispose", modalId);
+                await acceptModule.DisposeAsync();
+            }
+
+            if (modalModule is not null)
+            {
+                await modalModule.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore JS cleanup failures during circuit shutdown.
+        }
+
+        dotNetRef?.Dispose();
+    }
+
+    public sealed class AuthorizeNetAcceptResponse
+    {
+        public AuthorizeNetOpaqueData? OpaqueData { get; set; }
+        public AuthorizeNetMessages? Messages { get; set; }
+    }
+
+    public sealed class AuthorizeNetOpaqueData
+    {
+        public string DataDescriptor { get; set; } = string.Empty;
+        public string DataValue { get; set; } = string.Empty;
+    }
+
+    public sealed class AuthorizeNetMessages
+    {
+        public string ResultCode { get; set; } = string.Empty;
+        public List<AuthorizeNetMessage> Message { get; set; } = new();
+    }
+
+    public sealed class AuthorizeNetMessage
+    {
+        public string Code { get; set; } = string.Empty;
+        public string Text { get; set; } = string.Empty;
+    }
+}

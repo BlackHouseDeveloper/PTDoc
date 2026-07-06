@@ -23,6 +23,11 @@ public static class IntegrationEndpoints
             .WithTags("Integrations");
 
         // Payment endpoints
+        group.MapGet("/payment/configuration", GetPaymentConfiguration)
+            .WithName("GetPaymentConfiguration")
+            .WithSummary("Get client-safe payment configuration for Authorize.net AcceptUI")
+            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff);
+
         group.MapPost("/payment/process", ProcessPaymentAsync)
             .WithName("ProcessPayment")
             .WithSummary("Process a payment using tokenized payment data")
@@ -68,11 +73,32 @@ public static class IntegrationEndpoints
             .RequireAuthorization(AuthorizationPolicies.ClinicalStaff);
     }
 
+    private static IResult GetPaymentConfiguration([FromServices] IConfiguration configuration)
+    {
+        var enabled = configuration.GetValue<bool>("Integrations:Payments:Enabled");
+        var environment = NormalizePaymentEnvironment(configuration["Integrations:Payments:Environment"]);
+        var apiLoginId = configuration["Integrations:Payments:ApiLoginId"] ?? string.Empty;
+        var transactionKey = configuration["Integrations:Payments:TransactionKey"] ?? string.Empty;
+        var clientKey = configuration["Integrations:Payments:ClientKey"] ?? string.Empty;
+
+        return Results.Ok(new PaymentClientConfigurationResponse
+        {
+            Enabled = enabled
+                && !string.IsNullOrWhiteSpace(apiLoginId)
+                && !string.IsNullOrWhiteSpace(transactionKey)
+                && !string.IsNullOrWhiteSpace(clientKey),
+            Environment = environment,
+            ApiLoginId = apiLoginId,
+            ClientKey = clientKey
+        });
+    }
+
     private static async Task<IResult> ProcessPaymentAsync(
         [FromBody] PaymentRequest request,
         [FromServices] IPaymentService paymentService,
         [FromServices] IAuditService auditService,
-        [FromServices] IConfiguration configuration)
+        [FromServices] IConfiguration configuration,
+        CancellationToken cancellationToken)
     {
         var isEnabled = configuration.GetValue<bool>("Integrations:Payments:Enabled");
         if (!isEnabled)
@@ -80,7 +106,7 @@ public static class IntegrationEndpoints
             return Results.BadRequest(new { error = "Payment processing is disabled" });
         }
 
-        var result = await paymentService.ProcessPaymentAsync(request);
+        var result = await paymentService.ProcessPaymentAsync(request, cancellationToken);
 
         // Audit log (NO PHI - only transaction metadata)
         await auditService.LogRuleEvaluationAsync(new PTDoc.Application.Compliance.AuditEvent
@@ -264,6 +290,11 @@ public static class IntegrationEndpoints
     }
 
     private static string GetLaunchCacheKey(string launchToken) => $"PTDoc:HepLaunch:{launchToken}";
+
+    private static string NormalizePaymentEnvironment(string? environment) =>
+        string.Equals(environment, "Production", StringComparison.OrdinalIgnoreCase)
+            ? "Production"
+            : "Sandbox";
 }
 
 /// <summary>

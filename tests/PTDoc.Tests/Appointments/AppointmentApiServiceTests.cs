@@ -100,6 +100,49 @@ public sealed class AppointmentApiServiceTests
         Assert.Equal("Cancelled or no-show appointments cannot be checked in.", ex.Message);
     }
 
+    [Fact]
+    public async Task CheckInWithPaymentAsync_PostsOpaquePaymentData()
+    {
+        var appointmentId = Guid.NewGuid();
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal($"/api/v1/appointments/{appointmentId}/check-in-payment", request.RequestUri!.AbsolutePath);
+
+            var payload = await request.Content!.ReadAsStringAsync(cancellationToken);
+            Assert.Contains("COMMON.ACCEPT.INAPP.PAYMENT", payload, StringComparison.Ordinal);
+            Assert.Contains("opaque-token", payload, StringComparison.Ordinal);
+
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new AppointmentCheckInPaymentResponse
+            {
+                Appointment = new AppointmentListItemResponse
+                {
+                    Id = appointmentId,
+                    PatientRecordId = Guid.NewGuid(),
+                    PatientName = "Alex Patient",
+                    AppointmentStatus = "Checked In"
+                },
+                Payment = new PTDoc.Application.Integrations.PaymentResult
+                {
+                    Success = true,
+                    TransactionId = "txn-123",
+                    Amount = 30m
+                }
+            }, JsonOptions));
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.CheckInWithPaymentAsync(appointmentId, new AppointmentCheckInPaymentRequest
+        {
+            OpaqueDataDescriptor = "COMMON.ACCEPT.INAPP.PAYMENT",
+            OpaqueDataToken = "opaque-token"
+        });
+
+        Assert.True(result.Payment.Success);
+        Assert.Equal("Checked In", result.Appointment?.AppointmentStatus);
+    }
+
     private static AppointmentApiService CreateService(HttpMessageHandler handler)
     {
         var client = new HttpClient(handler)

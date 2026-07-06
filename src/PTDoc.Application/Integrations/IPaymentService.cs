@@ -29,6 +29,11 @@ public interface IPaymentService
 public class PaymentRequest
 {
     /// <summary>
+    /// Internal appointment ID for the visit associated with this payment.
+    /// </summary>
+    public Guid? AppointmentId { get; set; }
+
+    /// <summary>
     /// Opaque data token from Authorize.Net Accept.js or similar tokenization service.
     /// Contains encrypted payment information.
     /// </summary>
@@ -72,4 +77,12 @@ public class PaymentResult
     public string? ErrorCode { get; set; }
     public DateTime ProcessedAt { get; set; }
     public decimal? Amount { get; set; }
+}
+
+public sealed class PaymentClientConfigurationResponse
+{
+    public bool Enabled { get; set; }
+    public string Environment { get; set; } = "Sandbox";
+    public string ApiLoginId { get; set; } = string.Empty;
+    public string ClientKey { get; set; } = string.Empty;
 }
