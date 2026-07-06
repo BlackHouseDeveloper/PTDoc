@@ -578,7 +578,7 @@ public sealed class AppointmentsPageTests : TestContext
                         VisitWorkflowStatus = "Scheduled",
                         IntakeStatus = "Complete",
                         CopayAmount = 30m,
-                        CopayStatusLabel = "Copay due $30.00",
+                        CopayStatusLabel = "Copay due",
                         CanRecordCopay = true
                     }
                 ],

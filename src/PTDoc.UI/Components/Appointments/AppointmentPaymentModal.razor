@@ -107,14 +107,22 @@
     private IJSObjectReference? acceptModule;
     private DotNetObjectReference<AppointmentPaymentModal>? dotNetRef;
     private bool modalAccessibilityActive;
+    private bool acceptUiInitialized;
     private bool isTokenizing;
     private bool isPaymentFormUnavailable;
     private string? localErrorMessage;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (IsOpen && !modalAccessibilityActive && !isPaymentFormUnavailable)
+        if (IsOpen && !isPaymentFormUnavailable)
         {
+            var shouldActivateModal = !modalAccessibilityActive;
+            var shouldInitializeAcceptUi = Configuration?.Enabled == true && !acceptUiInitialized;
+            if (!shouldActivateModal && !shouldInitializeAcceptUi)
+            {
+                return;
+            }
+
             try
             {
                 isPaymentFormUnavailable = false;
@@ -127,14 +135,18 @@
                     return;
                 }
 
-                await modalModule.InvokeVoidAsync("lockBodyScroll");
-                await modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, dotNetRef);
-                if (Configuration?.Enabled == true)
+                if (shouldActivateModal)
                 {
-                    await acceptModule.InvokeVoidAsync("initialize", modalId, dotNetRef, Configuration.Environment);
+                    await modalModule.InvokeVoidAsync("lockBodyScroll");
+                    await modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, dotNetRef);
+                    modalAccessibilityActive = true;
                 }
 
-                modalAccessibilityActive = true;
+                if (shouldInitializeAcceptUi && Configuration is not null)
+                {
+                    await acceptModule.InvokeVoidAsync("initialize", modalId, dotNetRef, Configuration.Environment);
+                    acceptUiInitialized = true;
+                }
             }
             catch (JSException)
             {
@@ -143,7 +155,7 @@
                 StateHasChanged();
             }
         }
-        else if (!IsOpen && modalAccessibilityActive)
+        else if (!IsOpen && (modalAccessibilityActive || acceptUiInitialized))
         {
             await CleanupModalAsync();
         }
@@ -225,6 +237,11 @@
     {
         try
         {
+            if (acceptUiInitialized)
+            {
+                await DisposeAcceptHandlerAsync();
+            }
+
             if (modalModule is not null)
             {
                 await modalModule.InvokeVoidAsync("unlockBodyScroll");
@@ -283,6 +300,10 @@
         catch (JSException)
         {
             // Closing the modal should not be blocked by stale AcceptUI cleanup.
+        }
+        finally
+        {
+            acceptUiInitialized = false;
         }
     }
 

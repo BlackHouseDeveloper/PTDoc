@@ -1,6 +1,9 @@
 using System.Globalization;
 using Bunit;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
 using PTDoc.Application.DTOs;
+using PTDoc.Application.Integrations;
 using PTDoc.Core.Models;
 using PTDoc.UI.Components.Appointments;
 
@@ -171,6 +174,34 @@ public sealed class AppointmentComponentsTests : TestContext
         copayButton.Click();
 
         Assert.Equal("record-copay", requestedAction);
+    }
+
+    [Fact]
+    public void AppointmentPaymentModal_InitializesAcceptUiWhenConfigurationArrivesAfterOpen()
+    {
+        var jsRuntime = new RecordingJsRuntime();
+        Services.AddSingleton<IJSRuntime>(jsRuntime);
+
+        var cut = RenderComponent<AppointmentPaymentModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.Appointment, CreateAppointment(status: "Scheduled", canRecordCopay: true)));
+
+        Assert.Contains("Collect copay before check-in", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("lockBodyScroll", jsRuntime.Invocations);
+        Assert.DoesNotContain("initialize", jsRuntime.Invocations);
+
+        cut.SetParametersAndRender(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.Appointment, CreateAppointment(status: "Scheduled", canRecordCopay: true))
+            .Add(component => component.Configuration, new PaymentClientConfigurationResponse
+            {
+                Enabled = true,
+                Environment = "Sandbox",
+                ApiLoginId = "login",
+                ClientKey = "client-key"
+            }));
+
+        Assert.Contains("initialize", jsRuntime.Invocations);
     }
 
     [Fact]
@@ -465,5 +496,46 @@ public sealed class AppointmentComponentsTests : TestContext
             CopayStatusLabel = copayStatusLabel,
             Notes = "Shoulder mobility follow-up."
         };
+    }
+
+    private sealed class RecordingJsRuntime : IJSRuntime
+    {
+        public List<string> Invocations { get; } = new();
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+        {
+            return InvokeAsync<TValue>(identifier, CancellationToken.None, args);
+        }
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+        {
+            Invocations.Add(identifier);
+            if (string.Equals(identifier, "import", StringComparison.Ordinal))
+            {
+                return new ValueTask<TValue>((TValue)(object)new RecordingJsObjectReference(Invocations));
+            }
+
+            return new ValueTask<TValue>(default(TValue)!);
+        }
+    }
+
+    private sealed class RecordingJsObjectReference(List<string> invocations) : IJSObjectReference
+    {
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+        {
+            return InvokeAsync<TValue>(identifier, CancellationToken.None, args);
+        }
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+        {
+            invocations.Add(identifier);
+            return new ValueTask<TValue>(default(TValue)!);
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            invocations.Add("module.dispose");
+            return ValueTask.CompletedTask;
+        }
     }
 }
