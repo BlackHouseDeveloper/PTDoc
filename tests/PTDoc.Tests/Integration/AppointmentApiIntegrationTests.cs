@@ -107,6 +107,15 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
             .Select(appointment => appointment.Status)
             .SingleAsync();
         Assert.Equal(AppointmentStatus.Scheduled, appointmentStatus);
+
+        using var overviewResponse = await client.GetAsync("/api/v1/appointments?startDate=2026-07-05&endDate=2026-07-05");
+        Assert.Equal(HttpStatusCode.OK, overviewResponse.StatusCode);
+        var overview = await overviewResponse.Content.ReadFromJsonAsync<AppointmentsOverviewResponse>();
+        var appointment = Assert.Single(
+            overview!.Appointments,
+            item => item.Id == seeded.AppointmentId);
+        Assert.Equal(30m, appointment.CopayAmount);
+        Assert.Equal("Copay due", appointment.CopayStatusLabel);
     }
 
     [Fact]

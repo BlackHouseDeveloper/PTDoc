@@ -1,5 +1,6 @@
 @using PTDoc.Application.DTOs
 @using PTDoc.Application.Integrations
+@using System.Globalization
 @using Microsoft.JSInterop
 @implements IAsyncDisposable
 @inject IJSRuntime JS
@@ -90,6 +91,7 @@
     [Parameter] public string? ErrorMessage { get; set; }
     [Parameter] public EventCallback<AppointmentCheckInPaymentRequest> OnPaymentAuthorized { get; set; }
 
+    private static readonly CultureInfo PaymentCurrencyCulture = CultureInfo.GetCultureInfo("en-US");
     private readonly string modalId = $"payment-modal-{Guid.NewGuid():N}";
     private string TitleId => $"{modalId}-title";
     private string DescriptionId => $"{modalId}-description";
@@ -192,7 +194,7 @@
     }
 
     private string FormatAmount() =>
-        Appointment?.CopayAmount?.ToString("C") ?? "$0.00";
+        Appointment?.CopayAmount?.ToString("C", PaymentCurrencyCulture) ?? "$0.00";
 
     private async Task HandleOverlayClick()
     {

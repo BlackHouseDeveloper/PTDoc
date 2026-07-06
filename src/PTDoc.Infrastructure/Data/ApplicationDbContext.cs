@@ -482,6 +482,10 @@ public class ApplicationDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.AppointmentId);
+            entity.HasIndex(e => e.AppointmentId)
+                .IsUnique()
+                .HasDatabaseName("UX_AppointmentPaymentTransactions_AppointmentId_Active")
+                .HasFilter(AppointmentPaymentActiveStatusFilter());
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => new { e.AppointmentId, e.Status });
             entity.HasIndex(e => e.TransactionId);
@@ -874,5 +878,11 @@ public class ApplicationDbContext : DbContext
         return Database.ProviderName?.Contains("Npgsql") == true
             ? $"\"{column1}\" IS NOT NULL AND \"{column2}\" IS NOT NULL"
             : $"{column1} IS NOT NULL AND {column2} IS NOT NULL";
+    }
+
+    private string AppointmentPaymentActiveStatusFilter()
+    {
+        var statusColumn = Database.ProviderName?.Contains("Npgsql") == true ? "\"Status\"" : "Status";
+        return $"{statusColumn} IN ({(int)AppointmentPaymentStatus.Pending}, {(int)AppointmentPaymentStatus.Succeeded})";
     }
 }

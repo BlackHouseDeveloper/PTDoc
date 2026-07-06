@@ -139,6 +139,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasIndex("AppointmentId");
 
+                    b.HasIndex("AppointmentId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_AppointmentPaymentTransactions_AppointmentId_Active")
+                        .HasFilter("\"Status\" IN (0, 1)");
+
                     b.HasIndex("PatientId");
 
                     b.HasIndex("TransactionId");

@@ -59,6 +59,13 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 columns: new[] { "AppointmentId", "Status" });
 
             migrationBuilder.CreateIndex(
+                name: "UX_AppointmentPaymentTransactions_AppointmentId_Active",
+                table: "AppointmentPaymentTransactions",
+                column: "AppointmentId",
+                unique: true,
+                filter: "\"Status\" IN (0, 1)");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_AppointmentPaymentTransactions_PatientId",
                 table: "AppointmentPaymentTransactions",
                 column: "PatientId");

@@ -1,3 +1,4 @@
+@using System.Globalization
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
@@ -208,6 +209,7 @@
     private ElementReference closeButtonRef;
     private IJSObjectReference? modalModule;
     private DotNetObjectReference<AppointmentDetailModal>? dotNetRef;
+    private static readonly CultureInfo PaymentCurrencyCulture = CultureInfo.GetCultureInfo("en-US");
     private readonly string modalId = $"appointment-detail-modal-{Guid.NewGuid():N}";
     private bool modalAccessibilityActive;
 
@@ -418,10 +420,18 @@
         }
     }
 
-    private string GetCopayStatusLabel() =>
-        string.IsNullOrWhiteSpace(Appointment?.CopayStatusLabel)
+    private string GetCopayStatusLabel()
+    {
+        if (Appointment?.CopayAmount > 0 &&
+            string.Equals(Appointment.CopayStatusLabel, "Copay due", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"Copay due {Appointment.CopayAmount.Value.ToString("C", PaymentCurrencyCulture)}";
+        }
+
+        return string.IsNullOrWhiteSpace(Appointment?.CopayStatusLabel)
             ? "Copay not configured"
             : Appointment.CopayStatusLabel;
+    }
 
     private string GetCopayActionUnavailableReason() =>
         string.IsNullOrWhiteSpace(Appointment?.CopayActionUnavailableReason)
