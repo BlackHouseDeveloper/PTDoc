@@ -101,6 +101,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 
 - Beta QA source of truth: `docs/BETA_QA.md`; beta deployment/runbook source of truth: `docs/deployment/BETA_DEPLOYMENT.md`.
 - Hosted beta URLs: Web `https://ptdoc.bhdevsites.com`, API `https://api-ptdoc.bhdevsites.com`.
+- Hosted beta responsive browser QA: `cd tests/PTDoc.Web.UiQa && PTDOC_WEB_BASE_URL=https://ptdoc.bhdevsites.com PTDOC_UI_QA_USERNAME=<beta-user> PTDOC_UI_QA_PIN=<current-out-of-band-beta-pin> npm run test:responsive`
 - Use `https://api-ptdoc.bhdevsites.com/health/live` for frequent availability probes and reserve `https://api-ptdoc.bhdevsites.com/health/ready` for deployment validation and pre-QA checks.
 - The shared beta PIN is managed outside the repo as `BetaAccess__SeedPin`; get it from the beta environment owner and never commit or paste it into issue text, screenshots, or chat logs.
 - `BetaAccess__AllowStartupSeed=true` is Beta-only and assumes the API App Service remains a controlled single-instance deployment; if scale-out is enabled, disable startup seeding first or verify the SQL lock-protected seed path after deployment.
