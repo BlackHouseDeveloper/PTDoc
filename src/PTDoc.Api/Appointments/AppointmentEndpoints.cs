@@ -516,7 +516,15 @@ public static class AppointmentEndpoints
             await MarkAppointmentCheckedInAsync(db, appointment, cancellationToken, saveChanges: false);
         }
 
-        await db.SaveChangesAsync(cancellationToken.IsCancellationRequested ? CancellationToken.None : cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken.IsCancellationRequested ? CancellationToken.None : cancellationToken);
+        }
+        catch (DbUpdateException ex) when (IsPaymentConcurrencyDbException(ex))
+        {
+            db.Entry(transaction).State = EntityState.Detached;
+            return await BuildConcurrentPaymentResponseAsync(db, appointment.Id, request.CheckInAfterPayment, cancellationToken);
+        }
 
         await auditService.LogRuleEvaluationAsync(new PTDoc.Application.Compliance.AuditEvent
         {

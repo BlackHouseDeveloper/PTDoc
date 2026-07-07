@@ -351,6 +351,50 @@ public class IntegrationServicesTests
     }
 
     [Fact]
+    public async Task PaymentService_ProcessPayment_TreatsApprovedResponseWithoutTransactionIdAsInvalid()
+    {
+        var config = CreateTestConfiguration(enabled: true);
+        var handler = new StubHttpMessageHandler(_ => StubHttpMessageHandler.JsonResponse("""
+            {
+              "transactionResponse": {
+                "responseCode": "1",
+                "authCode": "AUTH42",
+                "messages": [
+                  {
+                    "code": "1",
+                    "description": "This transaction has been approved."
+                  }
+                ]
+              },
+              "messages": {
+                "resultCode": "Ok",
+                "message": [
+                  {
+                    "code": "I00001",
+                    "text": "Successful."
+                  }
+                ]
+              }
+            }
+            """));
+        var service = new AuthorizeNetPaymentService(new MockHttpClientFactory(new HttpClient(handler)), config);
+
+        var result = await service.ProcessPaymentAsync(new PaymentRequest
+        {
+            OpaqueDataToken = "token123",
+            OpaqueDataDescriptor = "COMMON.ACCEPT.INAPP.PAYMENT",
+            Amount = 50.00m,
+            PatientId = Guid.NewGuid(),
+            AppointmentId = Guid.NewGuid()
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("GATEWAY_RESPONSE_INVALID", result.ErrorCode);
+        Assert.Equal("Payment gateway returned an invalid response", result.ErrorMessage);
+        Assert.Equal(50.00m, result.Amount);
+    }
+
+    [Fact]
     public async Task PaymentService_ProcessPayment_MapsAuthorizeNetDecline()
     {
         // Arrange

@@ -237,16 +237,31 @@ public class AuthorizeNetPaymentService : IPaymentService
             var responseCode = transactionResponse.TryGetProperty("responseCode", out var responseCodeElement)
                 ? responseCodeElement.GetString()
                 : null;
+            var resultCode = GetResultCode(messages);
+            var transactionId = GetOptionalString(transactionResponse, "transId");
+            var authorizationCode = GetOptionalString(transactionResponse, "authCode");
             var success = string.Equals(responseCode, "1", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(GetResultCode(messages), "Ok", StringComparison.OrdinalIgnoreCase);
+                && string.Equals(resultCode, "Ok", StringComparison.OrdinalIgnoreCase);
+
+            if (success && !string.IsNullOrWhiteSpace(transactionId))
+            {
+                return new PaymentResult
+                {
+                    Success = true,
+                    TransactionId = transactionId,
+                    AuthorizationCode = authorizationCode,
+                    ProcessedAt = DateTime.UtcNow,
+                    Amount = amount
+                };
+            }
 
             if (success)
             {
                 return new PaymentResult
                 {
-                    Success = true,
-                    TransactionId = GetOptionalString(transactionResponse, "transId"),
-                    AuthorizationCode = GetOptionalString(transactionResponse, "authCode"),
+                    Success = false,
+                    ErrorCode = "GATEWAY_RESPONSE_INVALID",
+                    ErrorMessage = "Payment gateway returned an invalid response",
                     ProcessedAt = DateTime.UtcNow,
                     Amount = amount
                 };
