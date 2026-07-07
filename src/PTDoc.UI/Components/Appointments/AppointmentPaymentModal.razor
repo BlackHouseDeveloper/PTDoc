@@ -102,6 +102,7 @@
         || isPaymentFormUnavailable
         || Configuration is null
         || !Configuration.Enabled
+        || !acceptUiInitialized
         || Appointment?.CopayAmount is null or <= 0;
     private IJSObjectReference? modalModule;
     private IJSObjectReference? acceptModule;
@@ -114,7 +115,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (IsOpen && !isPaymentFormUnavailable)
+        if (IsOpen && Appointment is not null && !isPaymentFormUnavailable)
         {
             var shouldActivateModal = !modalAccessibilityActive;
             var shouldInitializeAcceptUi = Configuration?.Enabled == true && !acceptUiInitialized;
@@ -147,6 +148,7 @@
                 {
                     await acceptModule.InvokeVoidAsync("initialize", modalId, dotNetRef, Configuration.Environment);
                     acceptUiInitialized = true;
+                    StateHasChanged();
                 }
             }
             catch (JSDisconnectedException)
@@ -233,6 +235,15 @@
 
     private void HandlePaymentButtonClicked()
     {
+        if (!acceptUiInitialized)
+        {
+            localErrorMessage = "Payment form is still loading. Please wait a moment and retry.";
+            isTokenizing = false;
+            StateHasChanged();
+            return;
+        }
+
+        localErrorMessage = null;
         if (!IsPayButtonDisabled)
         {
             isTokenizing = true;

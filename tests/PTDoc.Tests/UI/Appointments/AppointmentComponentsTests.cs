@@ -184,7 +184,7 @@ public sealed class AppointmentComponentsTests : TestContext
 
         var cut = RenderComponent<AppointmentPaymentModal>(parameters => parameters
             .Add(component => component.IsOpen, true)
-            .Add(component => component.Appointment, CreateAppointment(status: "Scheduled", canRecordCopay: true)));
+            .Add(component => component.Appointment, CreateAppointment(status: "Scheduled", canRecordCopay: true, copayAmount: 30m)));
 
         Assert.Contains("Collect copay before check-in", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("lockBodyScroll", jsRuntime.Invocations);
@@ -192,7 +192,7 @@ public sealed class AppointmentComponentsTests : TestContext
 
         cut.SetParametersAndRender(parameters => parameters
             .Add(component => component.IsOpen, true)
-            .Add(component => component.Appointment, CreateAppointment(status: "Scheduled", canRecordCopay: true))
+            .Add(component => component.Appointment, CreateAppointment(status: "Scheduled", canRecordCopay: true, copayAmount: 30m))
             .Add(component => component.Configuration, new PaymentClientConfigurationResponse
             {
                 Enabled = true,
@@ -202,6 +202,26 @@ public sealed class AppointmentComponentsTests : TestContext
             }));
 
         Assert.Contains("initialize", jsRuntime.Invocations);
+    }
+
+    [Fact]
+    public void AppointmentPaymentModal_OpenWithoutAppointment_DoesNotInitializeModalInterop()
+    {
+        var jsRuntime = new RecordingJsRuntime();
+        Services.AddSingleton<IJSRuntime>(jsRuntime);
+
+        var cut = RenderComponent<AppointmentPaymentModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.Configuration, new PaymentClientConfigurationResponse
+            {
+                Enabled = true,
+                Environment = "Sandbox",
+                ApiLoginId = "login",
+                ClientKey = "client-key"
+            }));
+
+        Assert.DoesNotContain("Collect copay before check-in", cut.Markup, StringComparison.Ordinal);
+        Assert.Empty(jsRuntime.Invocations);
     }
 
     [Fact]
@@ -474,7 +494,8 @@ public sealed class AppointmentComponentsTests : TestContext
         string? intakeStatus = "Completed",
         Guid? visitNoteId = null,
         bool canRecordCopay = false,
-        string copayStatusLabel = "Copay not configured")
+        string copayStatusLabel = "Copay not configured",
+        decimal? copayAmount = null)
     {
         return new AppointmentDetailViewModel
         {
@@ -492,6 +513,7 @@ public sealed class AppointmentComponentsTests : TestContext
             AppointmentStatus = status,
             VisitWorkflowStatus = visitWorkflowStatus ?? string.Empty,
             IntakeStatus = intakeStatus,
+            CopayAmount = copayAmount,
             CanRecordCopay = canRecordCopay,
             CopayStatusLabel = copayStatusLabel,
             Notes = "Shoulder mobility follow-up."

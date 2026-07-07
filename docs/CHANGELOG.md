@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Authorize.net PR review follow-up** — Required approved gateway responses to include a nonblank transaction id and returned the concurrent payment response if a final transaction update hits an active-payment uniqueness race. Reason: validated PR and CI feedback identified invalid paid-state reconciliation risk and a concurrent copay test failure returning a 500.
 - **Authorize.net PR review follow-up** — Parsed copay amount strings with the same en-US currency culture used by the payment UI and covered dollar-formatted copays in the check-in gate test. Reason: validated PR review feedback identified that currency-formatted payer data could bypass copay-required check-in enforcement.
 - **Authorize.net PR review follow-up** — Waited for existing in-flight AcceptUI script tags and removed failed script tags before retry. Reason: validated PR review feedback identified that module reloads or failed external script loads could leave the payment button unable to tokenize.
+- **Authorize.net PR review follow-up** — Skipped payment-modal JS initialization until appointment markup is rendered and blocked premature Pay clicks until AcceptUI is initialized. Reason: validated PR review feedback identified modal focus-handler drift and a possible stuck Processing state before tokenization is ready.
 
 ### Changed - Agent and QA guidance for split audit remediation
 
