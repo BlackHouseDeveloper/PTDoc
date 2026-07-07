@@ -94,7 +94,7 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
             "Due",
             new DateTime(2026, 7, 5, 14, 0, 0, DateTimeKind.Utc),
             AppointmentStatus.Scheduled,
-            payerInfoJson: """{"copayAmount":"30.00"}""");
+            payerInfoJson: """{"copayAmount":"$30.00"}""");
         await db.SaveChangesAsync();
 
         using var client = CreateClientWithRole(factory, Roles.FrontDesk);

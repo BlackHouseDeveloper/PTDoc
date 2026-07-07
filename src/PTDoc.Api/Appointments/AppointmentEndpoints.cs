@@ -22,6 +22,7 @@ public static class AppointmentEndpoints
     private const int PaymentAuthorizationCodeMaxLength = 80;
     private const int PaymentGatewayErrorCodeMaxLength = 80;
     private const int PaymentGatewayErrorMessageMaxLength = 500;
+    private static readonly CultureInfo CopayCurrencyCulture = CultureInfo.GetCultureInfo("en-US");
     private static readonly string[] SchedulableClinicianRoles =
     [
         Roles.PT,
@@ -713,7 +714,7 @@ public static class AppointmentEndpoints
                 JsonValueKind.String when decimal.TryParse(
                     copayElement.GetString()?.Trim(),
                     NumberStyles.Number | NumberStyles.AllowCurrencySymbol,
-                    CultureInfo.InvariantCulture,
+                    CopayCurrencyCulture,
                     out var amount) => amount,
                 _ => null
             };
