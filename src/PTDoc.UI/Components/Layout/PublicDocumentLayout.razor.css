@@ -1,0 +1,91 @@
+.public-document-layout {
+    min-height: 100vh;
+    background: var(--background);
+    color: var(--foreground);
+}
+
+.public-document-layout__header,
+.public-document-layout__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-4);
+    width: min(100%, 72rem);
+    margin: 0 auto;
+    padding: var(--spacing-4) var(--spacing-6);
+}
+
+.public-document-layout__header {
+    border-bottom: 1px solid var(--border);
+}
+
+.public-document-layout__brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    color: var(--foreground);
+    font-size: var(--text-lg);
+    font-weight: var(--font-weight-semibold);
+    text-decoration: none;
+}
+
+.public-document-layout__brand:hover,
+.public-document-layout__brand:focus-visible {
+    color: var(--foreground);
+    text-decoration: none;
+}
+
+.public-document-layout__brand-mark {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--radius-md);
+    color: var(--primary-foreground);
+    background: var(--primary);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+}
+
+.public-document-layout__nav {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--spacing-4);
+}
+
+.public-document-layout__nav a {
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+}
+
+.public-document-layout__main {
+    width: min(100%, 72rem);
+    margin: 0 auto;
+    padding: var(--spacing-8) var(--spacing-6) var(--spacing-12);
+}
+
+.public-document-layout__footer {
+    align-items: flex-start;
+    border-top: 1px solid var(--border);
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+}
+
+@media (max-width: 767px) {
+    .public-document-layout__header,
+    .public-document-layout__footer {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: var(--spacing-4);
+    }
+
+    .public-document-layout__main {
+        padding: var(--spacing-6) var(--spacing-4) var(--spacing-10);
+    }
+
+    .public-document-layout__nav {
+        gap: var(--spacing-3);
+    }
+}
