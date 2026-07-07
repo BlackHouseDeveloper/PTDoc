@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Beta E2E route-backed navigation follow-up
+
+- **Beta E2E remediation** — Reapplied patient-profile tab and new-note route state on query-only navigation, reloaded appointments when query-only navigation changes the day/week load window, relabeled Export Center as a Tools navigation item for PT users, and made browser QA tolerate valid empty week schedules. Reason: hosted beta testing found route-backed controls and role navigation could appear stale or misleading even after the local route contracts were implemented.
+
+### Changed - Agent guidance captures hosted beta browser QA
+
+- **`AGENTS.md`** — Added the documented hosted-beta Playwright responsive QA command using `PTDOC_WEB_BASE_URL=https://ptdoc.bhdevsites.com` plus seeded beta credentials. Reason: keep the agent instructions aligned with the current beta E2E plan so agents can run the supported deployed-environment browser check without rediscovering it.
+
+### Added - Public communication compliance pages
+
+- **Public SMS, privacy, and terms pages** — Added anonymous `/sms-consent`, `/privacy`, `/privacy-policy`, `/terms`, and `/terms-and-conditions` pages with shared public-document layout and responsive styling. Reason: Azure Communication Services SMS registration needs public opt-in, privacy, and terms URLs that explain PTDoc transactional messaging, STOP/HELP handling, and patient-facing policy context.
+
 ### Added - Beta E2E testing plan
 
 - **Beta end-to-end testing plan** — Added a hosted-beta E2E plan covering environment gates, seeded roles, dashboard, appointments, patient chart, intake, SOAP documentation, payments, responsive/accessibility, regression coverage, PR verification, and release readiness. Reason: QA needs an execution-ready beta plan aligned to client feedback, live-audit findings, and recent PR intent without committing beta PINs or real patient data.
