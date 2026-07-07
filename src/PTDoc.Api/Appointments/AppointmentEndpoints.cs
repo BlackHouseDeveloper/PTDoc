@@ -7,6 +7,7 @@ using PTDoc.Application.Integrations;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
 
@@ -22,6 +23,7 @@ public static class AppointmentEndpoints
     private const int PaymentAuthorizationCodeMaxLength = 80;
     private const int PaymentGatewayErrorCodeMaxLength = 80;
     private const int PaymentGatewayErrorMessageMaxLength = 500;
+    private static readonly ConcurrentDictionary<Guid, AppointmentPaymentLockState> AppointmentPaymentLocks = new();
     private static readonly CultureInfo CopayCurrencyCulture = CultureInfo.GetCultureInfo("en-US");
     private static readonly string[] SchedulableClinicianRoles =
     [
@@ -402,6 +404,8 @@ public static class AppointmentEndpoints
             return Results.BadRequest(new { error = "Payment processing is not configured." });
         }
 
+        await using var paymentLock = await AcquireAppointmentPaymentLockAsync(id, cancellationToken);
+
         var appointment = await db.Appointments
             .FirstOrDefaultAsync(existing => existing.Id == id, cancellationToken);
 
@@ -505,12 +509,29 @@ public static class AppointmentEndpoints
             paymentResult = BuildPaymentGatewayFailure(copayAmount.Value, "GATEWAY_REQUEST_FAILED");
         }
 
+        var normalizedTransactionId = NormalizePaymentField(paymentResult.TransactionId, PaymentTransactionIdMaxLength);
+        var normalizedAuthorizationCode = NormalizePaymentField(paymentResult.AuthorizationCode, PaymentAuthorizationCodeMaxLength);
+        if (paymentResult.Success && string.IsNullOrWhiteSpace(normalizedTransactionId))
+        {
+            paymentResult = BuildPaymentGatewayFailure(
+                copayAmount.Value,
+                "GATEWAY_RESPONSE_INVALID",
+                "Payment gateway returned an invalid response");
+            paymentResult.AuthorizationCode = normalizedAuthorizationCode;
+        }
+
         transaction.Status = paymentResult.Success ? AppointmentPaymentStatus.Succeeded : AppointmentPaymentStatus.Failed;
-        transaction.TransactionId = TruncatePaymentField(paymentResult.TransactionId, PaymentTransactionIdMaxLength);
-        transaction.AuthorizationCode = TruncatePaymentField(paymentResult.AuthorizationCode, PaymentAuthorizationCodeMaxLength);
-        transaction.GatewayErrorCode = TruncatePaymentField(paymentResult.ErrorCode, PaymentGatewayErrorCodeMaxLength);
-        transaction.GatewayErrorMessage = TruncatePaymentField(paymentResult.ErrorMessage, PaymentGatewayErrorMessageMaxLength);
+        transaction.TransactionId = paymentResult.Success
+            ? normalizedTransactionId
+            : NormalizePaymentField(paymentResult.TransactionId, PaymentTransactionIdMaxLength);
+        transaction.AuthorizationCode = normalizedAuthorizationCode;
+        transaction.GatewayErrorCode = NormalizePaymentField(paymentResult.ErrorCode, PaymentGatewayErrorCodeMaxLength);
+        transaction.GatewayErrorMessage = NormalizePaymentField(paymentResult.ErrorMessage, PaymentGatewayErrorMessageMaxLength);
         transaction.ProcessedAtUtc = paymentResult.ProcessedAt == default ? DateTime.UtcNow : paymentResult.ProcessedAt;
+        paymentResult.TransactionId = transaction.TransactionId;
+        paymentResult.AuthorizationCode = transaction.AuthorizationCode;
+        paymentResult.ErrorCode = transaction.GatewayErrorCode;
+        paymentResult.ErrorMessage = transaction.GatewayErrorMessage;
 
         if (paymentResult.Success && request.CheckInAfterPayment)
         {
@@ -592,12 +613,25 @@ public static class AppointmentEndpoints
         return value[..maxLength];
     }
 
-    private static PaymentResult BuildPaymentGatewayFailure(decimal amount, string errorCode) =>
+    private static string? NormalizePaymentField(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return TruncatePaymentField(value.Trim(), maxLength);
+    }
+
+    private static PaymentResult BuildPaymentGatewayFailure(
+        decimal amount,
+        string errorCode,
+        string errorMessage = "Payment gateway request failed") =>
         new()
         {
             Success = false,
             ErrorCode = errorCode,
-            ErrorMessage = "Payment gateway request failed",
+            ErrorMessage = errorMessage,
             ProcessedAt = DateTime.UtcNow,
             Amount = amount
         };
@@ -607,7 +641,16 @@ public static class AppointmentEndpoints
         Guid appointmentId,
         CancellationToken cancellationToken)
     {
-        var currentAppointment = await BuildAppointmentResponseAsync(db, appointmentId, paymentAvailable: true, cancellationToken);
+        AppointmentListItemResponse? currentAppointment = null;
+        try
+        {
+            currentAppointment = await BuildAppointmentResponseAsync(db, appointmentId, paymentAvailable: true, cancellationToken);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Keep concurrent duplicate payment attempts user-safe even if the snapshot read races payment persistence.
+        }
+
         return Results.Ok(new AppointmentCheckInPaymentResponse
         {
             Appointment = currentAppointment,
@@ -617,7 +660,7 @@ public static class AppointmentEndpoints
                 ErrorCode = "PAYMENT_IN_PROGRESS",
                 ErrorMessage = "A copay payment is already being processed for this appointment.",
                 ProcessedAt = DateTime.UtcNow,
-                Amount = currentAppointment.CopayAmount
+                Amount = currentAppointment?.CopayAmount
             }
         });
     }
@@ -640,7 +683,7 @@ public static class AppointmentEndpoints
             .Where(payment => payment.AppointmentId == appointmentId
                 && payment.Status == AppointmentPaymentStatus.Succeeded
                 && payment.TransactionId != null
-                && payment.TransactionId != string.Empty)
+                && payment.TransactionId.Trim() != string.Empty)
             .OrderByDescending(payment => payment.ProcessedAtUtc ?? payment.CreatedAtUtc)
             .Select(payment => payment.TransactionId)
             .FirstOrDefaultAsync(cancellationToken);
@@ -755,7 +798,7 @@ public static class AppointmentEndpoints
                     .Where(payment => payment.AppointmentId == appointment.Id
                         && payment.Status == AppointmentPaymentStatus.Succeeded
                         && payment.TransactionId != null
-                        && payment.TransactionId != string.Empty)
+                        && payment.TransactionId.Trim() != string.Empty)
                     .OrderByDescending(payment => payment.ProcessedAtUtc ?? payment.CreatedAtUtc)
                     .Select(payment => payment.TransactionId)
                     .FirstOrDefault(),
@@ -1048,6 +1091,42 @@ public static class AppointmentEndpoints
         };
     }
 
+    private static async Task<AppointmentPaymentLockLease> AcquireAppointmentPaymentLockAsync(
+        Guid appointmentId,
+        CancellationToken cancellationToken)
+    {
+        AppointmentPaymentLockState state;
+        while (true)
+        {
+            state = AppointmentPaymentLocks.GetOrAdd(appointmentId, _ => new AppointmentPaymentLockState());
+            if (state.TryAddReference())
+            {
+                break;
+            }
+
+            AppointmentPaymentLocks.TryRemove(appointmentId, out _);
+        }
+
+        try
+        {
+            await state.Semaphore.WaitAsync(cancellationToken);
+            return new AppointmentPaymentLockLease(appointmentId, state);
+        }
+        catch
+        {
+            ReleaseAppointmentPaymentLockReference(appointmentId, state);
+            throw;
+        }
+    }
+
+    private static void ReleaseAppointmentPaymentLockReference(Guid appointmentId, AppointmentPaymentLockState state)
+    {
+        if (state.ReleaseReferenceAndMarkRemoved())
+        {
+            AppointmentPaymentLocks.TryRemove(appointmentId, out _);
+        }
+    }
+
     private static string? NormalizeNotes(string? notes) =>
         string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
 
@@ -1218,5 +1297,53 @@ public static class AppointmentEndpoints
     {
         public DateTime StartTimeUtc { get; init; }
         public DateTime EndTimeUtc { get; init; }
+    }
+
+    private sealed class AppointmentPaymentLockState
+    {
+        private readonly object gate = new();
+        private int referenceCount;
+        private bool removed;
+
+        public SemaphoreSlim Semaphore { get; } = new(1, 1);
+
+        public bool TryAddReference()
+        {
+            lock (gate)
+            {
+                if (removed)
+                {
+                    return false;
+                }
+
+                referenceCount++;
+                return true;
+            }
+        }
+
+        public bool ReleaseReferenceAndMarkRemoved()
+        {
+            lock (gate)
+            {
+                referenceCount--;
+                if (referenceCount != 0)
+                {
+                    return false;
+                }
+
+                removed = true;
+                return true;
+            }
+        }
+    }
+
+    private sealed class AppointmentPaymentLockLease(Guid appointmentId, AppointmentPaymentLockState state) : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync()
+        {
+            state.Semaphore.Release();
+            ReleaseAppointmentPaymentLockReference(appointmentId, state);
+            return ValueTask.CompletedTask;
+        }
     }
 }

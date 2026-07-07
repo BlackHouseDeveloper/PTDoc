@@ -249,8 +249,10 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
     [Fact]
     public async Task CheckInPayment_WhenPaymentSucceeds_RecordsTransactionAndChecksIn()
     {
-        var gatewayTransactionId = new string('T', 130);
-        var gatewayAuthorizationCode = new string('A', 90);
+        var expectedTransactionId = new string('T', 120);
+        var expectedAuthorizationCode = new string('A', 80);
+        var gatewayTransactionId = $"  {new string('T', 130)}  ";
+        var gatewayAuthorizationCode = $"  {new string('A', 90)}  ";
         using var factory = CreatePaymentConfiguredFactory(new FixedPaymentService(new PaymentResult
         {
             Success = true,
@@ -286,14 +288,109 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         var body = await response.Content.ReadFromJsonAsync<AppointmentCheckInPaymentResponse>();
         Assert.NotNull(body);
         Assert.True(body!.Payment.Success);
+        Assert.Equal(expectedTransactionId, body.Payment.TransactionId);
+        Assert.Equal(expectedAuthorizationCode, body.Payment.AuthorizationCode);
         Assert.Equal("Checked In", body.Appointment?.AppointmentStatus);
         Assert.False(body.Appointment?.CanRecordCopay);
         Assert.Equal("Copay paid", body.Appointment?.CopayStatusLabel);
 
         var transaction = await db.AppointmentPaymentTransactions.SingleAsync(payment => payment.AppointmentId == seeded.AppointmentId);
         Assert.Equal(AppointmentPaymentStatus.Succeeded, transaction.Status);
-        Assert.Equal(gatewayTransactionId[..120], transaction.TransactionId);
-        Assert.Equal(gatewayAuthorizationCode[..80], transaction.AuthorizationCode);
+        Assert.Equal(expectedTransactionId, transaction.TransactionId);
+        Assert.Equal(expectedAuthorizationCode, transaction.AuthorizationCode);
+    }
+
+    [Fact]
+    public async Task CheckInPayment_WhenPaymentSucceedsWithoutRealTransactionId_RecordsFailureAndKeepsAppointmentScheduled()
+    {
+        using var factory = CreatePaymentConfiguredFactory(new FixedPaymentService(new PaymentResult
+        {
+            Success = true,
+            TransactionId = "   ",
+            AuthorizationCode = "  AUTH42  ",
+            Amount = 30m,
+            ProcessedAt = DateTime.UtcNow
+        }));
+        await EnsurePaymentFactoryDatabaseAsync(factory);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinician = await db.Users.SingleAsync(user => user.Username == "integration-pt");
+        var seeded = SeedAppointmentCase(
+            db,
+            clinician.Id,
+            $"PAY-{Guid.NewGuid():N}",
+            "BlankTransaction",
+            new DateTime(2026, 7, 5, 16, 30, 0, DateTimeKind.Utc),
+            AppointmentStatus.Scheduled,
+            payerInfoJson: """{"copayAmount":"30.00"}""");
+        await db.SaveChangesAsync();
+
+        using var client = CreateClientWithRole(factory, Roles.FrontDesk);
+        using var response = await client.PostAsJsonAsync(
+            $"/api/v1/appointments/{seeded.AppointmentId}/check-in-payment",
+            new AppointmentCheckInPaymentRequest
+            {
+                OpaqueDataDescriptor = "COMMON.ACCEPT.INAPP.PAYMENT",
+                OpaqueDataToken = "opaque-token"
+            });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<AppointmentCheckInPaymentResponse>();
+        Assert.NotNull(body);
+        Assert.False(body!.Payment.Success);
+        Assert.Equal("GATEWAY_RESPONSE_INVALID", body.Payment.ErrorCode);
+        Assert.Equal("AUTH42", body.Payment.AuthorizationCode);
+        Assert.Equal("Scheduled", body.Appointment?.AppointmentStatus);
+        Assert.True(body.Appointment?.CanRecordCopay);
+        Assert.Null(body.Appointment?.SuccessfulPaymentTransactionId);
+
+        var transaction = await db.AppointmentPaymentTransactions.SingleAsync(payment => payment.AppointmentId == seeded.AppointmentId);
+        Assert.Equal(AppointmentPaymentStatus.Failed, transaction.Status);
+        Assert.Null(transaction.TransactionId);
+        Assert.Equal("AUTH42", transaction.AuthorizationCode);
+        Assert.Equal("GATEWAY_RESPONSE_INVALID", transaction.GatewayErrorCode);
+    }
+
+    [Fact]
+    public async Task AppointmentsOverview_IgnoresWhitespaceSuccessfulPaymentTransactionId()
+    {
+        using var factory = CreatePaymentConfiguredFactory(new FixedPaymentService(new PaymentResult { Success = true }));
+        await EnsurePaymentFactoryDatabaseAsync(factory);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinician = await db.Users.SingleAsync(user => user.Username == "integration-pt");
+        var seeded = SeedAppointmentCase(
+            db,
+            clinician.Id,
+            $"PAY-{Guid.NewGuid():N}",
+            "WhitespacePaid",
+            new DateTime(2026, 7, 5, 16, 45, 0, DateTimeKind.Utc),
+            AppointmentStatus.Scheduled,
+            payerInfoJson: """{"copayAmount":"30.00"}""");
+        db.AppointmentPaymentTransactions.Add(new AppointmentPaymentTransaction
+        {
+            AppointmentId = seeded.AppointmentId,
+            PatientId = seeded.PatientId,
+            Amount = 30m,
+            Status = AppointmentPaymentStatus.Succeeded,
+            TransactionId = "   ",
+            Processor = "AuthorizeNet",
+            CreatedAtUtc = DateTime.UtcNow,
+            ProcessedAtUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        using var client = CreateClientWithRole(factory, Roles.FrontDesk);
+        using var overviewResponse = await client.GetAsync("/api/v1/appointments?startDate=2026-07-05&endDate=2026-07-05");
+
+        Assert.Equal(HttpStatusCode.OK, overviewResponse.StatusCode);
+        var overview = await overviewResponse.Content.ReadFromJsonAsync<AppointmentsOverviewResponse>();
+        var appointment = Assert.Single(
+            overview!.Appointments,
+            item => item.Id == seeded.AppointmentId);
+        Assert.True(appointment.CanRecordCopay);
+        Assert.Equal("Copay due", appointment.CopayStatusLabel);
+        Assert.Null(appointment.SuccessfulPaymentTransactionId);
     }
 
     [Fact]
@@ -400,7 +497,7 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
             });
         }
 
-        return new SeededAppointmentCase(appointment.Id, noteId, $"{patient.FirstName} {patient.LastName}");
+        return new SeededAppointmentCase(appointment.Id, patient.Id, noteId, $"{patient.FirstName} {patient.LastName}");
     }
 
     private WebApplicationFactory<Program> CreatePaymentConfiguredFactory(IPaymentService paymentService) =>
@@ -568,5 +665,5 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
             });
     }
 
-    private sealed record SeededAppointmentCase(Guid AppointmentId, Guid? NoteId, string PatientName);
+    private sealed record SeededAppointmentCase(Guid AppointmentId, Guid PatientId, Guid? NoteId, string PatientName);
 }
