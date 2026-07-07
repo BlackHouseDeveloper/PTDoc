@@ -21,7 +21,32 @@ function loadScript(environment) {
 
   const existing = document.querySelector(`script[data-ptdoc-authorize-net="true"][src="${scriptUrl}"]`);
   if (existing) {
-    return Promise.resolve();
+    if (existing.dataset.ptdocAuthorizeNetLoaded === "true" || typeof window.AcceptUI !== "undefined") {
+      existing.dataset.ptdocAuthorizeNetLoaded = "true";
+      return Promise.resolve();
+    }
+
+    const existingPromise = new Promise((resolve, reject) => {
+      existing.addEventListener(
+        "load",
+        () => {
+          existing.dataset.ptdocAuthorizeNetLoaded = "true";
+          resolve();
+        },
+        { once: true },
+      );
+      existing.addEventListener(
+        "error",
+        () => {
+          existing.remove();
+          scriptPromises.delete(scriptUrl);
+          reject(new Error("Authorize.net AcceptUI script failed to load."));
+        },
+        { once: true },
+      );
+    });
+    scriptPromises.set(scriptUrl, existingPromise);
+    return existingPromise;
   }
 
   const scriptPromise = new Promise((resolve, reject) => {
@@ -29,9 +54,13 @@ function loadScript(environment) {
     script.src = scriptUrl;
     script.async = true;
     script.dataset.ptdocAuthorizeNet = "true";
-    script.onload = () => resolve();
+    script.onload = () => {
+      script.dataset.ptdocAuthorizeNetLoaded = "true";
+      resolve();
+    };
     script.onerror = () => {
       scriptPromises.delete(scriptUrl);
+      script.remove();
       reject(new Error("Authorize.net AcceptUI script failed to load."));
     };
     document.head.appendChild(script);
