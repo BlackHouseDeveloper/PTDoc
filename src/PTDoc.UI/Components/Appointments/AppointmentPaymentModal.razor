@@ -130,6 +130,7 @@
                 if (modalModule is null || acceptModule is null || dotNetRef is null)
                 {
                     isPaymentFormUnavailable = true;
+                    isTokenizing = false;
                     localErrorMessage = "Payment form could not be loaded. Please retry.";
                     StateHasChanged();
                     return;
@@ -155,6 +156,7 @@
             catch (JSException)
             {
                 isPaymentFormUnavailable = true;
+                isTokenizing = false;
                 localErrorMessage = "Payment form could not be loaded. Please retry.";
                 StateHasChanged();
             }

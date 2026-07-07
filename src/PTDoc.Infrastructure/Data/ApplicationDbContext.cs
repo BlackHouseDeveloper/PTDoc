@@ -481,7 +481,6 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<AppointmentPaymentTransaction>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.HasIndex(e => e.AppointmentId);
             entity.HasIndex(e => e.AppointmentId)
                 .IsUnique()
                 .HasDatabaseName("UX_AppointmentPaymentTransactions_AppointmentId_Active")

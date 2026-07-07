@@ -49,11 +49,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_AppointmentPaymentTransactions_AppointmentId",
-                table: "AppointmentPaymentTransactions",
-                column: "AppointmentId");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_AppointmentPaymentTransactions_AppointmentId_Status",
                 table: "AppointmentPaymentTransactions",
                 columns: new[] { "AppointmentId", "Status" });
