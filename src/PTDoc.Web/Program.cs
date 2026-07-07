@@ -53,6 +53,7 @@ builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();
 builder.Services.AddScoped<INoteDraftLocalPersistenceService, NoopNoteDraftLocalPersistenceService>();
 builder.Services.AddTransient<DraftAutosaveService>();
 builder.Services.AddScoped<IAppointmentService, AppointmentApiService>();
+builder.Services.AddScoped<IPaymentClientService, PaymentClientApiService>();
 builder.Services.AddScoped<IPatientService, PatientApiService>();
 builder.Services.AddScoped<IPatientChartStorageService, PatientChartStorageApiService>();
 builder.Services.AddScoped<INoteService, NoteListApiService>();

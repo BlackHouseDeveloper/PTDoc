@@ -91,6 +91,18 @@ public sealed class AppointmentApiService(HttpClient httpClient) : IAppointmentS
         return await response.Content.ReadFromJsonAsync<AppointmentListItemResponse>(SerializerOptions, cancellationToken);
     }
 
+    public async Task<AppointmentCheckInPaymentResponse> CheckInWithPaymentAsync(
+        Guid id,
+        AppointmentCheckInPaymentRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync($"/api/v1/appointments/{id}/check-in-payment", request, cancellationToken);
+        await EnsureSuccessStatusCodeAsync(response, cancellationToken);
+
+        return await response.Content.ReadFromJsonAsync<AppointmentCheckInPaymentResponse>(SerializerOptions, cancellationToken)
+            ?? throw new InvalidOperationException("Appointment payment response was empty.");
+    }
+
     private static async Task EnsureSuccessStatusCodeAsync(
         HttpResponseMessage response,
         CancellationToken cancellationToken)

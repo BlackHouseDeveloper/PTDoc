@@ -61,9 +61,18 @@ public sealed class PublicOriginForwardingHandler(
             return null;
         }
 
-        var scheme = uri.Scheme;
-        return uri.IsDefaultPort
-            ? $"{scheme}://{uri.Host}"
-            : $"{scheme}://{uri.Host}:{uri.Port}";
+        var builder = new UriBuilder(uri)
+        {
+            Path = string.Empty,
+            Query = string.Empty,
+            Fragment = string.Empty
+        };
+
+        if (builder.Uri.IsDefaultPort)
+        {
+            builder.Port = -1;
+        }
+
+        return builder.Uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
     }
 }

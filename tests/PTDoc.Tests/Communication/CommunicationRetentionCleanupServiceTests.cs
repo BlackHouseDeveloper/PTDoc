@@ -22,13 +22,14 @@ public sealed class CommunicationRetentionCleanupServiceTests
         await connection.OpenAsync();
 
         var services = new ServiceCollection();
-        services.AddDbContext<ApplicationDbContext>(options => options.UseSqlite(connection));
+        services.AddDbContext<ApplicationDbContext>(options =>
+            options.UseSqlite(connection, sqlite => sqlite.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite")));
 
         await using var provider = services.BuildServiceProvider();
         await using (var scope = provider.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            await db.Database.EnsureCreatedAsync();
+            await db.Database.MigrateAsync();
             await SeedRetentionRecordsAsync(db);
         }
 
@@ -66,6 +67,31 @@ public sealed class CommunicationRetentionCleanupServiceTests
             .Select(challenge => challenge.ContactHash)
             .ToListAsync();
         Assert.Equal(["unexpired-challenge"], remainingChallengeHashes);
+    }
+
+    [Fact]
+    public async Task CleanupAsync_WithPendingSqliteMigrations_SkipsWithoutQueryingMissingTables()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        var services = new ServiceCollection();
+        services.AddDbContext<ApplicationDbContext>(options =>
+            options.UseSqlite(connection, sqlite => sqlite.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite")));
+
+        await using var provider = services.BuildServiceProvider();
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            Assert.NotEmpty(await db.Database.GetPendingMigrationsAsync());
+        }
+
+        var cleanup = new CommunicationRetentionCleanupService(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            Options.Create(new CommunicationOptions()),
+            NullLogger<CommunicationRetentionCleanupService>.Instance);
+
+        await InvokeCleanupAsync(cleanup);
     }
 
     private static async Task SeedRetentionRecordsAsync(ApplicationDbContext db)

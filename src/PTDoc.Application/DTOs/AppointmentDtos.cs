@@ -50,6 +50,24 @@ public sealed class AppointmentListItemResponse
     public Guid? VisitNoteId { get; set; }
     public string IntakeStatus { get; set; } = string.Empty;
     public string Notes { get; set; } = string.Empty;
+    public decimal? CopayAmount { get; set; }
+    public string CopayStatusLabel { get; set; } = "Copay not configured";
+    public bool CanRecordCopay { get; set; }
+    public string CopayActionUnavailableReason { get; set; } = "Copay collection is not configured for this appointment.";
+    public string? SuccessfulPaymentTransactionId { get; set; }
+}
+
+public sealed class AppointmentCheckInPaymentRequest
+{
+    public string OpaqueDataDescriptor { get; set; } = string.Empty;
+    public string OpaqueDataToken { get; set; } = string.Empty;
+    public bool CheckInAfterPayment { get; set; } = true;
+}
+
+public sealed class AppointmentCheckInPaymentResponse
+{
+    public AppointmentListItemResponse? Appointment { get; set; }
+    public PTDoc.Application.Integrations.PaymentResult Payment { get; set; } = new();
 }
 
 /// <summary>

@@ -21,6 +21,7 @@
 - Do **not** run `dotnet build`, `dotnet test`, or other build/verification commands automatically.
 - Ask the user to run builds/tests and provide output.
 - Use provided build/test output to drive fixes and iteration.
+- Exception: when fixing a GitHub Actions CI failure and the user explicitly asks to rerun the CI test locally, reproduce the relevant workflow command from `.github/workflows/` on the current branch before handing back. Prefer the smallest failing job command first (for example the `Core CI` `Category=CoreCi` test filter), then report the exact command and result.
 - A commit requires explicit user confirmation that the relevant build and tests passed, unless the user explicitly authorizes committing without that confirmation.
 
 **Reference Docs Only When Relevant**

@@ -1,3 +1,4 @@
+@using System.Globalization
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
@@ -208,6 +209,7 @@
     private ElementReference closeButtonRef;
     private IJSObjectReference? modalModule;
     private DotNetObjectReference<AppointmentDetailModal>? dotNetRef;
+    private static readonly CultureInfo PaymentCurrencyCulture = CultureInfo.GetCultureInfo("en-US");
     private readonly string modalId = $"appointment-detail-modal-{Guid.NewGuid():N}";
     private bool modalAccessibilityActive;
 
@@ -276,7 +278,8 @@
             : Appointment.VisitWorkflowStatus;
 
     private bool CanCheckIn =>
-        string.Equals(EffectiveAppointmentStatus, "Scheduled", StringComparison.OrdinalIgnoreCase);
+        string.Equals(EffectiveAppointmentStatus, "Scheduled", StringComparison.OrdinalIgnoreCase)
+        && !IsCopayBlockingCheckIn;
 
     private bool CanStartVisit =>
         string.Equals(EffectiveAppointmentStatus, "Checked In", StringComparison.OrdinalIgnoreCase)
@@ -299,6 +302,11 @@
     private string? GetTerminalActionDescriptionId() => IsTerminalStatus ? PrimaryActionDisabledReasonId : null;
 
     private bool CanRecordCopay => Appointment?.CanRecordCopay == true;
+
+    private bool IsCopayBlockingCheckIn =>
+        Appointment?.CopayAmount is > 0
+        && !CanRecordCopay
+        && !string.Equals(GetCopayStatusLabel(), "Copay paid", StringComparison.OrdinalIgnoreCase);
 
     private string? GetCopayActionDescriptionId() => CanRecordCopay ? null : CopayActionReasonId;
 
@@ -354,6 +362,11 @@
             return "This appointment is closed and cannot be started.";
         }
 
+        if (IsCopayBlockingCheckIn)
+        {
+            return GetCopayActionUnavailableReason();
+        }
+
         return "Check in the patient before starting the visit.";
     }
 
@@ -407,10 +420,18 @@
         }
     }
 
-    private string GetCopayStatusLabel() =>
-        string.IsNullOrWhiteSpace(Appointment?.CopayStatusLabel)
+    private string GetCopayStatusLabel()
+    {
+        if (Appointment?.CopayAmount > 0 &&
+            string.Equals(Appointment.CopayStatusLabel, "Copay due", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"Copay due {Appointment.CopayAmount.Value.ToString("C", PaymentCurrencyCulture)}";
+        }
+
+        return string.IsNullOrWhiteSpace(Appointment?.CopayStatusLabel)
             ? "Copay not configured"
             : Appointment.CopayStatusLabel;
+    }
 
     private string GetCopayActionUnavailableReason() =>
         string.IsNullOrWhiteSpace(Appointment?.CopayActionUnavailableReason)

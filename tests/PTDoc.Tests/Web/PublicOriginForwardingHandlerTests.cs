@@ -11,12 +11,19 @@ public sealed class PublicOriginForwardingHandlerTests
 {
     private const string PublicOriginHeader = "X-PTDoc-Public-Origin";
 
-    [Fact]
-    public async Task SendAsync_ForwardsNormalizedHttpContextOrigin()
+    [Theory]
+    [InlineData("https", "clinic.example", "https://clinic.example")]
+    [InlineData("https", "Clinic.Example:443", "https://clinic.example")]
+    [InlineData("https", "clinic.example:8443", "https://clinic.example:8443")]
+    [InlineData("http", "localhost:80", "http://localhost")]
+    public async Task SendAsync_ForwardsNormalizedHttpContextOrigin(
+        string scheme,
+        string host,
+        string expectedOrigin)
     {
         var httpContext = new DefaultHttpContext();
-        httpContext.Request.Scheme = Uri.UriSchemeHttps;
-        httpContext.Request.Host = new HostString("clinic.example");
+        httpContext.Request.Scheme = scheme;
+        httpContext.Request.Host = new HostString(host);
         var captureHandler = new CaptureHandler();
         using var handler = CreateHandler(httpContext, navigationUri: "https://fallback.example/dashboard", captureHandler);
         using var client = new HttpClient(handler);
@@ -24,7 +31,7 @@ public sealed class PublicOriginForwardingHandlerTests
         var response = await client.GetAsync("https://api.ptdoc.test/api/v1/intake/delivery/status");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        AssertHeader(captureHandler.Request, "https://clinic.example");
+        AssertHeader(captureHandler.Request, expectedOrigin);
     }
 
     [Fact]

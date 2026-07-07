@@ -35,6 +35,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<IntakeForm> IntakeForms => Set<IntakeForm>();
     public DbSet<PatientDocument> PatientDocuments => Set<PatientDocument>();
     public DbSet<PatientCommunicationLogEntry> PatientCommunicationLogEntries => Set<PatientCommunicationLogEntry>();
+    public DbSet<AppointmentPaymentTransaction> AppointmentPaymentTransactions => Set<AppointmentPaymentTransaction>();
 
     // User & auth entities
     public DbSet<User> Users => Set<User>();
@@ -477,6 +478,37 @@ public class ApplicationDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<AppointmentPaymentTransaction>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.AppointmentId)
+                .IsUnique()
+                .HasDatabaseName("UX_AppointmentPaymentTransactions_AppointmentId_Active")
+                .HasFilter(AppointmentPaymentActiveStatusFilter());
+            entity.HasIndex(e => e.PatientId);
+            entity.HasIndex(e => new { e.AppointmentId, e.Status });
+            entity.HasIndex(e => e.TransactionId);
+
+            entity.Property(e => e.Amount).HasPrecision(18, 2);
+            entity.Property(e => e.Status).IsRequired();
+            entity.Property(e => e.Processor).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.TransactionId).HasMaxLength(120);
+            entity.Property(e => e.AuthorizationCode).HasMaxLength(80);
+            entity.Property(e => e.GatewayErrorCode).HasMaxLength(80);
+            entity.Property(e => e.GatewayErrorMessage).HasMaxLength(500);
+            entity.Property(e => e.InvoiceNumber).HasMaxLength(80);
+
+            entity.HasOne(e => e.Appointment)
+                .WithMany()
+                .HasForeignKey(e => e.AppointmentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Patient)
+                .WithMany()
+                .HasForeignKey(e => e.PatientId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         // Configure SyncConflictArchive
         modelBuilder.Entity<SyncConflictArchive>(entity =>
         {
@@ -674,6 +706,11 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<PatientCommunicationLogEntry>()
             .HasQueryFilter(c => CurrentClinicId == null || c.ClinicId == CurrentClinicId);
 
+        modelBuilder.Entity<AppointmentPaymentTransaction>()
+            .HasQueryFilter(p => CurrentClinicId == null
+                || ((p.Appointment == null || p.Appointment.ClinicId == CurrentClinicId)
+                    && (p.Patient == null || p.Patient.ClinicId == CurrentClinicId)));
+
         modelBuilder.Entity<ExternalSystemMapping>()
             .HasQueryFilter(m => CurrentClinicId == null || m.Patient == null || m.Patient.ClinicId == CurrentClinicId);
 
@@ -840,5 +877,11 @@ public class ApplicationDbContext : DbContext
         return Database.ProviderName?.Contains("Npgsql") == true
             ? $"\"{column1}\" IS NOT NULL AND \"{column2}\" IS NOT NULL"
             : $"{column1} IS NOT NULL AND {column2} IS NOT NULL";
+    }
+
+    private string AppointmentPaymentActiveStatusFilter()
+    {
+        var statusColumn = Database.ProviderName?.Contains("Npgsql") == true ? "\"Status\"" : "Status";
+        return $"{statusColumn} IN ({(int)AppointmentPaymentStatus.Pending}, {(int)AppointmentPaymentStatus.Succeeded})";
     }
 }

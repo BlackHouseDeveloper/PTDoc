@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
@@ -45,7 +46,7 @@ public class IntegrationServicesTests
         await context.SaveChangesAsync();
     }
 
-    private IConfiguration CreateTestConfiguration(bool enabled = false)
+    private IConfiguration CreateTestConfiguration(bool enabled = false, string? paymentClientKey = "test_client_key")
     {
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -53,6 +54,8 @@ public class IntegrationServicesTests
                 ["Integrations:Payments:Enabled"] = enabled.ToString(),
                 ["Integrations:Payments:ApiLoginId"] = "test_login",
                 ["Integrations:Payments:TransactionKey"] = "test_key",
+                ["Integrations:Payments:ClientKey"] = paymentClientKey,
+                ["Integrations:Payments:Environment"] = "Sandbox",
                 ["Integrations:Fax:Enabled"] = enabled.ToString(),
                 ["Integrations:Fax:ApiKey"] = "test_fax_key",
                 ["Integrations:Hep:Enabled"] = enabled.ToString(),
@@ -197,10 +200,10 @@ public class IntegrationServicesTests
     }
 
     [Fact]
-    public async Task PaymentService_ProcessPayment_MockSuccess()
+    public async Task PaymentService_ProcessPayment_RequiresClientConfiguration()
     {
         // Arrange
-        var config = CreateTestConfiguration(enabled: true);
+        var config = CreateTestConfiguration(enabled: true, paymentClientKey: "");
         var httpClientFactory = new MockHttpClientFactory();
         var service = new AuthorizeNetPaymentService(httpClientFactory, config);
 
@@ -215,11 +218,292 @@ public class IntegrationServicesTests
         // Act
         var result = await service.ProcessPaymentAsync(request);
 
-        // Assert - Mock implementation returns success
+        // Assert
+        Assert.False(result.Success);
+        Assert.Equal("NOT_CONFIGURED", result.ErrorCode);
+    }
+
+    [Fact]
+    public async Task PaymentService_ProcessPayment_SendsAuthorizeNetTransaction()
+    {
+        // Arrange
+        var config = CreateTestConfiguration(enabled: true);
+        string? requestBody = null;
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.Equal("https://apitest.authorize.net/xml/v1/request.api", request.RequestUri!.ToString());
+
+            requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+            using var document = JsonDocument.Parse(requestBody);
+            var transactionRequest = document.RootElement
+                .GetProperty("createTransactionRequest")
+                .GetProperty("transactionRequest");
+
+            Assert.Equal("authCaptureTransaction", transactionRequest.GetProperty("transactionType").GetString());
+            Assert.Equal("50.00", transactionRequest.GetProperty("amount").GetString());
+            Assert.Equal("COMMON.ACCEPT.INAPP.PAYMENT", transactionRequest.GetProperty("payment").GetProperty("opaqueData").GetProperty("dataDescriptor").GetString());
+            Assert.Equal("token123", transactionRequest.GetProperty("payment").GetProperty("opaqueData").GetProperty("dataValue").GetString());
+            Assert.Equal("CP-123", transactionRequest.GetProperty("order").GetProperty("invoiceNumber").GetString());
+            Assert.DoesNotContain("cardNumber", requestBody, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("cardCode", requestBody, StringComparison.OrdinalIgnoreCase);
+
+            return StubHttpMessageHandler.JsonResponse("""
+                {
+                  "transactionResponse": {
+                    "responseCode": "1",
+                    "authCode": "AUTH42",
+                    "transId": "60123456789",
+                    "messages": [
+                      {
+                        "code": "1",
+                        "description": "This transaction has been approved."
+                      }
+                    ]
+                  },
+                  "messages": {
+                    "resultCode": "Ok",
+                    "message": [
+                      {
+                        "code": "I00001",
+                        "text": "Successful."
+                      }
+                    ]
+                  }
+                }
+                """);
+        });
+        var httpClientFactory = new MockHttpClientFactory(new HttpClient(handler));
+        var service = new AuthorizeNetPaymentService(httpClientFactory, config);
+
+        var request = new PaymentRequest
+        {
+            OpaqueDataToken = "token123",
+            OpaqueDataDescriptor = "COMMON.ACCEPT.INAPP.PAYMENT",
+            Amount = 50.00m,
+            PatientId = Guid.NewGuid(),
+            AppointmentId = Guid.NewGuid(),
+            InvoiceNumber = "CP-123",
+            Description = "PTDoc copay"
+        };
+
+        // Act
+        var result = await service.ProcessPaymentAsync(request);
+
+        // Assert
         Assert.True(result.Success);
-        Assert.NotNull(result.TransactionId);
-        Assert.StartsWith("MOCK-TXN-", result.TransactionId);
+        Assert.Equal("60123456789", result.TransactionId);
+        Assert.Equal("AUTH42", result.AuthorizationCode);
         Assert.Equal(50.00m, result.Amount);
+        Assert.NotNull(requestBody);
+    }
+
+    [Fact]
+    public async Task PaymentService_ProcessPayment_TruncatesInvoiceNumberForGateway()
+    {
+        var config = CreateTestConfiguration(enabled: true);
+        string? invoiceNumber = null;
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            var requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+            using var document = JsonDocument.Parse(requestBody);
+            invoiceNumber = document.RootElement
+                .GetProperty("createTransactionRequest")
+                .GetProperty("transactionRequest")
+                .GetProperty("order")
+                .GetProperty("invoiceNumber")
+                .GetString();
+
+            return StubHttpMessageHandler.JsonResponse("""
+                {
+                  "transactionResponse": {
+                    "responseCode": "1",
+                    "authCode": "AUTH42",
+                    "transId": "60123456789"
+                  },
+                  "messages": {
+                    "resultCode": "Ok",
+                    "message": [
+                      {
+                        "code": "I00001",
+                        "text": "Successful."
+                      }
+                    ]
+                  }
+                }
+                """);
+        });
+        var service = new AuthorizeNetPaymentService(new MockHttpClientFactory(new HttpClient(handler)), config);
+
+        var result = await service.ProcessPaymentAsync(new PaymentRequest
+        {
+            OpaqueDataToken = "token123",
+            OpaqueDataDescriptor = "COMMON.ACCEPT.INAPP.PAYMENT",
+            Amount = 50.00m,
+            PatientId = Guid.NewGuid(),
+            AppointmentId = Guid.NewGuid(),
+            InvoiceNumber = "CP-123456789012345678901234567890"
+        });
+
+        Assert.True(result.Success);
+        Assert.Equal("CP-12345678901234567", invoiceNumber);
+        Assert.Equal(20, invoiceNumber!.Length);
+    }
+
+    [Fact]
+    public async Task PaymentService_ProcessPayment_TreatsApprovedResponseWithoutTransactionIdAsInvalid()
+    {
+        var config = CreateTestConfiguration(enabled: true);
+        var handler = new StubHttpMessageHandler(_ => StubHttpMessageHandler.JsonResponse("""
+            {
+              "transactionResponse": {
+                "responseCode": "1",
+                "authCode": "AUTH42",
+                "messages": [
+                  {
+                    "code": "1",
+                    "description": "This transaction has been approved."
+                  }
+                ]
+              },
+              "messages": {
+                "resultCode": "Ok",
+                "message": [
+                  {
+                    "code": "I00001",
+                    "text": "Successful."
+                  }
+                ]
+              }
+            }
+            """));
+        var service = new AuthorizeNetPaymentService(new MockHttpClientFactory(new HttpClient(handler)), config);
+
+        var result = await service.ProcessPaymentAsync(new PaymentRequest
+        {
+            OpaqueDataToken = "token123",
+            OpaqueDataDescriptor = "COMMON.ACCEPT.INAPP.PAYMENT",
+            Amount = 50.00m,
+            PatientId = Guid.NewGuid(),
+            AppointmentId = Guid.NewGuid()
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("GATEWAY_RESPONSE_INVALID", result.ErrorCode);
+        Assert.Equal("Payment gateway returned an invalid response", result.ErrorMessage);
+        Assert.Equal(50.00m, result.Amount);
+    }
+
+    [Fact]
+    public async Task PaymentService_ProcessPayment_MapsAuthorizeNetDecline()
+    {
+        // Arrange
+        var config = CreateTestConfiguration(enabled: true);
+        var handler = new StubHttpMessageHandler(_ => StubHttpMessageHandler.JsonResponse("""
+            {
+              "transactionResponse": {
+                "responseCode": "2",
+                "transId": "0",
+                "errors": [
+                  {
+                    "errorCode": "2",
+                    "errorText": "This transaction has been declined."
+                  }
+                ]
+              },
+              "messages": {
+                "resultCode": "Error",
+                "message": [
+                  {
+                    "code": "E00027",
+                    "text": "The transaction was unsuccessful."
+                  }
+                ]
+              }
+            }
+            """));
+        var httpClientFactory = new MockHttpClientFactory(new HttpClient(handler));
+        var service = new AuthorizeNetPaymentService(httpClientFactory, config);
+
+        var request = new PaymentRequest
+        {
+            OpaqueDataToken = "token123",
+            OpaqueDataDescriptor = "COMMON.ACCEPT.INAPP.PAYMENT",
+            Amount = 50.00m,
+            PatientId = Guid.NewGuid(),
+            AppointmentId = Guid.NewGuid()
+        };
+
+        // Act
+        var result = await service.ProcessPaymentAsync(request);
+
+        // Assert
+        Assert.False(result.Success);
+        Assert.Equal("2", result.ErrorCode);
+        Assert.Equal("This transaction has been declined.", result.ErrorMessage);
+        Assert.Equal(50.00m, result.Amount);
+    }
+
+    [Fact]
+    public async Task PaymentService_ProcessPayment_MapsAuthorizeNetValidationError()
+    {
+        // Arrange
+        var config = CreateTestConfiguration(enabled: true);
+        var handler = new StubHttpMessageHandler(_ => StubHttpMessageHandler.JsonResponse("""
+            {
+              "messages": {
+                "resultCode": "Error",
+                "message": [
+                  {
+                    "code": "E00003",
+                    "text": "The element 'createTransactionRequest' has invalid child element."
+                  }
+                ]
+              }
+            }
+            """));
+        var httpClientFactory = new MockHttpClientFactory(new HttpClient(handler));
+        var service = new AuthorizeNetPaymentService(httpClientFactory, config);
+
+        var request = new PaymentRequest
+        {
+            OpaqueDataToken = "token123",
+            OpaqueDataDescriptor = "COMMON.ACCEPT.INAPP.PAYMENT",
+            Amount = 50.00m,
+            PatientId = Guid.NewGuid(),
+            AppointmentId = Guid.NewGuid()
+        };
+
+        // Act
+        var result = await service.ProcessPaymentAsync(request);
+
+        // Assert
+        Assert.False(result.Success);
+        Assert.Equal("E00003", result.ErrorCode);
+        Assert.Equal("The element 'createTransactionRequest' has invalid child element.", result.ErrorMessage);
+        Assert.Equal(50.00m, result.Amount);
+    }
+
+    [Fact]
+    public async Task PaymentService_ProcessPayment_UsesSafeMessageForGatewayTransportFailure()
+    {
+        var config = CreateTestConfiguration(enabled: true);
+        var handler = new StubHttpMessageHandler(_ => throw new HttpRequestException("upstream host leaked detail"));
+        var service = new AuthorizeNetPaymentService(new MockHttpClientFactory(new HttpClient(handler)), config);
+
+        var result = await service.ProcessPaymentAsync(new PaymentRequest
+        {
+            OpaqueDataToken = "token123",
+            OpaqueDataDescriptor = "COMMON.ACCEPT.INAPP.PAYMENT",
+            Amount = 50.00m,
+            PatientId = Guid.NewGuid(),
+            AppointmentId = Guid.NewGuid()
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("GATEWAY_REQUEST_FAILED", result.ErrorCode);
+        Assert.Equal("Payment gateway request failed", result.ErrorMessage);
+        Assert.DoesNotContain("upstream", result.ErrorMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

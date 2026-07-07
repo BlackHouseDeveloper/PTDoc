@@ -5,7 +5,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.DTOs;
+using PTDoc.Application.Integrations;
 using PTDoc.Application.Services;
+using PTDoc.UI.Services;
 
 namespace PTDoc.Tests.UI.Appointments;
 
@@ -549,6 +551,64 @@ public sealed class AppointmentsPageTests : TestContext
         Assert.Contains("Copay collection is not configured for this appointment.", cut.Markup, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void AppointmentsPage_CheckInWithCopayDue_OpensPaymentModalBeforeCheckIn()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var patientId = Guid.NewGuid();
+        var clinicianId = Guid.NewGuid();
+        var localStart = DateTime.SpecifyKind(DateTime.Today.AddHours(9), DateTimeKind.Local);
+
+        RegisterServices(
+            new AppointmentsOverviewResponse
+            {
+                Appointments =
+                [
+                    new AppointmentListItemResponse
+                    {
+                        Id = Guid.NewGuid(),
+                        PatientRecordId = patientId,
+                        PatientName = "Alex Patient",
+                        ClinicianId = clinicianId,
+                        ClinicianName = "Taylor PT",
+                        StartTimeUtc = localStart.ToUniversalTime(),
+                        EndTimeUtc = localStart.AddMinutes(45).ToUniversalTime(),
+                        AppointmentType = "Follow Up",
+                        AppointmentStatus = "Scheduled",
+                        VisitWorkflowStatus = "Scheduled",
+                        IntakeStatus = "Complete",
+                        CopayAmount = 30m,
+                        CopayStatusLabel = "Copay due",
+                        CanRecordCopay = true
+                    }
+                ],
+                Clinicians =
+                [
+                    new AppointmentClinicianResponse
+                    {
+                        Id = clinicianId,
+                        DisplayName = "Taylor PT"
+                    }
+                ]
+            });
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
+        cut.WaitForElement(".appointment-block");
+
+        cut.Find(".appointment-block").Click();
+        cut.WaitForAssertion(() => Assert.Contains("Appointment Details", cut.Markup, StringComparison.Ordinal));
+
+        cut.FindAll(".appointment-detail-modal__container button")
+            .First(button => button.TextContent.Contains("Check In", StringComparison.Ordinal))
+            .Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Collect copay before check-in", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("$30.00", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
     private void RegisterServices(
         AppointmentsOverviewResponse? overview = null,
         IReadOnlyList<PatientListItemResponse>? patients = null)
@@ -580,10 +640,21 @@ public sealed class AppointmentsPageTests : TestContext
             .ReturnsAsync(overview ?? new AppointmentsOverviewResponse());
 
         var toastService = new Mock<IToastService>(MockBehavior.Loose);
+        var paymentClientService = new Mock<IPaymentClientService>(MockBehavior.Strict);
+        paymentClientService
+            .Setup(service => service.GetConfigurationAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PaymentClientConfigurationResponse
+            {
+                Enabled = true,
+                Environment = "Sandbox",
+                ApiLoginId = "login",
+                ClientKey = "client-key"
+            });
 
         Services.AddSingleton(headerConfigurationService.Object);
         Services.AddSingleton(patientService.Object);
         Services.AddSingleton(appointmentService.Object);
+        Services.AddSingleton(paymentClientService.Object);
         Services.AddSingleton(toastService.Object);
     }
 }

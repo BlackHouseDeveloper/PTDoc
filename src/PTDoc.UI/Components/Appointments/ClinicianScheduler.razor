@@ -419,6 +419,10 @@
             AppointmentStatus = GetEffectiveAppointmentStatusLabel(appointment, appointmentDate),
             VisitWorkflowStatus = GetEffectiveAppointmentStatusLabel(appointment, appointmentDate),
             IntakeStatus = appointment.IntakeStatus,
+            CopayAmount = appointment.CopayAmount,
+            CanRecordCopay = appointment.CanRecordCopay,
+            CopayStatusLabel = appointment.CopayStatusLabel,
+            CopayActionUnavailableReason = appointment.CopayActionUnavailableReason,
             Notes = appointment.Notes
         };
     }
@@ -545,6 +549,10 @@
             VisitWorkflowStatus = appointment.VisitWorkflowStatus,
             VisitNoteId = appointment.VisitNoteId,
             IntakeStatus = appointment.IntakeStatus,
+            CopayAmount = appointment.CopayAmount,
+            CanRecordCopay = appointment.CanRecordCopay,
+            CopayStatusLabel = appointment.CopayStatusLabel,
+            CopayActionUnavailableReason = appointment.CopayActionUnavailableReason,
             StartMinute = (int)(localStartTime.TimeOfDay - new TimeSpan(localStartTime.Hour, localStartTime.Minute, 0)).TotalMinutes,
             DurationMinutes = durationMinutes,
             Notes = appointment.Notes
@@ -567,6 +575,10 @@
         public string AppointmentStatus { get; init; } = string.Empty;
         public string VisitWorkflowStatus { get; init; } = string.Empty;
         public string IntakeStatus { get; init; } = string.Empty;
+        public decimal? CopayAmount { get; init; }
+        public bool CanRecordCopay { get; init; }
+        public string CopayStatusLabel { get; init; } = "Copay not configured";
+        public string CopayActionUnavailableReason { get; init; } = "Copay collection is not configured for this appointment.";
         public int StartMinute { get; init; }
         public int DurationMinutes { get; init; }
         public string Notes { get; init; } = string.Empty;

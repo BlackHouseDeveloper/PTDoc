@@ -1,10 +1,15 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Integrations;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using System.Collections.Concurrent;
+using System.Globalization;
+using System.Text.Json;
 
 namespace PTDoc.Api.Appointments;
 
@@ -14,6 +19,12 @@ namespace PTDoc.Api.Appointments;
 public static class AppointmentEndpoints
 {
     private const string AppointmentOverbookingErrorCode = "APPOINTMENT_OVERBOOKING";
+    private const int PaymentTransactionIdMaxLength = 120;
+    private const int PaymentAuthorizationCodeMaxLength = 80;
+    private const int PaymentGatewayErrorCodeMaxLength = 80;
+    private const int PaymentGatewayErrorMessageMaxLength = 500;
+    private static readonly ConcurrentDictionary<Guid, AppointmentPaymentLockState> AppointmentPaymentLocks = new();
+    private static readonly CultureInfo CopayCurrencyCulture = CultureInfo.GetCultureInfo("en-US");
     private static readonly string[] SchedulableClinicianRoles =
     [
         Roles.PT,
@@ -56,6 +67,10 @@ public static class AppointmentEndpoints
         group.MapPost("/{id:guid}/check-in", CheckInAppointment)
             .WithName("CheckInAppointment")
             .WithSummary("Mark an appointment as checked in");
+
+        group.MapPost("/{id:guid}/check-in-payment", CheckInAppointmentWithPayment)
+            .WithName("CheckInAppointmentWithPayment")
+            .WithSummary("Process a required copay before marking an appointment as checked in");
     }
 
     private static async Task<IResult> ListAppointments(
@@ -63,9 +78,11 @@ public static class AppointmentEndpoints
         [FromQuery] DateTime endDate,
         [FromServices] ApplicationDbContext db,
         [FromServices] ITenantContextAccessor tenantContext,
+        [FromServices] IConfiguration configuration,
         CancellationToken cancellationToken)
     {
         var currentClinicId = tenantContext.GetCurrentClinicId();
+        var paymentAvailable = IsPaymentConfigured(configuration);
 
         if (!TryNormalizeDateRange(startDate, endDate, out var normalizedStartDate, out var normalizedEndDate, out var validationProblem))
         {
@@ -90,7 +107,7 @@ public static class AppointmentEndpoints
 
         return Results.Ok(new AppointmentsOverviewResponse
         {
-            Appointments = appointments.Select(ToResponse).ToList(),
+            Appointments = appointments.Select(row => ToResponse(row, paymentAvailable)).ToList(),
             Clinicians = clinicians
         });
     }
@@ -100,6 +117,7 @@ public static class AppointmentEndpoints
         [FromQuery] DateTime startDate,
         [FromQuery] DateTime endDate,
         [FromServices] ApplicationDbContext db,
+        [FromServices] IConfiguration configuration,
         CancellationToken cancellationToken)
     {
         if (patientId == Guid.Empty)
@@ -130,7 +148,8 @@ public static class AppointmentEndpoints
             .ToListAsync(cancellationToken);
         await HydrateAppointmentNoteWorkflowAsync(db, appointments, cancellationToken);
 
-        return Results.Ok(appointments.Select(ToResponse).ToList());
+        var paymentAvailable = IsPaymentConfigured(configuration);
+        return Results.Ok(appointments.Select(row => ToResponse(row, paymentAvailable)).ToList());
     }
 
     private static async Task<IResult> ListClinicians(
@@ -145,6 +164,7 @@ public static class AppointmentEndpoints
     private static async Task<IResult> CreateAppointment(
         [FromBody] CreateAppointmentRequest request,
         [FromServices] ApplicationDbContext db,
+        [FromServices] IConfiguration configuration,
         CancellationToken cancellationToken)
     {
         var validationErrors = ValidateWriteRequest(
@@ -226,7 +246,7 @@ public static class AppointmentEndpoints
             return BuildSchedulingConflictResult();
         }
 
-        var response = await BuildAppointmentResponseAsync(db, appointment.Id, cancellationToken);
+        var response = await BuildAppointmentResponseAsync(db, appointment.Id, IsPaymentConfigured(configuration), cancellationToken);
         return Results.Created($"/api/v1/appointments/{appointment.Id}", response);
     }
 
@@ -234,6 +254,7 @@ public static class AppointmentEndpoints
         Guid id,
         [FromBody] UpdateAppointmentRequest request,
         [FromServices] ApplicationDbContext db,
+        [FromServices] IConfiguration configuration,
         CancellationToken cancellationToken)
     {
         var validationErrors = ValidateWriteRequest(
@@ -317,13 +338,14 @@ public static class AppointmentEndpoints
             return BuildSchedulingConflictResult();
         }
 
-        var response = await BuildAppointmentResponseAsync(db, appointment.Id, cancellationToken);
+        var response = await BuildAppointmentResponseAsync(db, appointment.Id, IsPaymentConfigured(configuration), cancellationToken);
         return Results.Ok(response);
     }
 
     private static async Task<IResult> CheckInAppointment(
         Guid id,
         [FromServices] ApplicationDbContext db,
+        [FromServices] IConfiguration configuration,
         CancellationToken cancellationToken)
     {
         var appointment = await db.Appointments
@@ -339,6 +361,14 @@ public static class AppointmentEndpoints
             return Results.UnprocessableEntity(new { error = "Cancelled or no-show appointments cannot be checked in." });
         }
 
+        if (await IsCopayPaymentRequiredAsync(db, appointment.PatientId, appointment.Id, cancellationToken))
+        {
+            var error = IsPaymentConfigured(configuration)
+                ? "Copay payment is required before check-in."
+                : "Copay collection is not configured for this appointment.";
+            return Results.UnprocessableEntity(new { error });
+        }
+
         if (appointment.Status != AppointmentStatus.CheckedIn
             && appointment.Status != AppointmentStatus.InProgress
             && appointment.Status != AppointmentStatus.Completed)
@@ -347,8 +377,395 @@ public static class AppointmentEndpoints
             await db.SaveChangesAsync(cancellationToken);
         }
 
-        var response = await BuildAppointmentResponseAsync(db, appointment.Id, cancellationToken);
+        var response = await BuildAppointmentResponseAsync(db, appointment.Id, IsPaymentConfigured(configuration), cancellationToken);
         return Results.Ok(response);
+    }
+
+    private static async Task<IResult> CheckInAppointmentWithPayment(
+        Guid id,
+        [FromBody] AppointmentCheckInPaymentRequest request,
+        [FromServices] ApplicationDbContext db,
+        [FromServices] IConfiguration configuration,
+        [FromServices] IPaymentService paymentService,
+        [FromServices] IAuditService auditService,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.OpaqueDataDescriptor) || string.IsNullOrWhiteSpace(request.OpaqueDataToken))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.OpaqueDataDescriptor), ["Payment authorization is required."] },
+                { nameof(request.OpaqueDataToken), ["Payment authorization is required."] }
+            });
+        }
+
+        if (!IsPaymentConfigured(configuration))
+        {
+            return Results.BadRequest(new { error = "Payment processing is not configured." });
+        }
+
+        await using var paymentLock = await AcquireAppointmentPaymentLockAsync(id, cancellationToken);
+
+        var appointment = await db.Appointments
+            .FirstOrDefaultAsync(existing => existing.Id == id, cancellationToken);
+
+        if (appointment is null)
+        {
+            return Results.NotFound(new { error = $"Appointment {id} not found." });
+        }
+
+        if (appointment.Status is AppointmentStatus.Cancelled or AppointmentStatus.NoShow)
+        {
+            return Results.UnprocessableEntity(new { error = "Cancelled or no-show appointments cannot be checked in." });
+        }
+
+        var patient = await db.Patients
+            .AsNoTracking()
+            .FirstOrDefaultAsync(existing => existing.Id == appointment.PatientId && !existing.IsArchived, cancellationToken);
+
+        if (patient is null)
+        {
+            return Results.NotFound(new { error = $"Patient {appointment.PatientId} not found." });
+        }
+
+        var existingTransactionId = await GetSuccessfulPaymentTransactionIdAsync(db, appointment.Id, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(existingTransactionId))
+        {
+            if (request.CheckInAfterPayment)
+            {
+                await MarkAppointmentCheckedInAsync(db, appointment, cancellationToken);
+            }
+
+            var paidAppointment = await BuildAppointmentResponseAsync(db, appointment.Id, paymentAvailable: true, cancellationToken);
+            paidAppointment.SuccessfulPaymentTransactionId = existingTransactionId;
+            return Results.Ok(new AppointmentCheckInPaymentResponse
+            {
+                Appointment = paidAppointment,
+                Payment = new PaymentResult
+                {
+                    Success = true,
+                    TransactionId = existingTransactionId,
+                    ProcessedAt = DateTime.UtcNow,
+                    Amount = paidAppointment.CopayAmount
+                }
+            });
+        }
+
+        if (await HasPendingPaymentTransactionAsync(db, appointment.Id, cancellationToken))
+        {
+            return await BuildPaymentInProgressResponseAsync(db, appointment.Id, cancellationToken);
+        }
+
+        var copayAmount = TryParseCopayAmount(patient.PayerInfoJson);
+        if (copayAmount is null || copayAmount <= 0)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { "copayAmount", ["No copay is due for this appointment."] }
+            });
+        }
+
+        var transaction = new AppointmentPaymentTransaction
+        {
+            AppointmentId = appointment.Id,
+            PatientId = patient.Id,
+            Amount = copayAmount.Value,
+            Status = AppointmentPaymentStatus.Pending,
+            Processor = "AuthorizeNet",
+            InvoiceNumber = BuildCopayInvoiceNumber(appointment.Id),
+            CreatedAtUtc = DateTime.UtcNow
+        };
+        db.AppointmentPaymentTransactions.Add(transaction);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (IsPaymentConcurrencyDbException(ex))
+        {
+            db.Entry(transaction).State = EntityState.Detached;
+            return await BuildConcurrentPaymentResponseAsync(db, appointment.Id, request.CheckInAfterPayment, cancellationToken);
+        }
+
+        PaymentResult paymentResult;
+        try
+        {
+            paymentResult = await paymentService.ProcessPaymentAsync(new PaymentRequest
+            {
+                AppointmentId = appointment.Id,
+                PatientId = patient.Id,
+                Amount = copayAmount.Value,
+                OpaqueDataDescriptor = request.OpaqueDataDescriptor.Trim(),
+                OpaqueDataToken = request.OpaqueDataToken.Trim(),
+                InvoiceNumber = transaction.InvoiceNumber,
+                Description = $"PTDoc copay for appointment {appointment.Id:D}"
+            }, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            paymentResult = BuildPaymentGatewayFailure(copayAmount.Value, "GATEWAY_REQUEST_CANCELED");
+        }
+        catch (Exception)
+        {
+            paymentResult = BuildPaymentGatewayFailure(copayAmount.Value, "GATEWAY_REQUEST_FAILED");
+        }
+
+        var normalizedTransactionId = NormalizePaymentField(paymentResult.TransactionId, PaymentTransactionIdMaxLength);
+        var normalizedAuthorizationCode = NormalizePaymentField(paymentResult.AuthorizationCode, PaymentAuthorizationCodeMaxLength);
+        if (paymentResult.Success && string.IsNullOrWhiteSpace(normalizedTransactionId))
+        {
+            paymentResult = BuildPaymentGatewayFailure(
+                copayAmount.Value,
+                "GATEWAY_RESPONSE_INVALID",
+                "Payment gateway returned an invalid response");
+            paymentResult.AuthorizationCode = normalizedAuthorizationCode;
+        }
+
+        transaction.Status = paymentResult.Success ? AppointmentPaymentStatus.Succeeded : AppointmentPaymentStatus.Failed;
+        transaction.TransactionId = paymentResult.Success
+            ? normalizedTransactionId
+            : NormalizePaymentField(paymentResult.TransactionId, PaymentTransactionIdMaxLength);
+        transaction.AuthorizationCode = normalizedAuthorizationCode;
+        transaction.GatewayErrorCode = NormalizePaymentField(paymentResult.ErrorCode, PaymentGatewayErrorCodeMaxLength);
+        transaction.GatewayErrorMessage = NormalizePaymentField(paymentResult.ErrorMessage, PaymentGatewayErrorMessageMaxLength);
+        transaction.ProcessedAtUtc = paymentResult.ProcessedAt == default ? DateTime.UtcNow : paymentResult.ProcessedAt;
+        paymentResult.TransactionId = transaction.TransactionId;
+        paymentResult.AuthorizationCode = transaction.AuthorizationCode;
+        paymentResult.ErrorCode = transaction.GatewayErrorCode;
+        paymentResult.ErrorMessage = transaction.GatewayErrorMessage;
+
+        if (paymentResult.Success && request.CheckInAfterPayment)
+        {
+            await MarkAppointmentCheckedInAsync(db, appointment, cancellationToken, saveChanges: false);
+        }
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken.IsCancellationRequested ? CancellationToken.None : cancellationToken);
+        }
+        catch (DbUpdateException ex) when (IsPaymentConcurrencyDbException(ex))
+        {
+            db.Entry(transaction).State = EntityState.Detached;
+            return await BuildConcurrentPaymentResponseAsync(db, appointment.Id, request.CheckInAfterPayment, cancellationToken);
+        }
+
+        await auditService.LogRuleEvaluationAsync(new PTDoc.Application.Compliance.AuditEvent
+        {
+            EventType = "AppointmentCopayPayment",
+            Metadata = new Dictionary<string, object>
+            {
+                ["Success"] = paymentResult.Success,
+                ["AppointmentId"] = appointment.Id.ToString("D"),
+                ["PatientId"] = patient.Id.ToString("D"),
+                ["TransactionId"] = paymentResult.TransactionId ?? string.Empty,
+                ["Amount"] = copayAmount.Value
+            }
+        });
+
+        var updatedAppointment = await BuildAppointmentResponseAsync(db, appointment.Id, paymentAvailable: true, cancellationToken);
+        return Results.Ok(new AppointmentCheckInPaymentResponse
+        {
+            Appointment = updatedAppointment,
+            Payment = paymentResult
+        });
+    }
+
+    private static async Task<IResult> BuildConcurrentPaymentResponseAsync(
+        ApplicationDbContext db,
+        Guid appointmentId,
+        bool checkInAfterPayment,
+        CancellationToken cancellationToken)
+    {
+        var existingTransactionId = await GetSuccessfulPaymentTransactionIdAsync(db, appointmentId, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(existingTransactionId))
+        {
+            if (checkInAfterPayment)
+            {
+                var appointment = await db.Appointments
+                    .FirstAsync(existing => existing.Id == appointmentId, cancellationToken);
+                await MarkAppointmentCheckedInAsync(db, appointment, cancellationToken);
+            }
+
+            var paidAppointment = await BuildAppointmentResponseAsync(db, appointmentId, paymentAvailable: true, cancellationToken);
+            paidAppointment.SuccessfulPaymentTransactionId = existingTransactionId;
+            return Results.Ok(new AppointmentCheckInPaymentResponse
+            {
+                Appointment = paidAppointment,
+                Payment = new PaymentResult
+                {
+                    Success = true,
+                    TransactionId = existingTransactionId,
+                    ProcessedAt = DateTime.UtcNow,
+                    Amount = paidAppointment.CopayAmount
+                }
+            });
+        }
+
+        return await BuildPaymentInProgressResponseAsync(db, appointmentId, cancellationToken);
+    }
+
+    private static string? TruncatePaymentField(string? value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+        {
+            return value;
+        }
+
+        return value[..maxLength];
+    }
+
+    private static string? NormalizePaymentField(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return TruncatePaymentField(value.Trim(), maxLength);
+    }
+
+    private static PaymentResult BuildPaymentGatewayFailure(
+        decimal amount,
+        string errorCode,
+        string errorMessage = "Payment gateway request failed") =>
+        new()
+        {
+            Success = false,
+            ErrorCode = errorCode,
+            ErrorMessage = errorMessage,
+            ProcessedAt = DateTime.UtcNow,
+            Amount = amount
+        };
+
+    private static async Task<IResult> BuildPaymentInProgressResponseAsync(
+        ApplicationDbContext db,
+        Guid appointmentId,
+        CancellationToken cancellationToken)
+    {
+        AppointmentListItemResponse? currentAppointment = null;
+        try
+        {
+            currentAppointment = await BuildAppointmentResponseAsync(db, appointmentId, paymentAvailable: true, cancellationToken);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Keep concurrent duplicate payment attempts user-safe even if the snapshot read races payment persistence.
+        }
+
+        return Results.Ok(new AppointmentCheckInPaymentResponse
+        {
+            Appointment = currentAppointment,
+            Payment = new PaymentResult
+            {
+                Success = false,
+                ErrorCode = "PAYMENT_IN_PROGRESS",
+                ErrorMessage = "A copay payment is already being processed for this appointment.",
+                ProcessedAt = DateTime.UtcNow,
+                Amount = currentAppointment?.CopayAmount
+            }
+        });
+    }
+
+    private static async Task<bool> HasPendingPaymentTransactionAsync(
+        ApplicationDbContext db,
+        Guid appointmentId,
+        CancellationToken cancellationToken) =>
+        await db.AppointmentPaymentTransactions
+            .AsNoTracking()
+            .AnyAsync(payment => payment.AppointmentId == appointmentId
+                && payment.Status == AppointmentPaymentStatus.Pending, cancellationToken);
+
+    private static async Task<string?> GetSuccessfulPaymentTransactionIdAsync(
+        ApplicationDbContext db,
+        Guid appointmentId,
+        CancellationToken cancellationToken) =>
+        await db.AppointmentPaymentTransactions
+            .AsNoTracking()
+            .Where(payment => payment.AppointmentId == appointmentId
+                && payment.Status == AppointmentPaymentStatus.Succeeded
+                && payment.TransactionId != null
+                && payment.TransactionId.Trim() != string.Empty)
+            .OrderByDescending(payment => payment.ProcessedAtUtc ?? payment.CreatedAtUtc)
+            .Select(payment => payment.TransactionId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    private static async Task<bool> IsCopayPaymentRequiredAsync(
+        ApplicationDbContext db,
+        Guid patientId,
+        Guid appointmentId,
+        CancellationToken cancellationToken)
+    {
+        var successfulTransactionId = await GetSuccessfulPaymentTransactionIdAsync(db, appointmentId, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(successfulTransactionId))
+        {
+            return false;
+        }
+
+        var payerInfoJson = await db.Patients
+            .AsNoTracking()
+            .Where(patient => patient.Id == patientId && !patient.IsArchived)
+            .Select(patient => patient.PayerInfoJson)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return TryParseCopayAmount(payerInfoJson) is > 0;
+    }
+
+    private static async Task MarkAppointmentCheckedInAsync(
+        ApplicationDbContext db,
+        Appointment appointment,
+        CancellationToken cancellationToken,
+        bool saveChanges = true)
+    {
+        if (appointment.Status != AppointmentStatus.CheckedIn
+            && appointment.Status != AppointmentStatus.InProgress
+            && appointment.Status != AppointmentStatus.Completed)
+        {
+            appointment.Status = AppointmentStatus.CheckedIn;
+            if (saveChanges)
+            {
+                await db.SaveChangesAsync(cancellationToken);
+            }
+        }
+    }
+
+    private static string BuildCopayInvoiceNumber(Guid appointmentId) =>
+        $"CP-{appointmentId:N}"[..20];
+
+    private static bool IsPaymentConfigured(IConfiguration configuration) =>
+        configuration.GetValue<bool>("Integrations:Payments:Enabled")
+        && !string.IsNullOrWhiteSpace(configuration["Integrations:Payments:ApiLoginId"])
+        && !string.IsNullOrWhiteSpace(configuration["Integrations:Payments:TransactionKey"])
+        && !string.IsNullOrWhiteSpace(configuration["Integrations:Payments:ClientKey"]);
+
+    private static decimal? TryParseCopayAmount(string? payerInfoJson)
+    {
+        if (string.IsNullOrWhiteSpace(payerInfoJson) || payerInfoJson == "{}")
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payerInfoJson);
+            if (!document.RootElement.TryGetProperty("copayAmount", out var copayElement))
+            {
+                return null;
+            }
+
+            return copayElement.ValueKind switch
+            {
+                JsonValueKind.Number when copayElement.TryGetDecimal(out var amount) => amount,
+                JsonValueKind.String when decimal.TryParse(
+                    copayElement.GetString()?.Trim(),
+                    NumberStyles.Number | NumberStyles.AllowCurrencySymbol,
+                    CopayCurrencyCulture,
+                    out var amount) => amount,
+                _ => null
+            };
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static IQueryable<AppointmentQueryRow> BuildAppointmentRowsQuery(
@@ -375,6 +792,16 @@ public static class AppointmentEndpoints
                 AppointmentType = appointment.AppointmentType,
                 AppointmentStatus = appointment.Status,
                 Notes = appointment.Notes,
+                PayerInfoJson = patient.PayerInfoJson,
+                SuccessfulPaymentTransactionId = db.AppointmentPaymentTransactions
+                    .AsNoTracking()
+                    .Where(payment => payment.AppointmentId == appointment.Id
+                        && payment.Status == AppointmentPaymentStatus.Succeeded
+                        && payment.TransactionId != null
+                        && payment.TransactionId.Trim() != string.Empty)
+                    .OrderByDescending(payment => payment.ProcessedAtUtc ?? payment.CreatedAtUtc)
+                    .Select(payment => payment.TransactionId)
+                    .FirstOrDefault(),
                 IntakeSubmittedAt = db.IntakeForms
                     .AsNoTracking()
                     .Where(intake => intake.PatientId == patient.Id)
@@ -388,6 +815,7 @@ public static class AppointmentEndpoints
     private static async Task<AppointmentListItemResponse> BuildAppointmentResponseAsync(
         ApplicationDbContext db,
         Guid appointmentId,
+        bool paymentAvailable,
         CancellationToken cancellationToken)
     {
         var rows = await BuildAppointmentRowsQuery(
@@ -405,7 +833,7 @@ public static class AppointmentEndpoints
             throw new InvalidOperationException($"Appointment {appointmentId} was saved but could not be reloaded.");
         }
 
-        return ToResponse(row);
+        return ToResponse(row, paymentAvailable);
     }
 
     private static async Task HydrateAppointmentNoteWorkflowAsync(
@@ -652,12 +1080,63 @@ public static class AppointmentEndpoints
     private static bool IsSchedulingConflictDbException(DbUpdateException exception) =>
         exception.GetBaseException().Message.Contains(AppointmentOverbookingErrorCode, StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsPaymentConcurrencyDbException(DbUpdateException exception)
+    {
+        return exception.GetBaseException() switch
+        {
+            Microsoft.Data.Sqlite.SqliteException sqlite => sqlite.SqliteErrorCode == 19,
+            Microsoft.Data.SqlClient.SqlException sql => sql.Number is 2627 or 2601,
+            Npgsql.PostgresException pg => pg.SqlState == "23505",
+            _ => false
+        };
+    }
+
+    private static async Task<AppointmentPaymentLockLease> AcquireAppointmentPaymentLockAsync(
+        Guid appointmentId,
+        CancellationToken cancellationToken)
+    {
+        AppointmentPaymentLockState state;
+        while (true)
+        {
+            state = AppointmentPaymentLocks.GetOrAdd(appointmentId, _ => new AppointmentPaymentLockState());
+            if (state.TryAddReference())
+            {
+                break;
+            }
+
+            AppointmentPaymentLocks.TryRemove(appointmentId, out _);
+        }
+
+        try
+        {
+            await state.Semaphore.WaitAsync(cancellationToken);
+            return new AppointmentPaymentLockLease(appointmentId, state);
+        }
+        catch
+        {
+            ReleaseAppointmentPaymentLockReference(appointmentId, state);
+            throw;
+        }
+    }
+
+    private static void ReleaseAppointmentPaymentLockReference(Guid appointmentId, AppointmentPaymentLockState state)
+    {
+        if (state.ReleaseReferenceAndMarkRemoved())
+        {
+            AppointmentPaymentLocks.TryRemove(appointmentId, out _);
+        }
+    }
+
     private static string? NormalizeNotes(string? notes) =>
         string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
 
-    private static AppointmentListItemResponse ToResponse(AppointmentQueryRow row)
+    private static AppointmentListItemResponse ToResponse(AppointmentQueryRow row, bool paymentAvailable)
     {
         var visitWorkflowStatus = MapVisitWorkflowStatus(row.AppointmentStatus, row.HasStartedNote, row.HasCompletedNote);
+        var copayAmount = TryParseCopayAmount(row.PayerInfoJson);
+        var hasSuccessfulPayment = !string.IsNullOrWhiteSpace(row.SuccessfulPaymentTransactionId);
+        var canRecordCopay = copayAmount > 0 && !hasSuccessfulPayment && paymentAvailable;
+        var (copayStatusLabel, unavailableReason) = BuildCopayStatus(copayAmount, hasSuccessfulPayment, paymentAvailable);
 
         return new AppointmentListItemResponse
         {
@@ -674,8 +1153,36 @@ public static class AppointmentEndpoints
             VisitWorkflowStatus = visitWorkflowStatus,
             VisitNoteId = ResolveVisitNoteId(row, visitWorkflowStatus),
             IntakeStatus = MapIntakeStatus(row.HasIntake, row.IntakeSubmittedAt),
-            Notes = row.Notes?.Trim() ?? string.Empty
+            Notes = row.Notes?.Trim() ?? string.Empty,
+            CopayAmount = copayAmount,
+            CopayStatusLabel = copayStatusLabel,
+            CanRecordCopay = canRecordCopay,
+            CopayActionUnavailableReason = unavailableReason,
+            SuccessfulPaymentTransactionId = row.SuccessfulPaymentTransactionId
         };
+    }
+
+    private static (string Label, string Reason) BuildCopayStatus(
+        decimal? copayAmount,
+        bool hasSuccessfulPayment,
+        bool paymentAvailable)
+    {
+        if (copayAmount is null || copayAmount <= 0)
+        {
+            return ("No copay due", "No copay is due for this appointment.");
+        }
+
+        if (hasSuccessfulPayment)
+        {
+            return ("Copay paid", "Copay has already been recorded for this appointment.");
+        }
+
+        if (!paymentAvailable)
+        {
+            return ("Copay not configured", "Copay collection is not configured for this appointment.");
+        }
+
+        return ("Copay due", string.Empty);
     }
 
     private static Guid? ResolveVisitNoteId(AppointmentQueryRow row, string visitWorkflowStatus)
@@ -768,6 +1275,8 @@ public static class AppointmentEndpoints
         public AppointmentType AppointmentType { get; init; }
         public AppointmentStatus AppointmentStatus { get; init; }
         public string? Notes { get; init; }
+        public string PayerInfoJson { get; init; } = "{}";
+        public string? SuccessfulPaymentTransactionId { get; init; }
         public bool HasStartedNote { get; set; }
         public bool HasCompletedNote { get; set; }
         public Guid? VisitNoteId { get; set; }
@@ -788,5 +1297,53 @@ public static class AppointmentEndpoints
     {
         public DateTime StartTimeUtc { get; init; }
         public DateTime EndTimeUtc { get; init; }
+    }
+
+    private sealed class AppointmentPaymentLockState
+    {
+        private readonly object gate = new();
+        private int referenceCount;
+        private bool removed;
+
+        public SemaphoreSlim Semaphore { get; } = new(1, 1);
+
+        public bool TryAddReference()
+        {
+            lock (gate)
+            {
+                if (removed)
+                {
+                    return false;
+                }
+
+                referenceCount++;
+                return true;
+            }
+        }
+
+        public bool ReleaseReferenceAndMarkRemoved()
+        {
+            lock (gate)
+            {
+                referenceCount--;
+                if (referenceCount != 0)
+                {
+                    return false;
+                }
+
+                removed = true;
+                return true;
+            }
+        }
+    }
+
+    private sealed class AppointmentPaymentLockLease(Guid appointmentId, AppointmentPaymentLockState state) : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync()
+        {
+            state.Semaphore.Release();
+            ReleaseAppointmentPaymentLockReference(appointmentId, state);
+            return ValueTask.CompletedTask;
+        }
     }
 }
