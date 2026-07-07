@@ -62,6 +62,28 @@ public sealed class AppointmentsPageTests : TestContext
     }
 
     [Fact]
+    public void AppointmentsPage_QueryOnlyWeekNavigation_RendersWeekEmptyState()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        RegisterServices();
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        navigation.NavigateTo("/appointments");
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
+        cut.WaitForAssertion(() => Assert.Contains("No appointments scheduled for this day", cut.Markup, StringComparison.Ordinal));
+
+        navigation.NavigateTo("/appointments?dateRange=week");
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("week-grouping-control", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Week Schedule", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("No appointments scheduled for this week", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Today's Appointments", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
     public void AppointmentsPage_NeedsNoteQuery_FiltersToActionableAppointments()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -313,12 +335,13 @@ public sealed class AppointmentsPageTests : TestContext
         Assert.Equal("/appointments?dateRange=week", weekTab.GetAttribute("href"));
 
         Services.GetRequiredService<NavigationManager>().NavigateTo(weekTab.GetAttribute("href")!);
-        cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
 
         cut.WaitForAssertion(() =>
         {
             Assert.Contains("week-grouping-control", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("week-grouping-clinician", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Week Schedule", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Today's Schedule", cut.Markup, StringComparison.Ordinal);
         });
     }
 

@@ -4,6 +4,7 @@
 @using PTDoc.Application.Integrations
 @using PTDoc.Application.Services
 @using PTDoc.Core.Models
+@using Microsoft.AspNetCore.Components.Routing
 @using System.Globalization
 @implements IAsyncDisposable
 @rendermode InteractiveServer
@@ -137,12 +138,18 @@
 
     protected override async Task OnInitializedAsync()
     {
+        NavigationManager.LocationChanged += HandleLocationChanged;
         ApplyRouteQuery();
         await LoadPatientsAsync();
         await LoadAppointmentsAsync();
     }
 
     protected override async Task OnParametersSetAsync()
+    {
+        await ApplyCurrentRouteStateAsync();
+    }
+
+    private async Task ApplyCurrentRouteStateAsync()
     {
         var previousLoadWindow = GetAppointmentLoadWindow();
         var queryChanged = ApplyRouteQuery();
@@ -1064,8 +1071,19 @@
         return normalizedUtc.ToLocalTime();
     }
 
+    private void HandleLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await ApplyCurrentRouteStateAsync();
+            StateHasChanged();
+        });
+    }
+
     public async ValueTask DisposeAsync()
     {
+        NavigationManager.LocationChanged -= HandleLocationChanged;
+
         if (navigationModule is null)
         {
             return;

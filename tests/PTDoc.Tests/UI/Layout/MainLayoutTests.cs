@@ -112,6 +112,9 @@ public sealed class MainLayoutTests : TestContext
         var cut = RenderLayout();
 
         Assert.Contains("Export Center", cut.Markup, StringComparison.Ordinal);
+        var labels = cut.FindAll(".ptdoc-nav-section-label").Select(label => label.TextContent.Trim()).ToArray();
+        Assert.Contains("TOOLS", labels);
+        Assert.DoesNotContain("ADMIN", labels);
     }
 
     [Fact]
@@ -129,6 +132,9 @@ public sealed class MainLayoutTests : TestContext
 
         Assert.DoesNotContain("Export Center", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Settings", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains(
+            cut.FindAll(".ptdoc-nav-section-label"),
+            label => string.Equals(label.TextContent.Trim(), "ADMIN", StringComparison.Ordinal));
     }
 
     [Fact]

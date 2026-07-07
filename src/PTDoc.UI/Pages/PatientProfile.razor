@@ -2,6 +2,8 @@
 @attribute [Authorize(Policy = AuthorizationPolicies.PatientRead)]
 @rendermode InteractiveServer
 @inject NavigationManager NavigationManager
+@implements IDisposable
+@using Microsoft.AspNetCore.Components.Routing
 @using PTDoc.Application.Services
 @using PTDoc.Application.DTOs
 @using PTDoc.UI.Components.Patients.Profile.Models
@@ -113,6 +115,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        NavigationManager.LocationChanged += HandleLocationChanged;
         ApplyRouteQuery();
         await ReloadProfileAsync();
     }
@@ -419,13 +422,13 @@
         };
     }
 
-    private void ApplyRouteQuery()
+    private bool ApplyRouteQuery()
     {
         var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
         var routeKey = uri.PathAndQuery;
         if (string.Equals(lastAppliedRouteQuery, routeKey, StringComparison.Ordinal))
         {
-            return;
+            return false;
         }
 
         lastAppliedRouteQuery = routeKey;
@@ -443,6 +446,8 @@
         {
             isNoteTypeChooserOpen = true;
         }
+
+        return true;
     }
 
     private static bool IsValidProfileTab(string tab) =>
@@ -530,5 +535,21 @@
     private void HandleBack()
     {
         NavigationManager.NavigateTo("/patients");
+    }
+
+    private void HandleLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        _ = InvokeAsync(() =>
+        {
+            if (ApplyRouteQuery())
+            {
+                StateHasChanged();
+            }
+        });
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= HandleLocationChanged;
     }
 }
