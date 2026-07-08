@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Beta E2E PR review follow-up** — Made Appointments view switching route-driven only, removed local workstation references from the beta E2E plan, and changed audit-remediation browser checks to wait for asynchronous week-grid or empty-state outcomes. Reason: validated review feedback identified duplicate route-state handling, non-portable QA references, and transient Playwright branching.
 - **Beta E2E PR review follow-up** — Avoided redundant Appointments page renders on navigation events when the route query is unchanged or an appointment reload already rendered. Reason: validated review feedback identified unnecessary render churn during route-backed view changes.
 - **Beta E2E PR review follow-up** — Isolated unauthenticated route-protection browser checks in fresh contexts and waited for logout to reach the login form before asserting protected-route redirects. Reason: browser QA showed cookie clearing alone can leave an existing Blazor circuit rendering authenticated UI during direct-route checks.
+- **Beta E2E PR review follow-up** — Added anonymous browser smoke coverage for the SMS consent, privacy, and terms pages. Reason: validated review feedback identified that required public communication-policy URLs should be protected from auth-gating and routing regressions.
 
 ### Changed - Agent guidance captures hosted beta browser QA
 

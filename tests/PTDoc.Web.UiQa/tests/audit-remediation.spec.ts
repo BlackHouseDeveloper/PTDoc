@@ -10,6 +10,22 @@ const ptUsername = process.env.PTDOC_UI_QA_PT_USERNAME ?? 'amorgan';
 const ptPin = process.env.PTDOC_UI_QA_PT_PIN ?? process.env.PTDOC_UI_QA_PIN;
 
 test.describe('PTDoc audit remediation QA', () => {
+  test('public policy pages render anonymously', async ({ page }) => {
+    await page.context().clearCookies();
+
+    await page.goto('/sms-consent');
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByRole('heading', { name: /PTDoc SMS Consent and Text Messaging Terms/i })).toBeVisible();
+
+    await page.goto('/privacy');
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByRole('heading', { name: /PTDoc Privacy Policy/i })).toBeVisible();
+
+    await page.goto('/terms');
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByRole('heading', { name: /PTDoc Terms and Conditions/i })).toBeVisible();
+  });
+
   test('login validation and protected dashboard route behave consistently', async ({ page, browser }) => {
     await page.context().clearCookies();
     await page.goto('/login');
