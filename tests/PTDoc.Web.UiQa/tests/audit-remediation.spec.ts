@@ -69,19 +69,17 @@ test.describe('PTDoc audit remediation QA', () => {
     await expect(page.locator('body')).toContainText(/Week Schedule|Week of/i);
 
     const clinicianGrid = page.locator('.scheduler-grid.week-grouping-clinician');
-    if (await clinicianGrid.count() > 0) {
-      await expect(clinicianGrid).toBeVisible();
-    } else {
-      await expect(page.locator('body')).toContainText(/No appointments scheduled for this week|No appointments need notes for this period/i);
-    }
+    await Promise.any([
+      expect(clinicianGrid).toBeVisible(),
+      expect(page.locator('body')).toContainText(/No appointments scheduled for this week|No appointments need notes for this period/i),
+    ]);
 
     await page.getByRole('button', { name: 'Day' }).click();
     const dayGrid = page.locator('.scheduler-grid.week-grouping-day');
-    if (await dayGrid.count() > 0) {
-      await expect(dayGrid).toBeVisible();
-    } else {
-      await expect(page.getByRole('button', { name: 'Day' })).toHaveAttribute('aria-pressed', 'true');
-    }
+    await Promise.any([
+      expect(dayGrid).toBeVisible(),
+      expect(page.getByRole('button', { name: 'Day' })).toHaveAttribute('aria-pressed', 'true'),
+    ]);
     await expectNoRelevantConsoleErrors(page);
   });
 

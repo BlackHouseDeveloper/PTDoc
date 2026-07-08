@@ -187,29 +187,13 @@
         weekGrouping = grouping;
     }
 
-    private async Task HandleViewChanged(AppointmentsView view)
+    private void HandleViewChanged(AppointmentsView view)
     {
         var targetRoute = view == AppointmentsView.Week
             ? "/appointments?dateRange=week"
             : "/appointments?dateRange=today";
 
-        if (selectedView == view)
-        {
-            NavigationManager.NavigateTo(targetRoute);
-            return;
-        }
-
         NavigationManager.NavigateTo(targetRoute);
-        var previousLoadWindow = GetAppointmentLoadWindow();
-        selectedView = view;
-        selectedDate = DateTime.Today;
-        weekGrouping = AppointmentsWeekGrouping.Clinician;
-        RebuildSchedulerState();
-
-        if (!previousLoadWindow.Equals(GetAppointmentLoadWindow()))
-        {
-            await LoadAppointmentsAsync();
-        }
     }
 
     private async Task HandlePrevDay()

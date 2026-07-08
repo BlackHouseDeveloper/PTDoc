@@ -11,7 +11,7 @@ Primary beta targets:
 
 Use the current beta PIN provided out of band by the beta owner. Do not paste the beta PIN into bug reports, screenshots, source files, committed docs, issue text, or chat logs.
 
-Expected behavior comes from this repository, the current conversation context, recent PR intent, `docs/BETA_QA.md`, `docs/audits/ptdoc-live-audit-2026-06-21.md`, `/Users/calvinccarter/Downloads/ptdoc-source-of-truth-audit.md`, `/Users/calvinccarter/Downloads/ptdocclientfeedbackanalysis.md`, and `/Users/calvinccarter/Downloads/Prototype-Beta Notes6:07.docx`. These sources describe intent; testers must classify final results from observable beta behavior only.
+Expected behavior comes from this repository, especially `docs/BETA_QA.md` and `docs/audits/ptdoc-live-audit-2026-06-21.md`, plus recent PR intent and any separately shared product, prototype, client-feedback, or audit notes. Treat those sources as intent; classify final results from observable beta behavior only.
 
 The beta should be treated as **Beta Ready** only if seeded Admin, PT, PTA, and Patient users can complete their core workflows without data loss, hidden clinician-only access, unhandled errors, or unusable layout at the documented beta floor viewport.
 

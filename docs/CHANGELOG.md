@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Beta E2E remediation** — Reapplied patient-profile tab and new-note route state on query-only navigation, reloaded appointments when query-only navigation changes the day/week load window, relabeled Export Center as a Tools navigation item for PT users, and made browser QA tolerate valid empty week schedules. Reason: hosted beta testing found route-backed controls and role navigation could appear stale or misleading even after the local route contracts were implemented.
 - **Beta E2E PR review follow-up** — Reloaded patient-profile data when navigating between different patient ids in the same component instance and preserved Appointments Today/Week link fallback behavior when no callback is wired. Reason: validated PR review feedback identified stale patient data risk and fragile anchor default-prevention semantics.
+- **Beta E2E PR review follow-up** — Made Appointments view switching route-driven only, removed local workstation references from the beta E2E plan, and changed audit-remediation browser checks to wait for asynchronous week-grid or empty-state outcomes. Reason: validated review feedback identified duplicate route-state handling, non-portable QA references, and transient Playwright branching.
 
 ### Changed - Agent guidance captures hosted beta browser QA
 
