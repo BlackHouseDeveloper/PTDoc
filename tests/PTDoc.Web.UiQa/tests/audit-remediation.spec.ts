@@ -1,6 +1,7 @@
-import { expect, Page, test } from '@playwright/test';
+import { Browser, expect, Page, test } from '@playwright/test';
 import { attachConsoleCapture, authenticateIfNeeded, expectNoRelevantConsoleErrors } from './helpers/auth';
 
+const webBaseUrl = process.env.PTDOC_WEB_BASE_URL ?? 'http://localhost:5145';
 const intakePath = process.env.PTDOC_UI_QA_INTAKE_PATH;
 const writableNoteWorkspacePath = process.env.PTDOC_UI_QA_WRITABLE_NOTE_WORKSPACE_PATH;
 const patientChartPath = process.env.PTDOC_UI_QA_PATIENT_CHART_PATH
@@ -9,7 +10,7 @@ const ptUsername = process.env.PTDOC_UI_QA_PT_USERNAME ?? 'amorgan';
 const ptPin = process.env.PTDOC_UI_QA_PT_PIN ?? process.env.PTDOC_UI_QA_PIN;
 
 test.describe('PTDoc audit remediation QA', () => {
-  test('login validation and protected dashboard route behave consistently', async ({ page }) => {
+  test('login validation and protected dashboard route behave consistently', async ({ page, browser }) => {
     await page.context().clearCookies();
     await page.goto('/login');
     await page.waitForLoadState('domcontentloaded');
@@ -24,11 +25,7 @@ test.describe('PTDoc audit remediation QA', () => {
     await loginSubmit.click();
     await expect(page.getByText('PIN must be 4 digits.')).toBeVisible();
 
-    for (const route of ['/dashboard', '/appointments', '/notes', '/audit-missing-route']) {
-      await page.context().clearCookies();
-      await gotoProtectedRouteExpectingLogin(page, route);
-      await expect(page.locator('#username')).toBeVisible();
-    }
+    await expectProtectedRoutesRequireLogin(browser, ['/dashboard', '/appointments', '/notes', '/audit-missing-route']);
 
     await authenticateIfNeeded(page);
     await page.goto('/dashboard');
@@ -37,6 +34,7 @@ test.describe('PTDoc audit remediation QA', () => {
 
     await page.goto('/logout');
     await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#username')).toBeVisible();
     for (const route of ['/dashboard', '/appointments', '/notes', '/audit-missing-route']) {
       await gotoProtectedRouteExpectingLogin(page, route);
       await expect(page.locator('#username')).toBeVisible();
@@ -244,6 +242,18 @@ async function gotoProtectedRouteExpectingLogin(page: Page, route: string) {
   }
 
   await expect(page.locator('#username')).toBeVisible();
+}
+
+async function expectProtectedRoutesRequireLogin(browser: Browser, routes: string[]) {
+  for (const route of routes) {
+    const context = await browser.newContext({ baseURL: webBaseUrl });
+    const page = await context.newPage();
+    try {
+      await gotoProtectedRouteExpectingLogin(page, route);
+    } finally {
+      await context.close();
+    }
+  }
 }
 
 async function loginThroughForm(page: Page, username: string, pin: string) {

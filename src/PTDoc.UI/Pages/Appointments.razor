@@ -150,16 +150,24 @@
         await ApplyCurrentRouteStateAsync();
     }
 
-    private async Task ApplyCurrentRouteStateAsync()
+    private async Task<bool> ApplyCurrentRouteStateAsync()
     {
         var previousLoadWindow = GetAppointmentLoadWindow();
         var queryChanged = ApplyRouteQuery();
         HandleRouteAction();
 
-        if (queryChanged && !previousLoadWindow.Equals(GetAppointmentLoadWindow()))
+        if (!queryChanged)
+        {
+            return false;
+        }
+
+        if (!previousLoadWindow.Equals(GetAppointmentLoadWindow()))
         {
             await LoadAppointmentsAsync();
+            return false;
         }
+
+        return true;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -1085,8 +1093,10 @@
     {
         _ = InvokeAsync(async () =>
         {
-            await ApplyCurrentRouteStateAsync();
-            StateHasChanged();
+            if (await ApplyCurrentRouteStateAsync())
+            {
+                StateHasChanged();
+            }
         });
     }
 
