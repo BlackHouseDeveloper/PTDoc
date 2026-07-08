@@ -1,20 +1,21 @@
 @* Appointments Left Column - Composition Component *@
 
 <div class="appointments-left-column">
-    <AppointmentsViewTabs SelectedView="@SelectedView" />
+    <AppointmentsViewTabs SelectedView="@SelectedView"
+                          OnViewChanged="@OnViewChanged" />
 
     @if (SelectedView == AppointmentsView.Week)
     {
         <div class="week-grouping-control" role="group" aria-label="Week grouping">
             <button type="button"
                     class="week-grouping-control__button @(WeekGrouping == AppointmentsWeekGrouping.Clinician ? "selected" : "")"
-                    aria-pressed="@(WeekGrouping == AppointmentsWeekGrouping.Clinician)"
+                    aria-pressed="@GetPressedState(AppointmentsWeekGrouping.Clinician)"
                     @onclick="() => SelectWeekGrouping(AppointmentsWeekGrouping.Clinician)">
                 Clinician
             </button>
             <button type="button"
                     class="week-grouping-control__button @(WeekGrouping == AppointmentsWeekGrouping.Day ? "selected" : "")"
-                    aria-pressed="@(WeekGrouping == AppointmentsWeekGrouping.Day)"
+                    aria-pressed="@GetPressedState(AppointmentsWeekGrouping.Day)"
                     @onclick="() => SelectWeekGrouping(AppointmentsWeekGrouping.Day)">
                 Day
             </button>
@@ -60,6 +61,9 @@
 
     [Parameter]
     public EventCallback<AppointmentsWeekGrouping> OnWeekGroupingChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<AppointmentsView> OnViewChanged { get; set; }
 
     [Parameter]
     public DateTime SelectedDate { get; set; } = DateTime.Today;
@@ -109,4 +113,7 @@
             await OnWeekGroupingChanged.InvokeAsync(grouping);
         }
     }
+
+    private string GetPressedState(AppointmentsWeekGrouping grouping) =>
+        WeekGrouping == grouping ? "true" : "false";
 }

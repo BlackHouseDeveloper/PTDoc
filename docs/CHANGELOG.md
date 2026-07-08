@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Audit remediation browser QA follow-up
+
+- **Route-backed browser QA hardening** — Reapplied Patients `action=add` state on query-only navigation, made appointment view links update hydrated UI state while preserving their route-backed `href` fallback, rendered week-grouping `aria-pressed` values explicitly, and changed patient-chart/appointment browser checks to verify route-backed `href` targets directly. Reason: localhost browser QA found stale query-backed Patients/Appointments state, an empty ARIA pressed value, and an ambiguous Notes link selector.
+
 ### Fixed - Beta E2E route-backed navigation follow-up
 
 - **Beta E2E remediation** — Reapplied patient-profile tab and new-note route state on query-only navigation, reloaded appointments when query-only navigation changes the day/week load window, relabeled Export Center as a Tools navigation item for PT users, and made browser QA tolerate valid empty week schedules. Reason: hosted beta testing found route-backed controls and role navigation could appear stale or misleading even after the local route contracts were implemented.

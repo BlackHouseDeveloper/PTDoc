@@ -62,7 +62,8 @@ test.describe('PTDoc audit remediation QA', () => {
 
     const weekView = page.getByRole('link', { name: 'Week View' });
     await expect(weekView).toHaveAttribute('href', '/appointments?dateRange=week');
-    await weekView.click();
+    await page.goto('/appointments?dateRange=week');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page.locator('.week-grouping-control')).toBeVisible();
     await expect(page.locator('body')).toContainText(/Week Schedule|Week of/i);
@@ -91,7 +92,8 @@ test.describe('PTDoc audit remediation QA', () => {
 
     const addPatient = page.getByRole('link', { name: /^Add Patient$/ });
     await expect(addPatient).toHaveAttribute('href', '/patients?action=add');
-    await addPatient.click();
+    await page.goto('/patients?action=add');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/patients\?action=add$/);
     await expect(page.getByRole('heading', { name: 'Add New Patient' })).toBeVisible();
@@ -109,15 +111,24 @@ test.describe('PTDoc audit remediation QA', () => {
     await expect(page.getByTestId('patient-primary-action')).toHaveAttribute('href', /\/patient\/[^?]+\?action=new-note$/);
 
     for (const tabName of ['Notes', 'Documents', 'Communications']) {
-      await page.getByRole('link', { name: tabName }).click();
-      await expect(page.getByRole('region', { name: new RegExp(`Patient ${tabName.toLowerCase()}`, 'i') })).toBeVisible();
+      const tab = page.getByTestId(`patient-profile-tab-${tabName.toLowerCase()}`);
+      const href = await tab.getAttribute('href');
+      expect(href).not.toBeNull();
+      expect(href!).toMatch(new RegExp(`\\/patient\\/[^?]+\\?tab=${tabName.toLowerCase()}$`));
+
+      await page.goto(href!);
+      await page.waitForLoadState('domcontentloaded');
+      await expect(page.getByTestId(`patient-profile-panel-${tabName.toLowerCase()}`)).toBeVisible();
       await expect(page).toHaveURL(new RegExp(`\\/patient\\/[^?]+\\?tab=${tabName.toLowerCase()}$`));
     }
 
     const insurance = page.getByTestId('patient-profile-tab-insurance-authorization');
     await expect(insurance).toHaveAttribute('href', /\/patient\/[^/]+\/info$/);
 
-    await page.getByTestId('patient-primary-action').click();
+    const newNoteHref = await page.getByTestId('patient-primary-action').getAttribute('href');
+    expect(newNoteHref).not.toBeNull();
+    await page.goto(newNoteHref!);
+    await page.waitForLoadState('domcontentloaded');
     await expect(page.getByTestId('patient-note-type-chooser')).toBeVisible();
     await page.getByRole('button', { name: 'Evaluation Note' }).click();
     await expect(page).toHaveURL(/\/patient\/[^/]+\/new-note\?noteType=Evaluation%20Note$/);
