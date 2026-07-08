@@ -95,7 +95,7 @@
             <div class="ptdoc-nav-section">
                 <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.NoteExport">
                     <Authorized>
-                        <div class="ptdoc-nav-section-label" aria-hidden="true">ADMIN</div>
+                        <div class="ptdoc-nav-section-label" aria-hidden="true">TOOLS</div>
 
                         <NavLink class="ptdoc-nav-item" href="export-center" @onclick="HandleNavigate">
                             <div class="ptdoc-nav-content">
@@ -105,9 +105,13 @@
                         </NavLink>
                     </Authorized>
                 </AuthorizeView>
+            </div>
 
+            <div class="ptdoc-nav-section">
                 <AuthorizeView Roles="Admin,Owner">
                     <Authorized>
+                        <div class="ptdoc-nav-section-label" aria-hidden="true">ADMIN</div>
+
                         <NavLink class="ptdoc-nav-item" href="settings" @onclick="HandleNavigate">
                             <div class="ptdoc-nav-content">
                                 <img src="_content/PTDoc.UI/images/nav-settings.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />

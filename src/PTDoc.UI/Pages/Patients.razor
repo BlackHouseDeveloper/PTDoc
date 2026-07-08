@@ -1,5 +1,6 @@
 @page "/patients"
 @attribute [Authorize(Policy = AuthorizationPolicies.PatientRead)]
+@using Microsoft.AspNetCore.Components.Routing
 @using System.Net
 @using PTDoc.Application.Configurations.Header
 @using PTDoc.Application.Services
@@ -129,6 +130,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        NavigationManager.LocationChanged += HandleLocationChanged;
         ApplyRouteAction();
         await LoadPatientsAsync();
     }
@@ -227,18 +229,20 @@
     private Task RetryLoadPatientsAsync()
         => LoadPatientsAsync(string.IsNullOrWhiteSpace(searchQuery) ? null : searchQuery);
 
-    private void ApplyRouteAction()
+    private bool ApplyRouteAction()
     {
         var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
         if (string.Equals(_lastAppliedRouteAction, uri.Query, StringComparison.Ordinal))
         {
-            return;
+            return false;
         }
 
         _lastAppliedRouteAction = uri.Query;
 
         isAddPatientModalOpen = TryGetQueryParameter(uri.Query, "action", out var action)
             && string.Equals(action, "add", StringComparison.OrdinalIgnoreCase);
+
+        return true;
     }
 
     private static bool TryGetQueryParameter(string query, string key, out string value)
@@ -468,7 +472,19 @@
 
     public void Dispose()
     {
+        NavigationManager.LocationChanged -= HandleLocationChanged;
         _searchCts?.Cancel();
         _searchCts?.Dispose();
+    }
+
+    private void HandleLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        _ = InvokeAsync(() =>
+        {
+            if (ApplyRouteAction())
+            {
+                StateHasChanged();
+            }
+        });
     }
 }

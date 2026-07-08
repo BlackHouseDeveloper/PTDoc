@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Audit remediation browser QA follow-up
+
+- **Route-backed browser QA hardening** — Reapplied Patients `action=add` state on query-only navigation, made appointment view links update hydrated UI state while preserving their route-backed `href` fallback, rendered week-grouping `aria-pressed` values explicitly, and changed patient-chart/appointment browser checks to verify route-backed `href` targets directly. Reason: localhost browser QA found stale query-backed Patients/Appointments state, an empty ARIA pressed value, and an ambiguous Notes link selector.
+
+### Fixed - Beta E2E route-backed navigation follow-up
+
+- **Beta E2E remediation** — Reapplied patient-profile tab and new-note route state on query-only navigation, reloaded appointments when query-only navigation changes the day/week load window, relabeled Export Center as a Tools navigation item for PT users, and made browser QA tolerate valid empty week schedules. Reason: hosted beta testing found route-backed controls and role navigation could appear stale or misleading even after the local route contracts were implemented.
+- **Beta E2E PR review follow-up** — Reloaded patient-profile data when navigating between different patient ids in the same component instance and preserved Appointments Today/Week link fallback behavior when no callback is wired. Reason: validated PR review feedback identified stale patient data risk and fragile anchor default-prevention semantics.
+- **Beta E2E PR review follow-up** — Made Appointments view switching route-driven only, removed local workstation references from the beta E2E plan, and changed audit-remediation browser checks to wait for asynchronous week-grid or empty-state outcomes. Reason: validated review feedback identified duplicate route-state handling, non-portable QA references, and transient Playwright branching.
+- **Beta E2E PR review follow-up** — Avoided redundant Appointments page renders on navigation events when the route query is unchanged or an appointment reload already rendered. Reason: validated review feedback identified unnecessary render churn during route-backed view changes.
+- **Beta E2E PR review follow-up** — Isolated unauthenticated route-protection browser checks in fresh contexts and waited for logout to reach the login form before asserting protected-route redirects. Reason: browser QA showed cookie clearing alone can leave an existing Blazor circuit rendering authenticated UI during direct-route checks.
+- **Beta E2E PR review follow-up** — Added anonymous browser smoke coverage for the SMS consent, privacy, and terms pages. Reason: validated review feedback identified that required public communication-policy URLs should be protected from auth-gating and routing regressions.
+
+### Changed - Agent guidance captures hosted beta browser QA
+
+- **`AGENTS.md`** — Added the documented hosted-beta Playwright responsive QA command using `PTDOC_WEB_BASE_URL=https://ptdoc.bhdevsites.com` plus seeded beta credentials. Reason: keep the agent instructions aligned with the current beta E2E plan so agents can run the supported deployed-environment browser check without rediscovering it.
+
+### Added - Public communication compliance pages
+
+- **Public SMS, privacy, and terms pages** — Added anonymous `/sms-consent`, `/privacy`, `/privacy-policy`, `/terms`, and `/terms-and-conditions` pages with shared public-document layout and responsive styling. Reason: Azure Communication Services SMS registration needs public opt-in, privacy, and terms URLs that explain PTDoc transactional messaging, STOP/HELP handling, and patient-facing policy context.
+
 ### Added - Beta E2E testing plan
 
 - **Beta end-to-end testing plan** — Added a hosted-beta E2E plan covering environment gates, seeded roles, dashboard, appointments, patient chart, intake, SOAP documentation, payments, responsive/accessibility, regression coverage, PR verification, and release readiness. Reason: QA needs an execution-ready beta plan aligned to client feedback, live-audit findings, and recent PR intent without committing beta PINs or real patient data.

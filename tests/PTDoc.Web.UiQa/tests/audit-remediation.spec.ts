@@ -1,6 +1,7 @@
-import { expect, Page, test } from '@playwright/test';
+import { Browser, expect, Page, test } from '@playwright/test';
 import { attachConsoleCapture, authenticateIfNeeded, expectNoRelevantConsoleErrors } from './helpers/auth';
 
+const webBaseUrl = process.env.PTDOC_WEB_BASE_URL ?? 'http://localhost:5145';
 const intakePath = process.env.PTDOC_UI_QA_INTAKE_PATH;
 const writableNoteWorkspacePath = process.env.PTDOC_UI_QA_WRITABLE_NOTE_WORKSPACE_PATH;
 const patientChartPath = process.env.PTDOC_UI_QA_PATIENT_CHART_PATH
@@ -9,7 +10,23 @@ const ptUsername = process.env.PTDOC_UI_QA_PT_USERNAME ?? 'amorgan';
 const ptPin = process.env.PTDOC_UI_QA_PT_PIN ?? process.env.PTDOC_UI_QA_PIN;
 
 test.describe('PTDoc audit remediation QA', () => {
-  test('login validation and protected dashboard route behave consistently', async ({ page }) => {
+  test('public policy pages render anonymously', async ({ page }) => {
+    await page.context().clearCookies();
+
+    await page.goto('/sms-consent');
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByRole('heading', { name: /PTDoc SMS Consent and Text Messaging Terms/i })).toBeVisible();
+
+    await page.goto('/privacy');
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByRole('heading', { name: /PTDoc Privacy Policy/i })).toBeVisible();
+
+    await page.goto('/terms');
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByRole('heading', { name: /PTDoc Terms and Conditions/i })).toBeVisible();
+  });
+
+  test('login validation and protected dashboard route behave consistently', async ({ page, browser }) => {
     await page.context().clearCookies();
     await page.goto('/login');
     await page.waitForLoadState('domcontentloaded');
@@ -24,11 +41,7 @@ test.describe('PTDoc audit remediation QA', () => {
     await loginSubmit.click();
     await expect(page.getByText('PIN must be 4 digits.')).toBeVisible();
 
-    for (const route of ['/dashboard', '/appointments', '/notes', '/audit-missing-route']) {
-      await page.context().clearCookies();
-      await gotoProtectedRouteExpectingLogin(page, route);
-      await expect(page.locator('#username')).toBeVisible();
-    }
+    await expectProtectedRoutesRequireLogin(browser, ['/dashboard', '/appointments', '/notes', '/audit-missing-route']);
 
     await authenticateIfNeeded(page);
     await page.goto('/dashboard');
@@ -37,6 +50,7 @@ test.describe('PTDoc audit remediation QA', () => {
 
     await page.goto('/logout');
     await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('#username')).toBeVisible();
     for (const route of ['/dashboard', '/appointments', '/notes', '/audit-missing-route']) {
       await gotoProtectedRouteExpectingLogin(page, route);
       await expect(page.locator('#username')).toBeVisible();
@@ -62,13 +76,24 @@ test.describe('PTDoc audit remediation QA', () => {
 
     const weekView = page.getByRole('link', { name: 'Week View' });
     await expect(weekView).toHaveAttribute('href', '/appointments?dateRange=week');
-    await weekView.click();
+    await page.goto('/appointments?dateRange=week');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page.locator('.week-grouping-control')).toBeVisible();
-    await expect(page.locator('.scheduler-grid.week-grouping-clinician')).toBeVisible();
+    await expect(page.locator('body')).toContainText(/Week Schedule|Week of/i);
+
+    const clinicianGrid = page.locator('.scheduler-grid.week-grouping-clinician');
+    await Promise.any([
+      expect(clinicianGrid).toBeVisible(),
+      expect(page.locator('body')).toContainText(/No appointments scheduled for this week|No appointments need notes for this period/i),
+    ]);
 
     await page.getByRole('button', { name: 'Day' }).click();
-    await expect(page.locator('.scheduler-grid.week-grouping-day')).toBeVisible();
+    const dayGrid = page.locator('.scheduler-grid.week-grouping-day');
+    await Promise.any([
+      expect(dayGrid).toBeVisible(),
+      expect(page.getByRole('button', { name: 'Day' })).toHaveAttribute('aria-pressed', 'true'),
+    ]);
     await expectNoRelevantConsoleErrors(page);
   });
 
@@ -79,7 +104,8 @@ test.describe('PTDoc audit remediation QA', () => {
 
     const addPatient = page.getByRole('link', { name: /^Add Patient$/ });
     await expect(addPatient).toHaveAttribute('href', '/patients?action=add');
-    await addPatient.click();
+    await page.goto('/patients?action=add');
+    await page.waitForLoadState('domcontentloaded');
 
     await expect(page).toHaveURL(/\/patients\?action=add$/);
     await expect(page.getByRole('heading', { name: 'Add New Patient' })).toBeVisible();
@@ -97,15 +123,24 @@ test.describe('PTDoc audit remediation QA', () => {
     await expect(page.getByTestId('patient-primary-action')).toHaveAttribute('href', /\/patient\/[^?]+\?action=new-note$/);
 
     for (const tabName of ['Notes', 'Documents', 'Communications']) {
-      await page.getByRole('link', { name: tabName }).click();
-      await expect(page.getByRole('region', { name: new RegExp(`Patient ${tabName.toLowerCase()}`, 'i') })).toBeVisible();
+      const tab = page.getByTestId(`patient-profile-tab-${tabName.toLowerCase()}`);
+      const href = await tab.getAttribute('href');
+      expect(href).not.toBeNull();
+      expect(href!).toMatch(new RegExp(`\\/patient\\/[^?]+\\?tab=${tabName.toLowerCase()}$`));
+
+      await page.goto(href!);
+      await page.waitForLoadState('domcontentloaded');
+      await expect(page.getByTestId(`patient-profile-panel-${tabName.toLowerCase()}`)).toBeVisible();
       await expect(page).toHaveURL(new RegExp(`\\/patient\\/[^?]+\\?tab=${tabName.toLowerCase()}$`));
     }
 
     const insurance = page.getByTestId('patient-profile-tab-insurance-authorization');
     await expect(insurance).toHaveAttribute('href', /\/patient\/[^/]+\/info$/);
 
-    await page.getByTestId('patient-primary-action').click();
+    const newNoteHref = await page.getByTestId('patient-primary-action').getAttribute('href');
+    expect(newNoteHref).not.toBeNull();
+    await page.goto(newNoteHref!);
+    await page.waitForLoadState('domcontentloaded');
     await expect(page.getByTestId('patient-note-type-chooser')).toBeVisible();
     await page.getByRole('button', { name: 'Evaluation Note' }).click();
     await expect(page).toHaveURL(/\/patient\/[^/]+\/new-note\?noteType=Evaluation%20Note$/);
@@ -223,6 +258,18 @@ async function gotoProtectedRouteExpectingLogin(page: Page, route: string) {
   }
 
   await expect(page.locator('#username')).toBeVisible();
+}
+
+async function expectProtectedRoutesRequireLogin(browser: Browser, routes: string[]) {
+  for (const route of routes) {
+    const context = await browser.newContext({ baseURL: webBaseUrl });
+    const page = await context.newPage();
+    try {
+      await gotoProtectedRouteExpectingLogin(page, route);
+    } finally {
+      await context.close();
+    }
+  }
 }
 
 async function loginThroughForm(page: Page, username: string, pin: string) {

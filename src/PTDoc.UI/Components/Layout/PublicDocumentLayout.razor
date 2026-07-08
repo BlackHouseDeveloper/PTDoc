@@ -1,0 +1,24 @@
+@inherits LayoutComponentBase
+
+<div class="public-document-layout">
+    <header class="public-document-layout__header">
+        <a class="public-document-layout__brand" href="/sms-consent" aria-label="PTDoc SMS consent">
+            <span class="public-document-layout__brand-mark" aria-hidden="true">PT</span>
+            <span>PTDoc</span>
+        </a>
+        <nav class="public-document-layout__nav" aria-label="Public policy navigation">
+            <a href="/sms-consent">SMS Consent</a>
+            <a href="/privacy">Privacy</a>
+            <a href="/terms">Terms</a>
+        </nav>
+    </header>
+
+    <main class="public-document-layout__main">
+        @Body
+    </main>
+
+    <footer class="public-document-layout__footer">
+        <span>PTDoc secure patient workflow notices</span>
+        <span>For help, contact your clinic or PTDoc support.</span>
+    </footer>
+</div>

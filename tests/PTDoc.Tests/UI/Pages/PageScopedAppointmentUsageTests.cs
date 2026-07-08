@@ -4,6 +4,7 @@ using Moq;
 using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Services;
+using PTDoc.Core.Models;
 using PTDoc.UI.Pages;
 using PTDoc.UI.Services;
 
@@ -252,6 +253,102 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
     }
 
     [Fact]
+    public void PatientProfile_QueryOnlyNavigation_ReappliesTabsAndNoteAction()
+    {
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteService = new Mock<INoteService>(MockBehavior.Strict);
+        var appointmentService = new Mock<IAppointmentService>(MockBehavior.Strict);
+        var intakeService = new Mock<IIntakeService>(MockBehavior.Strict);
+        var toastService = new Mock<IToastService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Alex",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1980, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteService
+            .Setup(service => service.GetNotesAsync(patientId, null, null, 25, null, null, It.IsAny<CancellationToken>(), null, null, null, 0))
+            .ReturnsAsync(new[]
+            {
+                new NoteListItemApiResponse
+                {
+                    Id = noteId,
+                    PatientId = patientId,
+                    NoteType = "Daily",
+                    NoteStatus = NoteStatus.Draft,
+                    DateOfService = new DateTime(2026, 7, 2),
+                    LastModifiedUtc = new DateTime(2026, 7, 2, 14, 0, 0, DateTimeKind.Utc)
+                }
+            });
+
+        appointmentService
+            .Setup(service => service.GetByPatientAsync(
+                patientId,
+                It.IsAny<DateTime>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<AppointmentListItemResponse>());
+
+        intakeService
+            .Setup(service => service.GetLatestByPatientIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IntakeResponseDraft?)null);
+
+        RegisterCommonServices();
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteService.Object);
+        Services.AddSingleton(appointmentService.Object);
+        Services.AddSingleton(intakeService.Object);
+        Services.AddSingleton(toastService.Object);
+
+        var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        navigation.NavigateTo($"/patient/{patientId:D}");
+        var cut = RenderComponent<global::PTDoc.UI.Pages.PatientProfile>(parameters => parameters.Add(component => component.Id, patientId.ToString()));
+        cut.WaitForElement("[data-testid='patient-profile-panel-timeline']");
+
+        navigation.NavigateTo($"/patient/{patientId:D}?tab=notes");
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotEmpty(cut.FindAll("[data-testid='patient-profile-panel-notes']"));
+            Assert.Contains("Daily", cut.Markup, StringComparison.Ordinal);
+        });
+
+        navigation.NavigateTo($"/patient/{patientId:D}?tab=documents");
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotEmpty(cut.FindAll("[data-testid='patient-profile-panel-documents']"));
+            Assert.Contains("Patient Documents", cut.Markup, StringComparison.Ordinal);
+        });
+
+        navigation.NavigateTo($"/patient/{patientId:D}?tab=communications");
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotEmpty(cut.FindAll("[data-testid='patient-profile-panel-communications']"));
+            Assert.Contains("Communication Log", cut.Markup, StringComparison.Ordinal);
+        });
+
+        navigation.NavigateTo($"/patient/{patientId:D}?action=new-note");
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotEmpty(cut.FindAll("[data-testid='patient-note-type-chooser']"));
+            Assert.Contains("Choose Note Type", cut.Markup, StringComparison.Ordinal);
+        });
+
+        navigation.NavigateTo($"/patient/{patientId:D}?tab=timeline");
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotEmpty(cut.FindAll("[data-testid='patient-profile-panel-timeline']"));
+            Assert.Empty(cut.FindAll("[data-testid='patient-note-type-chooser']"));
+        });
+    }
+
+    [Fact]
     public void PatientProfile_RouteQueryCache_IncludesPatientPathForSameQueryNavigation()
     {
         var firstPatientId = Guid.NewGuid();
@@ -313,6 +410,80 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
             $"/patient/{secondPatientId:D}?action=new-note",
             GetPrivateString(cut.Instance, "lastAppliedRouteQuery"),
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PatientProfile_RouteIdChange_ReloadsPatientProfileData()
+    {
+        var firstPatientId = Guid.NewGuid();
+        var secondPatientId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteService = new Mock<INoteService>(MockBehavior.Strict);
+        var appointmentService = new Mock<IAppointmentService>(MockBehavior.Strict);
+        var intakeService = new Mock<IIntakeService>(MockBehavior.Strict);
+        var toastService = new Mock<IToastService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(firstPatientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = firstPatientId,
+                FirstName = "Alex",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1980, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        patientService
+            .Setup(service => service.GetByIdAsync(secondPatientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = secondPatientId,
+                FirstName = "Blair",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1982, 2, 2, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteService
+            .Setup(service => service.GetNotesAsync(It.IsAny<Guid>(), null, null, 25, null, null, It.IsAny<CancellationToken>(), null, null, null, 0))
+            .ReturnsAsync(Array.Empty<NoteListItemApiResponse>());
+
+        appointmentService
+            .Setup(service => service.GetByPatientAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<AppointmentListItemResponse>());
+
+        intakeService
+            .Setup(service => service.GetLatestByPatientIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IntakeResponseDraft?)null);
+
+        RegisterCommonServices();
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteService.Object);
+        Services.AddSingleton(appointmentService.Object);
+        Services.AddSingleton(intakeService.Object);
+        Services.AddSingleton(toastService.Object);
+        Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>()
+            .NavigateTo($"/patient/{firstPatientId:D}");
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.PatientProfile>(parameters => parameters.Add(component => component.Id, firstPatientId.ToString()));
+
+        cut.WaitForAssertion(() => Assert.Contains("Alex Patient", cut.Markup, StringComparison.Ordinal));
+
+        Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>()
+            .NavigateTo($"/patient/{secondPatientId:D}");
+        cut.SetParametersAndRender(parameters => parameters.Add(component => component.Id, secondPatientId.ToString()));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Blair Patient", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Alex Patient", cut.Markup, StringComparison.Ordinal);
+        });
+
+        patientService.Verify(service => service.GetByIdAsync(firstPatientId, It.IsAny<CancellationToken>()), Times.Once);
+        patientService.Verify(service => service.GetByIdAsync(secondPatientId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

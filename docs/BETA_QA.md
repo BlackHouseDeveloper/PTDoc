@@ -103,6 +103,13 @@ Seeded beta patient fixtures:
 - Check light mode and dark mode on dashboard, appointments, patients, intake, notes, and settings/progress if reachable.
 - Record any horizontal page overflow, clipped modal footer, unreadable dark-mode text, or sidebar overlap.
 
+### Current Route-Backed Retest Focus
+
+- From Appointments, switch between Today and Week using the visible controls and direct URLs such as `/appointments?dateRange=week`; confirm the heading, empty state, and clinician/day grouping stay in sync.
+- From a seeded patient chart, switch between Timeline, Notes, Documents, and Communications using the visible chart links and direct query URLs such as `/patient/<id>?tab=documents`; confirm the active section changes without needing a full reload.
+- As a PT user, open a seeded patient chart with `/patient/<id>?action=new-note`; confirm the note-type chooser opens, then navigate away from the query and confirm the chooser closes.
+- As a PT user, confirm Export Center appears under the Tools navigation section rather than under Admin.
+
 ## Known Issues And Limitations
 
 Treat these as documented beta limitations unless they block a core workflow in the pass/fail gate.

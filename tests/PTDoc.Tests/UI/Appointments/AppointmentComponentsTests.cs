@@ -423,6 +423,50 @@ public sealed class AppointmentComponentsTests : TestContext
     }
 
     [Fact]
+    public void AppointmentsViewTabs_WithoutCallback_RetainsHrefFallbacks()
+    {
+        var cut = RenderComponent<AppointmentsViewTabs>(parameters => parameters
+            .Add(component => component.SelectedView, AppointmentsView.Today));
+
+        var links = cut.FindAll(".tab-button");
+
+        Assert.Equal("/appointments?dateRange=today", links[0].GetAttribute("href"));
+        Assert.Equal("/appointments?dateRange=week", links[1].GetAttribute("href"));
+        links[1].Click();
+    }
+
+    [Fact]
+    public void AppointmentsViewTabs_Click_InvokesRouteBackedViewChange()
+    {
+        AppointmentsView? selectedView = null;
+        var cut = RenderComponent<AppointmentsViewTabs>(parameters => parameters
+            .Add(component => component.SelectedView, AppointmentsView.Today)
+            .Add(component => component.OnViewChanged, view => selectedView = view));
+
+        var weekView = cut.FindAll(".tab-button")
+            .First(link => link.TextContent.Contains("Week View", StringComparison.Ordinal));
+
+        Assert.Equal("/appointments?dateRange=week", weekView.GetAttribute("href"));
+
+        weekView.Click();
+
+        Assert.Equal(AppointmentsView.Week, selectedView);
+    }
+
+    [Fact]
+    public void AppointmentsLeftColumn_WeekGrouping_ExposesExplicitPressedState()
+    {
+        var cut = RenderComponent<AppointmentsLeftColumn>(parameters => parameters
+            .Add(component => component.SelectedView, AppointmentsView.Week)
+            .Add(component => component.WeekGrouping, AppointmentsWeekGrouping.Day));
+
+        var buttons = cut.FindAll(".week-grouping-control__button");
+
+        Assert.Equal("false", buttons[0].GetAttribute("aria-pressed"));
+        Assert.Equal("true", buttons[1].GetAttribute("aria-pressed"));
+    }
+
+    [Fact]
     public void AppointmentsDaySwitcher_WeekView_ShowsWeekRangeAndWeekNavigationLabels()
     {
         var originalCulture = CultureInfo.CurrentCulture;

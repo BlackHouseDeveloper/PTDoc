@@ -4,11 +4,15 @@
     <nav class="tab-list" aria-label="Appointment view">
         <a href="/appointments?dateRange=today"
            class="tab-button @(SelectedView == AppointmentsView.Today ? "selected" : "")"
+           @onclick="() => SelectView(AppointmentsView.Today)"
+           @onclick:preventDefault="@OnViewChanged.HasDelegate"
            aria-current="@(SelectedView == AppointmentsView.Today ? "page" : null)">
             Today
         </a>
         <a href="/appointments?dateRange=week"
            class="tab-button @(SelectedView == AppointmentsView.Week ? "selected" : "")"
+           @onclick="() => SelectView(AppointmentsView.Week)"
+           @onclick:preventDefault="@OnViewChanged.HasDelegate"
            aria-current="@(SelectedView == AppointmentsView.Week ? "page" : null)">
             Week View
         </a>
@@ -18,4 +22,15 @@
 @code {
     [Parameter]
     public AppointmentsView SelectedView { get; set; } = AppointmentsView.Today;
+
+    [Parameter]
+    public EventCallback<AppointmentsView> OnViewChanged { get; set; }
+
+    private async Task SelectView(AppointmentsView view)
+    {
+        if (OnViewChanged.HasDelegate)
+        {
+            await OnViewChanged.InvokeAsync(view);
+        }
+    }
 }

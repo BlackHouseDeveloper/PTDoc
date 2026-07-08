@@ -74,6 +74,31 @@ public sealed class PatientsPageTests : TestContext
     }
 
     [Fact]
+    public void AddPatientRouteAction_AfterInitialLoad_OpensAddPatientModal()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        patientService
+            .Setup(service => service.SearchAsync(null, 200, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<PatientListItemResponse>());
+
+        RegisterServices(patientService.Object, includePatientWrite: true);
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        navigation.NavigateTo("/patients");
+
+        var cut = RenderComponent<PatientsPage>();
+        cut.WaitForAssertion(() => Assert.DoesNotContain("Add New Patient", cut.Markup, StringComparison.Ordinal));
+
+        navigation.NavigateTo("/patients?action=add");
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Add New Patient", cut.Markup, StringComparison.Ordinal);
+            Assert.NotEmpty(cut.FindAll("#firstName"));
+        });
+    }
+
+    [Fact]
     public void MalformedRouteAction_DoesNotCrashOrOpenAddPatientModal()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
