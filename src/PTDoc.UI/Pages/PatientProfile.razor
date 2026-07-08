@@ -101,6 +101,7 @@
     private string intakeStatusVariant = "default";
     private string selectedProfileTab = "timeline";
     private string? lastAppliedRouteQuery;
+    private string? lastLoadedPatientRouteId;
     private Guid currentPatientId;
     private bool isNoteTypeChooserOpen;
     private static readonly TimeSpan TimelineLookbackWindow = TimeSpan.FromDays(180);
@@ -113,16 +114,19 @@
         "Dry Needling Note"
     ];
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
         NavigationManager.LocationChanged += HandleLocationChanged;
-        ApplyRouteQuery();
-        await ReloadProfileAsync();
     }
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
         ApplyRouteQuery();
+
+        if (!string.Equals(lastLoadedPatientRouteId, Id, StringComparison.Ordinal))
+        {
+            await ReloadProfileAsync();
+        }
     }
 
     private async Task ReloadProfileAsync()
@@ -142,6 +146,8 @@
             NavigationManager.NavigateTo("/patients");
             return;
         }
+
+        lastLoadedPatientRouteId = Id;
 
         try
         {

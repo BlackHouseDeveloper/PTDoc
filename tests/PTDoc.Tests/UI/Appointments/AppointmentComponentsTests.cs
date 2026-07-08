@@ -423,6 +423,19 @@ public sealed class AppointmentComponentsTests : TestContext
     }
 
     [Fact]
+    public void AppointmentsViewTabs_WithoutCallback_RetainsHrefFallbacks()
+    {
+        var cut = RenderComponent<AppointmentsViewTabs>(parameters => parameters
+            .Add(component => component.SelectedView, AppointmentsView.Today));
+
+        var links = cut.FindAll(".tab-button");
+
+        Assert.Equal("/appointments?dateRange=today", links[0].GetAttribute("href"));
+        Assert.Equal("/appointments?dateRange=week", links[1].GetAttribute("href"));
+        links[1].Click();
+    }
+
+    [Fact]
     public void AppointmentsViewTabs_Click_InvokesRouteBackedViewChange()
     {
         AppointmentsView? selectedView = null;
