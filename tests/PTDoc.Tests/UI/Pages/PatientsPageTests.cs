@@ -532,6 +532,7 @@ public sealed class PatientsPageTests : TestContext
         {
             var card = cut.Find($"button[data-testid='patient-card-{patientId}']");
             Assert.Equal("View details for Alex Patient", card.GetAttribute("aria-label"));
+            Assert.Contains("Open chart", card.TextContent, StringComparison.Ordinal);
         });
 
         cut.Find($"button[data-testid='patient-card-{patientId}']").Click();

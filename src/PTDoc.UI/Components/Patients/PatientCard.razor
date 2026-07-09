@@ -20,7 +20,7 @@
             {
                 <div class="patient-card-detail-item">
                     <p class="patient-card-detail-label">Date of Birth</p>
-                    <p class="patient-card-detail-value">@Patient.DateOfBirth</p>
+                    <p class="patient-card-detail-value" title="@Patient.DateOfBirth">@Patient.DateOfBirth</p>
                 </div>
             }
             
@@ -28,7 +28,7 @@
             {
                 <div class="patient-card-detail-item">
                     <p class="patient-card-detail-label">Last Visit</p>
-                    <p class="patient-card-detail-value">@Patient.LastVisit</p>
+                    <p class="patient-card-detail-value" title="@Patient.LastVisit">@Patient.LastVisit</p>
                 </div>
             }
 
@@ -36,7 +36,7 @@
             {
                 <div class="patient-card-detail-item">
                     <p class="patient-card-detail-label">MRN</p>
-                    <p class="patient-card-detail-value">@Patient.MedicalRecordNumber</p>
+                    <p class="patient-card-detail-value" title="@Patient.MedicalRecordNumber">@Patient.MedicalRecordNumber</p>
                 </div>
             }
 
@@ -44,7 +44,7 @@
             {
                 <div class="patient-card-detail-item">
                     <p class="patient-card-detail-label">Email</p>
-                    <p class="patient-card-detail-value">@Patient.Email</p>
+                    <p class="patient-card-detail-value" title="@Patient.Email">@Patient.Email</p>
                 </div>
             }
 
@@ -52,9 +52,16 @@
             {
                 <div class="patient-card-detail-item">
                     <p class="patient-card-detail-label">Phone</p>
-                    <p class="patient-card-detail-value">@Patient.Phone</p>
+                    <p class="patient-card-detail-value" title="@Patient.Phone">@Patient.Phone</p>
                 </div>
             }
+        </div>
+
+        <div class="patient-card-action" aria-hidden="true">
+            <span>Open chart</span>
+            <svg class="patient-card-action-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M6 3.5L10.5 8L6 12.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
         </div>
     </div>
 </button>

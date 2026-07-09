@@ -14,11 +14,14 @@
                        type="search"
                        class="week-clinician-selector__search"
                        placeholder="Search PT or PTA"
+                       disabled="@(ClinicianOptions.Count == 0)"
+                       aria-disabled="@(ClinicianOptions.Count == 0 ? "true" : "false")"
                        value="@clinicianSearchText"
                        @oninput="HandleClinicianSearchChanged" />
                 <select id="appointments-week-clinician-select"
                         class="week-clinician-selector__select"
                         aria-label="Select week clinician"
+                        disabled="@(FilteredClinicianOptions.Count == 0)"
                         value="@SelectedClinicianId"
                         @onchange="HandleClinicianSelectionChangedAsync">
                     @if (FilteredClinicianOptions.Count == 0)

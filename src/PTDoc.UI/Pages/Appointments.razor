@@ -143,7 +143,7 @@
     private bool IsAnyModalOpen => isNewAppointmentModalOpen || isAppointmentDetailModalOpen || isPaymentModalOpen;
     private bool IsAdminUser => currentUser.IsInRole(Roles.Admin);
     private bool IsPtOrPtaUser => currentUser.IsInRole(Roles.PT) || currentUser.IsInRole(Roles.PTA);
-    private bool ShowWeekClinicianSelector => selectedView == AppointmentsView.Week && IsAdminUser && weekClinicianOptions.Count > 0;
+    private bool ShowWeekClinicianSelector => selectedView == AppointmentsView.Week && IsAdminUser;
 
     [Inject] private NavigationManager NavigationManager { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;

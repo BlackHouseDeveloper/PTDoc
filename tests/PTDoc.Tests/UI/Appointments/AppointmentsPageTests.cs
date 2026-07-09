@@ -77,6 +77,9 @@ public sealed class AppointmentsPageTests : TestContext
 
         cut.WaitForAssertion(() =>
         {
+            Assert.Contains("appointments-week-clinician-selector", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("No clinicians available", cut.Markup, StringComparison.Ordinal);
+            Assert.True(cut.Find("#appointments-week-clinician-select").HasAttribute("disabled"));
             Assert.Contains("week-grouping-control", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Week Schedule", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("No appointments scheduled for this week", cut.Markup, StringComparison.Ordinal);
