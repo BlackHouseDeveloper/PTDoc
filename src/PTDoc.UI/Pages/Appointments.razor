@@ -1,10 +1,13 @@
 @page "/appointments"
 @attribute [Authorize(Policy = AuthorizationPolicies.SchedulingAccess)]
 @using PTDoc.Application.DTOs
+@using PTDoc.Application.Identity
 @using PTDoc.Application.Integrations
 @using PTDoc.Application.Services
 @using PTDoc.Core.Models
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Routing
+@using System.Security.Claims
 @using System.Globalization
 @implements IAsyncDisposable
 @rendermode InteractiveServer
@@ -37,6 +40,10 @@
             <AppointmentsLeftColumn SelectedView="@selectedView"
                                    WeekGrouping="@weekGrouping"
                                    OnWeekGroupingChanged="HandleWeekGroupingChanged"
+                                   ShowClinicianSelector="@ShowWeekClinicianSelector"
+                                   ClinicianOptions="@weekClinicianOptions"
+                                   SelectedClinicianId="@selectedWeekClinicianId"
+                                   OnSelectedClinicianIdChanged="HandleSelectedWeekClinicianChanged"
                                    OnViewChanged="HandleViewChanged"
                                    SelectedDate="@selectedDate"
                                    OnPrevDay="HandlePrevDay"
@@ -116,6 +123,7 @@
     private readonly List<AppointmentListItemResponse> appointmentDirectory = new();
     private readonly List<AppointmentClinicianResponse> clinicianDirectory = new();
     private readonly List<PatientListItemResponse> patientDirectory = new();
+    private readonly List<WeekClinicianFilterOption> weekClinicianOptions = new();
     private List<ClinicianSchedule> schedulerClinicians = new();
     private List<AppointmentListItemResponse> visibleAppointments = new();
     private List<NewAppointmentModal.PatientOption> availablePatients = new();
@@ -126,11 +134,20 @@
     private bool showNeedsNoteOnly;
     private string? lastAppliedRouteQuery;
     private IJSObjectReference? navigationModule;
+    private ClaimsPrincipal currentUser = new(new ClaimsIdentity());
+    private Guid? currentUserId;
+    private string currentUserDisplayName = string.Empty;
+    private string selectedWeekClinicianId = string.Empty;
+    private string? pendingRouteWeekClinicianId;
 
     private bool IsAnyModalOpen => isNewAppointmentModalOpen || isAppointmentDetailModalOpen || isPaymentModalOpen;
+    private bool IsAdminUser => currentUser.IsInRole(Roles.Admin);
+    private bool IsPtOrPtaUser => currentUser.IsInRole(Roles.PT) || currentUser.IsInRole(Roles.PTA);
+    private bool ShowWeekClinicianSelector => selectedView == AppointmentsView.Week && IsAdminUser && weekClinicianOptions.Count > 0;
 
     [Inject] private NavigationManager NavigationManager { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
+    [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
     [Inject] private IAppointmentService AppointmentService { get; set; } = default!;
     [Inject] private IPaymentClientService PaymentClientService { get; set; } = default!;
     [Inject] private IPatientService PatientService { get; set; } = default!;
@@ -140,6 +157,7 @@
     protected override async Task OnInitializedAsync()
     {
         NavigationManager.LocationChanged += HandleLocationChanged;
+        await LoadUserContextAsync();
         ApplyRouteQuery();
         await LoadPatientsAsync();
         await LoadAppointmentsAsync();
@@ -193,6 +211,15 @@
     private void HandleWeekGroupingChanged(AppointmentsWeekGrouping grouping)
     {
         weekGrouping = grouping;
+        NavigateToCurrentWeekRoute();
+    }
+
+    private void HandleSelectedWeekClinicianChanged(string clinicianId)
+    {
+        selectedWeekClinicianId = clinicianId;
+        pendingRouteWeekClinicianId = null;
+        RebuildSchedulerState();
+        NavigateToCurrentWeekRoute();
     }
 
     private void HandleViewChanged(AppointmentsView view)
@@ -448,8 +475,30 @@
             }
         }
 
+        pendingRouteWeekClinicianId = TryGetQueryParameter(uri.Query, "clinicianId", out var clinicianId)
+            && Guid.TryParse(clinicianId, out var parsedClinicianId)
+            ? parsedClinicianId.ToString("D")
+            : null;
+
         RebuildSchedulerState();
         return true;
+    }
+
+    private async Task LoadUserContextAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            currentUser = authState.User;
+            currentUserId = ResolveCurrentUserId(currentUser);
+            currentUserDisplayName = ResolveCurrentUserDisplayName(currentUser);
+        }
+        catch
+        {
+            currentUser = new ClaimsPrincipal(new ClaimsIdentity());
+            currentUserId = null;
+            currentUserDisplayName = string.Empty;
+        }
     }
 
     private void ApplyDateRangeQuery(string dateRange)
@@ -728,6 +777,9 @@
 
     private void RebuildSchedulerState()
     {
+        RebuildWeekClinicianOptions();
+        EnsureWeekClinicianSelection();
+
         visibleAppointments = GetVisibleAppointments()
             .OrderBy(appointment => ToLocalTime(appointment.StartTimeUtc))
             .ThenBy(appointment => appointment.PatientName)
@@ -771,6 +823,112 @@
                 })
                 .ToList();
         }
+    }
+
+    private void RebuildWeekClinicianOptions()
+    {
+        weekClinicianOptions.Clear();
+        weekClinicianOptions.AddRange(clinicianDirectory
+            .Select(clinician => new WeekClinicianFilterOption
+            {
+                Id = clinician.Id.ToString("D"),
+                Name = FormatClinicianDisplayName(clinician.DisplayName)
+            })
+            .DistinctBy(option => option.Id, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(option => option.Name, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private void EnsureWeekClinicianSelection()
+    {
+        if (selectedView != AppointmentsView.Week)
+        {
+            return;
+        }
+
+        if (IsAdminUser)
+        {
+            if (!string.IsNullOrWhiteSpace(pendingRouteWeekClinicianId)
+                && weekClinicianOptions.Any(option => string.Equals(option.Id, pendingRouteWeekClinicianId, StringComparison.OrdinalIgnoreCase)))
+            {
+                selectedWeekClinicianId = pendingRouteWeekClinicianId;
+                return;
+            }
+
+            if (weekClinicianOptions.Any(option => string.Equals(option.Id, selectedWeekClinicianId, StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            selectedWeekClinicianId = ResolveFirstClinicianWithVisibleWeekAppointments()
+                ?? weekClinicianOptions.FirstOrDefault()?.Id
+                ?? string.Empty;
+            return;
+        }
+
+        if (!IsPtOrPtaUser)
+        {
+            selectedWeekClinicianId = string.Empty;
+            return;
+        }
+
+        selectedWeekClinicianId = ResolveCurrentUserClinicianId() ?? string.Empty;
+    }
+
+    private string? ResolveFirstClinicianWithVisibleWeekAppointments()
+    {
+        var (startDate, endDate) = GetVisibleDateWindow();
+        var firstClinicianId = appointmentDirectory
+            .Where(appointment =>
+            {
+                var localDate = ToLocalTime(appointment.StartTimeUtc).Date;
+                return localDate >= startDate
+                    && localDate <= endDate
+                    && appointment.ClinicianId.HasValue
+                    && MatchesFilter(appointment)
+                    && MatchesNotesDueQueue(appointment);
+            })
+            .OrderBy(appointment => ToLocalTime(appointment.StartTimeUtc))
+            .Select(appointment => appointment.ClinicianId!.Value.ToString("D"))
+            .FirstOrDefault(id => weekClinicianOptions.Any(option => string.Equals(option.Id, id, StringComparison.OrdinalIgnoreCase)));
+
+        return firstClinicianId;
+    }
+
+    private string? ResolveCurrentUserClinicianId()
+    {
+        if (currentUserId.HasValue
+            && weekClinicianOptions.Any(option => string.Equals(option.Id, currentUserId.Value.ToString("D"), StringComparison.OrdinalIgnoreCase)))
+        {
+            return currentUserId.Value.ToString("D");
+        }
+
+        return weekClinicianOptions
+            .FirstOrDefault(option => AreClinicianNamesEquivalent(option.Name, currentUserDisplayName))
+            ?.Id;
+    }
+
+    private void NavigateToCurrentWeekRoute()
+    {
+        if (selectedView != AppointmentsView.Week)
+        {
+            return;
+        }
+
+        NavigationManager.NavigateTo(BuildWeekRoute(includeClinician: IsAdminUser));
+    }
+
+    private string BuildWeekRoute(bool includeClinician)
+    {
+        var route = weekGrouping == AppointmentsWeekGrouping.Day
+            ? "/appointments?dateRange=week&groupBy=day"
+            : "/appointments?dateRange=week&groupBy=clinician";
+
+        if (includeClinician && !string.IsNullOrWhiteSpace(selectedWeekClinicianId))
+        {
+            route += $"&clinicianId={Uri.EscapeDataString(selectedWeekClinicianId)}";
+        }
+
+        return route;
     }
 
     private static string MapAppointmentTypeForForm(string appointmentType) =>
@@ -882,8 +1040,69 @@
             return localDate >= startDate
                 && localDate <= endDate
                 && MatchesFilter(appointment)
-                && MatchesNotesDueQueue(appointment);
+                && MatchesNotesDueQueue(appointment)
+                && MatchesWeekClinicianScope(appointment);
         });
+    }
+
+    private bool MatchesWeekClinicianScope(AppointmentListItemResponse appointment)
+    {
+        if (selectedView != AppointmentsView.Week)
+        {
+            return true;
+        }
+
+        if (IsAdminUser)
+        {
+            return string.IsNullOrWhiteSpace(selectedWeekClinicianId)
+                || MatchesClinicianId(appointment, selectedWeekClinicianId);
+        }
+
+        if (!IsPtOrPtaUser)
+        {
+            return true;
+        }
+
+        if (currentUserId.HasValue && appointment.ClinicianId == currentUserId.Value)
+        {
+            return true;
+        }
+
+        return MatchesClinicianName(appointment, currentUserDisplayName);
+    }
+
+    private static bool MatchesClinicianId(AppointmentListItemResponse appointment, string clinicianId)
+    {
+        return appointment.ClinicianId.HasValue
+            && string.Equals(appointment.ClinicianId.Value.ToString("D"), clinicianId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool MatchesClinicianName(AppointmentListItemResponse appointment, string clinicianName)
+    {
+        if (string.IsNullOrWhiteSpace(clinicianName))
+        {
+            return false;
+        }
+
+        return AreClinicianNamesEquivalent(appointment.ClinicianName, clinicianName)
+            || AreClinicianNamesEquivalent(GetEffectiveClinicianName(appointment), clinicianName);
+    }
+
+    private static bool AreClinicianNamesEquivalent(string? left, string? right)
+    {
+        var normalizedLeft = NormalizeClinicianName(left);
+        var normalizedRight = NormalizeClinicianName(right);
+        return !string.IsNullOrWhiteSpace(normalizedLeft)
+            && string.Equals(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeClinicianName(string? value)
+    {
+        var normalized = TrimClinicianPrefix(value ?? string.Empty)
+            .Replace(".", string.Empty, StringComparison.Ordinal)
+            .Trim();
+
+        return string.Join(' ', normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
     private bool MatchesNotesDueQueue(AppointmentListItemResponse appointment)
@@ -954,9 +1173,7 @@
     {
         if (selectedView == AppointmentsView.Week)
         {
-            return weekGrouping == AppointmentsWeekGrouping.Day
-                ? "/appointments?dateRange=week&groupBy=day"
-                : "/appointments?dateRange=week";
+            return BuildWeekRoute(includeClinician: IsAdminUser);
         }
 
         return "/appointments?dateRange=today";
@@ -1078,6 +1295,28 @@
     private static string NormalizeFilterValue(string value)
     {
         return string.Concat(value.Where(char.IsLetterOrDigit)).ToLowerInvariant();
+    }
+
+    private static Guid? ResolveCurrentUserId(ClaimsPrincipal user)
+    {
+        foreach (var claimType in PTDocClaimTypes.InternalUserIdAliases())
+        {
+            var claimValue = user.FindFirst(claimType)?.Value;
+            if (Guid.TryParse(claimValue, out var userId))
+            {
+                return userId;
+            }
+        }
+
+        return null;
+    }
+
+    private static string ResolveCurrentUserDisplayName(ClaimsPrincipal user)
+    {
+        return user.Identity?.Name
+            ?? user.FindFirst(ClaimTypes.Name)?.Value
+            ?? user.FindFirst(ClaimTypes.Email)?.Value
+            ?? string.Empty;
     }
 
     private static DateTime ToLocalTime(DateTime utcTime)

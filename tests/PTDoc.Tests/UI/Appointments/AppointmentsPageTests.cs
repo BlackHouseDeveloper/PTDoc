@@ -1,4 +1,5 @@
 using Bunit;
+using Bunit.TestDoubles;
 using AngleSharp.Html.Dom;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
@@ -288,6 +289,10 @@ public sealed class AppointmentsPageTests : TestContext
         {
             Assert.Contains("week-grouping-day", cut.Markup, StringComparison.Ordinal);
         });
+        Assert.Contains(
+            "groupBy=day",
+            Services.GetRequiredService<NavigationManager>().Uri,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -342,6 +347,91 @@ public sealed class AppointmentsPageTests : TestContext
             Assert.Contains("week-grouping-clinician", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Week Schedule", cut.Markup, StringComparison.Ordinal);
             Assert.DoesNotContain("Today's Schedule", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void AppointmentsPage_AdminWeekView_ShowsClinicianSelectorAndFiltersSelection()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var taylorId = Guid.NewGuid();
+        var jordanId = Guid.NewGuid();
+        var weekStart = GetSundayStartOfWeek(DateTime.Today);
+        var taylorStart = DateTime.SpecifyKind(weekStart.AddDays(1).AddHours(9), DateTimeKind.Local);
+        var jordanStart = DateTime.SpecifyKind(weekStart.AddDays(1).AddHours(10), DateTimeKind.Local);
+
+        RegisterServices(new AppointmentsOverviewResponse
+        {
+            Appointments =
+            [
+                CreateAppointment("Taylor Week Patient", taylorId, "Taylor PT", taylorStart),
+                CreateAppointment("Jordan Week Patient", jordanId, "Jordan PTA", jordanStart)
+            ],
+            Clinicians =
+            [
+                new AppointmentClinicianResponse { Id = taylorId, DisplayName = "Taylor PT" },
+                new AppointmentClinicianResponse { Id = jordanId, DisplayName = "Jordan PTA" }
+            ]
+        });
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/appointments?dateRange=week&clinicianId={jordanId:D}");
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("appointments-week-clinician-selector", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Jordan Week Patient", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Taylor Week Patient", cut.Markup, StringComparison.Ordinal);
+        });
+
+        cut.Find("#appointments-week-clinician-select").Change(taylorId.ToString("D"));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Taylor Week Patient", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Jordan Week Patient", cut.Markup, StringComparison.Ordinal);
+        });
+        Assert.Contains(
+            $"clinicianId={taylorId:D}",
+            Services.GetRequiredService<NavigationManager>().Uri,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AppointmentsPage_PtWeekView_HidesSelectorAndScopesToCurrentClinician()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var taylorId = Guid.NewGuid();
+        var jordanId = Guid.NewGuid();
+        var weekStart = GetSundayStartOfWeek(DateTime.Today);
+        var taylorStart = DateTime.SpecifyKind(weekStart.AddDays(1).AddHours(9), DateTimeKind.Local);
+        var jordanStart = DateTime.SpecifyKind(weekStart.AddDays(1).AddHours(10), DateTimeKind.Local);
+
+        RegisterServices(
+            new AppointmentsOverviewResponse
+            {
+                Appointments =
+                [
+                    CreateAppointment("Taylor Week Patient", taylorId, "Taylor PT", taylorStart),
+                    CreateAppointment("Jordan Week Patient", jordanId, "Jordan PTA", jordanStart)
+                ],
+                Clinicians =
+                [
+                    new AppointmentClinicianResponse { Id = taylorId, DisplayName = "Taylor PT" },
+                    new AppointmentClinicianResponse { Id = jordanId, DisplayName = "Jordan PTA" }
+                ]
+            },
+            role: Roles.PT,
+            username: "Taylor PT");
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/appointments?dateRange=week");
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.DoesNotContain("appointments-week-clinician-selector", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Taylor Week Patient", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Jordan Week Patient", cut.Markup, StringComparison.Ordinal);
         });
     }
 
@@ -634,9 +724,14 @@ public sealed class AppointmentsPageTests : TestContext
 
     private void RegisterServices(
         AppointmentsOverviewResponse? overview = null,
-        IReadOnlyList<PatientListItemResponse>? patients = null)
+        IReadOnlyList<PatientListItemResponse>? patients = null,
+        string role = Roles.Admin,
+        string username = "Admin User")
     {
         Services.AddLogging();
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized(username);
+        authorization.SetRoles(role);
 
         var headerConfigurationService = new Mock<IHeaderConfigurationService>(MockBehavior.Loose);
         headerConfigurationService
@@ -679,5 +774,33 @@ public sealed class AppointmentsPageTests : TestContext
         Services.AddSingleton(appointmentService.Object);
         Services.AddSingleton(paymentClientService.Object);
         Services.AddSingleton(toastService.Object);
+    }
+
+    private static AppointmentListItemResponse CreateAppointment(
+        string patientName,
+        Guid clinicianId,
+        string clinicianName,
+        DateTime localStart)
+    {
+        return new AppointmentListItemResponse
+        {
+            Id = Guid.NewGuid(),
+            PatientRecordId = Guid.NewGuid(),
+            PatientName = patientName,
+            ClinicianId = clinicianId,
+            ClinicianName = clinicianName,
+            StartTimeUtc = localStart.ToUniversalTime(),
+            EndTimeUtc = localStart.AddMinutes(45).ToUniversalTime(),
+            AppointmentType = "Follow-up",
+            AppointmentStatus = "Scheduled",
+            VisitWorkflowStatus = "Scheduled",
+            IntakeStatus = "Complete"
+        };
+    }
+
+    private static DateTime GetSundayStartOfWeek(DateTime date)
+    {
+        var daysSinceSunday = (int)date.DayOfWeek;
+        return date.Date.AddDays(-daysSinceSunday);
     }
 }

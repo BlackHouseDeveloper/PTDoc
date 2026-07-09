@@ -180,7 +180,11 @@ start_api() {
       )
     fi
 
-    env "${api_env[@]}" dotnet run --no-build --project "$API_CSPROJ" --urls "$API_URL" >"$API_LOG_FILE" 2>&1 &
+    if ((${#api_env[@]} > 0)); then
+      env "${api_env[@]}" dotnet run --no-build --project "$API_CSPROJ" --urls "$API_URL" >"$API_LOG_FILE" 2>&1 &
+    else
+      dotnet run --no-build --project "$API_CSPROJ" --urls "$API_URL" >"$API_LOG_FILE" 2>&1 &
+    fi
     API_PID=$!
 
     # Wait for API to be ready (listening + health endpoint)

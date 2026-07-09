@@ -293,6 +293,27 @@ public class PdfIntegrationTests : IAsyncDisposable
     }
 
     [Fact]
+    public void Hierarchy_Export_WorkspaceRom_UsesCompactReadableTable()
+    {
+        var hierarchy = _hierarchyBuilder.Build(CreateRomWorkspaceV2ExportDto());
+        var hierarchyText = FlattenNodeText(hierarchy.Root);
+
+        Assert.Contains("Range Of Motion Table", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Measure", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Norm", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Initial", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Current", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Comments", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Knee", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("0-135 degrees", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("92 degrees", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("118 degrees", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Within Normal Limits", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Active Initial Value", hierarchyText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Passive Current Value", hierarchyText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task PDF_Export_DailyWorkspaceV2_UsesCanonicalStructuredContent()
     {
         var noteData = CreateDailyWorkspaceV2ExportDto();
@@ -301,6 +322,13 @@ public class PdfIntegrationTests : IAsyncDisposable
         var pdfText = ExtractPdfText(result.PdfBytes);
 
         Assert.Contains("Pain with walking", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("PTDoc Clinic", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Physical Therapy Daily Note", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("MRN-300", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Status:", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Header", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Clinic Branding", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Patient Header", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Walking longer than 10 minutes", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Bridges", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Gait training", pdfText, StringComparison.OrdinalIgnoreCase);
@@ -313,6 +341,20 @@ public class PdfIntegrationTests : IAsyncDisposable
         Assert.Contains("HEP linked", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Walk 30 minutes without increased pain", pdfText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Good", pdfText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PDF_Export_WorkspaceRom_GeneratesWithoutLegacyRomMatrixText()
+    {
+        var result = await _renderer.ExportNoteToPdfAsync(CreateRomWorkspaceV2ExportDto());
+        var pdfText = ExtractPdfText(result.PdfBytes);
+
+        Assert.NotEmpty(result.PdfBytes);
+        Assert.True(result.FileSizeBytes > 500);
+        Assert.Contains("Physical Therapy", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("MRN-ROM", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Active Initial Value", pdfText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Passive Current Value", pdfText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -891,6 +933,40 @@ public class PdfIntegrationTests : IAsyncDisposable
         PatientFirstName = "Daily",
         PatientLastName = "Patient",
         PatientMedicalRecordNumber = "MRN-300",
+        ClinicName = "PTDoc Clinic",
+        IncludeSignatureBlock = true,
+        IncludeMedicareCompliance = true
+    };
+
+    private static NoteExportDto CreateRomWorkspaceV2ExportDto() => new()
+    {
+        NoteId = Guid.NewGuid(),
+        NoteType = NoteType.Evaluation,
+        DateOfService = new DateTime(2026, 4, 2, 0, 0, 0, DateTimeKind.Utc),
+        NoteTypeDisplayName = "Physical Therapy Initial Evaluation",
+        ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Objective = new WorkspaceObjectiveV2
+            {
+                Metrics =
+                [
+                    new ObjectiveMetricInputV2
+                    {
+                        Name = "Knee flexion",
+                        BodyPart = BodyPart.Knee,
+                        MetricType = MetricType.ROM,
+                        NormValue = "0-135 degrees",
+                        PreviousValue = "92 degrees",
+                        Value = "118 degrees",
+                        IsWithinNormalLimits = true
+                    }
+                ]
+            }
+        }),
+        PatientFirstName = "Range",
+        PatientLastName = "Motion",
+        PatientMedicalRecordNumber = "MRN-ROM",
         IncludeSignatureBlock = true,
         IncludeMedicareCompliance = true
     };

@@ -499,14 +499,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                 metric.BodyPart.ToString(),
                 Fallback(metric.NormValue),
                 Fallback(metric.PreviousValue),
-                string.Empty,
                 Fallback(metric.Value),
-                string.Empty,
-                Fallback(metric.NormValue),
-                string.Empty,
-                string.Empty,
-                string.Empty,
-                string.Empty,
                 metric.IsWithinNormalLimits ? "Within Normal Limits" : string.Empty))
             .ToList() ?? [];
 
@@ -514,24 +507,10 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             columns:
             [
                 Column("measure", "Measure"),
-                Column("activeNorm", "Norm"),
-                Column("activeInitialLeft", "Initial L"),
-                Column("activeInitialRight", "Initial R"),
-                Column("activeCurrentLeft", "Current L"),
-                Column("activeCurrentRight", "Current R"),
-                Column("passiveNorm", "Norm"),
-                Column("passiveInitialLeft", "Initial L"),
-                Column("passiveInitialRight", "Initial R"),
-                Column("passiveCurrentLeft", "Current L"),
-                Column("passiveCurrentRight", "Current R"),
+                Column("norm", "Norm"),
+                Column("initial", "Initial"),
+                Column("current", "Current"),
                 Column("comments", "Comments")
-            ],
-            columnGroups:
-            [
-                new ClinicalDocumentTableColumnGroup { Title = "Measure", Span = 1 },
-                new ClinicalDocumentTableColumnGroup { Title = "Active", Span = 5 },
-                new ClinicalDocumentTableColumnGroup { Title = "Passive", Span = 5 },
-                new ClinicalDocumentTableColumnGroup { Title = "Method / Comments", Span = 1 }
             ],
             rows: rows);
     }

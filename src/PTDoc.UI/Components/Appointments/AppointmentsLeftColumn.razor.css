@@ -62,6 +62,48 @@
     transform: rotate(180deg);
 }
 
+.week-clinician-selector {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+    padding: var(--spacing-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+}
+
+.week-clinician-selector__label {
+    color: var(--foreground);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+    line-height: var(--line-height-normal);
+}
+
+.week-clinician-selector__search,
+.week-clinician-selector__select {
+    width: 100%;
+    min-height: 40px;
+    padding: 0 var(--spacing-3);
+    border: 1px solid var(--input);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-family-base);
+    font-size: var(--text-sm);
+    line-height: var(--line-height-normal);
+}
+
+.week-clinician-selector__search::placeholder {
+    color: var(--muted-foreground);
+}
+
+.week-clinician-selector__search:focus-visible,
+.week-clinician-selector__select:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
 .week-grouping-control {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

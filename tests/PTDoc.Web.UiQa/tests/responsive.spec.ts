@@ -93,6 +93,22 @@ test.describe('PTDoc responsive UI QA', () => {
     await expectNoRelevantConsoleErrors(page);
   });
 
+  test('viewport diagnostics query override can disable a previously enabled overlay', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await authenticateIfNeeded(page);
+
+    await page.goto('/?ptdocViewportDiagnostics=1');
+    await page.waitForLoadState('domcontentloaded');
+    await expectPageReady(page, /Dashboard/i);
+    await expect(page.locator('[data-viewport-diagnostics-overlay]')).toBeVisible();
+
+    await page.goto('/?ptdocViewportDiagnostics=0');
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('body')).toContainText(/Dashboard/i);
+    await expect(page.locator('[data-viewport-diagnostics-overlay]')).toHaveCount(0);
+    await expectNoRelevantConsoleErrors(page);
+  });
+
   test('drawer sidebar opens and closes below 1200 CSS pixels', async ({ page }) => {
     await page.setViewportSize({ width: 1199, height: 720 });
     await authenticateIfNeeded(page);

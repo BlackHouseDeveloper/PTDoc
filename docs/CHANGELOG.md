@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - UX flow and UI style consistency test plan
+
+- **`docs/UX_FLOW_UI_STYLE_CONSISTENCY_TEST_PLAN.md`** — Added a standalone hosted-beta UX, design QA, visual consistency, accessibility, responsive, and interaction consistency test plan derived from the Beta E2E plan and PTDoc design-system documentation. Reason: product, design, and QA need a dedicated UX review plan separate from functional E2E/API/backend validation.
+- **`docs/audits/ux-flow-ui-style-consistency-beta-2026-07-09.md`** — Added the hosted-beta execution report for the UX flow and UI style consistency plan, including evidence references, verified improvements, remaining Week View clinician-selector and patient-card affordance issues, and UX readiness summary. Reason: keep the beta UX/design QA implementation results tracked separately from functional E2E validation.
+
+### Fixed - PDF export and role-scoped appointment week view formatting
+
+- **PDF export and Appointments Week View** — Rendered PDF document headers as polished clinical headers instead of internal hierarchy labels, compacted ROM export tables to Measure/Norm/Initial/Current/Comments, scoped Week View to a selected PT/PTA for admins, scoped PT/PTA Week View to the signed-in clinician, and made `?ptdocViewportDiagnostics=0` disable the responsive diagnostics overlay even after it was previously enabled. Reason: live UI/PDF verification found visible export implementation labels, unreadable ROM table density, overly dense cross-clinician Week View rendering, and a sticky responsive overlay toggle.
+- **Repository ignore hygiene** — Ignored root-level `output/` and `tmp/` scratch directories alongside the existing local API SQLite database ignore. Reason: local QA/runtime artifacts should not appear as new files during review.
+
+### Fixed - Local launcher empty API environment
+
+- **`run-ptdoc.sh`** — Avoided expanding an empty `api_env` array when starting the API without public web URL overrides. Reason: macOS Bash 3.2 with `set -u` treats empty array expansion as an unbound variable, causing the launcher to stop at `api_env[@]` before the API health wait can complete.
+
 ### Fixed - Audit remediation browser QA follow-up
 
 - **Route-backed browser QA hardening** — Reapplied Patients `action=add` state on query-only navigation, made appointment view links update hydrated UI state while preserving their route-backed `href` fallback, rendered week-grouping `aria-pressed` values explicitly, and changed patient-chart/appointment browser checks to verify route-backed `href` targets directly. Reason: localhost browser QA found stale query-backed Patients/Appointments state, an empty ARIA pressed value, and an ambiguous Notes link selector.

@@ -98,6 +98,12 @@ public sealed class QuestPdfRenderer(IClinicalDocumentHierarchyBuilder hierarchy
 
     private static void ComposeSection(IContainer container, ClinicalDocumentNode node)
     {
+        if (IsDocumentHeader(node))
+        {
+            ComposeDocumentHeader(container, node);
+            return;
+        }
+
         container.Column(column =>
         {
             column.Item().Text(node.Title)
@@ -114,6 +120,62 @@ public sealed class QuestPdfRenderer(IClinicalDocumentHierarchyBuilder hierarchy
             {
                 column.Item().PaddingTop(6).PaddingLeft(4).Element(item => ComposeNode(item, child));
             }
+        });
+    }
+
+    private static void ComposeDocumentHeader(IContainer container, ClinicalDocumentNode node)
+    {
+        var clinicName = FindFieldValue(node, "Clinic");
+        var patientName = FindFieldValue(node, "Patient Name");
+        var dateOfBirth = FindFieldValue(node, "Date Of Birth");
+        var medicalRecordNumber = FindFieldValue(node, "Medical Record Number");
+        var documentDate = FindFieldValue(node, "Document Date");
+        var documentTitle = FindFieldValue(node, "Document Title");
+        var documentStatus = FindFieldValue(node, "Document Status");
+
+        container.Border(1).BorderColor(Colors.Grey.Lighten2).Padding(10).Column(column =>
+        {
+            if (!string.IsNullOrWhiteSpace(clinicName))
+            {
+                column.Item().Text(clinicName)
+                    .FontSize(10)
+                    .SemiBold()
+                    .FontColor(Colors.Blue.Darken2);
+            }
+
+            column.Item().PaddingTop(string.IsNullOrWhiteSpace(clinicName) ? 0 : 4).Row(row =>
+            {
+                row.RelativeItem().Column(titleColumn =>
+                {
+                    titleColumn.Item().Text(DisplayValue(documentTitle))
+                        .FontSize(14)
+                        .SemiBold()
+                        .FontColor(Colors.Blue.Darken2);
+
+                    titleColumn.Item().PaddingTop(2).Text($"Status: {DisplayValue(documentStatus)}")
+                        .FontSize(9)
+                        .FontColor(Colors.Grey.Darken2);
+                });
+
+                row.RelativeItem().AlignRight().Column(patientColumn =>
+                {
+                    patientColumn.Item().Text(DisplayValue(patientName))
+                        .FontSize(10)
+                        .SemiBold();
+
+                    patientColumn.Item().PaddingTop(2).Text($"DOB: {DisplayValue(dateOfBirth)}")
+                        .FontSize(8)
+                        .FontColor(Colors.Grey.Darken2);
+
+                    patientColumn.Item().Text($"MRN: {DisplayValue(medicalRecordNumber)}")
+                        .FontSize(8)
+                        .FontColor(Colors.Grey.Darken2);
+
+                    patientColumn.Item().Text($"Date: {DisplayValue(documentDate)}")
+                        .FontSize(8)
+                        .FontColor(Colors.Grey.Darken2);
+                });
+            });
         });
     }
 
@@ -266,6 +328,30 @@ public sealed class QuestPdfRenderer(IClinicalDocumentHierarchyBuilder hierarchy
     {
         var fullName = $"{noteData.PatientFirstName} {noteData.PatientLastName}".Trim();
         return string.IsNullOrWhiteSpace(fullName) ? "Patient name not recorded" : fullName;
+    }
+
+    private static bool IsDocumentHeader(ClinicalDocumentNode node) =>
+        node.Kind == ClinicalDocumentNodeKind.Section
+        && string.Equals(node.Title, "Header", StringComparison.Ordinal);
+
+    private static string? FindFieldValue(ClinicalDocumentNode node, string title)
+    {
+        if (node.Kind == ClinicalDocumentNodeKind.Field
+            && string.Equals(node.Title, title, StringComparison.OrdinalIgnoreCase))
+        {
+            return node.Value;
+        }
+
+        foreach (var child in node.Children)
+        {
+            var value = FindFieldValue(child, title);
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return null;
     }
 
     private static string DisplayValue(string? value)
