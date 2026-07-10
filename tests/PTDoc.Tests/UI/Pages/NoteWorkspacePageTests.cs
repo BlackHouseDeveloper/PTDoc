@@ -352,6 +352,8 @@ public sealed class NoteWorkspacePageTests : TestContext
         cut.WaitForAssertion(() => Assert.Equal("Evaluation Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
 
         cut.Find("[data-testid='footer-next']").Click();
+        cut.WaitForAssertion(() => Assert.Contains("Required documentation is incomplete", cut.Find("[data-testid='incomplete-note-modal']").TextContent, StringComparison.Ordinal));
+        cut.Find("[data-testid='incomplete-note-continue']").Click();
 
         cut.WaitForAssertion(() =>
         {

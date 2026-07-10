@@ -1808,16 +1808,19 @@ else
             return false;
         }
 
-        var saved = await EnsureDraftPersistedAsync(forceIfClean: !_note.NoteId.HasValue);
-        if (!saved)
+        if (!sectionChange.HasValue)
         {
-            SetStatusMessage(
-                "Unable to save the draft before leaving this page. Resolve the error and try again.",
-                "error",
-                showToast: true,
-                toastTitle: "Save failed");
-            await InvokeAsync(StateHasChanged);
-            return true;
+            var saved = await EnsureDraftPersistedAsync(forceIfClean: !_note.NoteId.HasValue);
+            if (!saved)
+            {
+                SetStatusMessage(
+                    "Unable to save the draft before leaving this page. Resolve the error and try again.",
+                    "error",
+                    showToast: true,
+                    toastTitle: "Save failed");
+                await InvokeAsync(StateHasChanged);
+                return true;
+            }
         }
 
         var completion = CurrentCompletionState;
