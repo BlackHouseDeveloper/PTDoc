@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **SQL Server retry-safe signature and password-reset transactions** — Wrapped relational note-signature and password-reset transactions in EF Core execution strategies while preserving existing validation, consent, role, and token semantics. Reason: beta logs showed note signing failed when SQL Server retry-on-failure encountered a user-initiated transaction outside `CreateExecutionStrategy()`.
 - **Relational signature tracking after bulk update** — Synchronized the tracked clinical note after its set-based signature update so the subsequent audit-log save does not issue a second signature update outside the retry-safe transaction. Reason: PR review identified that `ExecuteUpdateAsync` bypasses EF tracking and could otherwise leave signature fields marked modified.
+- **Retry-safe signature attempt recovery** — Rehydrate note state before relational execution-strategy retries and use a stable signature-attempt ID/timestamp to return an already-committed attempt instead of creating an additional legal-signature row after an uncertain commit. Reason: PR review identified that retry delegates must not reuse mutated EF tracking state.
 
 ### Added - UX flow and UI style consistency test plan
 
