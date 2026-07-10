@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Services;
@@ -393,6 +394,10 @@ public class SignatureService : ISignatureService
                         .SetProperty(n => n.SignedUtc, signature.TimestampUtc)
                         .SetProperty(n => n.SignedByUserId, userId),
                         ct);
+
+                // ExecuteUpdate bypasses EF change tracking. Keep the already-tracked note
+                // synchronized without leaving it dirty for the subsequent audit-log save.
+                SynchronizeTrackedSignatureFields(note, signature, userId);
             }
             else
             {
@@ -402,9 +407,6 @@ public class SignatureService : ISignatureService
                 await _context.SaveChangesAsync(ct);
             }
 
-            note.SignatureHash = signature.SignatureHash;
-            note.SignedUtc = signature.TimestampUtc;
-            note.SignedByUserId = userId;
             if (note.RequiresCoSign)
             {
                 note.CoSignedUtc = signature.TimestampUtc;
@@ -463,6 +465,21 @@ public class SignatureService : ISignatureService
         }
 
         return await _context.Database.BeginTransactionAsync(ct);
+    }
+
+    private void SynchronizeTrackedSignatureFields(ClinicalNote note, Signature signature, Guid userId)
+    {
+        var entry = _context.Entry(note);
+        SynchronizeTrackedProperty(entry.Property(n => n.SignatureHash), signature.SignatureHash);
+        SynchronizeTrackedProperty(entry.Property(n => n.SignedUtc), signature.TimestampUtc);
+        SynchronizeTrackedProperty(entry.Property(n => n.SignedByUserId), userId);
+    }
+
+    private static void SynchronizeTrackedProperty<TProperty>(PropertyEntry<ClinicalNote, TProperty> property, TProperty value)
+    {
+        property.CurrentValue = value;
+        property.OriginalValue = value;
+        property.IsModified = false;
     }
 
     private async Task<SignatureResult> ExecuteSignatureWriteAsync(Func<Task<SignatureResult>> operation)
