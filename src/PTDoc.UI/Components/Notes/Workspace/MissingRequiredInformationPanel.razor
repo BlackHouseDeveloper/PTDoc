@@ -1,0 +1,65 @@
+@namespace PTDoc.UI.Components.Notes.Workspace
+@using System.Globalization
+@using PTDoc.UI.Components.Notes.Completion
+@using PTDoc.UI.Components.Notes.Models
+
+@if (!IsReadOnly)
+{
+    <section class="missing-required-panel @(CompletionState.IsComplete ? "missing-required-panel--complete" : "missing-required-panel--attention")"
+             aria-labelledby="missing-required-title"
+             data-testid="missing-required-panel">
+        <div class="missing-required-panel__header">
+            <div>
+                <h3 id="missing-required-title" class="missing-required-panel__title">Missing Required Information</h3>
+                <p class="missing-required-panel__summary" aria-live="polite">
+                    @if (CompletionState.IsComplete)
+                    {
+                        <span>Required documentation is complete.</span>
+                    }
+                    else
+                    {
+                        <span>@CompletionState.MissingCount required @(CompletionState.MissingCount == 1 ? "item needs" : "items need") attention before submit.</span>
+                    }
+                </p>
+            </div>
+            <span class="missing-required-panel__badge" data-testid="missing-required-count">
+                @(CompletionState.IsComplete ? "Ready" : CompletionState.MissingCount.ToString(CultureInfo.InvariantCulture))
+            </span>
+        </div>
+
+        @if (!CompletionState.IsComplete)
+        {
+            <div class="missing-required-panel__groups">
+                @foreach (var group in CompletionState.MissingItems.GroupBy(item => item.Section))
+                {
+                    <div class="missing-required-panel__group">
+                        <p class="missing-required-panel__group-title">
+                            @group.Key
+                            <span>@group.Count()</span>
+                        </p>
+                        <ul class="missing-required-panel__list">
+                            @foreach (var item in group)
+                            {
+                                <li>
+                                    <button type="button"
+                                            class="missing-required-panel__item"
+                                            @onclick="() => OnNavigateToItem.InvokeAsync(item)"
+                                            data-testid="@($"missing-required-item-{item.Key}")">
+                                        <span>@item.Label</span>
+                                        <small>@item.Message</small>
+                                    </button>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
+            </div>
+        }
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public NoteCompletionState CompletionState { get; set; } = NoteCompletionState.Complete([]);
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public EventCallback<MissingRequiredItem> OnNavigateToItem { get; set; }
+}

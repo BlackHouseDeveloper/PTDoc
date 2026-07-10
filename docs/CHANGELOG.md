@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - SOAP incomplete-note navigation safeguard
+
+- **SOAP note workspace navigation guard** — Added incomplete-documentation detection, missing-required summaries, guarded route/note-type exits, accessible confirmation modal behavior, browser refresh fallback, and first-missing-field focus for editable draft SOAP notes. Reason: clinicians could leave incomplete draft notes after autosave and later spend time searching for skipped required fields.
+- **SOAP section navigation guard** — Extended the incomplete-documentation confirmation flow to SOAP section tabs and footer previous/next/review navigation, with Continue applying the intended section change and Cancel returning to the first missing required field. Reason: clinicians could still move through note sections without addressing required documentation gaps.
+
 ### Fixed - Beta signature transaction reliability
 
 - **SQL Server retry-safe signature and password-reset transactions** — Wrapped relational note-signature and password-reset transactions in EF Core execution strategies while preserving existing validation, consent, role, and token semantics. Reason: beta logs showed note signing failed when SQL Server retry-on-failure encountered a user-initiated transaction outside `CreateExecutionStrategy()`.

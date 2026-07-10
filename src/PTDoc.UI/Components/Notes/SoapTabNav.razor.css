@@ -62,12 +62,35 @@
     color: var(--primary);
 }
 
+.soap-tab-nav__tab--missing {
+    color: var(--warning);
+}
+
 .soap-tab-nav__tab--completed {
     border-bottom-color: color-mix(in srgb, var(--primary) 55%, transparent);
 }
 
 .soap-tab-nav__tab--active {
     border-bottom-color: var(--primary);
+}
+
+.soap-tab-nav__tab--missing.soap-tab-nav__tab--active {
+    border-bottom-color: var(--warning);
+}
+
+.soap-tab-nav__missing-count {
+    align-items: center;
+    background: color-mix(in srgb, var(--warning) 18%, var(--background));
+    border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border));
+    border-radius: 999px;
+    color: var(--foreground);
+    display: inline-flex;
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-semibold);
+    height: 1.25rem;
+    justify-content: center;
+    min-width: 1.25rem;
+    padding: 0 var(--spacing-1);
 }
 
 .soap-tab-nav__tab:hover {

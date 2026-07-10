@@ -2219,6 +2219,168 @@ public sealed class NoteWorkspacePageTests : TestContext
         Assert.Equal("Unable to export the note as PDF.", message);
     }
 
+    [Fact]
+    public void IncompleteEvaluationNote_NavigationShowsGuardAndCancelFocusesPlan()
+    {
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Guard",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceLoadResult
+            {
+                Success = true,
+                NoteId = noteId,
+                WorkspaceNoteType = "Evaluation Note",
+                DateOfService = new DateTime(2026, 7, 9),
+                Status = NoteStatus.Draft,
+                Payload = new NoteWorkspacePayload
+                {
+                    WorkspaceNoteType = "Evaluation Note",
+                    StructuredPayload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.Evaluation
+                    },
+                    Subjective = new SubjectiveVm(),
+                    Objective = new ObjectiveVm(),
+                    Assessment = new AssessmentWorkspaceVm(),
+                    Plan = new PlanVm(),
+                    DailyTreatment = new DailyTreatmentVm(),
+                    DischargeSubjective = new DischargeSubjectiveVm()
+                }
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/patient/{patientId}/note/{noteId}");
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString())
+            .Add(component => component.NoteId, noteId.ToString()));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("Evaluation Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value"));
+            Assert.Contains("2", cut.Find("[data-testid='missing-required-count']").TextContent, StringComparison.Ordinal);
+        });
+
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/dashboard");
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Required documentation is incomplete", cut.Find("[data-testid='incomplete-note-modal']").TextContent, StringComparison.Ordinal);
+        });
+
+        cut.Find("[data-testid='incomplete-note-cancel']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("soap-tab-nav__tab--active", cut.Find("[data-testid='soap-tab-plan']").GetAttribute("class") ?? string.Empty, StringComparison.Ordinal);
+            Assert.Contains("Treatment Plan", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Select the planned visit frequency before leaving this incomplete note.", cut.Find("[data-testid='note-workspace-alert']").TextContent, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void IncompleteEvaluationNote_SectionNavigationShowsGuardBeforeChangingSections()
+    {
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Guard",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+
+        noteWorkspaceService
+            .Setup(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceLoadResult
+            {
+                Success = true,
+                NoteId = noteId,
+                WorkspaceNoteType = "Evaluation Note",
+                DateOfService = new DateTime(2026, 7, 9),
+                Status = NoteStatus.Draft,
+                Payload = new NoteWorkspacePayload
+                {
+                    WorkspaceNoteType = "Evaluation Note",
+                    StructuredPayload = new NoteWorkspaceV2Payload
+                    {
+                        NoteType = NoteType.Evaluation
+                    },
+                    Subjective = new SubjectiveVm(),
+                    Objective = new ObjectiveVm(),
+                    Assessment = new AssessmentWorkspaceVm(),
+                    Plan = new PlanVm(),
+                    DailyTreatment = new DailyTreatmentVm(),
+                    DischargeSubjective = new DischargeSubjectiveVm()
+                }
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/patient/{patientId}/note/{noteId}");
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString())
+            .Add(component => component.NoteId, noteId.ToString()));
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("soap-tab-nav__tab--active", cut.Find("[data-testid='soap-tab-subjective']").GetAttribute("class") ?? string.Empty, StringComparison.Ordinal);
+            Assert.Contains("2", cut.Find("[data-testid='missing-required-count']").TextContent, StringComparison.Ordinal);
+        });
+
+        cut.Find("[data-testid='soap-tab-objective']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("Required documentation is incomplete", cut.Find("[data-testid='incomplete-note-modal']").TextContent, StringComparison.Ordinal);
+            Assert.Contains("soap-tab-nav__tab--active", cut.Find("[data-testid='soap-tab-subjective']").GetAttribute("class") ?? string.Empty, StringComparison.Ordinal);
+        });
+
+        cut.Find("[data-testid='incomplete-note-continue']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("soap-tab-nav__tab--active", cut.Find("[data-testid='soap-tab-objective']").GetAttribute("class") ?? string.Empty, StringComparison.Ordinal);
+            Assert.DoesNotContain("Required documentation is incomplete", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
     private static string GetNoteWorkspaceUserFacingMessage(Exception exception, string fallback)
     {
         var method = typeof(global::PTDoc.UI.Pages.Patient.NoteWorkspacePage).GetMethod(
