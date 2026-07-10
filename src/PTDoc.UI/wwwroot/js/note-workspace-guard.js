@@ -46,7 +46,8 @@ export function focusMissingRequiredField(selector) {
     void highlightTarget.offsetWidth;
     highlightTarget.classList.add("note-workspace__missing-field-highlight");
 
-    target.scrollIntoView({ block: "center", behavior: "smooth" });
+    const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
+    target.scrollIntoView({ block: "center", behavior: prefersReducedMotion ? "auto" : "smooth" });
 
     if (focusTarget instanceof HTMLElement) {
         focusTarget.focus({ preventScroll: true });

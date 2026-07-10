@@ -1,12 +1,12 @@
 .incomplete-note-modal__overlay {
     align-items: center;
-    background: rgba(15, 23, 42, 0.48);
+    background: var(--modal-overlay-bg);
     display: flex;
     inset: 0;
     justify-content: center;
     padding: var(--spacing-4);
     position: fixed;
-    z-index: 1100;
+    z-index: var(--z-modal-backdrop);
 }
 
 .incomplete-note-modal {

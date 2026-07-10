@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **SOAP note workspace navigation guard** — Added incomplete-documentation detection, missing-required summaries, guarded route/note-type exits, accessible confirmation modal behavior, browser refresh fallback, and first-missing-field focus for editable draft SOAP notes. Reason: clinicians could leave incomplete draft notes after autosave and later spend time searching for skipped required fields.
 - **SOAP section navigation guard** — Extended the incomplete-documentation confirmation flow to SOAP section tabs and footer previous/next/review navigation, with Continue applying the intended section change and Cancel returning to the first missing required field. Reason: clinicians could still move through note sections without addressing required documentation gaps.
+- **SOAP navigation and patient-card accessibility** — Applied shared modal backdrop/stacking tokens, respected reduced-motion preferences when focusing missing documentation, and aligned the patient-card spoken label with its visible `Open chart` action. Reason: PR review identified design-token drift and accessibility mismatches in the new beta-audit UI.
 
 ### Fixed - Beta signature transaction reliability
 
