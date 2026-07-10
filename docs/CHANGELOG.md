@@ -19,8 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added - UX flow and UI style consistency test plan
 
 - **`docs/UX_FLOW_UI_STYLE_CONSISTENCY_TEST_PLAN.md`** — Added a standalone hosted-beta UX, design QA, visual consistency, accessibility, responsive, and interaction consistency test plan derived from the Beta E2E plan and PTDoc design-system documentation. Reason: product, design, and QA need a dedicated UX review plan separate from functional E2E/API/backend validation.
-- **`docs/audits/ux-flow-ui-style-consistency-beta-2026-07-09.md`** — Added the hosted-beta execution report for the UX flow and UI style consistency plan, including evidence references, verified improvements, remaining Week View clinician-selector and patient-card affordance issues, and UX readiness summary. Reason: keep the beta UX/design QA implementation results tracked separately from functional E2E validation.
-- **UX audit finding follow-up** — Made the Admin Appointments Week View clinician selector visible even when clinician options are empty, added a disabled empty selector state, and added a visible `Open chart` affordance plus scan-friendly contact text treatment to patient directory cards. Reason: the beta UX execution report identified missing clinician-selection discoverability and unclear patient chart entry affordances.
+- **UX audit finding follow-up** — Made the Admin Appointments Week View clinician selector visible even when clinician options are empty, added a disabled empty selector state, and added a visible `Open chart` affordance plus scan-friendly contact text treatment to patient directory cards. Reason: hosted beta UX review identified missing clinician-selection discoverability and unclear patient chart entry affordances.
 
 ### Fixed - PDF export and role-scoped appointment week view formatting
 

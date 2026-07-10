@@ -595,6 +595,7 @@ else
     private string? _pendingMissingFieldSelector;
     private bool _isNavigatingToMissingField;
     private IJSObjectReference? _noteGuardModule;
+    private bool? _lastBeforeUnloadShouldGuard;
     private bool _isInitialLoading = true;
     private bool _isSubmittingNote;
     private SoapSection _lastEditableSection = SoapSection.Plan;
@@ -1857,17 +1858,23 @@ else
     {
         try
         {
+            var shouldGuard = CanSaveDraft && (DraftAutosaveService.IsDirty || DraftAutosaveService.IsSaving || !CurrentCompletionState.IsComplete);
+            if (_lastBeforeUnloadShouldGuard.HasValue && _lastBeforeUnloadShouldGuard.Value == shouldGuard)
+            {
+                return;
+            }
+
             var module = await GetNoteGuardModuleAsync();
             if (module is null)
             {
                 return;
             }
 
-            var shouldGuard = CanSaveDraft && (DraftAutosaveService.IsDirty || DraftAutosaveService.IsSaving || !CurrentCompletionState.IsComplete);
             await module.InvokeVoidAsync(
                 "setIncompleteNoteBeforeUnload",
                 _beforeUnloadGuardKey,
                 shouldGuard);
+            _lastBeforeUnloadShouldGuard = shouldGuard;
         }
         catch (Exception ex)
         {
@@ -3377,6 +3384,7 @@ else
                     "setIncompleteNoteBeforeUnload",
                     _beforeUnloadGuardKey,
                     false);
+                _lastBeforeUnloadShouldGuard = false;
                 await _noteGuardModule.DisposeAsync();
             }
         }
