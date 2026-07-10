@@ -270,42 +270,47 @@ public class SignatureService : ISignatureService
             return FailedSignature("PTA may only sign draft daily notes.");
         }
 
-        await using var transaction = await BeginSignatureTransactionAsync(ct);
+        var result = await ExecuteSignatureWriteAsync(async () =>
+        {
+            await using var transaction = await BeginSignatureTransactionAsync(ct);
 
-        note.RequiresCoSign = true;
-        note.NoteStatus = NoteStatus.PendingCoSign;
-        note.CoSignedByUserId = null;
-        note.CoSignedUtc = null;
+            note.RequiresCoSign = true;
+            note.NoteStatus = NoteStatus.PendingCoSign;
+            note.CoSignedByUserId = null;
+            note.CoSignedUtc = null;
 
-        await _context.SaveChangesAsync(ct);
+            await _context.SaveChangesAsync(ct);
 
-        var signatureTimestamp = DateTime.UtcNow;
-        var signature = CreateSignatureRecord(
-            note,
-            userId,
-            Roles.PTA,
-            signatureTimestamp,
-            consentAccepted,
-            intentConfirmed,
-            ipAddress,
-            deviceInfo);
+            var signatureTimestamp = DateTime.UtcNow;
+            var signature = CreateSignatureRecord(
+                note,
+                userId,
+                Roles.PTA,
+                signatureTimestamp,
+                consentAccepted,
+                intentConfirmed,
+                ipAddress,
+                deviceInfo);
 
-        _context.Signatures.Add(signature);
-        await _context.SaveChangesAsync(ct);
-        await CommitSignatureTransactionAsync(transaction, ct);
+            _context.Signatures.Add(signature);
+            await _context.SaveChangesAsync(ct);
+            await CommitSignatureTransactionAsync(transaction, ct);
+
+            return new SignatureResult
+            {
+                Success = true,
+                SignatureHash = signature.SignatureHash,
+                SignedUtc = signature.TimestampUtc,
+                RequiresCoSign = true,
+                Status = note.NoteStatus
+            };
+        });
 
         await _auditService.LogSignatureEventAsync(
             AuditEvent.SignatureAction("SIGN", note.Id, userId),
             ct);
 
-        return new SignatureResult
-        {
-            Success = true,
-            SignatureHash = signature.SignatureHash,
-            SignedUtc = signature.TimestampUtc,
-            RequiresCoSign = true,
-            Status = note.NoteStatus
-        };
+        return result;
     }
 
     private async Task<SignatureResult> SignAsPtAsync(
@@ -345,78 +350,83 @@ public class SignatureService : ISignatureService
             return FailedSignature("Note is not in a valid state for signing.");
         }
 
-        await using var transaction = await BeginSignatureTransactionAsync(ct);
-        var signatureTimestamp = DateTime.UtcNow;
-
-        note.NoteStatus = NoteStatus.Signed;
-
-        if (note.RequiresCoSign)
+        var result = await ExecuteSignatureWriteAsync(async () =>
         {
-            note.CoSignedByUserId = userId;
-            note.CoSignedUtc = signatureTimestamp;
-        }
-        else
-        {
-            note.RequiresCoSign = false;
-            note.CoSignedByUserId = null;
-            note.CoSignedUtc = null;
-        }
+            await using var transaction = await BeginSignatureTransactionAsync(ct);
+            var signatureTimestamp = DateTime.UtcNow;
 
-        await _context.SaveChangesAsync(ct);
+            note.NoteStatus = NoteStatus.Signed;
 
-        var signature = CreateSignatureRecord(
-            note,
-            userId,
-            Roles.PT,
-            signatureTimestamp,
-            consentAccepted,
-            intentConfirmed,
-            ipAddress,
-            deviceInfo);
+            if (note.RequiresCoSign)
+            {
+                note.CoSignedByUserId = userId;
+                note.CoSignedUtc = signatureTimestamp;
+            }
+            else
+            {
+                note.RequiresCoSign = false;
+                note.CoSignedByUserId = null;
+                note.CoSignedUtc = null;
+            }
 
-        _context.Signatures.Add(signature);
-        await _context.SaveChangesAsync(ct);
+            await _context.SaveChangesAsync(ct);
 
-        if (_context.Database.IsRelational())
-        {
-            await _context.ClinicalNotes
-                .Where(n => n.Id == note.Id)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(n => n.SignatureHash, signature.SignatureHash)
-                    .SetProperty(n => n.SignedUtc, signature.TimestampUtc)
-                    .SetProperty(n => n.SignedByUserId, userId),
-                    ct);
-        }
-        else
-        {
+            var signature = CreateSignatureRecord(
+                note,
+                userId,
+                Roles.PT,
+                signatureTimestamp,
+                consentAccepted,
+                intentConfirmed,
+                ipAddress,
+                deviceInfo);
+
+            _context.Signatures.Add(signature);
+            await _context.SaveChangesAsync(ct);
+
+            if (_context.Database.IsRelational())
+            {
+                await _context.ClinicalNotes
+                    .Where(n => n.Id == note.Id)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(n => n.SignatureHash, signature.SignatureHash)
+                        .SetProperty(n => n.SignedUtc, signature.TimestampUtc)
+                        .SetProperty(n => n.SignedByUserId, userId),
+                        ct);
+            }
+            else
+            {
+                note.SignatureHash = signature.SignatureHash;
+                note.SignedUtc = signature.TimestampUtc;
+                note.SignedByUserId = userId;
+                await _context.SaveChangesAsync(ct);
+            }
+
             note.SignatureHash = signature.SignatureHash;
             note.SignedUtc = signature.TimestampUtc;
             note.SignedByUserId = userId;
-            await _context.SaveChangesAsync(ct);
-        }
+            if (note.RequiresCoSign)
+            {
+                note.CoSignedUtc = signature.TimestampUtc;
+            }
 
-        note.SignatureHash = signature.SignatureHash;
-        note.SignedUtc = signature.TimestampUtc;
-        note.SignedByUserId = userId;
-        if (note.RequiresCoSign)
-        {
-            note.CoSignedUtc = signature.TimestampUtc;
-        }
+            await CommitSignatureTransactionAsync(transaction, ct);
 
-        await CommitSignatureTransactionAsync(transaction, ct);
+            return new SignatureResult
+            {
+                Success = true,
+                SignatureHash = signature.SignatureHash,
+                SignedUtc = signature.TimestampUtc,
+                RequiresCoSign = note.RequiresCoSign,
+                Status = note.NoteStatus
+            };
+        });
 
         await _auditService.LogSignatureEventAsync(
             AuditEvent.SignatureAction("SIGN", note.Id, userId),
             ct);
 
-        return new SignatureResult
-        {
-            Success = true,
-            SignatureHash = signature.SignatureHash,
-            SignedUtc = signature.TimestampUtc,
-            RequiresCoSign = note.RequiresCoSign,
-            Status = note.NoteStatus
-        };
+        return result;
     }
 
     private Signature CreateSignatureRecord(
@@ -453,6 +463,17 @@ public class SignatureService : ISignatureService
         }
 
         return await _context.Database.BeginTransactionAsync(ct);
+    }
+
+    private async Task<SignatureResult> ExecuteSignatureWriteAsync(Func<Task<SignatureResult>> operation)
+    {
+        if (!_context.Database.IsRelational())
+        {
+            return await operation();
+        }
+
+        var strategy = _context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(operation);
     }
 
     private static async Task CommitSignatureTransactionAsync(IDbContextTransaction? transaction, CancellationToken ct)

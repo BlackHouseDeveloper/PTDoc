@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Beta signature transaction reliability
+
+- **SQL Server retry-safe signature and password-reset transactions** — Wrapped relational note-signature and password-reset transactions in EF Core execution strategies while preserving existing validation, consent, role, and token semantics. Reason: beta logs showed note signing failed when SQL Server retry-on-failure encountered a user-initiated transaction outside `CreateExecutionStrategy()`.
+
 ### Added - UX flow and UI style consistency test plan
 
 - **`docs/UX_FLOW_UI_STYLE_CONSISTENCY_TEST_PLAN.md`** — Added a standalone hosted-beta UX, design QA, visual consistency, accessibility, responsive, and interaction consistency test plan derived from the Beta E2E plan and PTDoc design-system documentation. Reason: product, design, and QA need a dedicated UX review plan separate from functional E2E/API/backend validation.
