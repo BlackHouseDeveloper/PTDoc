@@ -239,7 +239,7 @@ public sealed class CommunicationServiceTests
         var second = await resetService.ResetPinAsync(new PasswordResetCompletionRequest
         {
             Token = token!,
-            NewPin = "5678"
+            NewPin = "1234"
         });
 
         Assert.True(first.Succeeded);
