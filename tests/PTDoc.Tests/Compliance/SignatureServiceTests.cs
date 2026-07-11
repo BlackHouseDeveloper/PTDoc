@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
 using Moq;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Notes.Workspace;
@@ -74,6 +75,75 @@ public sealed class SignatureServiceTests : IDisposable
         Assert.True(savedSignature.IntentConfirmed);
         Assert.Equal(result.SignatureHash, savedSignature.SignatureHash);
         Assert.False(string.IsNullOrWhiteSpace(savedSignature.AttestationText));
+    }
+
+    [Fact]
+    public async Task SignNote_RelationalWrite_DoesNotLeaveSignatureFieldsDirtyBeforeAuditLogging()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+
+        var signer = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = $"pt-{Guid.NewGuid():N}",
+            PinHash = "hash",
+            FirstName = "PT",
+            LastName = "Signer",
+            Role = Roles.PT,
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true
+        };
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Jane",
+            LastName = "Doe",
+            DateOfBirth = new DateTime(1980, 1, 1),
+            DiagnosisCodesJson = "[]",
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            NoteType = NoteType.Evaluation,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = CreateWorkspaceNoteContentWithDiagnosis(),
+            LastModifiedUtc = DateTime.UtcNow,
+            NoteStatus = NoteStatus.Draft
+        };
+        context.AddRange(signer, patient, note);
+        await context.SaveChangesAsync();
+
+        EntityState? noteStateWhenAuditStarts = null;
+        var auditService = new Mock<IAuditService>();
+        auditService
+            .Setup(service => service.LogSignatureEventAsync(It.IsAny<AuditEvent>(), It.IsAny<CancellationToken>()))
+            .Callback(() => noteStateWhenAuditStarts = context.Entry(note).State)
+            .Returns(Task.CompletedTask);
+        var clinicalRules = new Mock<IClinicalRulesEngine>();
+        clinicalRules
+            .Setup(engine => engine.RunClinicalValidationAsync(note.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<RuleEvaluationResult>());
+        var signatureService = new SignatureService(
+            context,
+            auditService.Object,
+            clinicalRules.Object,
+            new HashService(),
+            new AddendumService(context, auditService.Object));
+
+        var result = await signatureService.SignNoteAsync(note.Id, signer.Id, Roles.PT, true, true);
+
+        Assert.True(result.Success);
+        Assert.Equal(EntityState.Unchanged, noteStateWhenAuditStarts);
+        Assert.Equal(result.SignatureHash, note.SignatureHash);
     }
 
     [Fact]

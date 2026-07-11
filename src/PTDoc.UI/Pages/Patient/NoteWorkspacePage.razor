@@ -9,6 +9,7 @@
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.JSInterop
 @using PTDoc.Application.AI
 @using PTDoc.Application.Compliance
 @using PTDoc.Application.Notes.Workspace
@@ -16,6 +17,7 @@
 @using PTDoc.Application.Services
 @using PTDoc.Core.Models
 @using PTDoc.UI.Components.Notes
+@using PTDoc.UI.Components.Notes.Completion
 @using PTDoc.UI.Components.Notes.Models
 @using PTDoc.UI.Components.Notes.Workspace
 @using PTDoc.UI.Components.Notes.Workspace.DailyTreatment
@@ -66,6 +68,7 @@ else
         @{
             var subjectiveSeedChips = GetSubjectiveSeedChips();
             var objectiveSeedChips = GetObjectiveSeedChips();
+            var completionState = CurrentCompletionState;
         }
 
         @if (!string.IsNullOrWhiteSpace(_workspaceNotice))
@@ -248,6 +251,9 @@ else
                                  VmChanged="HandleDryNeedlingChanged"
                                  OnSave="HandleSaveSafelyAsync"
                                  OnSubmit="HandleSubmitSafelyAsync" />
+            <MissingRequiredInformationPanel CompletionState="@completionState"
+                                             IsReadOnly="@IsWorkspaceReadOnly"
+                                             OnNavigateToItem="NavigateToMissingRequiredItemAsync" />
         }
         else
         {
@@ -264,7 +270,12 @@ else
             <SoapTabNav ActiveSection="@_note.ActiveSection"
                         IsReadOnly="@IsWorkspaceReadOnly"
                         Sections="@CurrentSoapSections"
+                        CompletionState="@completionState"
                         ActiveSectionChanged="HandleSectionChangedSafelyAsync" />
+
+            <MissingRequiredInformationPanel CompletionState="@completionState"
+                                             IsReadOnly="@IsWorkspaceReadOnly"
+                                             OnNavigateToItem="NavigateToMissingRequiredItemAsync" />
 
             <div id="soap-tab-panel" class="note-workspace__panel" role="tabpanel" aria-live="polite">
                 @switch (_note.ActiveSection)
@@ -506,6 +517,11 @@ else
     </div>
 }
 
+<IncompleteNoteNavigationModal IsOpen="@_showIncompleteNoteModal"
+                               CompletionState="@CurrentCompletionState"
+                               OnContinue="HandleIncompleteNavigationContinueAsync"
+                               OnCancel="HandleIncompleteNavigationCancelAsync" />
+
 @code {
     [Parameter, SupplyParameterFromQuery(Name = "section")] public string? RequestedSection { get; set; }
     [Parameter, SupplyParameterFromQuery(Name = "noteType")] public string? RequestedNoteType { get; set; }
@@ -526,6 +542,7 @@ else
     ];
 
     private readonly SemaphoreSlim _persistGate = new(1, 1);
+    private readonly string _beforeUnloadGuardKey = $"note-workspace-{Guid.NewGuid():N}";
     private static readonly IReadOnlyList<SoapSection> DefaultSoapSections =
     [
         SoapSection.Subjective,
@@ -571,6 +588,14 @@ else
     private bool _isRegeneratingSummary;
     private bool _isRegeneratingGoals;
     private string? _pendingClinicalSummary;
+    private string? _pendingNavigationTarget;
+    private string? _pendingNoteTypeChange;
+    private SoapSection? _pendingSectionChange;
+    private bool _showIncompleteNoteModal;
+    private string? _pendingMissingFieldSelector;
+    private bool _isNavigatingToMissingField;
+    private IJSObjectReference? _noteGuardModule;
+    private bool? _lastBeforeUnloadShouldGuard;
     private bool _isInitialLoading = true;
     private bool _isSubmittingNote;
     private SoapSection _lastEditableSection = SoapSection.Plan;
@@ -709,6 +734,8 @@ else
     private bool CanExportPdf => IsPtUser || IsPtaUser || IsAdminUser;
     private bool HasPendingClinicalSummary => !string.IsNullOrWhiteSpace(_pendingClinicalSummary);
     private bool CanRegenerateReviewSummary => !IsWorkspaceReadOnly && _note.NoteId.HasValue && HasConcreteBodyPart(GetSelectedBodyPart());
+    private NoteCompletionState CurrentCompletionState =>
+        NoteCompletionEvaluator.Evaluate(_note, _dryNeedling, CurrentSoapSections, CanEditCurrentDraft);
     private string? ReviewSummaryDisabledReason =>
         !CanRegenerateReviewSummary && !IsWorkspaceReadOnly && !_note.NoteId.HasValue
             ? "Save the note before generating an AI plan summary."
@@ -731,6 +758,18 @@ else
         DraftAutosaveService.Configure(AutosaveSaveAsync, () => CanSaveDraft);
 
         await LoadWorkspaceAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await UpdateBeforeUnloadGuardAsync();
+
+        if (!string.IsNullOrWhiteSpace(_pendingMissingFieldSelector))
+        {
+            var selector = _pendingMissingFieldSelector;
+            _pendingMissingFieldSelector = null;
+            await FocusMissingRequiredFieldAsync(selector);
+        }
     }
 
     private async Task LoadWorkspaceAsync()
@@ -968,6 +1007,16 @@ else
 
     private async Task HandleSectionChanged(SoapSection next)
     {
+        if (!_isNavigatingToMissingField && next != _note.ActiveSection && await PromptForIncompleteDocumentationAsync(sectionChange: next))
+        {
+            return;
+        }
+
+        await ApplySectionChangedCoreAsync(next);
+    }
+
+    private async Task ApplySectionChangedCoreAsync(SoapSection next)
+    {
         if (next == SoapSection.Review && !await EnsureDraftPersistedAsync(forceIfClean: !_note.NoteId.HasValue))
         {
             return;
@@ -1023,6 +1072,16 @@ else
             return;
         }
 
+        if (await PromptForIncompleteDocumentationAsync(noteTypeChange: value))
+        {
+            return;
+        }
+
+        await ApplyNoteTypeChangedCoreAsync(value);
+    }
+
+    private async Task ApplyNoteTypeChangedCoreAsync(string value)
+    {
         var shouldTryEvaluationSeed = _note.Mode == NoteMode.New
             && !_note.NoteId.HasValue
             && !_note.IsDirty
@@ -1218,6 +1277,83 @@ else
         _note.MoveTo(section);
         ClearStatusMessage();
         return Task.CompletedTask;
+    }
+
+    private async Task NavigateToMissingRequiredItemAsync(MissingRequiredItem item)
+    {
+        _showIncompleteNoteModal = false;
+        _pendingNavigationTarget = null;
+        _pendingNoteTypeChange = null;
+        _pendingSectionChange = null;
+
+        if (!IsDryNeedlingNote && CurrentSoapSections.Contains(item.Section))
+        {
+            if (item.Section != SoapSection.Review)
+            {
+                _lastEditableSection = item.Section;
+            }
+
+            _isNavigatingToMissingField = true;
+            try
+            {
+                await ApplySectionChangedCoreAsync(item.Section);
+            }
+            finally
+            {
+                _isNavigatingToMissingField = false;
+            }
+        }
+
+        _pendingMissingFieldSelector = item.FieldSelector;
+        SetStatusMessage(item.Message, "error");
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleIncompleteNavigationContinueAsync()
+    {
+        var target = _pendingNavigationTarget;
+        var noteType = _pendingNoteTypeChange;
+        var section = _pendingSectionChange;
+
+        _showIncompleteNoteModal = false;
+        _pendingNavigationTarget = null;
+        _pendingNoteTypeChange = null;
+        _pendingSectionChange = null;
+
+        if (!string.IsNullOrWhiteSpace(target))
+        {
+            _allowedNavigationTarget = target;
+            await NavigateAfterGuardAsync(target);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(noteType))
+        {
+            await ApplyNoteTypeChangedCoreAsync(noteType);
+            return;
+        }
+
+        if (section.HasValue)
+        {
+            await ApplySectionChangedCoreAsync(section.Value);
+        }
+    }
+
+    private async Task HandleIncompleteNavigationCancelAsync()
+    {
+        var firstMissing = CurrentCompletionState.FirstMissingItem;
+        _showIncompleteNoteModal = false;
+        _pendingNavigationTarget = null;
+        _pendingNoteTypeChange = null;
+        _pendingSectionChange = null;
+
+        if (firstMissing is not null)
+        {
+            await NavigateToMissingRequiredItemAsync(firstMissing);
+            return;
+        }
+
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task HandleRegenerateSummaryAsync()
@@ -1663,6 +1799,108 @@ else
         return true;
     }
 
+    private async Task<bool> PromptForIncompleteDocumentationAsync(
+        string? navigationTarget = null,
+        string? noteTypeChange = null,
+        SoapSection? sectionChange = null)
+    {
+        if (!CanSaveDraft)
+        {
+            return false;
+        }
+
+        if (!sectionChange.HasValue)
+        {
+            var saved = await EnsureDraftPersistedAsync(forceIfClean: !_note.NoteId.HasValue);
+            if (!saved)
+            {
+                SetStatusMessage(
+                    "Unable to save the draft before leaving this page. Resolve the error and try again.",
+                    "error",
+                    showToast: true,
+                    toastTitle: "Save failed");
+                await InvokeAsync(StateHasChanged);
+                return true;
+            }
+        }
+
+        var completion = CurrentCompletionState;
+        if (completion.IsComplete)
+        {
+            return false;
+        }
+
+        _pendingNavigationTarget = navigationTarget;
+        _pendingNoteTypeChange = noteTypeChange;
+        _pendingSectionChange = sectionChange;
+        _showIncompleteNoteModal = true;
+        await InvokeAsync(StateHasChanged);
+        return true;
+    }
+
+    private async Task FocusMissingRequiredFieldAsync(string selector)
+    {
+        try
+        {
+            var module = await GetNoteGuardModuleAsync();
+            if (module is not null)
+            {
+                await module.InvokeVoidAsync("focusMissingRequiredField", selector);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Unable to focus missing required note field.");
+        }
+    }
+
+    private async Task UpdateBeforeUnloadGuardAsync()
+    {
+        try
+        {
+            var shouldGuard = CanSaveDraft && (DraftAutosaveService.IsDirty || DraftAutosaveService.IsSaving || !CurrentCompletionState.IsComplete);
+            if (_lastBeforeUnloadShouldGuard.HasValue && _lastBeforeUnloadShouldGuard.Value == shouldGuard)
+            {
+                return;
+            }
+
+            var module = await GetNoteGuardModuleAsync();
+            if (module is null)
+            {
+                return;
+            }
+
+            await module.InvokeVoidAsync(
+                "setIncompleteNoteBeforeUnload",
+                _beforeUnloadGuardKey,
+                shouldGuard);
+            _lastBeforeUnloadShouldGuard = shouldGuard;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Unable to update note beforeunload guard.");
+        }
+    }
+
+    private async Task<IJSObjectReference?> GetNoteGuardModuleAsync()
+    {
+        if (_noteGuardModule is not null)
+        {
+            return _noteGuardModule;
+        }
+
+        try
+        {
+            _noteGuardModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/note-workspace-guard.js");
+            return _noteGuardModule;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Unable to load note workspace guard JavaScript.");
+            return null;
+        }
+    }
+
     private void EnsureSavedNoteRoute(Guid noteId)
     {
         if (noteId == Guid.Empty)
@@ -1696,6 +1934,15 @@ else
 
         if (!CanFinalizePendingCoSign)
         {
+            var completion = CurrentCompletionState;
+            if (!completion.IsComplete && completion.FirstMissingItem is { } firstMissing)
+            {
+                _note.MarkSaveError();
+                await NavigateToMissingRequiredItemAsync(firstMissing);
+                ToastService.ShowError(firstMissing.Message, "Submit blocked");
+                return;
+            }
+
             var submitValidationMessage = ValidateForSubmit();
             if (!string.IsNullOrWhiteSpace(submitValidationMessage))
             {
@@ -3040,24 +3287,57 @@ else
             return;
         }
 
-        if (!CanSaveDraft || (!DraftAutosaveService.IsDirty && !DraftAutosaveService.IsSaving))
+        if (!CanSaveDraft)
+        {
+            return;
+        }
+
+        var requiresDraftSave = DraftAutosaveService.IsDirty || DraftAutosaveService.IsSaving || !_note.NoteId.HasValue;
+        var completion = CurrentCompletionState;
+        if (!requiresDraftSave && completion.IsComplete)
         {
             return;
         }
 
         context.PreventNavigation();
 
-        var saved = await EnsureDraftPersistedAsync();
-        if (!saved)
+        if (requiresDraftSave && !await EnsureDraftPersistedAsync(forceIfClean: !_note.NoteId.HasValue))
         {
             SetStatusMessage("Unable to save the draft before leaving this page. Resolve the error and try again.", "error", showToast: true, toastTitle: "Save failed");
             await InvokeAsync(StateHasChanged);
             return;
         }
 
+        completion = CurrentCompletionState;
+        if (!completion.IsComplete)
+        {
+            _pendingNavigationTarget = context.TargetLocation;
+            _pendingNoteTypeChange = null;
+            _pendingSectionChange = null;
+            _showIncompleteNoteModal = true;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
         _allowedNavigationTarget = context.TargetLocation;
-        await InvokeAsync(() => NavigationManager.NavigateTo(context.TargetLocation));
+        await NavigateAfterGuardAsync(context.TargetLocation);
     }
+
+    private async Task NavigateAfterGuardAsync(string target)
+    {
+        try
+        {
+            await InvokeAsync(() => NavigationManager.NavigateTo(target));
+        }
+        catch (Exception ex) when (IsExpectedNavigationInterruption(ex))
+        {
+            _allowedNavigationTarget = null;
+            Logger.LogDebug(ex, "Guarded note navigation was interrupted while changing location to {Target}.", target);
+        }
+    }
+
+    private static bool IsExpectedNavigationInterruption(Exception exception) =>
+        exception is OperationCanceledException or JSDisconnectedException;
 
     private static string GetUserFacingMessage(Exception exception, string fallback)
     {
@@ -3090,6 +3370,22 @@ else
             if (CanSaveDraft && (DraftAutosaveService.IsDirty || DraftAutosaveService.IsSaving))
             {
                 await EnsureDraftPersistedAsync();
+            }
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            if (_noteGuardModule is not null)
+            {
+                await _noteGuardModule.InvokeVoidAsync(
+                    "setIncompleteNoteBeforeUnload",
+                    _beforeUnloadGuardKey,
+                    false);
+                _lastBeforeUnloadShouldGuard = false;
+                await _noteGuardModule.DisposeAsync();
             }
         }
         catch

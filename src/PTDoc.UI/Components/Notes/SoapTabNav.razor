@@ -1,4 +1,5 @@
 @namespace PTDoc.UI.Components.Notes
+@using PTDoc.UI.Components.Notes.Completion
 @using PTDoc.UI.Components.Notes.Models
 
 <nav class="soap-tab-nav @(IsReadOnly ? "soap-tab-nav--readonly" : string.Empty)"
@@ -10,17 +11,30 @@
     {
         var soapSection = ActiveSections[index];
         var isActive = soapSection == ActiveSection;
-        var isCompleted = index < ActiveIndex;
+        NoteSectionCompletionState? sectionState = null;
+        if (CompletionState is not null && CompletionState.SectionStates.TryGetValue(soapSection, out var resolvedState))
+        {
+            sectionState = resolvedState;
+        }
+
+        var missingCount = sectionState?.MissingCount ?? 0;
+        var isCompleted = sectionState?.IsComplete == true && !isActive;
+        var hasMissing = missingCount > 0;
 
         <button type="button"
                 role="tab"
-                class="soap-tab-nav__tab @(isActive ? "soap-tab-nav__tab--active" : string.Empty) @(isCompleted ? "soap-tab-nav__tab--completed" : string.Empty) @(IsReadOnly ? "soap-tab-nav__tab--readonly" : string.Empty)"
+                class="soap-tab-nav__tab @(isActive ? "soap-tab-nav__tab--active" : string.Empty) @(isCompleted ? "soap-tab-nav__tab--completed" : string.Empty) @(hasMissing ? "soap-tab-nav__tab--missing" : string.Empty) @(IsReadOnly ? "soap-tab-nav__tab--readonly" : string.Empty)"
                 aria-selected="@isActive"
                 aria-controls="soap-tab-panel"
+                aria-label="@GetTabAriaLabel(soapSection, missingCount, isCompleted)"
                 data-testid="@($"soap-tab-{soapSection.ToString().ToLower()}")"
                 @onclick="() => HandleTabClickAsync(soapSection)">
             <span class="soap-tab-nav__indicator" aria-hidden="true">
-                @if (isCompleted || isActive)
+                @if (hasMissing)
+                {
+                    <span class="soap-tab-nav__missing-count">@missingCount</span>
+                }
+                else if (isCompleted || isActive)
                 {
                     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <circle cx="7" cy="7" r="5.25" stroke="currentColor" stroke-width="1.2" />
@@ -67,8 +81,19 @@
     [Parameter, EditorRequired] public SoapSection ActiveSection { get; set; }
     [Parameter, EditorRequired] public EventCallback<SoapSection> ActiveSectionChanged { get; set; }
     [Parameter] public IReadOnlyList<SoapSection>? Sections { get; set; }
+    [Parameter] public NoteCompletionState? CompletionState { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
 
     private Task HandleTabClickAsync(SoapSection section) =>
         ActiveSectionChanged.InvokeAsync(section);
+
+    private static string GetTabAriaLabel(SoapSection section, int missingCount, bool isCompleted)
+    {
+        if (missingCount > 0)
+        {
+            return $"{section}: {missingCount} required {(missingCount == 1 ? "item" : "items")} missing";
+        }
+
+        return isCompleted ? $"{section}: complete" : section.ToString();
+    }
 }

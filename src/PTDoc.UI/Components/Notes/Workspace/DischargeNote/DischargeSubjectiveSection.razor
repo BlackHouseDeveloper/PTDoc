@@ -113,7 +113,9 @@
                     class="discharge-subjective__select"
                     disabled="@IsReadOnly"
                     value="@Plan.PrimaryDischargeReason"
-                    @onchange="HandleDischargeReasonChanged">
+                    @onchange="HandleDischargeReasonChanged"
+                    aria-required="true"
+                    data-note-field-key="discharge-primary-reason">
                 <option value="">Select discharge reason...</option>
                 @foreach (var reason in DischargeDocumentationOptions.DischargeReasonOptions)
                 {

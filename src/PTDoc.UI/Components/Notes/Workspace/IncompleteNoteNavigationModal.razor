@@ -1,0 +1,140 @@
+@namespace PTDoc.UI.Components.Notes.Workspace
+@using Microsoft.JSInterop
+@using PTDoc.UI.Components.Notes.Completion
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@if (IsOpen && CompletionState.FirstMissingItem is { } firstMissing)
+{
+    <div class="incomplete-note-modal__overlay"
+         role="presentation"
+         @onclick="CancelAsync"
+         data-testid="incomplete-note-modal">
+        <div id="@ModalId"
+             class="incomplete-note-modal"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="incomplete-note-modal-title"
+             aria-describedby="incomplete-note-modal-body"
+             tabindex="-1"
+             @onclick:stopPropagation="true">
+            <div class="incomplete-note-modal__body">
+                <p class="incomplete-note-modal__eyebrow">SOAP note safeguard</p>
+                <h2 id="incomplete-note-modal-title" class="incomplete-note-modal__title">Required documentation is incomplete</h2>
+                <p id="incomplete-note-modal-body" class="incomplete-note-modal__copy">
+                    This note is missing required clinical information. Continuing will preserve the draft and apply your navigation choice, but the note cannot be submitted until the missing items are completed.
+                </p>
+                <div class="incomplete-note-modal__summary" role="status" aria-live="polite">
+                    <strong>@CompletionState.MissingCount required @(CompletionState.MissingCount == 1 ? "item" : "items") missing</strong>
+                    <span>First item: @firstMissing.Section - @firstMissing.Label</span>
+                </div>
+            </div>
+            <div class="incomplete-note-modal__actions">
+                <button type="button"
+                        class="btn btn--secondary"
+                        @onclick="ContinueAsync"
+                        data-testid="incomplete-note-continue">
+                    Continue
+                </button>
+                <button type="button"
+                        class="btn btn--primary"
+                        @ref="_cancelButton"
+                        @onclick="CancelAsync"
+                        data-testid="incomplete-note-cancel">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const string ModalId = "incomplete-note-navigation-modal";
+    private DotNetObjectReference<IncompleteNoteNavigationModal>? _dotNetReference;
+    private IJSObjectReference? _modalModule;
+    private ElementReference _cancelButton;
+    private bool _registered;
+
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter, EditorRequired] public NoteCompletionState CompletionState { get; set; } = NoteCompletionState.Complete([]);
+    [Parameter] public EventCallback OnContinue { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!IsOpen || _registered)
+        {
+            return;
+        }
+
+        try
+        {
+            _modalModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/modal.js");
+            _dotNetReference ??= DotNetObjectReference.Create(this);
+            await _modalModule.InvokeVoidAsync("registerEscapeHandler", ModalId, _dotNetReference);
+            await Task.Delay(75);
+            await _cancelButton.FocusAsync();
+            _registered = true;
+        }
+        catch (Exception)
+        {
+            // JS interop is unavailable in prerendering and some component tests. The modal remains usable.
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsOpen && _registered)
+        {
+            await UnregisterAsync();
+        }
+    }
+
+    [JSInvokable]
+    public async Task CloseFromJs() => await CancelAsync();
+
+    private async Task ContinueAsync() => await OnContinue.InvokeAsync();
+
+    private async Task CancelAsync() => await OnCancel.InvokeAsync();
+
+    private async Task UnregisterAsync()
+    {
+        if (!_registered)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_modalModule is not null)
+            {
+                await _modalModule.InvokeVoidAsync("unregisterEscapeHandler", ModalId);
+            }
+        }
+        catch (Exception)
+        {
+            // Best-effort cleanup only.
+        }
+
+        _registered = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await UnregisterAsync();
+
+        try
+        {
+            if (_modalModule is not null)
+            {
+                await _modalModule.DisposeAsync();
+            }
+        }
+        catch (Exception)
+        {
+            // Best-effort cleanup only.
+        }
+
+        _dotNetReference?.Dispose();
+    }
+}

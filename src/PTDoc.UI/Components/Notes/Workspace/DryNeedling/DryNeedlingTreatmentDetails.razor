@@ -4,12 +4,12 @@
     <div class="dry-treatment__grid">
         <div class="dry-treatment__field">
             <label for="dry-date">Date of Treatment *</label>
-            <input id="dry-date" type="date" disabled="@IsReadOnly" @bind="DateOfTreatment" @bind:after="NotifyChanged" />
+            <input id="dry-date" type="date" disabled="@IsReadOnly" @bind="DateOfTreatment" @bind:after="NotifyChanged" aria-required="true" data-note-field-key="dry-date" />
         </div>
 
         <div class="dry-treatment__field">
             <label for="dry-location">Location of Needling *</label>
-            <select id="dry-location" disabled="@IsReadOnly" @bind="Location" @bind:after="NotifyChanged">
+            <select id="dry-location" disabled="@IsReadOnly" @bind="Location" @bind:after="NotifyChanged" aria-required="true" data-note-field-key="dry-location">
                 <option value="">Select location...</option>
                 @foreach (var option in _locations)
                 {
@@ -20,7 +20,7 @@
 
         <div class="dry-treatment__field">
             <label for="dry-type">Type of Needling Performed *</label>
-            <select id="dry-type" disabled="@IsReadOnly" @bind="NeedlingType" @bind:after="NotifyChanged">
+            <select id="dry-type" disabled="@IsReadOnly" @bind="NeedlingType" @bind:after="NotifyChanged" aria-required="true" data-note-field-key="dry-type">
                 <option value="">Select needling type...</option>
                 @foreach (var option in _needlingTypes)
                 {

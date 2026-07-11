@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Services;
@@ -22,6 +23,8 @@ public class SignatureService : ISignatureService
     private readonly IClinicalRulesEngine _clinicalRulesEngine;
     private readonly IHashService _hashService;
     private readonly IAddendumService _addendumService;
+
+    private sealed record SignatureAttempt(Guid Id, DateTime TimestampUtc);
 
     public SignatureService(
         ApplicationDbContext context,
@@ -270,42 +273,54 @@ public class SignatureService : ISignatureService
             return FailedSignature("PTA may only sign draft daily notes.");
         }
 
-        await using var transaction = await BeginSignatureTransactionAsync(ct);
+        var signatureAttempt = new SignatureAttempt(Guid.NewGuid(), DateTime.UtcNow);
+        var result = await ExecuteSignatureWriteAsync(note, signatureAttempt, async (attemptNote, attempt) =>
+        {
+            if (attemptNote.NoteStatus != NoteStatus.Draft)
+            {
+                return FailedSignature("PTA may only sign draft daily notes.");
+            }
 
-        note.RequiresCoSign = true;
-        note.NoteStatus = NoteStatus.PendingCoSign;
-        note.CoSignedByUserId = null;
-        note.CoSignedUtc = null;
+            await using var transaction = await BeginSignatureTransactionAsync(ct);
 
-        await _context.SaveChangesAsync(ct);
+            NormalizeNoteContentForSigning(attemptNote);
+            attemptNote.RequiresCoSign = true;
+            attemptNote.NoteStatus = NoteStatus.PendingCoSign;
+            attemptNote.CoSignedByUserId = null;
+            attemptNote.CoSignedUtc = null;
 
-        var signatureTimestamp = DateTime.UtcNow;
-        var signature = CreateSignatureRecord(
-            note,
-            userId,
-            Roles.PTA,
-            signatureTimestamp,
-            consentAccepted,
-            intentConfirmed,
-            ipAddress,
-            deviceInfo);
+            await _context.SaveChangesAsync(ct);
 
-        _context.Signatures.Add(signature);
-        await _context.SaveChangesAsync(ct);
-        await CommitSignatureTransactionAsync(transaction, ct);
+            var signature = CreateSignatureRecord(
+                attemptNote,
+                userId,
+                Roles.PTA,
+                attempt.TimestampUtc,
+                consentAccepted,
+                intentConfirmed,
+                ipAddress,
+                deviceInfo,
+                attempt.Id);
+
+            _context.Signatures.Add(signature);
+            await _context.SaveChangesAsync(ct);
+            await CommitSignatureTransactionAsync(transaction, ct);
+
+            return new SignatureResult
+            {
+                Success = true,
+                SignatureHash = signature.SignatureHash,
+                SignedUtc = signature.TimestampUtc,
+                RequiresCoSign = true,
+                Status = attemptNote.NoteStatus
+            };
+        }, ct);
 
         await _auditService.LogSignatureEventAsync(
             AuditEvent.SignatureAction("SIGN", note.Id, userId),
             ct);
 
-        return new SignatureResult
-        {
-            Success = true,
-            SignatureHash = signature.SignatureHash,
-            SignedUtc = signature.TimestampUtc,
-            RequiresCoSign = true,
-            Status = note.NoteStatus
-        };
+        return result;
     }
 
     private async Task<SignatureResult> SignAsPtAsync(
@@ -317,106 +332,98 @@ public class SignatureService : ISignatureService
         string? deviceInfo,
         CancellationToken ct)
     {
-        if (note.NoteStatus == NoteStatus.PendingCoSign)
+        var signingStateError = await GetPtSigningStateErrorAsync(note, ct);
+        if (signingStateError is not null)
         {
-            if (note.NoteType != NoteType.Daily || !note.RequiresCoSign)
+            return FailedSignature(signingStateError);
+        }
+
+        var signatureAttempt = new SignatureAttempt(Guid.NewGuid(), DateTime.UtcNow);
+        var result = await ExecuteSignatureWriteAsync(note, signatureAttempt, async (attemptNote, attempt) =>
+        {
+            var retrySigningStateError = await GetPtSigningStateErrorAsync(attemptNote, ct);
+            if (retrySigningStateError is not null)
             {
-                return FailedSignature("Only daily notes awaiting PT co-sign can be finalized.");
+                return FailedSignature(retrySigningStateError);
             }
 
-            if (note.CoSignedByUserId.HasValue)
+            await using var transaction = await BeginSignatureTransactionAsync(ct);
+            NormalizeNoteContentForSigning(attemptNote);
+
+            attemptNote.NoteStatus = NoteStatus.Signed;
+
+            if (attemptNote.RequiresCoSign)
             {
-                return FailedSignature("Note has already been co-signed");
+                attemptNote.CoSignedByUserId = userId;
+                attemptNote.CoSignedUtc = attempt.TimestampUtc;
+            }
+            else
+            {
+                attemptNote.RequiresCoSign = false;
+                attemptNote.CoSignedByUserId = null;
+                attemptNote.CoSignedUtc = null;
             }
 
-            var latestSignature = await GetLatestSignatureAsync(note.Id, ct);
-            if (latestSignature is null)
-            {
-                return FailedSignature("Pending co-sign note is missing the initial PTA signature.");
-            }
-
-            if (!string.Equals(latestSignature.Role, Roles.PTA, StringComparison.OrdinalIgnoreCase))
-            {
-                return FailedSignature("Pending co-sign note must have a PTA signature before PT finalization.");
-            }
-        }
-        else if (note.NoteStatus != NoteStatus.Draft)
-        {
-            return FailedSignature("Note is not in a valid state for signing.");
-        }
-
-        await using var transaction = await BeginSignatureTransactionAsync(ct);
-        var signatureTimestamp = DateTime.UtcNow;
-
-        note.NoteStatus = NoteStatus.Signed;
-
-        if (note.RequiresCoSign)
-        {
-            note.CoSignedByUserId = userId;
-            note.CoSignedUtc = signatureTimestamp;
-        }
-        else
-        {
-            note.RequiresCoSign = false;
-            note.CoSignedByUserId = null;
-            note.CoSignedUtc = null;
-        }
-
-        await _context.SaveChangesAsync(ct);
-
-        var signature = CreateSignatureRecord(
-            note,
-            userId,
-            Roles.PT,
-            signatureTimestamp,
-            consentAccepted,
-            intentConfirmed,
-            ipAddress,
-            deviceInfo);
-
-        _context.Signatures.Add(signature);
-        await _context.SaveChangesAsync(ct);
-
-        if (_context.Database.IsRelational())
-        {
-            await _context.ClinicalNotes
-                .Where(n => n.Id == note.Id)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(n => n.SignatureHash, signature.SignatureHash)
-                    .SetProperty(n => n.SignedUtc, signature.TimestampUtc)
-                    .SetProperty(n => n.SignedByUserId, userId),
-                    ct);
-        }
-        else
-        {
-            note.SignatureHash = signature.SignatureHash;
-            note.SignedUtc = signature.TimestampUtc;
-            note.SignedByUserId = userId;
             await _context.SaveChangesAsync(ct);
-        }
 
-        note.SignatureHash = signature.SignatureHash;
-        note.SignedUtc = signature.TimestampUtc;
-        note.SignedByUserId = userId;
-        if (note.RequiresCoSign)
-        {
-            note.CoSignedUtc = signature.TimestampUtc;
-        }
+            var signature = CreateSignatureRecord(
+                attemptNote,
+                userId,
+                Roles.PT,
+                attempt.TimestampUtc,
+                consentAccepted,
+                intentConfirmed,
+                ipAddress,
+                deviceInfo,
+                attempt.Id);
 
-        await CommitSignatureTransactionAsync(transaction, ct);
+            _context.Signatures.Add(signature);
+            await _context.SaveChangesAsync(ct);
+
+            if (_context.Database.IsRelational())
+            {
+                await _context.ClinicalNotes
+                    .Where(n => n.Id == attemptNote.Id)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(n => n.SignatureHash, signature.SignatureHash)
+                        .SetProperty(n => n.SignedUtc, signature.TimestampUtc)
+                        .SetProperty(n => n.SignedByUserId, userId),
+                        ct);
+
+                // ExecuteUpdate bypasses EF change tracking. Keep the already-tracked note
+                // synchronized without leaving it dirty for the subsequent audit-log save.
+                SynchronizeTrackedSignatureFields(attemptNote, signature, userId);
+            }
+            else
+            {
+                attemptNote.SignatureHash = signature.SignatureHash;
+                attemptNote.SignedUtc = signature.TimestampUtc;
+                attemptNote.SignedByUserId = userId;
+                await _context.SaveChangesAsync(ct);
+            }
+
+            if (attemptNote.RequiresCoSign)
+            {
+                attemptNote.CoSignedUtc = signature.TimestampUtc;
+            }
+
+            await CommitSignatureTransactionAsync(transaction, ct);
+
+            return new SignatureResult
+            {
+                Success = true,
+                SignatureHash = signature.SignatureHash,
+                SignedUtc = signature.TimestampUtc,
+                RequiresCoSign = attemptNote.RequiresCoSign,
+                Status = attemptNote.NoteStatus
+            };
+        }, ct);
 
         await _auditService.LogSignatureEventAsync(
             AuditEvent.SignatureAction("SIGN", note.Id, userId),
             ct);
 
-        return new SignatureResult
-        {
-            Success = true,
-            SignatureHash = signature.SignatureHash,
-            SignedUtc = signature.TimestampUtc,
-            RequiresCoSign = note.RequiresCoSign,
-            Status = note.NoteStatus
-        };
+        return result;
     }
 
     private Signature CreateSignatureRecord(
@@ -427,11 +434,12 @@ public class SignatureService : ISignatureService
         bool consentAccepted,
         bool intentConfirmed,
         string? ipAddress,
-        string? deviceInfo)
+        string? deviceInfo,
+        Guid signatureId)
     {
         return new Signature
         {
-            Id = Guid.NewGuid(),
+            Id = signatureId,
             NoteId = note.Id,
             SignedByUserId = userId,
             Role = role,
@@ -453,6 +461,131 @@ public class SignatureService : ISignatureService
         }
 
         return await _context.Database.BeginTransactionAsync(ct);
+    }
+
+    private void SynchronizeTrackedSignatureFields(ClinicalNote note, Signature signature, Guid userId)
+    {
+        var entry = _context.Entry(note);
+        SynchronizeTrackedProperty(entry.Property(n => n.SignatureHash), signature.SignatureHash);
+        SynchronizeTrackedProperty(entry.Property(n => n.SignedUtc), signature.TimestampUtc);
+        SynchronizeTrackedProperty(entry.Property(n => n.SignedByUserId), userId);
+    }
+
+    private static void SynchronizeTrackedProperty<TProperty>(PropertyEntry<ClinicalNote, TProperty> property, TProperty value)
+    {
+        property.CurrentValue = value;
+        property.OriginalValue = value;
+        property.IsModified = false;
+    }
+
+    private async Task<SignatureResult> ExecuteSignatureWriteAsync(
+        ClinicalNote initialNote,
+        SignatureAttempt signatureAttempt,
+        Func<ClinicalNote, SignatureAttempt, Task<SignatureResult>> operation,
+        CancellationToken ct)
+    {
+        if (!_context.Database.IsRelational())
+        {
+            return await operation(initialNote, signatureAttempt);
+        }
+
+        var strategy = _context.Database.CreateExecutionStrategy();
+        var attemptNumber = 0;
+        return await strategy.ExecuteAsync(async () =>
+        {
+            if (attemptNumber++ == 0)
+            {
+                return await operation(initialNote, signatureAttempt);
+            }
+
+            _context.ChangeTracker.Clear();
+
+            var completedAttempt = await FindCompletedSignatureAttemptAsync(signatureAttempt, ct);
+            if (completedAttempt is not null)
+            {
+                return completedAttempt;
+            }
+
+            var retryNote = await _context.ClinicalNotes
+                .Include(n => n.ObjectiveMetrics)
+                .FirstOrDefaultAsync(n => n.Id == initialNote.Id, ct);
+            if (retryNote is null)
+            {
+                return FailedSignature("Note not found");
+            }
+
+            return await operation(retryNote, signatureAttempt);
+        });
+    }
+
+    private async Task<SignatureResult?> FindCompletedSignatureAttemptAsync(SignatureAttempt signatureAttempt, CancellationToken ct)
+    {
+        var signature = await _context.Signatures
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == signatureAttempt.Id, ct);
+        if (signature is null)
+        {
+            return null;
+        }
+
+        var note = await _context.ClinicalNotes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == signature.NoteId, ct);
+        if (note is null)
+        {
+            return null;
+        }
+
+        return new SignatureResult
+        {
+            Success = true,
+            SignatureHash = signature.SignatureHash,
+            SignedUtc = signature.TimestampUtc,
+            RequiresCoSign = note.RequiresCoSign,
+            Status = note.NoteStatus
+        };
+    }
+
+    private async Task<string?> GetPtSigningStateErrorAsync(ClinicalNote note, CancellationToken ct)
+    {
+        if (note.NoteStatus == NoteStatus.PendingCoSign)
+        {
+            if (note.NoteType != NoteType.Daily || !note.RequiresCoSign)
+            {
+                return "Only daily notes awaiting PT co-sign can be finalized.";
+            }
+
+            if (note.CoSignedByUserId.HasValue)
+            {
+                return "Note has already been co-signed";
+            }
+
+            var latestSignature = await GetLatestSignatureAsync(note.Id, ct);
+            if (latestSignature is null)
+            {
+                return "Pending co-sign note is missing the initial PTA signature.";
+            }
+
+            if (!string.Equals(latestSignature.Role, Roles.PTA, StringComparison.OrdinalIgnoreCase))
+            {
+                return "Pending co-sign note must have a PTA signature before PT finalization.";
+            }
+
+            return null;
+        }
+
+        return note.NoteStatus == NoteStatus.Draft
+            ? null
+            : "Note is not in a valid state for signing.";
+    }
+
+    private static void NormalizeNoteContentForSigning(ClinicalNote note)
+    {
+        note.ContentJson = NoteWriteService.NormalizeContentJson(
+            note.NoteType,
+            note.IsReEvaluation,
+            note.DateOfService,
+            note.ContentJson);
     }
 
     private static async Task CommitSignatureTransactionAsync(IDbContextTransaction? transaction, CancellationToken ct)

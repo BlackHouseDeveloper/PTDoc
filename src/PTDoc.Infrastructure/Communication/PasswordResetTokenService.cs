@@ -44,69 +44,80 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
 
             if (_db.Database.IsRelational())
             {
-                await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
-                var tokenMetadata = await _db.PasswordResetTokens
-                    .AsNoTracking()
-                    .Where(resetToken => resetToken.TokenHash == tokenHash)
-                    .Select(resetToken => new
+                var strategy = _db.Database.CreateExecutionStrategy();
+                var attemptNumber = 0;
+                return await strategy.ExecuteAsync(async () =>
+                {
+                    var isRetry = attemptNumber++ > 0;
+                    await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+                    var tokenMetadata = await _db.PasswordResetTokens
+                        .AsNoTracking()
+                        .Where(resetToken => resetToken.TokenHash == tokenHash)
+                        .Select(resetToken => new
+                        {
+                            resetToken.UserId,
+                            resetToken.UsedAtUtc,
+                            resetToken.RevokedAtUtc,
+                            resetToken.ExpiresAtUtc
+                        })
+                        .FirstOrDefaultAsync(cancellationToken);
+
+                    if (tokenMetadata is null)
                     {
-                        resetToken.UserId,
-                        resetToken.UsedAtUtc,
-                        resetToken.RevokedAtUtc,
-                        resetToken.ExpiresAtUtc
-                    })
-                    .FirstOrDefaultAsync(cancellationToken);
+                        return Failure(PasswordResetCompletionStatus.InvalidToken, "The reset link is invalid or expired.");
+                    }
 
-                if (tokenMetadata is null)
-                {
-                    return Failure(PasswordResetCompletionStatus.InvalidToken, "The reset link is invalid or expired.");
-                }
+                    if (tokenMetadata.UsedAtUtc.HasValue)
+                    {
+                        if (isRetry
+                            && !tokenMetadata.RevokedAtUtc.HasValue
+                            && await DoesStoredPinMatchAsync(tokenMetadata.UserId, request.NewPin, cancellationToken))
+                        {
+                            return Succeeded();
+                        }
 
-                if (tokenMetadata.UsedAtUtc.HasValue)
-                {
-                    return Failure(PasswordResetCompletionStatus.AlreadyUsed, "The reset link is invalid or expired.");
-                }
+                        return Failure(PasswordResetCompletionStatus.AlreadyUsed, "The reset link is invalid or expired.");
+                    }
 
-                if (tokenMetadata.RevokedAtUtc.HasValue)
-                {
-                    return Failure(PasswordResetCompletionStatus.AlreadyUsed, "The reset link is invalid or expired.");
-                }
+                    if (tokenMetadata.RevokedAtUtc.HasValue)
+                    {
+                        return Failure(PasswordResetCompletionStatus.AlreadyUsed, "The reset link is invalid or expired.");
+                    }
 
-                if (tokenMetadata.ExpiresAtUtc <= now)
-                {
-                    return Failure(PasswordResetCompletionStatus.Expired, "The reset link is invalid or expired.");
-                }
+                    if (tokenMetadata.ExpiresAtUtc <= now)
+                    {
+                        return Failure(PasswordResetCompletionStatus.Expired, "The reset link is invalid or expired.");
+                    }
 
-                var claimed = await _db.PasswordResetTokens
-                    .Where(resetToken =>
-                        resetToken.TokenHash == tokenHash &&
-                        resetToken.UsedAtUtc == null &&
-                        resetToken.RevokedAtUtc == null &&
-                        resetToken.ExpiresAtUtc > now)
-                    .ExecuteUpdateAsync(
-                        setters => setters.SetProperty(resetToken => resetToken.UsedAtUtc, now),
-                        cancellationToken);
+                    var claimed = await _db.PasswordResetTokens
+                        .Where(resetToken =>
+                            resetToken.TokenHash == tokenHash &&
+                            resetToken.UsedAtUtc == null &&
+                            resetToken.RevokedAtUtc == null &&
+                            resetToken.ExpiresAtUtc > now)
+                        .ExecuteUpdateAsync(
+                            setters => setters.SetProperty(resetToken => resetToken.UsedAtUtc, now),
+                            cancellationToken);
 
-                if (claimed != 1)
-                {
-                    return Failure(PasswordResetCompletionStatus.AlreadyUsed, "The reset link is invalid or expired.");
-                }
+                    if (claimed != 1)
+                    {
+                        return Failure(PasswordResetCompletionStatus.AlreadyUsed, "The reset link is invalid or expired.");
+                    }
 
-                var user = await _db.Users.FirstOrDefaultAsync(user => user.Id == tokenMetadata.UserId, cancellationToken);
-                if (user is null)
-                {
-                    return Failure(PasswordResetCompletionStatus.InvalidToken, "The reset link is invalid or expired.");
-                }
+                    var userUpdated = await _db.Users
+                        .Where(user => user.Id == tokenMetadata.UserId)
+                        .ExecuteUpdateAsync(
+                            setters => setters.SetProperty(user => user.PinHash, AuthService.HashPin(request.NewPin)),
+                            cancellationToken);
+                    if (userUpdated != 1)
+                    {
+                        return Failure(PasswordResetCompletionStatus.InvalidToken, "The reset link is invalid or expired.");
+                    }
 
-                user.PinHash = AuthService.HashPin(request.NewPin);
-                await _db.SaveChangesAsync(cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
 
-                return new PasswordResetCompletionResult
-                {
-                    Succeeded = true,
-                    Status = PasswordResetCompletionStatus.Succeeded
-                };
+                    return Succeeded();
+                });
             }
 
             var token = await _db.PasswordResetTokens
@@ -137,11 +148,7 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
             token.UsedAtUtc = now;
             await _db.SaveChangesAsync(cancellationToken);
 
-            return new PasswordResetCompletionResult
-            {
-                Succeeded = true,
-                Status = PasswordResetCompletionStatus.Succeeded
-            };
+            return Succeeded();
         }
         catch (Exception ex) when (IsExpectedResetTokenStorageException(ex))
         {
@@ -191,6 +198,36 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
 
     private static bool IsExpectedResetTokenStorageException(Exception ex)
         => ex is DbException or InvalidOperationException or FormatException or OverflowException;
+
+    private async Task<bool> DoesStoredPinMatchAsync(Guid userId, string requestedPin, CancellationToken cancellationToken)
+    {
+        var storedHash = await _db.Users
+            .AsNoTracking()
+            .Where(user => user.Id == userId)
+            .Select(user => user.PinHash)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(storedHash))
+        {
+            return false;
+        }
+
+        try
+        {
+            return BCrypt.Net.BCrypt.Verify(requestedPin, storedHash);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static PasswordResetCompletionResult Succeeded()
+        => new()
+        {
+            Succeeded = true,
+            Status = PasswordResetCompletionStatus.Succeeded
+        };
 
     private static PasswordResetCompletionResult Failure(
         PasswordResetCompletionStatus status,

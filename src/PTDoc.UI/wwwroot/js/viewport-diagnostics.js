@@ -3,6 +3,7 @@ const STORAGE_KEY = 'ptdoc.viewportDiagnostics';
 
 let dotNetReference = null;
 let serverEnabled = false;
+let queryOverride = null;
 let resizeHandler = null;
 let themeHandler = null;
 let mutationObserver = null;
@@ -13,6 +14,7 @@ export function initializeViewportDiagnostics(reference, isServerEnabled) {
 
   dotNetReference = reference;
   serverEnabled = Boolean(isServerEnabled);
+  queryOverride = null;
 
   applyQueryOverride();
   if (!isDiagnosticsEnabled()) {
@@ -50,6 +52,7 @@ export function disposeViewportDiagnostics() {
   }
 
   dotNetReference = null;
+  queryOverride = null;
   resizeHandler = null;
   themeHandler = null;
   mutationObserver = null;
@@ -94,6 +97,10 @@ function captureViewportDiagnostics() {
 }
 
 function isDiagnosticsEnabled() {
+  if (queryOverride !== null) {
+    return queryOverride;
+  }
+
   return serverEnabled || getStoredOverride();
 }
 
@@ -132,11 +139,13 @@ function applyQueryOverride() {
 
   const value = params.get('ptdocViewportDiagnostics')?.toLowerCase();
   if (value === '1' || value === 'true' || value === 'on') {
+    queryOverride = true;
     localStorage.setItem(STORAGE_KEY, 'true');
     return;
   }
 
   if (value === '0' || value === 'false' || value === 'off') {
+    queryOverride = false;
     localStorage.setItem(STORAGE_KEY, 'false');
   }
 }

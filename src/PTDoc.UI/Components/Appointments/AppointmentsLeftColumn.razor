@@ -6,6 +6,39 @@
 
     @if (SelectedView == AppointmentsView.Week)
     {
+        @if (ShowClinicianSelector)
+        {
+            <div class="week-clinician-selector" data-testid="appointments-week-clinician-selector">
+                <label for="appointments-week-clinician-search" class="week-clinician-selector__label">Clinician</label>
+                <input id="appointments-week-clinician-search"
+                       type="search"
+                       class="week-clinician-selector__search"
+                       placeholder="Search PT or PTA"
+                       disabled="@(ClinicianOptions.Count == 0)"
+                       aria-disabled="@(ClinicianOptions.Count == 0 ? "true" : "false")"
+                       value="@clinicianSearchText"
+                       @oninput="HandleClinicianSearchChanged" />
+                <select id="appointments-week-clinician-select"
+                        class="week-clinician-selector__select"
+                        aria-label="Select week clinician"
+                        disabled="@(FilteredClinicianOptions.Count == 0)"
+                        value="@SelectedClinicianId"
+                        @onchange="HandleClinicianSelectionChangedAsync">
+                    @if (FilteredClinicianOptions.Count == 0)
+                    {
+                        <option value="">@(ClinicianOptions.Count == 0 ? "No clinicians available" : "No matching clinicians")</option>
+                    }
+                    else
+                    {
+                        @foreach (var clinician in FilteredClinicianOptions)
+                        {
+                            <option value="@clinician.Id">@clinician.Name</option>
+                        }
+                    }
+                </select>
+            </div>
+        }
+
         <div class="week-grouping-control" role="group" aria-label="Week grouping">
             <button type="button"
                     class="week-grouping-control__button @(WeekGrouping == AppointmentsWeekGrouping.Clinician ? "selected" : "")"
@@ -63,6 +96,18 @@
     public EventCallback<AppointmentsWeekGrouping> OnWeekGroupingChanged { get; set; }
 
     [Parameter]
+    public bool ShowClinicianSelector { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<WeekClinicianFilterOption> ClinicianOptions { get; set; } = Array.Empty<WeekClinicianFilterOption>();
+
+    [Parameter]
+    public string SelectedClinicianId { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> OnSelectedClinicianIdChanged { get; set; }
+
+    [Parameter]
     public EventCallback<AppointmentsView> OnViewChanged { get; set; }
 
     [Parameter]
@@ -101,9 +146,39 @@
     [Parameter]
     public EventCallback<AppointmentsFilter> OnFilterChanged { get; set; }
 
+    private string clinicianSearchText = string.Empty;
+
+    private IReadOnlyList<WeekClinicianFilterOption> FilteredClinicianOptions =>
+        string.IsNullOrWhiteSpace(clinicianSearchText)
+            ? ClinicianOptions
+            : ClinicianOptions
+                .Where(option => option.Name.Contains(clinicianSearchText, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ShowClinicianSelector
+            && ClinicianOptions.Count > 0
+            && !ClinicianOptions.Any(option => string.Equals(option.Id, SelectedClinicianId, StringComparison.OrdinalIgnoreCase)))
+        {
+            clinicianSearchText = string.Empty;
+            await OnSelectedClinicianIdChanged.InvokeAsync(ClinicianOptions[0].Id);
+        }
+    }
+
     private async Task ToggleFilters()
     {
         await IsFiltersOpenChanged.InvokeAsync(!IsFiltersOpen);
+    }
+
+    private void HandleClinicianSearchChanged(ChangeEventArgs args)
+    {
+        clinicianSearchText = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private async Task HandleClinicianSelectionChangedAsync(ChangeEventArgs args)
+    {
+        await OnSelectedClinicianIdChanged.InvokeAsync(args.Value?.ToString() ?? string.Empty);
     }
 
     private async Task SelectWeekGrouping(AppointmentsWeekGrouping grouping)

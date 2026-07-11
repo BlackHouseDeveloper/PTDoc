@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - SOAP incomplete-note navigation safeguard
+
+- **SOAP note workspace navigation guard** — Added incomplete-documentation detection, missing-required summaries, guarded route/note-type exits, accessible confirmation modal behavior, browser refresh fallback, and first-missing-field focus for editable draft SOAP notes. Reason: clinicians could leave incomplete draft notes after autosave and later spend time searching for skipped required fields.
+- **SOAP section navigation guard** — Extended the incomplete-documentation confirmation flow to SOAP section tabs and footer previous/next/review navigation, with Continue applying the intended section change and Cancel returning to the first missing required field. Reason: clinicians could still move through note sections without addressing required documentation gaps.
+- **SOAP navigation and patient-card accessibility** — Applied shared modal backdrop/stacking tokens, respected reduced-motion preferences when focusing missing documentation, and aligned the patient-card spoken label with its visible `Open chart` action. Reason: PR review identified design-token drift and accessibility mismatches in the new beta-audit UI.
+- **SOAP navigation modal wording** — Made the incomplete-documentation warning describe continuing with a navigation choice rather than only leaving the note. Reason: the same safeguard also intercepts SOAP-section and note-type changes.
+
+### Fixed - Beta signature transaction reliability
+
+- **SQL Server retry-safe signature and password-reset transactions** — Wrapped relational note-signature and password-reset transactions in EF Core execution strategies while preserving existing validation, consent, role, and token semantics. Reason: beta logs showed note signing failed when SQL Server retry-on-failure encountered a user-initiated transaction outside `CreateExecutionStrategy()`.
+- **Relational signature tracking after bulk update** — Synchronized the tracked clinical note after its set-based signature update so the subsequent audit-log save does not issue a second signature update outside the retry-safe transaction. Reason: PR review identified that `ExecuteUpdateAsync` bypasses EF tracking and could otherwise leave signature fields marked modified.
+- **Retry-safe signature attempt recovery** — Rehydrate note state before relational execution-strategy retries and use a stable signature-attempt ID/timestamp to return an already-committed attempt instead of creating an additional legal-signature row after an uncertain commit. Reason: PR review identified that retry delegates must not reuse mutated EF tracking state.
+- **Password reset retry recovery** — Used set-based relational token/PIN updates and made only execution-strategy retries idempotently acknowledge an already-committed reset when the requested PIN verifies against the stored hash. Reason: PR review identified that an uncertain commit could otherwise report an already-used reset token despite a successful PIN update.
+
+### Added - UX flow and UI style consistency test plan
+
+- **`docs/UX_FLOW_UI_STYLE_CONSISTENCY_TEST_PLAN.md`** — Added a standalone hosted-beta UX, design QA, visual consistency, accessibility, responsive, and interaction consistency test plan derived from the Beta E2E plan and PTDoc design-system documentation. Reason: product, design, and QA need a dedicated UX review plan separate from functional E2E/API/backend validation.
+- **UX audit finding follow-up** — Made the Admin Appointments Week View clinician selector visible even when clinician options are empty, added a disabled empty selector state, and added a visible `Open chart` affordance plus scan-friendly contact text treatment to patient directory cards. Reason: hosted beta UX review identified missing clinician-selection discoverability and unclear patient chart entry affordances.
+
+### Fixed - PDF export and role-scoped appointment week view formatting
+
+- **PDF export and Appointments Week View** — Rendered PDF document headers as polished clinical headers instead of internal hierarchy labels, compacted ROM export tables to Measure/Norm/Initial/Current/Comments, scoped Week View to a selected PT/PTA for admins, scoped PT/PTA Week View to the signed-in clinician, and made `?ptdocViewportDiagnostics=0` disable the responsive diagnostics overlay even after it was previously enabled. Reason: live UI/PDF verification found visible export implementation labels, unreadable ROM table density, overly dense cross-clinician Week View rendering, and a sticky responsive overlay toggle.
+- **Appointments Week View identity and selector empty states** — Restricted PT/PTA Week View scoping to the authenticated internal user ID, failing closed when that claim is absent, and distinguished an empty clinician directory from a clinician search with no matching results. Reason: PR review identified a PHI exposure risk from display-name matching and misleading clinician-selector feedback.
+- **Repository ignore hygiene** — Ignored root-level `output/` and `tmp/` scratch directories alongside the existing local API SQLite database ignore. Reason: local QA/runtime artifacts should not appear as new files during review.
+
+### Fixed - Local launcher empty API environment
+
+- **`run-ptdoc.sh`** — Avoided expanding an empty `api_env` array when starting the API without public web URL overrides. Reason: macOS Bash 3.2 with `set -u` treats empty array expansion as an unbound variable, causing the launcher to stop at `api_env[@]` before the API health wait can complete.
+
 ### Fixed - Audit remediation browser QA follow-up
 
 - **Route-backed browser QA hardening** — Reapplied Patients `action=add` state on query-only navigation, made appointment view links update hydrated UI state while preserving their route-backed `href` fallback, rendered week-grouping `aria-pressed` values explicitly, and changed patient-chart/appointment browser checks to verify route-backed `href` targets directly. Reason: localhost browser QA found stale query-backed Patients/Appointments state, an empty ARIA pressed value, and an ambiguous Notes link selector.

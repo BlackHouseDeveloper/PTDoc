@@ -133,57 +133,52 @@
             }
             else
             {
-                @* Week View - Clinician/day columns, ordered by clinician first. *@
-                @if (Clinicians != null)
+                @* Week View - selected clinician by day. The parent page scopes
+                   appointments before rendering so PT/PTA users only see their own week. *@
+                @foreach (var day in GetWeekDays())
                 {
-                    @foreach (var clinician in Clinicians)
-                    {
-                        @foreach (var day in GetWeekDays())
-                        {
-                            <div class="clinician-column week-clinician-column">
-                                <div class="clinician-header">
-                                    <div class="clinician-info">
-                                        <h3>@clinician.Name</h3>
-                                        <p>@day.DayName @day.Date.ToString("MMM d")</p>
-                                    </div>
-                                </div>
-
-                                <div class="appointments-container">
-                                    <div class="appointment-slots-grid" style="@GetSlotGridStyle()" aria-hidden="true">
-                                        @for (int i = 0; i < SlotCount; i++)
-                                        {
-                                            <div class="appointment-slot"></div>
-                                        }
-                                    </div>
-
-                                    @foreach (var appt in GetAppointmentsForClinicianOnDay(clinician.Name, day.Date))
-                                    {
-                                        var effectiveBlockStatus = GetEffectiveBlockStatus(appt, day.Date);
-                                        <button type="button"
-                                                class="appointment-block @GetAppointmentClass(effectiveBlockStatus) @GetAppointmentDensityClass(appt)"
-                                                title="@($"{appt.Time} - {appt.PatientName}")"
-                                                aria-label="@GetAppointmentAriaLabel(appt, day.Date)"
-                                                style="@GetAppointmentStyle(appt)"
-                                                @onclick="@(() => OpenAppointmentDetailsAsync(appt, day.Date))">
-                                            <div class="appointment-content">
-                                                <div class="appointment-time">
-                                                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                        <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/>
-                                                        <path d="M6 3V6L8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                                                    </svg>
-                                                    <span>@appt.Time</span>
-                                                </div>
-                                                <div class="appointment-patient">@appt.PatientName</div>
-                                                <span class="appointment-workflow-status @GetWorkflowStatusClass(GetEffectiveAppointmentStatusLabel(appt, day.Date))">
-                                                    @GetWorkflowStatusShortLabel(GetEffectiveAppointmentStatusLabel(appt, day.Date))
-                                                </span>
-                                            </div>
-                                        </button>
-                                    }
-                                </div>
+                    <div class="clinician-column week-clinician-column">
+                        <div class="clinician-header">
+                            <div class="clinician-info">
+                                <h3>@day.DayName</h3>
+                                <p>@day.Date.ToString("MMM d")</p>
                             </div>
-                        }
-                    }
+                        </div>
+
+                        <div class="appointments-container">
+                            <div class="appointment-slots-grid" style="@GetSlotGridStyle()" aria-hidden="true">
+                                @for (int i = 0; i < SlotCount; i++)
+                                {
+                                    <div class="appointment-slot"></div>
+                                }
+                            </div>
+
+                            @foreach (var appt in GetAppointmentsForDay(day.Date))
+                            {
+                                var effectiveBlockStatus = GetEffectiveBlockStatus(appt, day.Date);
+                                <button type="button"
+                                        class="appointment-block @GetAppointmentClass(effectiveBlockStatus) @GetAppointmentDensityClass(appt)"
+                                        title="@($"{appt.Time} - {appt.PatientName}")"
+                                        aria-label="@GetAppointmentAriaLabel(appt, day.Date)"
+                                        style="@GetAppointmentStyle(appt)"
+                                        @onclick="@(() => OpenAppointmentDetailsAsync(appt, day.Date))">
+                                    <div class="appointment-content">
+                                        <div class="appointment-time">
+                                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.5"/>
+                                                <path d="M6 3V6L8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                                            </svg>
+                                            <span>@appt.Time</span>
+                                        </div>
+                                        <div class="appointment-patient">@appt.PatientName</div>
+                                        <span class="appointment-workflow-status @GetWorkflowStatusClass(GetEffectiveAppointmentStatusLabel(appt, day.Date))">
+                                            @GetWorkflowStatusShortLabel(GetEffectiveAppointmentStatusLabel(appt, day.Date))
+                                        </span>
+                                    </div>
+                                </button>
+                            }
+                        </div>
+                    </div>
                 }
             }
         </div>
@@ -239,7 +234,7 @@
     private string ScrollHint => View switch
     {
         AppointmentsView.Week when WeekGrouping == AppointmentsWeekGrouping.Day => "Scroll sideways to view more days.",
-        AppointmentsView.Week => "Scroll sideways to view more clinicians and days.",
+        AppointmentsView.Week => "Scroll sideways to view the selected clinician's week.",
         _ => "Scroll sideways to view more clinicians."
     };
 

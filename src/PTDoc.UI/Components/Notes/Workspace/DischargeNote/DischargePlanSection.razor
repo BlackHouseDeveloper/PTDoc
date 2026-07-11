@@ -24,7 +24,7 @@
         }
 
         <label class="discharge-plan__label" for="discharge-reason">Primary Discharge Reason *</label>
-        <select id="discharge-reason" class="discharge-plan__select" disabled="@IsReadOnly" @bind="Vm.PrimaryDischargeReason" @bind:after="HandleChangedAsync">
+        <select id="discharge-reason" class="discharge-plan__select" disabled="@IsReadOnly" @bind="Vm.PrimaryDischargeReason" @bind:after="HandleChangedAsync" aria-required="true" data-note-field-key="discharge-primary-reason">
             <option value="">Select discharge reason...</option>
             @foreach (var option in DischargeDocumentationOptions.DischargeReasonOptions)
             {
@@ -50,6 +50,8 @@
                   class="discharge-plan__textarea"
                   rows="6"
                   disabled="@IsReadOnly"
+                  aria-required="true"
+                  data-note-field-key="discharge-recommendations"
                   @bind="Vm.DischargeRecommendations"
                   @bind:event="oninput"
                   @bind:after="HandleChangedAsync"
@@ -128,7 +130,7 @@
         </div>
     </article>
 
-    <article class="discharge-plan__card" data-testid="end-of-care-checklist-card">
+    <article class="discharge-plan__card" data-testid="end-of-care-checklist-card" data-note-field-key="discharge-end-of-care-checklist">
         <header class="discharge-plan__card-header">
             <div>
                 <h3 class="discharge-plan__card-title">End-of-Care Checklist</h3>

@@ -80,6 +80,8 @@ test.describe('PTDoc audit remediation QA', () => {
     await page.waitForLoadState('domcontentloaded');
 
     await expect(page.locator('.week-grouping-control')).toBeVisible();
+    await expect(page.locator('[data-testid="appointments-week-clinician-selector"]')).toBeVisible();
+    await expect(page.locator('#appointments-week-clinician-select')).toBeVisible();
     await expect(page.locator('body')).toContainText(/Week Schedule|Week of/i);
 
     const clinicianGrid = page.locator('.scheduler-grid.week-grouping-clinician');
@@ -101,6 +103,7 @@ test.describe('PTDoc audit remediation QA', () => {
     await authenticateIfNeeded(page);
     await page.goto('/patients');
     await page.waitForLoadState('domcontentloaded');
+    await expect(page.locator('.patient-card-action').first()).toContainText('Open chart');
 
     const addPatient = page.getByRole('link', { name: /^Add Patient$/ });
     await expect(addPatient).toHaveAttribute('href', '/patients?action=add');

@@ -229,7 +229,9 @@
                 <select id="treatment-frequency" class="pt-card__select"
                         disabled="@IsReadOnly"
                         value="@Vm.TreatmentFrequency"
-                        @onchange="e => SetAndNotify(vm => vm.TreatmentFrequency = e.Value?.ToString())">
+                        @onchange="e => SetAndNotify(vm => vm.TreatmentFrequency = e.Value?.ToString())"
+                        aria-required="true"
+                        data-note-field-key="plan-treatment-frequency">
                     <option value="">Select frequency ↓</option>
                     @foreach (var f in _frequencyOptions)
                     {
@@ -245,7 +247,9 @@
                 <select id="treatment-duration" class="pt-card__select"
                         disabled="@IsReadOnly"
                         value="@Vm.TreatmentDuration"
-                        @onchange="e => SetAndNotify(vm => vm.TreatmentDuration = e.Value?.ToString())">
+                        @onchange="e => SetAndNotify(vm => vm.TreatmentDuration = e.Value?.ToString())"
+                        aria-required="true"
+                        data-note-field-key="plan-treatment-duration">
                     <option value="">Select duration ↓</option>
                     @foreach (var d in _durationOptions)
                     {

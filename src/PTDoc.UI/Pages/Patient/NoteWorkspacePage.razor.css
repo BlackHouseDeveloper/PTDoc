@@ -91,6 +91,22 @@
     color: var(--foreground);
 }
 
+::deep .note-workspace__missing-field-highlight {
+    animation: note-workspace-missing-pulse 1.8s ease-out 1;
+    outline: 3px solid color-mix(in srgb, var(--warning) 70%, var(--ring));
+    outline-offset: 3px;
+}
+
+@keyframes note-workspace-missing-pulse {
+    0% {
+        box-shadow: 0 0 0 0 color-mix(in srgb, var(--warning) 45%, transparent);
+    }
+
+    100% {
+        box-shadow: 0 0 0 12px transparent;
+    }
+}
+
 .note-workspace__override-panel,
 ::deep .note-workspace__override-panel {
     display: flex;

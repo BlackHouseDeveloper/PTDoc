@@ -467,6 +467,27 @@ public sealed class AppointmentComponentsTests : TestContext
     }
 
     [Fact]
+    public void AppointmentsLeftColumn_ClinicianSearchWithNoMatches_UsesMatchingEmptyState()
+    {
+        var cut = RenderComponent<AppointmentsLeftColumn>(parameters => parameters
+            .Add(component => component.SelectedView, AppointmentsView.Week)
+            .Add(component => component.ShowClinicianSelector, true)
+            .Add(component => component.ClinicianOptions,
+            [
+                new WeekClinicianFilterOption { Id = Guid.NewGuid().ToString("D"), Name = "Taylor PT" }
+            ]));
+
+        cut.Find("#appointments-week-clinician-search").Input("No Match");
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Contains("No matching clinicians", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("No clinicians available", cut.Markup, StringComparison.Ordinal);
+            Assert.True(cut.Find("#appointments-week-clinician-select").HasAttribute("disabled"));
+        });
+    }
+
+    [Fact]
     public void AppointmentsDaySwitcher_WeekView_ShowsWeekRangeAndWeekNavigationLabels()
     {
         var originalCulture = CultureInfo.CurrentCulture;
