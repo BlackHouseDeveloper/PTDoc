@@ -26,7 +26,7 @@
                         @onchange="HandleClinicianSelectionChangedAsync">
                     @if (FilteredClinicianOptions.Count == 0)
                     {
-                        <option value="">No clinicians available</option>
+                        <option value="">@(ClinicianOptions.Count == 0 ? "No clinicians available" : "No matching clinicians")</option>
                     }
                     else
                     {

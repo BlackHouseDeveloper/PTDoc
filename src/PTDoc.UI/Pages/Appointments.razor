@@ -136,7 +136,6 @@
     private IJSObjectReference? navigationModule;
     private ClaimsPrincipal currentUser = new(new ClaimsIdentity());
     private Guid? currentUserId;
-    private string currentUserDisplayName = string.Empty;
     private string selectedWeekClinicianId = string.Empty;
     private string? pendingRouteWeekClinicianId;
 
@@ -491,13 +490,11 @@
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             currentUser = authState.User;
             currentUserId = ResolveCurrentUserId(currentUser);
-            currentUserDisplayName = ResolveCurrentUserDisplayName(currentUser);
         }
         catch
         {
             currentUser = new ClaimsPrincipal(new ClaimsIdentity());
             currentUserId = null;
-            currentUserDisplayName = string.Empty;
         }
     }
 
@@ -896,15 +893,7 @@
 
     private string? ResolveCurrentUserClinicianId()
     {
-        if (currentUserId.HasValue
-            && weekClinicianOptions.Any(option => string.Equals(option.Id, currentUserId.Value.ToString("D"), StringComparison.OrdinalIgnoreCase)))
-        {
-            return currentUserId.Value.ToString("D");
-        }
-
-        return weekClinicianOptions
-            .FirstOrDefault(option => AreClinicianNamesEquivalent(option.Name, currentUserDisplayName))
-            ?.Id;
+        return currentUserId?.ToString("D");
     }
 
     private void NavigateToCurrentWeekRoute()
@@ -1063,46 +1052,13 @@
             return true;
         }
 
-        if (currentUserId.HasValue && appointment.ClinicianId == currentUserId.Value)
-        {
-            return true;
-        }
-
-        return MatchesClinicianName(appointment, currentUserDisplayName);
+        return currentUserId.HasValue && appointment.ClinicianId == currentUserId.Value;
     }
 
     private static bool MatchesClinicianId(AppointmentListItemResponse appointment, string clinicianId)
     {
         return appointment.ClinicianId.HasValue
             && string.Equals(appointment.ClinicianId.Value.ToString("D"), clinicianId, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool MatchesClinicianName(AppointmentListItemResponse appointment, string clinicianName)
-    {
-        if (string.IsNullOrWhiteSpace(clinicianName))
-        {
-            return false;
-        }
-
-        return AreClinicianNamesEquivalent(appointment.ClinicianName, clinicianName)
-            || AreClinicianNamesEquivalent(GetEffectiveClinicianName(appointment), clinicianName);
-    }
-
-    private static bool AreClinicianNamesEquivalent(string? left, string? right)
-    {
-        var normalizedLeft = NormalizeClinicianName(left);
-        var normalizedRight = NormalizeClinicianName(right);
-        return !string.IsNullOrWhiteSpace(normalizedLeft)
-            && string.Equals(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string NormalizeClinicianName(string? value)
-    {
-        var normalized = TrimClinicianPrefix(value ?? string.Empty)
-            .Replace(".", string.Empty, StringComparison.Ordinal)
-            .Trim();
-
-        return string.Join(' ', normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
     private bool MatchesNotesDueQueue(AppointmentListItemResponse appointment)
@@ -1309,14 +1265,6 @@
         }
 
         return null;
-    }
-
-    private static string ResolveCurrentUserDisplayName(ClaimsPrincipal user)
-    {
-        return user.Identity?.Name
-            ?? user.FindFirst(ClaimTypes.Name)?.Value
-            ?? user.FindFirst(ClaimTypes.Email)?.Value
-            ?? string.Empty;
     }
 
     private static DateTime ToLocalTime(DateTime utcTime)

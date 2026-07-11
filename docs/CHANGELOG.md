@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - PDF export and role-scoped appointment week view formatting
 
 - **PDF export and Appointments Week View** — Rendered PDF document headers as polished clinical headers instead of internal hierarchy labels, compacted ROM export tables to Measure/Norm/Initial/Current/Comments, scoped Week View to a selected PT/PTA for admins, scoped PT/PTA Week View to the signed-in clinician, and made `?ptdocViewportDiagnostics=0` disable the responsive diagnostics overlay even after it was previously enabled. Reason: live UI/PDF verification found visible export implementation labels, unreadable ROM table density, overly dense cross-clinician Week View rendering, and a sticky responsive overlay toggle.
+- **Appointments Week View identity and selector empty states** — Restricted PT/PTA Week View scoping to the authenticated internal user ID, failing closed when that claim is absent, and distinguished an empty clinician directory from a clinician search with no matching results. Reason: PR review identified a PHI exposure risk from display-name matching and misleading clinician-selector feedback.
 - **Repository ignore hygiene** — Ignored root-level `output/` and `tmp/` scratch directories alongside the existing local API SQLite database ignore. Reason: local QA/runtime artifacts should not appear as new files during review.
 
 ### Fixed - Local launcher empty API environment

@@ -2,10 +2,12 @@ using Bunit;
 using Bunit.TestDoubles;
 using AngleSharp.Html.Dom;
 using Microsoft.AspNetCore.Components;
+using System.Security.Claims;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.DTOs;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Integrations;
 using PTDoc.Application.Services;
 using PTDoc.UI.Services;
@@ -425,7 +427,8 @@ public sealed class AppointmentsPageTests : TestContext
                 ]
             },
             role: Roles.PT,
-            username: "Taylor PT");
+            username: "Taylor PT",
+            userId: taylorId);
         Services.GetRequiredService<NavigationManager>().NavigateTo("/appointments?dateRange=week");
 
         var cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
@@ -435,6 +438,33 @@ public sealed class AppointmentsPageTests : TestContext
             Assert.DoesNotContain("appointments-week-clinician-selector", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Taylor Week Patient", cut.Markup, StringComparison.Ordinal);
             Assert.DoesNotContain("Jordan Week Patient", cut.Markup, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void AppointmentsPage_PtWeekView_WithoutInternalUserId_FailsClosed()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var clinicianId = Guid.NewGuid();
+        var weekStart = GetSundayStartOfWeek(DateTime.Today);
+        var appointmentStart = DateTime.SpecifyKind(weekStart.AddDays(1).AddHours(9), DateTimeKind.Local);
+
+        RegisterServices(
+            new AppointmentsOverviewResponse
+            {
+                Appointments = [CreateAppointment("Restricted Week Patient", clinicianId, "Taylor PT", appointmentStart)],
+                Clinicians = [new AppointmentClinicianResponse { Id = clinicianId, DisplayName = "Taylor PT" }]
+            },
+            role: Roles.PT,
+            username: "Taylor PT");
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/appointments?dateRange=week");
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.DoesNotContain("Restricted Week Patient", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("No appointments scheduled for this week", cut.Markup, StringComparison.Ordinal);
         });
     }
 
@@ -729,12 +759,17 @@ public sealed class AppointmentsPageTests : TestContext
         AppointmentsOverviewResponse? overview = null,
         IReadOnlyList<PatientListItemResponse>? patients = null,
         string role = Roles.Admin,
-        string username = "Admin User")
+        string username = "Admin User",
+        Guid? userId = null)
     {
         Services.AddLogging();
         var authorization = this.AddTestAuthorization();
         authorization.SetAuthorized(username);
         authorization.SetRoles(role);
+        if (userId.HasValue)
+        {
+            authorization.SetClaims(new Claim(PTDocClaimTypes.InternalUserId, userId.Value.ToString("D")));
+        }
 
         var headerConfigurationService = new Mock<IHeaderConfigurationService>(MockBehavior.Loose);
         headerConfigurationService
