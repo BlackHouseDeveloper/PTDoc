@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - beta reliability and audit remediation
+
+- **Clinical draft persistence and concurrency** — Committed evaluation workspace text on input, made autosave generation-aware, prevented superseded save responses from overwriting newer local edits, carried `ClinicalNote.LastModifiedUtc` through the workspace contracts, enforced it as an EF concurrency token, and added explicit retain-or-reload conflict handling for HTTP `409`. Reason: hosted beta showed a successful draft-save state while Additional functional limitations reverted after reload, and concurrent sessions had no stale-write protection.
+- **Web deployment continuity** — Added anonymous Web liveness/readiness probes, a standard Blazor reconnect/rejected-circuit dialog, and API-first staging-slot deployment through Azure OIDC with post-swap health, seeded-role login checks, and reverse-swap rollback. Reason: an authenticated hosted session received a transient `503` and briefly rendered blank during the audit.
+- **Beta startup seed observability** — Added the bounded `BetaAccess__SeedLockTimeoutSeconds` setting, structured seed outcomes, correct SQL application-lock contention classification, idempotent `AlreadyCurrent` reporting, and one sanitized duration/lock-result startup outcome. Reason: expected lock contention was logged ambiguously and the startup path lacked a bounded wait and machine-testable result.
+- **Intake OTP diagnostics** — Added opaque request IDs, non-PHI outcome categories, provider correlation, sanitized intake audit events, and an Admin-only `/diagnostics/intake-otp` view without raw contacts, invite tokens, or OTPs. Reason: anonymous send-code failure feedback must remain generic while operators need enough evidence to distinguish mismatch, invalid invite, rate limit, provider rejection, and provider outage.
+- **Audit regression coverage and runbooks** — Added unit/integration coverage for autosave generations, exact workspace mapping, stale saves, seed lock codes, Web health, and OTP diagnostics; expanded real-Chromium QA for menu keyboard activation, PT/PTA note routing, exact draft reload/cleanup, and two-session conflicts; updated beta deployment, QA, and audit reconciliation. Reason: the previous open and blocked findings need executable closure gates instead of manual inference.
+
 ### Fixed - SOAP incomplete-note navigation safeguard
 
 - **SOAP note workspace navigation guard** — Added incomplete-documentation detection, missing-required summaries, guarded route/note-type exits, accessible confirmation modal behavior, browser refresh fallback, and first-missing-field focus for editable draft SOAP notes. Reason: clinicians could leave incomplete draft notes after autosave and later spend time searching for skipped required fields.
