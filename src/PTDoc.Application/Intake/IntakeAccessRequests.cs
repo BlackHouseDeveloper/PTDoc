@@ -15,7 +15,26 @@ public sealed class SendIntakeOtpRequest
 public sealed class SendIntakeOtpResponse
 {
     public bool Success { get; set; }
+
+    public string RequestId { get; set; } = string.Empty;
 }
+
+public enum IntakeOtpSendOutcome
+{
+    Delivered,
+    InviteInvalid,
+    ContactInvalid,
+    ContactMismatch,
+    IntakeUnavailable,
+    RateLimited,
+    ProviderRejected,
+    ProviderOutage
+}
+
+public readonly record struct IntakeOtpSendResult(
+    bool Success,
+    string RequestId,
+    IntakeOtpSendOutcome Outcome);
 
 public sealed class VerifyIntakeOtpRequest
 {

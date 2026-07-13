@@ -48,6 +48,13 @@ public sealed class HttpIntakeInviteService(HttpClient httpClient) : IIntakeInvi
         string contact,
         OtpChannel channel,
         CancellationToken cancellationToken = default)
+        => (await SendOtpWithDiagnosticsAsync(inviteToken, contact, channel, cancellationToken)).Success;
+
+    public async Task<IntakeOtpSendResult> SendOtpWithDiagnosticsAsync(
+        string inviteToken,
+        string contact,
+        OtpChannel channel,
+        CancellationToken cancellationToken = default)
     {
         var response = await httpClient.PostAsJsonAsync(
             "/api/v1/intake/access/send-otp",
@@ -61,7 +68,11 @@ public sealed class HttpIntakeInviteService(HttpClient httpClient) : IIntakeInvi
 
         response.EnsureSuccessStatusCode();
         var payload = await response.Content.ReadFromJsonAsync<SendIntakeOtpResponse>(SerializerOptions, cancellationToken);
-        return payload?.Success == true;
+        var success = payload?.Success == true;
+        return new IntakeOtpSendResult(
+            success,
+            payload?.RequestId ?? string.Empty,
+            success ? IntakeOtpSendOutcome.Delivered : IntakeOtpSendOutcome.ProviderRejected);
     }
 
     public async Task<IntakeInviteResult> VerifyOtpAndIssueAccessTokenAsync(

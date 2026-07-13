@@ -467,6 +467,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             await sendOtpResponse.Content.ReadAsStringAsync(),
             JsonOpts)!;
         Assert.True(sendOtpPayload.Success);
+        Assert.Equal(32, sendOtpPayload.RequestId.Length);
         Assert.False(string.IsNullOrWhiteSpace(_factory.LastIntakeOtpCode));
 
         using var verifyOtpResponse = await anonymousClient.PostAsync(

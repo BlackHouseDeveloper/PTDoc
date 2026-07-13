@@ -309,6 +309,7 @@ public class AuthorizationCoverageTests
         // ── Diagnostics (Diagnostics/DiagnosticsEndpoints.cs) ─────────────────
         new("GET", "/diagnostics/db", AuthorizationPolicies.AdminOnly),
         new("GET", "/diagnostics/runtime", AuthorizationPolicies.AdminOnly),
+        new("GET", "/diagnostics/intake-otp", AuthorizationPolicies.AdminOnly),
         new("GET", "/diagnostics/ai-faults", AuthorizationPolicies.AdminOnly),
         new("GET", "/diagnostics/development/communications", AuthorizationPolicies.AdminOnly),
         new("PUT", "/diagnostics/ai-faults", AuthorizationPolicies.AdminOnly),

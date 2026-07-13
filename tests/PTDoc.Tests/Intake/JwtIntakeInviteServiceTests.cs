@@ -67,7 +67,7 @@ public sealed class JwtIntakeInviteServiceTests
     }
 
     [Fact]
-    public async Task SendOtpAsync_Email_UsesSharedEmailProvider_And_AuditsMaskedDestination()
+    public async Task SendOtpWithDiagnosticsAsync_Email_UsesSharedProviderAndOpaqueCorrelation()
     {
         await using var db = CreateDbContext();
         var intake = await SeedOpenIntakeAsync(db);
@@ -93,13 +93,19 @@ public sealed class JwtIntakeInviteServiceTests
         var service = CreateService(db, communicationService: communicationService, auditService: auditService);
 
         var invite = await service.CreateInviteAsync(intake.Id);
-        var sent = await service.SendOtpAsync(ReadInviteToken(invite.InviteUrl!), "patient@example.com", OtpChannel.Email);
+        var result = await service.SendOtpWithDiagnosticsAsync(
+            ReadInviteToken(invite.InviteUrl!),
+            "patient@example.com",
+            OtpChannel.Email);
 
-        Assert.True(sent);
+        Assert.True(result.Success);
+        Assert.Equal(IntakeOtpSendOutcome.Delivered, result.Outcome);
+        Assert.Equal(32, result.RequestId.Length);
         communicationService.Verify(service => service.SendIntakeOtpEmailAsync(
             It.Is<IntakeOtpDeliveryRequest>(request =>
                 request.Recipient == "patient@example.com" &&
-                request.OtpCode.Length == 6),
+                request.OtpCode.Length == 6 &&
+                request.CorrelationId == result.RequestId),
             It.IsAny<CancellationToken>()),
             Times.Once);
         communicationService.Verify(service => service.SendIntakeOtpSmsAsync(
@@ -108,8 +114,11 @@ public sealed class JwtIntakeInviteServiceTests
             Times.Never);
 
         var audit = await db.AuditLogs.SingleAsync(log => log.EventType == "IntakeOtpDelivered");
+        Assert.Equal(result.RequestId, audit.CorrelationId);
+        Assert.Equal(intake.Id, audit.EntityId);
         Assert.DoesNotContain("patient@example.com", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("p***t@example.com", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("p***t@example.com", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Delivered", audit.MetadataJson, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -118,16 +127,28 @@ public sealed class JwtIntakeInviteServiceTests
         await using var db = CreateDbContext();
         var intake = await SeedOpenIntakeAsync(db);
         var communicationService = new Mock<ICommunicationService>();
-        var service = CreateService(db, communicationService: communicationService);
+        var service = CreateService(
+            db,
+            communicationService: communicationService,
+            auditService: new AuditService(db));
         var invite = await service.CreateInviteAsync(intake.Id);
 
-        var sent = await service.SendOtpAsync(ReadInviteToken(invite.InviteUrl!), "other@example.com", OtpChannel.Email);
+        var result = await service.SendOtpWithDiagnosticsAsync(
+            ReadInviteToken(invite.InviteUrl!),
+            "other@example.com",
+            OtpChannel.Email);
 
-        Assert.False(sent);
+        Assert.False(result.Success);
+        Assert.Equal(IntakeOtpSendOutcome.ContactMismatch, result.Outcome);
         communicationService.Verify(service => service.SendIntakeOtpEmailAsync(
             It.IsAny<IntakeOtpDeliveryRequest>(),
             It.IsAny<CancellationToken>()),
             Times.Never);
+        var audit = await db.AuditLogs.SingleAsync(log => log.EventType == "IntakeOtpDeliveryFailed");
+        Assert.Equal(result.RequestId, audit.CorrelationId);
+        Assert.Equal(intake.Id, audit.EntityId);
+        Assert.Contains("ContactMismatch", audit.MetadataJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("other@example.com", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -255,9 +276,10 @@ public sealed class JwtIntakeInviteServiceTests
         var invite = await service.CreateInviteAsync(intake.Id);
         var inviteToken = ReadInviteToken(invite.InviteUrl!);
 
-        var sent = await service.SendOtpAsync(inviteToken, "patient@example.com", OtpChannel.Email);
+        var result = await service.SendOtpWithDiagnosticsAsync(inviteToken, "patient@example.com", OtpChannel.Email);
 
-        Assert.False(sent);
+        Assert.False(result.Success);
+        Assert.Equal(IntakeOtpSendOutcome.ProviderRejected, result.Outcome);
         Assert.False(string.IsNullOrWhiteSpace(otpCode));
 
         var verified = await service.VerifyOtpAndIssueAccessTokenAsync(
@@ -268,8 +290,44 @@ public sealed class JwtIntakeInviteServiceTests
         Assert.False(verified.IsValid);
 
         var challenge = await db.IntakeOtpChallenges.SingleAsync();
+        Assert.Equal(result.RequestId, challenge.CorrelationId);
         Assert.NotNull(challenge.ConsumedAtUtc);
         Assert.True(challenge.ExpiresAtUtc <= DateTimeOffset.UtcNow);
+    }
+
+    [Fact]
+    public async Task SendOtpWithDiagnosticsAsync_ExhaustedTransientProviderFailure_IsProviderOutage()
+    {
+        await using var db = CreateDbContext();
+        var intake = await SeedOpenIntakeAsync(db);
+        var communicationService = new Mock<ICommunicationService>();
+        communicationService
+            .Setup(service => service.SendIntakeOtpEmailAsync(It.IsAny<IntakeOtpDeliveryRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DeliveryResult
+            {
+                Succeeded = false,
+                Status = DeliveryStatus.Failed,
+                Provider = "AzureCommunicationServices",
+                ErrorCode = "Http503",
+                SafeErrorMessage = "Email delivery failed.",
+                RetryCount = 2,
+                Channel = DeliveryChannel.Email,
+                Purpose = DeliveryPurpose.IntakeOtp
+            });
+        var service = CreateService(db, communicationService: communicationService, auditService: new AuditService(db));
+        var invite = await service.CreateInviteAsync(intake.Id);
+
+        var result = await service.SendOtpWithDiagnosticsAsync(
+            ReadInviteToken(invite.InviteUrl!),
+            "patient@example.com",
+            OtpChannel.Email);
+
+        Assert.False(result.Success);
+        Assert.Equal(IntakeOtpSendOutcome.ProviderOutage, result.Outcome);
+        var audit = await db.AuditLogs.SingleAsync(log => log.EventType == "IntakeOtpDeliveryFailed");
+        Assert.Equal(result.RequestId, audit.CorrelationId);
+        Assert.Contains("ProviderOutage", audit.MetadataJson, StringComparison.Ordinal);
+        Assert.Contains("Http503", audit.MetadataJson, StringComparison.Ordinal);
     }
 
     [Fact]
