@@ -57,6 +57,8 @@ public sealed class HttpIntakeInviteService(HttpClient httpClient) : IIntakeInvi
         CancellationToken cancellationToken = default,
         string? correlationId = null)
     {
+        // The API owns the correlation ID so anonymous clients cannot choose audit identifiers.
+        _ = correlationId;
         var response = await httpClient.PostAsJsonAsync(
             "/api/v1/intake/access/send-otp",
             new SendIntakeOtpRequest

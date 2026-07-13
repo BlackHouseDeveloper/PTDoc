@@ -173,6 +173,37 @@ public sealed class DraftAutosaveServiceTests
         Assert.NotNull(autosave.LastSavedAt);
     }
 
+    [Fact]
+    public async Task ResetDuringInFlightSave_RemainsCleanWhenOlderSaveCompletes()
+    {
+        await using var autosave = new DraftAutosaveService();
+        var saveStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSave = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        autosave.Configure(
+            async cancellationToken =>
+            {
+                saveStarted.TrySetResult(true);
+                await releaseSave.Task.WaitAsync(cancellationToken);
+                return DraftAutosaveSaveResult.Succeeded();
+            },
+            () => true);
+
+        autosave.MarkDirty();
+        var saveTask = autosave.FlushAsync();
+        await saveStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        var generationBeforeReset = autosave.DirtyVersion;
+        autosave.Reset();
+        Assert.True(autosave.DirtyVersion > generationBeforeReset);
+
+        releaseSave.TrySetResult(true);
+        Assert.True(await saveTask);
+
+        Assert.False(autosave.IsDirty);
+        Assert.Null(autosave.LastSavedAt);
+    }
+
     private static async Task WaitForConditionAsync(Func<bool> condition, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;

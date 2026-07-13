@@ -28,7 +28,7 @@ public sealed class DraftAutosaveService : IAsyncDisposable
     public bool IsSaving { get; private set; }
     public string? LastErrorMessage { get; private set; }
     public DateTimeOffset? LastSavedAt { get; private set; }
-    public long DirtyVersion => _dirtyVersion;
+    public long DirtyVersion => Interlocked.Read(ref _dirtyVersion);
 
     public event Action? StateChanged;
 
@@ -50,7 +50,8 @@ public sealed class DraftAutosaveService : IAsyncDisposable
         IsSaving = false;
         LastErrorMessage = null;
         LastSavedAt = null;
-        _dirtyVersion = 0;
+        // Advance the generation so an in-flight save cannot match a later edit after reset.
+        Interlocked.Increment(ref _dirtyVersion);
         NotifyStateChanged();
     }
 
@@ -61,7 +62,7 @@ public sealed class DraftAutosaveService : IAsyncDisposable
             return;
         }
 
-        _dirtyVersion++;
+        Interlocked.Increment(ref _dirtyVersion);
         IsDirty = true;
         LastErrorMessage = null;
         NotifyStateChanged();
@@ -127,15 +128,18 @@ public sealed class DraftAutosaveService : IAsyncDisposable
 
             IsSaving = true;
             LastErrorMessage = null;
-            var savingVersion = _dirtyVersion;
+            var savingVersion = Interlocked.Read(ref _dirtyVersion);
             NotifyStateChanged();
 
             var result = await _saveAsync(cancellationToken);
             if (result.Success)
             {
-                IsDirty = _dirtyVersion != savingVersion;
-                if (!IsDirty)
+                // Only the current dirty generation can clear the dirty state and update save metadata.
+                var isCurrentDirtyGeneration =
+                    IsDirty && Interlocked.Read(ref _dirtyVersion) == savingVersion;
+                if (isCurrentDirtyGeneration)
                 {
+                    IsDirty = false;
                     LastSavedAt = DateTimeOffset.UtcNow;
                 }
                 LastErrorMessage = null;
