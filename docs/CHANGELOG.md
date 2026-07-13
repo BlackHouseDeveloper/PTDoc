@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Intake OTP diagnostics** — Added opaque request IDs, non-PHI outcome categories, provider correlation, sanitized intake audit events, and an Admin-only `/diagnostics/intake-otp` view without raw contacts, invite tokens, or OTPs. Reason: anonymous send-code failure feedback must remain generic while operators need enough evidence to distinguish mismatch, invalid invite, rate limit, provider rejection, and provider outage.
 - **Audit regression coverage and runbooks** — Added unit/integration coverage for autosave generations, exact workspace mapping, stale saves, seed lock codes, Web health, and OTP diagnostics; expanded real-Chromium QA for menu keyboard activation, PT/PTA note routing, exact draft reload/cleanup, and two-session conflicts; updated beta deployment, QA, and audit reconciliation. Reason: the previous open and blocked findings need executable closure gates instead of manual inference.
 
+### Documented - hosted beta blocked-feature rerun
+
+- **`docs/audits/ptdoc-blocked-feature-rerun-2026-07-11.md`** — Recorded the focused hosted-beta rerun of every previously open or blocked workflow. Admin patient/intake actions plus PT/Admin note-entry navigation now pass, while clinician draft save/reload exposes a new Critical false-success persistence defect; the PTA note-entry retest, patient invite delivery/intake completion, keyboard menu activation, PDF output, and one transient hosted Web disconnect remain open or limited. Reason: release readiness must reflect current observable beta behavior after the latest changes without treating unsafe or unexecuted actions as passed.
+
+### Changed - comprehensive beta E2E audit plan
+
+- **`docs/BETA_E2E_TEST_PLAN.md`** — Expanded the hosted-beta E2E plan into an inventory-driven UI/UX and functional audit framework with dynamic discovery, route/page/component/state ledgers, role matrices, reusable-component reconciliation, workflow coverage, blocked-item accounting, coverage metrics, and release-readiness reporting. Reason: beta verification needs a no-silent-omissions plan that can be executed by browser agents or manual QA without sampling discovered surfaces or leaking sensitive beta credentials.
+
 ### Fixed - SOAP incomplete-note navigation safeguard
 
 - **SOAP note workspace navigation guard** — Added incomplete-documentation detection, missing-required summaries, guarded route/note-type exits, accessible confirmation modal behavior, browser refresh fallback, and first-missing-field focus for editable draft SOAP notes. Reason: clinicians could leave incomplete draft notes after autosave and later spend time searching for skipped required fields.
