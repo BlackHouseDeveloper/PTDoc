@@ -133,7 +133,8 @@ public static class IntakeAccessEndpoints
             ReadStringProperty(document.RootElement, "inviteToken")!,
             ReadStringProperty(document.RootElement, "contact")!,
             channel,
-            cancellationToken);
+            cancellationToken,
+            correlationId: requestId);
         return Results.Ok(new SendIntakeOtpResponse
         {
             Success = result.Success,

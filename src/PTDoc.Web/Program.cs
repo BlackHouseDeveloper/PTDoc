@@ -279,7 +279,7 @@ app.MapGet("/health/ready", async (
     }
     catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
     {
-        app.Logger.LogWarning("Web readiness probe could not reach the configured API liveness endpoint.");
+        app.Logger.LogWarning("Web readiness probe could not reach the configured API readiness endpoint.");
     }
 
     return Results.Json(new
@@ -287,7 +287,7 @@ app.MapGet("/health/ready", async (
         status = "Unhealthy",
         checks = new[]
         {
-            new { name = "api", status = "Unhealthy", description = "API liveness endpoint is unavailable." }
+            new { name = "api", status = "Unhealthy", description = "API readiness endpoint is unavailable." }
         }
     }, statusCode: StatusCodes.Status503ServiceUnavailable);
 })

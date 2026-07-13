@@ -54,7 +54,8 @@ public sealed class HttpIntakeInviteService(HttpClient httpClient) : IIntakeInvi
         string inviteToken,
         string contact,
         OtpChannel channel,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? correlationId = null)
     {
         var response = await httpClient.PostAsJsonAsync(
             "/api/v1/intake/access/send-otp",

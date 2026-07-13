@@ -192,9 +192,12 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
         string inviteToken,
         string contact,
         OtpChannel channel,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? correlationId = null)
     {
-        var requestId = Guid.NewGuid().ToString("N");
+        var requestId = string.IsNullOrWhiteSpace(correlationId)
+            ? Guid.NewGuid().ToString("N")
+            : correlationId;
         var validation = await ValidateInviteOtpContextAsync(inviteToken, contact, channel, cancellationToken);
         if (!validation.Success)
         {

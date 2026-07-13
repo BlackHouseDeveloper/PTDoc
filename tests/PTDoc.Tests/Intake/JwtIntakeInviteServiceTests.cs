@@ -93,14 +93,16 @@ public sealed class JwtIntakeInviteServiceTests
         var service = CreateService(db, communicationService: communicationService, auditService: auditService);
 
         var invite = await service.CreateInviteAsync(intake.Id);
+        var suppliedRequestId = Guid.NewGuid().ToString("N");
         var result = await service.SendOtpWithDiagnosticsAsync(
             ReadInviteToken(invite.InviteUrl!),
             "patient@example.com",
-            OtpChannel.Email);
+            OtpChannel.Email,
+            correlationId: suppliedRequestId);
 
         Assert.True(result.Success);
         Assert.Equal(IntakeOtpSendOutcome.Delivered, result.Outcome);
-        Assert.Equal(32, result.RequestId.Length);
+        Assert.Equal(suppliedRequestId, result.RequestId);
         communicationService.Verify(service => service.SendIntakeOtpEmailAsync(
             It.Is<IntakeOtpDeliveryRequest>(request =>
                 request.Recipient == "patient@example.com" &&

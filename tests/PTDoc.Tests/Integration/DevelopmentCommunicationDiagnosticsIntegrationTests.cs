@@ -155,6 +155,29 @@ public sealed class DevelopmentCommunicationDiagnosticsIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task IntakeOtpDiagnostics_InvalidTakeReturnsNormalizedBadRequest()
+    {
+        using var env = CreateEnvironment(developerModeEnabled: false);
+        var factory = new PtDocApiFactory();
+
+        try
+        {
+            await factory.InitializeAsync();
+            using var client = factory.CreateClientWithRole(Roles.Admin);
+            using var response = await client.GetAsync("/diagnostics/intake-otp?take=not-a-number");
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal("bad_request", payload.RootElement.GetProperty("code").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(payload.RootElement.GetProperty("correlationId").GetString()));
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+    }
+
     private static EnvironmentVariableScope CreateEnvironment(bool developerModeEnabled)
     {
         return new EnvironmentVariableScope(new Dictionary<string, string?>

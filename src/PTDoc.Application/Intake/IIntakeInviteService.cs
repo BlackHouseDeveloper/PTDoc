@@ -20,13 +20,13 @@ public interface IIntakeInviteService
         string inviteToken,
         string contact,
         OtpChannel channel,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? correlationId = null)
     {
-        var requestId = Guid.NewGuid().ToString("N");
         var success = await SendOtpAsync(inviteToken, contact, channel, cancellationToken);
         return new IntakeOtpSendResult(
             success,
-            requestId,
+            string.Empty,
             success ? IntakeOtpSendOutcome.Delivered : IntakeOtpSendOutcome.ProviderRejected);
     }
 

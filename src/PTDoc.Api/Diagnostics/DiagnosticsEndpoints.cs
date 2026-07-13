@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Api.AI;
+using PTDoc.Api.RequestParsing;
 using PTDoc.Application.AI;
 using PTDoc.Application.Communication;
 using PTDoc.Application.Services;
@@ -166,10 +167,15 @@ public static class DiagnosticsEndpoints
 
         group.MapGet("/intake-otp", async (
             ApplicationDbContext dbContext,
-            int? take,
+            string? take,
+            HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var normalizedTake = Math.Clamp(take ?? 50, 1, 200);
+            if (!ListQueryParameterParser.TryNormalizeTake(take, 50, 200, httpContext, out var normalizedTake, out var failure))
+            {
+                return failure!;
+            }
+
             var auditRows = await dbContext.AuditLogs
                 .AsNoTracking()
                 .Where(log =>
