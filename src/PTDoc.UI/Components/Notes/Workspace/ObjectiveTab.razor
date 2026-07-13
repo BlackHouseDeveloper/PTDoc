@@ -94,21 +94,21 @@
                                         <input class="objective-tab__text-input"
                                                value="@metric.Value"
                                                disabled="@IsReadOnly"
-                                               @onchange="e => UpdateMetric(metric, row => row.Value = e.Value?.ToString() ?? string.Empty)" />
+                                               @oninput="e => UpdateMetric(metric, row => row.Value = e.Value?.ToString() ?? string.Empty)" />
                                     </label>
                                     <label>
                                         <span>Normal value</span>
                                         <input class="objective-tab__text-input"
                                                value="@metric.NormValue"
                                                disabled="@IsReadOnly"
-                                               @onchange="e => UpdateMetric(metric, row => row.NormValue = e.Value?.ToString())" />
+                                               @oninput="e => UpdateMetric(metric, row => row.NormValue = e.Value?.ToString())" />
                                     </label>
                                     <label>
                                         <span>Previous value</span>
                                         <input class="objective-tab__text-input"
                                                value="@metric.PreviousValue"
                                                disabled="@IsReadOnly"
-                                               @onchange="e => UpdateMetric(metric, row => row.PreviousValue = e.Value?.ToString())" />
+                                               @oninput="e => UpdateMetric(metric, row => row.PreviousValue = e.Value?.ToString())" />
                                     </label>
                                     <label class="objective-tab__checkbox-item">
                                         <input type="checkbox"
@@ -162,7 +162,7 @@
                                         <input class="objective-tab__text-input"
                                                value="@metric.Name"
                                                disabled="@IsReadOnly"
-                                               @onchange="e => UpdateMetric(metric, row => row.Name = e.Value?.ToString() ?? string.Empty)" />
+                                               @oninput="e => UpdateMetric(metric, row => row.Name = e.Value?.ToString() ?? string.Empty)" />
                                     </label>
                                     <label>
                                         <span>Value</span>
@@ -182,14 +182,14 @@
                                         <input class="objective-tab__text-input"
                                                value="@metric.NormValue"
                                                disabled="@IsReadOnly"
-                                               @onchange="e => UpdateMetric(metric, row => row.NormValue = e.Value?.ToString())" />
+                                               @oninput="e => UpdateMetric(metric, row => row.NormValue = e.Value?.ToString())" />
                                     </label>
                                     <label>
                                         <span>Previous value</span>
                                         <input class="objective-tab__text-input"
                                                value="@metric.PreviousValue"
                                                disabled="@IsReadOnly"
-                                               @onchange="e => UpdateMetric(metric, row => row.PreviousValue = e.Value?.ToString())" />
+                                               @oninput="e => UpdateMetric(metric, row => row.PreviousValue = e.Value?.ToString())" />
                                     </label>
                                     @if (!IsReadOnly)
                                     {
@@ -279,7 +279,7 @@
                                         <input class="objective-tab__text-input"
                                                value="@test.Notes"
                                                disabled="@IsReadOnly"
-                                               @onchange="e => UpdateSpecialTest(test, item => item.Notes = e.Value?.ToString())" />
+                                               @oninput="e => UpdateSpecialTest(test, item => item.Notes = e.Value?.ToString())" />
                                     </label>
                                 </div>
                             </div>
@@ -324,7 +324,7 @@
                               placeholder="Add palpation details or comments..."
                               disabled="@(IsReadOnly || _vm.IsPalpationUnremarkable)"
                               value="@_vm.PalpationComments"
-                              @onchange="e => SetAndNotify(v => v.PalpationComments = e.Value?.ToString())"></textarea>
+                              @oninput="e => SetAndNotify(v => v.PalpationComments = e.Value?.ToString())"></textarea>
                 </label>
             </div>
 
@@ -357,7 +357,7 @@
                               placeholder="Add posture details not covered by the chips..."
                               disabled="@(IsReadOnly || _vm.IsPostureUnremarkable)"
                               value="@_vm.OtherPostureFinding"
-                              @onchange="e => SetAndNotify(v => v.OtherPostureFinding = e.Value?.ToString())"></textarea>
+                              @oninput="e => SetAndNotify(v => v.OtherPostureFinding = e.Value?.ToString())"></textarea>
                 </label>
             </div>
 
@@ -413,7 +413,7 @@
                           placeholder="Add details about walking distance, endurance, specific deviations..."
                           disabled="@(IsReadOnly || _vm.IsGaitUnremarkable)"
                           value="@_vm.AdditionalGaitObservations"
-                          @onchange="e => SetAndNotify(v => v.AdditionalGaitObservations = e.Value?.ToString())"></textarea>
+                          @oninput="e => SetAndNotify(v => v.AdditionalGaitObservations = e.Value?.ToString())"></textarea>
             </div>
 
             @if (ShowInterventionAuthoring)
@@ -468,28 +468,28 @@
                                         <input class="objective-tab__text-input"
                                                value="@row.SuggestedExercise"
                                                disabled="@IsReadOnly"
-                                               @onchange="e => UpdateExerciseRow(row, item => item.SuggestedExercise = e.Value?.ToString() ?? string.Empty)" />
+                                               @oninput="e => UpdateExerciseRow(row, item => item.SuggestedExercise = e.Value?.ToString() ?? string.Empty)" />
                                     </label>
                                     <label>
                                         <span>Performed</span>
                                         <input class="objective-tab__text-input"
                                                value="@row.ActualExercisePerformed"
                                                disabled="@IsReadOnly"
-                                               @onchange="e => UpdateExerciseRow(row, item => item.ActualExercisePerformed = e.Value?.ToString() ?? string.Empty)" />
+                                               @oninput="e => UpdateExerciseRow(row, item => item.ActualExercisePerformed = e.Value?.ToString() ?? string.Empty)" />
                                     </label>
                                     <label>
                                         <span>Sets / reps / duration</span>
                                         <input class="objective-tab__text-input"
                                                value="@row.SetsRepsDuration"
                                                disabled="@IsReadOnly"
-                                               @onchange="e => UpdateExerciseRow(row, item => item.SetsRepsDuration = e.Value?.ToString())" />
+                                               @oninput="e => UpdateExerciseRow(row, item => item.SetsRepsDuration = e.Value?.ToString())" />
                                     </label>
                                     <label>
                                         <span>Resistance / weight</span>
                                         <input class="objective-tab__text-input"
                                                value="@row.ResistanceOrWeight"
                                                disabled="@IsReadOnly"
-                                               @onchange="e => UpdateExerciseRow(row, item => item.ResistanceOrWeight = e.Value?.ToString())" />
+                                               @oninput="e => UpdateExerciseRow(row, item => item.ResistanceOrWeight = e.Value?.ToString())" />
                                     </label>
                                     <label>
                                         <span>CPT</span>
@@ -564,7 +564,7 @@
                           placeholder="Additional objective findings, measurements, or clinical observations..."
                           disabled="@IsReadOnly"
                           value="@_vm.ClinicalObservationNotes"
-                          @onchange="e => SetAndNotify(v => v.ClinicalObservationNotes = e.Value?.ToString())"></textarea>
+                          @oninput="e => SetAndNotify(v => v.ClinicalObservationNotes = e.Value?.ToString())"></textarea>
             </div>
         </div>
 

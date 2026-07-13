@@ -21,12 +21,14 @@ public sealed class DraftAutosaveService : IAsyncDisposable
     private Task? _fallbackLoopTask;
     private Func<CancellationToken, Task<DraftAutosaveSaveResult>>? _saveAsync;
     private Func<bool>? _canSave;
+    private long _dirtyVersion;
     private bool _disposed;
 
     public bool IsDirty { get; private set; }
     public bool IsSaving { get; private set; }
     public string? LastErrorMessage { get; private set; }
     public DateTimeOffset? LastSavedAt { get; private set; }
+    public long DirtyVersion => _dirtyVersion;
 
     public event Action? StateChanged;
 
@@ -48,6 +50,7 @@ public sealed class DraftAutosaveService : IAsyncDisposable
         IsSaving = false;
         LastErrorMessage = null;
         LastSavedAt = null;
+        _dirtyVersion = 0;
         NotifyStateChanged();
     }
 
@@ -58,6 +61,7 @@ public sealed class DraftAutosaveService : IAsyncDisposable
             return;
         }
 
+        _dirtyVersion++;
         IsDirty = true;
         LastErrorMessage = null;
         NotifyStateChanged();
@@ -123,13 +127,17 @@ public sealed class DraftAutosaveService : IAsyncDisposable
 
             IsSaving = true;
             LastErrorMessage = null;
+            var savingVersion = _dirtyVersion;
             NotifyStateChanged();
 
             var result = await _saveAsync(cancellationToken);
             if (result.Success)
             {
-                IsDirty = false;
-                LastSavedAt = DateTimeOffset.UtcNow;
+                IsDirty = _dirtyVersion != savingVersion;
+                if (!IsDirty)
+                {
+                    LastSavedAt = DateTimeOffset.UtcNow;
+                }
                 LastErrorMessage = null;
             }
             else

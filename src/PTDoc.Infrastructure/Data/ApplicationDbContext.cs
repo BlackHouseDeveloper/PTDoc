@@ -144,6 +144,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.ParentNoteId);
             entity.HasIndex(e => e.SignedUtc);
             entity.HasIndex(e => e.LastModifiedUtc);
+            entity.Property(e => e.LastModifiedUtc).IsConcurrencyToken();
 
             entity.Property(e => e.SignatureHash).HasMaxLength(64); // SHA-256 hex string
             entity.Property(e => e.PhysicianSignatureHash).HasMaxLength(64);

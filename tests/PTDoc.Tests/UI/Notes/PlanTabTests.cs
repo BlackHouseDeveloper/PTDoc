@@ -403,7 +403,7 @@ public sealed class PlanTabTests : TestContext
         cut.Find("[data-testid='plan-intervention-minutes']").Change("12");
         cut.Find("[data-testid='plan-intervention-assistance']").Change("Min Assist");
         cut.Find("[data-testid='plan-intervention-cueing']").Change("Verbal cueing");
-        cut.Find("[data-testid='plan-intervention-response']").Change("Improved form");
+        cut.Find("[data-testid='plan-intervention-response']").Input("Improved form");
         cut.Find("[data-testid='plan-intervention-hep-link']").Change(true);
 
         cut.WaitForAssertion(() =>

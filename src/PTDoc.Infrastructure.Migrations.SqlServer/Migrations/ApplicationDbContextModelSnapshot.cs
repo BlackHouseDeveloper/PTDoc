@@ -287,6 +287,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasColumnType("bit");
 
                     b.Property<DateTime>("LastModifiedUtc")
+                        .IsConcurrencyToken()
                         .HasColumnType("datetime2");
 
                     b.Property<Guid>("ModifiedByUserId")

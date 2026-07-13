@@ -372,7 +372,7 @@
                                     <input class="pt-card__search-input"
                                            value="@intervention.Notes"
                                            disabled="@IsReadOnly"
-                                           @onchange="e => UpdateGeneralIntervention(intervention, entry => entry.Notes = e.Value?.ToString())" />
+                                           @oninput="e => UpdateGeneralIntervention(intervention, entry => entry.Notes = e.Value?.ToString())" />
                                 </label>
                                 <label class="pt-card__field">
                                     <span class="pt-card__field-label">CPT for this intervention</span>
@@ -434,7 +434,7 @@
                                     <input class="pt-card__search-input"
                                            value="@intervention.Response"
                                            disabled="@IsReadOnly"
-                                           @onchange="e => UpdateGeneralIntervention(intervention, entry => entry.Response = e.Value?.ToString())"
+                                           @oninput="e => UpdateGeneralIntervention(intervention, entry => entry.Response = e.Value?.ToString())"
                                            data-testid="plan-intervention-response" />
                                 </label>
                             </div>
@@ -465,7 +465,7 @@
                       placeholder="Describe home exercises, frequency, precautions, and patient education..."
                       disabled="@IsReadOnly"
                       value="@Vm.HomeExerciseProgramNotes"
-                      @onchange="e => SetAndNotify(vm => vm.HomeExerciseProgramNotes = e.Value?.ToString())"></textarea>
+                      @oninput="e => SetAndNotify(vm => vm.HomeExerciseProgramNotes = e.Value?.ToString())"></textarea>
         </div>
         }
 

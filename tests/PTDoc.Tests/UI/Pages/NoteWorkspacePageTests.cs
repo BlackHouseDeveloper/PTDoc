@@ -1243,6 +1243,98 @@ public sealed class NoteWorkspacePageTests : TestContext
     }
 
     [Fact]
+    public async Task EditDuringInFlightSave_IsNotOverwrittenByOlderSaveResponse()
+    {
+        var patientId = Guid.NewGuid();
+        var savedNoteId = Guid.NewGuid();
+        var firstSaveCompletion = new TaskCompletionSource<NoteWorkspaceSaveResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var savedDrafts = new List<NoteWorkspaceDraft>();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Morgan",
+                LastName = "Patient",
+                DateOfBirth = new DateTime(1988, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            });
+        noteWorkspaceService
+            .Setup(service => service.GetEvaluationSeedAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceEvaluationSeedResult { Success = true, HasSeed = false });
+        noteWorkspaceService
+            .Setup(service => service.GetCarryForwardSeedAsync(patientId, "Progress Note", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceCarryForwardSeedResult { Success = true, HasSeed = false });
+        noteWorkspaceService
+            .Setup(service => service.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()))
+            .Returns((NoteWorkspaceDraft draft, CancellationToken _) =>
+            {
+                savedDrafts.Add(draft);
+                if (savedDrafts.Count == 1)
+                {
+                    return firstSaveCompletion.Task;
+                }
+
+                return Task.FromResult(new NoteWorkspaceSaveResult
+                {
+                    Success = true,
+                    NoteId = savedNoteId,
+                    LastModifiedUtc = new DateTime(2026, 7, 11, 17, 1, 0, DateTimeKind.Utc),
+                    Status = NoteStatus.Draft,
+                    Payload = draft.Payload
+                });
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString())
+            .Add(component => component.RequestedNoteType, "Evaluation Note"));
+        cut.WaitForAssertion(() => Assert.Equal("Evaluation Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
+        cut.Find("#additional-functional-limitations").Input("First edit sent to server");
+
+        var clickTask = cut.Find("[data-testid='footer-save']").ClickAsync(new MouseEventArgs());
+        cut.WaitForAssertion(() => Assert.Contains("Saving", cut.Find("[data-testid='footer-state-label']").TextContent, StringComparison.Ordinal));
+        cut.Find("#additional-functional-limitations").Input("Newer local edit must win");
+
+        firstSaveCompletion.SetResult(new NoteWorkspaceSaveResult
+        {
+            Success = true,
+            NoteId = savedNoteId,
+            LastModifiedUtc = new DateTime(2026, 7, 11, 17, 0, 0, DateTimeKind.Utc),
+            Status = NoteStatus.Draft,
+            Payload = new NoteWorkspacePayload
+            {
+                WorkspaceNoteType = "Evaluation Note",
+                Subjective = new SubjectiveVm { AdditionalFunctionalLimitations = "Older server response" },
+                Objective = new ObjectiveVm(),
+                Assessment = new AssessmentWorkspaceVm(),
+                Plan = new PlanVm()
+            }
+        });
+
+        await clickTask;
+        Assert.Equal("Newer local edit must win", cut.Find("#additional-functional-limitations").GetAttribute("value"));
+        cut.WaitForAssertion(
+            () =>
+            {
+                Assert.True(savedDrafts.Count >= 2);
+                Assert.Equal("Newer local edit must win", savedDrafts[^1].Payload.Subjective.AdditionalFunctionalLimitations);
+                Assert.Equal("Newer local edit must win", cut.Find("#additional-functional-limitations").GetAttribute("value"));
+                Assert.Contains("Saved", cut.Find("[data-testid='footer-state-label']").TextContent, StringComparison.Ordinal);
+            },
+            TimeSpan.FromSeconds(3));
+    }
+
+    [Fact]
     public void ManualSaveFailure_ShowsFailedStateInlineBannerAndToast()
     {
         var patientId = Guid.NewGuid();

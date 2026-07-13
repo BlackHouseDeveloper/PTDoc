@@ -57,7 +57,7 @@
                    placeholder="Specify other problem"
                    value="@_vm.OtherProblem"
                    disabled="@IsReadOnly"
-                   @onchange="e => SetAndNotify(v => v.OtherProblem = e.Value?.ToString())" />
+                   @oninput="e => SetAndNotify(v => v.OtherProblem = e.Value?.ToString())" />
         </div>
     </div>
 
@@ -82,7 +82,7 @@
                    placeholder="Specify other location"
                    value="@_vm.OtherLocation"
                    disabled="@IsReadOnly"
-                   @onchange="e => SetAndNotify(v => v.OtherLocation = e.Value?.ToString())" />
+                   @oninput="e => SetAndNotify(v => v.OtherLocation = e.Value?.ToString())" />
         </div>
     </div>
 
@@ -109,7 +109,7 @@
                        placeholder="Describe symptom quality"
                        value="@_vm.OtherPainDescriptor"
                        disabled="@IsReadOnly"
-                       @onchange="e => SetAndNotify(v => v.OtherPainDescriptor = e.Value?.ToString())" />
+                       @oninput="e => SetAndNotify(v => v.OtherPainDescriptor = e.Value?.ToString())" />
             </div>
         }
     </div>
@@ -233,7 +233,7 @@
                   placeholder="Describe the cause of injury or onset..."
                   disabled="@(IsReadOnly || _vm.CauseUnknown)"
                   value="@_vm.KnownCause"
-                  @onchange="e => SetAndNotify(v => v.KnownCause = e.Value?.ToString())"></textarea>
+                  @oninput="e => SetAndNotify(v => v.KnownCause = e.Value?.ToString())"></textarea>
     </div>
 
     <div class="subjective-tab__question">
@@ -259,7 +259,7 @@
                   placeholder="Describe current function for daily tasks and mobility..."
                   disabled="@IsReadOnly"
                   value="@_vm.CurrentLevelOfFunction"
-                  @onchange="e => SetAndNotify(v => v.CurrentLevelOfFunction = e.Value?.ToString())"></textarea>
+                  @oninput="e => SetAndNotify(v => v.CurrentLevelOfFunction = e.Value?.ToString())"></textarea>
     </div>
 
     <div class="subjective-tab__question">
@@ -324,7 +324,7 @@
                   placeholder="Describe any other limitations..."
                   disabled="@IsReadOnly"
                   value="@_vm.AdditionalFunctionalLimitations"
-                  @onchange="e => SetAndNotify(v => v.AdditionalFunctionalLimitations = e.Value?.ToString())"></textarea>
+                  @oninput="e => SetAndNotify(v => v.AdditionalFunctionalLimitations = e.Value?.ToString())"></textarea>
     </div>
 
     <div class="subjective-tab__question">
@@ -367,7 +367,7 @@
                            class="subjective-tab__text-input"
                            value="@_vm.OtherImagingModality"
                            disabled="@IsReadOnly"
-                           @onchange="e => SetAndNotify(v => v.OtherImagingModality = e.Value?.ToString())" />
+                           @oninput="e => SetAndNotify(v => v.OtherImagingModality = e.Value?.ToString())" />
                 }
                 <label class="subjective-tab__field-label" for="imaging-findings">Results / findings</label>
                 <textarea id="imaging-findings"
@@ -376,7 +376,7 @@
                           placeholder="Summarize relevant imaging results or patient-reported findings..."
                           disabled="@IsReadOnly"
                           value="@_vm.ImagingFindings"
-                          @onchange="e => SetAndNotify(v => v.ImagingFindings = e.Value?.ToString())"></textarea>
+                          @oninput="e => SetAndNotify(v => v.ImagingFindings = e.Value?.ToString())"></textarea>
             </div>
         }
     </div>
@@ -446,7 +446,7 @@
                    placeholder="Add a device not in the catalog"
                    value="@_vm.OtherAssistiveDevice"
                    disabled="@IsReadOnly"
-                   @onchange="e => SetAndNotify(v => v.OtherAssistiveDevice = e.Value?.ToString())" />
+                   @oninput="e => SetAndNotify(v => v.OtherAssistiveDevice = e.Value?.ToString())" />
         }
     </div>
 
@@ -520,7 +520,7 @@
                placeholder="Add details not covered by the catalog"
                value="@_vm.OtherLivingSituation"
                disabled="@IsReadOnly"
-               @onchange="e => SetAndNotify(v => v.OtherLivingSituation = e.Value?.ToString())" />
+               @oninput="e => SetAndNotify(v => v.OtherLivingSituation = e.Value?.ToString())" />
     </div>
 
     <div class="subjective-tab__question">
@@ -542,7 +542,7 @@
                    placeholder="Specify other support"
                    value="@_vm.OtherSupport"
                    disabled="@IsReadOnly"
-                   @onchange="e => SetAndNotify(v => v.OtherSupport = e.Value?.ToString())" />
+                   @oninput="e => SetAndNotify(v => v.OtherSupport = e.Value?.ToString())" />
         </div>
     </div>
 
@@ -601,7 +601,7 @@
                    placeholder="Specify other treatment"
                    value="@_vm.OtherTreatment"
                    disabled="@IsReadOnly"
-                   @onchange="e => SetAndNotify(v => v.OtherTreatment = e.Value?.ToString())" />
+                   @oninput="e => SetAndNotify(v => v.OtherTreatment = e.Value?.ToString())" />
         </div>
     </div>
 
@@ -671,7 +671,7 @@
                       placeholder="Add medications not covered by the catalog..."
                       disabled="@IsReadOnly"
                       value="@_vm.MedicationDetails"
-                      @onchange="e => SetAndNotify(v => v.MedicationDetails = e.Value?.ToString())"></textarea>
+                      @oninput="e => SetAndNotify(v => v.MedicationDetails = e.Value?.ToString())"></textarea>
         }
     </div>
 </section>

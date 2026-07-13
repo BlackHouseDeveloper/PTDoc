@@ -174,6 +174,54 @@ public sealed class NoteWorkspaceApiServiceTests
     }
 
     [Fact]
+    public async Task SaveDraftAsync_ExistingNote_SendsExpectedLastModifiedUtcAndMapsConflict()
+    {
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var expectedLastModifiedUtc = new DateTime(2026, 7, 11, 16, 30, 0, DateTimeKind.Utc);
+        string? requestBody = null;
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            requestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.Conflict)
+            {
+                Content = new StringContent(
+                    """{"errors":["The note workspace changed while it was being saved."],"warnings":[]}""",
+                    Encoding.UTF8,
+                    "application/json")
+            };
+        });
+        var service = CreateService(handler);
+
+        var result = await service.SaveDraftAsync(new NoteWorkspaceDraft
+        {
+            NoteId = noteId,
+            IsExistingNote = true,
+            ExpectedLastModifiedUtc = expectedLastModifiedUtc,
+            PatientId = patientId,
+            WorkspaceNoteType = "Evaluation Note",
+            DateOfService = new DateTime(2026, 7, 11),
+            Payload = new NoteWorkspacePayload
+            {
+                WorkspaceNoteType = "Evaluation Note",
+                Subjective = new SubjectiveVm(),
+                Objective = new ObjectiveVm(),
+                Assessment = new AssessmentWorkspaceVm(),
+                Plan = new PlanVm()
+            }
+        });
+
+        Assert.False(result.Success);
+        Assert.True(result.IsConflict);
+        Assert.NotNull(requestBody);
+        using var document = JsonDocument.Parse(requestBody!);
+        Assert.Equal(noteId, document.RootElement.GetProperty("noteId").GetGuid());
+        Assert.Equal(
+            expectedLastModifiedUtc,
+            document.RootElement.GetProperty("expectedLastModifiedUtc").GetDateTime());
+    }
+
+    [Fact]
     public async Task SaveDraftAsync_NormalizesRecommendedOutcomeMeasuresInPostBody()
     {
         var patientId = Guid.NewGuid();

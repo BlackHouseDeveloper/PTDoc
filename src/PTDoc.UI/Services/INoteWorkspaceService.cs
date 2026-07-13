@@ -30,6 +30,7 @@ public interface INoteWorkspaceService
 public sealed class NoteWorkspaceDraft
 {
     public Guid? NoteId { get; init; }
+    public DateTime? ExpectedLastModifiedUtc { get; init; }
     public int? LocalDraftId { get; init; }
     public Guid PatientId { get; init; }
     public Guid? AppointmentId { get; init; }
@@ -46,6 +47,7 @@ public sealed class NoteWorkspaceLoadResult
     public bool Success { get; init; }
     public string? ErrorMessage { get; init; }
     public Guid NoteId { get; init; }
+    public DateTime LastModifiedUtc { get; init; }
     public string WorkspaceNoteType { get; init; } = "Evaluation Note";
     public DateTime DateOfService { get; init; }
     public bool IsReEvaluation { get; init; }
@@ -78,6 +80,7 @@ public sealed class NoteWorkspaceSaveResult
     public bool Success { get; init; }
     public string? ErrorMessage { get; init; }
     public Guid NoteId { get; init; }
+    public DateTime LastModifiedUtc { get; init; }
     public int? LocalDraftId { get; init; }
     public bool IsReEvaluation { get; init; }
     public NoteStatus Status { get; init; } = NoteStatus.Draft;
@@ -90,6 +93,7 @@ public sealed class NoteWorkspaceSaveResult
     public IReadOnlyList<OverrideRequirement> OverrideRequirements { get; init; } = Array.Empty<OverrideRequirement>();
     public ComplianceWarning? ComplianceWarning { get; init; }
     public NoteWorkspacePayload? Payload { get; init; }
+    public bool IsConflict { get; init; }
 }
 
 public sealed class NoteWorkspaceSubmitResult

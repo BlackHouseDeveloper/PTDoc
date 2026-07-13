@@ -58,7 +58,7 @@
                   placeholder="Document observed pain, ROM, strength, gait, balance, or functional deficits..."
                   disabled="@IsReadOnly"
                   value="@Vm.DeficitsSummary"
-                  @onchange="e => SetAndNotify(vm => vm.DeficitsSummary = e.Value?.ToString() ?? string.Empty)"></textarea>
+                  @oninput="e => SetAndNotify(vm => vm.DeficitsSummary = e.Value?.ToString() ?? string.Empty)"></textarea>
 
         @if (Vm.DeficitCategories.Count > 0)
         {
@@ -276,7 +276,7 @@
                       placeholder="What does the patient want to accomplish? What is most important to them?"
                       disabled="@IsReadOnly"
                       value="@Vm.PatientPersonalGoals"
-                      @onchange="e => SetAndNotify(vm => vm.PatientPersonalGoals = e.Value?.ToString())"></textarea>
+                      @oninput="e => SetAndNotify(vm => vm.PatientPersonalGoals = e.Value?.ToString())"></textarea>
         </div>
 
         <div class="aws-card__field">
@@ -285,7 +285,7 @@
                       placeholder="Observed behaviors, readiness for change, concerns, expectations..."
                       disabled="@IsReadOnly"
                       value="@Vm.AdditionalMotivationNotes"
-                      @onchange="e => SetAndNotify(vm => vm.AdditionalMotivationNotes = e.Value?.ToString())"></textarea>
+                      @oninput="e => SetAndNotify(vm => vm.AdditionalMotivationNotes = e.Value?.ToString())"></textarea>
         </div>
     </div>
 
@@ -362,7 +362,7 @@
                       placeholder="Who will assist? What support is available? Living situation details..."
                       disabled="@IsReadOnly"
                       value="@Vm.SupportSystemDetails"
-                      @onchange="e => SetAndNotify(vm => vm.SupportSystemDetails = e.Value?.ToString())"></textarea>
+                      @oninput="e => SetAndNotify(vm => vm.SupportSystemDetails = e.Value?.ToString())"></textarea>
         </div>
 
         <div class="aws-card__field">
@@ -371,7 +371,7 @@
                       placeholder="Strategies to address barriers, resources to provide..."
                       disabled="@IsReadOnly"
                       value="@Vm.SupportAdditionalNotes"
-                      @onchange="e => SetAndNotify(vm => vm.SupportAdditionalNotes = e.Value?.ToString())"></textarea>
+                      @oninput="e => SetAndNotify(vm => vm.SupportAdditionalNotes = e.Value?.ToString())"></textarea>
         </div>
     </div>
     }
@@ -429,7 +429,7 @@
                   placeholder="Summarize prognosis drivers, expected progress, barriers, and support context..."
                   disabled="@IsReadOnly"
                   value="@Vm.PrognosisNarrative"
-                  @onchange="e => SetAndNotify(vm => vm.PrognosisNarrative = e.Value?.ToString())"></textarea>
+                  @oninput="e => SetAndNotify(vm => vm.PrognosisNarrative = e.Value?.ToString())"></textarea>
         @if (!string.IsNullOrWhiteSpace(_prognosisGenerationError))
         {
             <p class="aws-card__empty-hint" role="alert">@_prognosisGenerationError</p>
@@ -449,7 +449,7 @@
                   placeholder="Summarize key subjective and objective findings that support the assessment..."
                   disabled="@IsReadOnly"
                   value="@Vm.FindingsSummary"
-                  @onchange="e => SetAndNotify(vm => vm.FindingsSummary = e.Value?.ToString())"></textarea>
+                  @oninput="e => SetAndNotify(vm => vm.FindingsSummary = e.Value?.ToString())"></textarea>
     </div>
 
 </section>
