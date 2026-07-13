@@ -15,6 +15,18 @@ using System.Text.Json;
 
 namespace PTDoc.Infrastructure.Data.Seeders;
 
+public enum BetaAccessSeedStatus
+{
+    Completed,
+    AlreadyCurrent,
+    SkippedLockContention,
+    SkippedConfiguration,
+    SkippedDatabase,
+    Failed
+}
+
+public sealed record BetaAccessSeedResult(BetaAccessSeedStatus Status, int? LockResult = null);
+
 /// <summary>
 /// Seeds the database with initial test data for development.
 /// </summary>
@@ -168,17 +180,22 @@ public static class DatabaseSeeder
     /// <summary>
     /// Seeds the small, authoritative Beta access fixture used for manual beta testing.
     /// </summary>
-    public static async Task SeedBetaAccessDataAsync(ApplicationDbContext context, ILogger logger, string seedPin)
+    public static async Task<BetaAccessSeedResult> SeedBetaAccessDataAsync(
+        ApplicationDbContext context,
+        ILogger logger,
+        string seedPin,
+        TimeSpan? lockTimeout = null)
     {
-        await SeedBetaAccessDataAsync(
+        var timeout = lockTimeout ?? TimeSpan.FromSeconds(15);
+        return await SeedBetaAccessDataAsync(
             context,
             logger,
             seedPin,
             useSqlServerAppLock: IsSqlServerProvider(context),
-            acquireSqlServerAppLockAsync: AcquireSqlServerBetaSeedLockAsync);
+            acquireSqlServerAppLockAsync: db => AcquireSqlServerBetaSeedLockAsync(db, timeout));
     }
 
-    internal static async Task SeedBetaAccessDataAsync(
+    internal static async Task<BetaAccessSeedResult> SeedBetaAccessDataAsync(
         ApplicationDbContext context,
         ILogger logger,
         string seedPin,
@@ -187,18 +204,17 @@ public static class DatabaseSeeder
     {
         if (!IsValidBetaSeedPin(seedPin))
         {
-            logger.LogWarning("Skipping Beta access seed because the supplied seed PIN is not configured as a 4-digit PIN.");
-            return;
+            return new BetaAccessSeedResult(BetaAccessSeedStatus.SkippedConfiguration);
         }
 
         if (!useSqlServerAppLock)
         {
-            await SeedBetaAccessDataCoreAsync(context, logger, seedPin);
-            return;
+            var changed = await SeedBetaAccessDataCoreAsync(context, logger, seedPin);
+            return new BetaAccessSeedResult(changed ? BetaAccessSeedStatus.Completed : BetaAccessSeedStatus.AlreadyCurrent);
         }
 
         var executionStrategy = context.Database.CreateExecutionStrategy();
-        await executionStrategy.ExecuteAsync(async () =>
+        return await executionStrategy.ExecuteAsync(async () =>
         {
             IDbContextTransaction? transaction = null;
             try
@@ -210,24 +226,27 @@ public static class DatabaseSeeder
                 var lockResult = await acquireSqlServerAppLockAsync(context);
                 if (!SqlServerAppLockWasAcquired(lockResult))
                 {
-                    logger.LogWarning(
-                        "Skipping Beta access seed because SQL Server application lock {LockResource} was not acquired. Result={LockResult}.",
-                        BetaSeedLockResource,
-                        lockResult);
+                    var status = lockResult is -1 or -2 or -3
+                        ? BetaAccessSeedStatus.SkippedLockContention
+                        : BetaAccessSeedStatus.Failed;
                     if (transaction is not null)
                     {
                         await transaction.RollbackAsync();
                     }
 
-                    return;
+                    return new BetaAccessSeedResult(status, lockResult);
                 }
 
-                await SeedBetaAccessDataCoreAsync(context, logger, seedPin);
+                var changed = await SeedBetaAccessDataCoreAsync(context, logger, seedPin);
 
                 if (transaction is not null)
                 {
                     await transaction.CommitAsync();
                 }
+
+                return new BetaAccessSeedResult(
+                    changed ? BetaAccessSeedStatus.Completed : BetaAccessSeedStatus.AlreadyCurrent,
+                    lockResult);
             }
             finally
             {
@@ -239,14 +258,10 @@ public static class DatabaseSeeder
         });
     }
 
-    private static async Task SeedBetaAccessDataCoreAsync(ApplicationDbContext context, ILogger logger, string seedPin)
+    private static async Task<bool> SeedBetaAccessDataCoreAsync(ApplicationDbContext context, ILogger logger, string seedPin)
     {
-        logger.LogInformation("Checking Beta access seed data...");
-
         var now = DateTime.UtcNow;
-        var clinic = await EnsureBetaClinicAsync(context, logger, now);
-        var createdCount = 0;
-        var updatedCount = 0;
+        var (clinic, clinicChanged) = await EnsureBetaClinicAsync(context, logger, now);
 
         foreach (var spec in BetaAccessUsers)
         {
@@ -271,11 +286,6 @@ public static class DatabaseSeeder
                     CreatedAt = now
                 };
                 context.Users.Add(user);
-                createdCount++;
-            }
-            else
-            {
-                updatedCount++;
             }
 
             user.Username = normalizedUsername;
@@ -304,7 +314,7 @@ public static class DatabaseSeeder
             }
         }
 
-        await context.SaveChangesAsync();
+        var usersChanged = await context.SaveChangesAsync() > 0;
 
         var seedActorId = await context.Users
             .Where(user => user.ClinicId == clinic.Id && user.Role == Roles.PT)
@@ -313,14 +323,18 @@ public static class DatabaseSeeder
             ?? IIdentityContextAccessor.SystemUserId;
         var patientFixtureResult = await EnsureBetaPatientFixturesAsync(context, clinic.Id, seedActorId, now);
 
-        logger.LogInformation(
-            "Beta access seed complete for clinic {ClinicId}. Created={CreatedCount}, Updated={UpdatedCount}, Users={UserCount}, PatientFixtures={PatientFixtureCount}.",
-            clinic.Id,
-            createdCount,
-            updatedCount,
-            BetaAccessUsers.Count,
-            patientFixtureResult.Total);
+        return clinicChanged || usersChanged || patientFixtureResult.Changed;
     }
+
+    public static LogLevel GetBetaAccessSeedLogLevel(BetaAccessSeedStatus status) => status switch
+    {
+        BetaAccessSeedStatus.Completed => LogLevel.Information,
+        BetaAccessSeedStatus.AlreadyCurrent => LogLevel.Information,
+        BetaAccessSeedStatus.SkippedLockContention => LogLevel.Information,
+        BetaAccessSeedStatus.SkippedConfiguration => LogLevel.Warning,
+        BetaAccessSeedStatus.SkippedDatabase => LogLevel.Warning,
+        _ => LogLevel.Error
+    };
 
     private static bool IsSqlServerProvider(ApplicationDbContext context) =>
         string.Equals(context.Database.ProviderName, SqlServerProviderName, StringComparison.Ordinal);
@@ -332,7 +346,9 @@ public static class DatabaseSeeder
 
     private static bool SqlServerAppLockWasAcquired(int lockResult) => lockResult >= 0;
 
-    private static async Task<int> AcquireSqlServerBetaSeedLockAsync(ApplicationDbContext context)
+    private static async Task<int> AcquireSqlServerBetaSeedLockAsync(
+        ApplicationDbContext context,
+        TimeSpan lockTimeout)
     {
         var connection = context.Database.GetDbConnection();
         var shouldCloseConnection = connection.State == ConnectionState.Closed;
@@ -353,7 +369,7 @@ public static class DatabaseSeeder
                     @Resource = @SeedLockResource,
                     @LockMode = 'Exclusive',
                     @LockOwner = 'Transaction',
-                    @LockTimeout = 0;
+                    @LockTimeout = @SeedLockTimeoutMilliseconds;
                 SELECT @LockResult;
                 """;
 
@@ -361,6 +377,11 @@ public static class DatabaseSeeder
             resourceParameter.ParameterName = "@SeedLockResource";
             resourceParameter.Value = BetaSeedLockResource;
             command.Parameters.Add(resourceParameter);
+
+            var timeoutParameter = command.CreateParameter();
+            timeoutParameter.ParameterName = "@SeedLockTimeoutMilliseconds";
+            timeoutParameter.Value = Math.Clamp((int)lockTimeout.TotalMilliseconds, 0, 60000);
+            command.Parameters.Add(timeoutParameter);
 
             var result = await command.ExecuteScalarAsync();
             return Convert.ToInt32(result);
@@ -454,11 +475,21 @@ public static class DatabaseSeeder
                 MemberId = fixture.MedicalRecordNumber.Replace("-", string.Empty, StringComparison.Ordinal)
             });
             patient.IsArchived = false;
-            EnsurePatientFixtureVisibility(patient, clinicId, seedActorId, now);
+            context.ChangeTracker.DetectChanges();
+            var patientEntry = context.Entry(patient);
+            if (patientEntry.State == EntityState.Added || patientEntry.Properties.Any(property => property.IsModified))
+            {
+                EnsurePatientFixtureVisibility(patient, clinicId, seedActorId, now);
+            }
         }
 
-        await context.SaveChangesAsync();
-        return new BetaPatientFixtureSeedResult(createdCount, updatedCount, skippedCount, BetaPatientFixtures.Count - skippedCount);
+        var changed = await context.SaveChangesAsync() > 0;
+        return new BetaPatientFixtureSeedResult(
+            createdCount,
+            updatedCount,
+            skippedCount,
+            BetaPatientFixtures.Count - skippedCount,
+            changed);
     }
 
     private static async Task EnsureOutcomeMeasureQaFixturesAsync(
@@ -742,7 +773,7 @@ public static class DatabaseSeeder
         return clinic;
     }
 
-    private static async Task<Clinic> EnsureBetaClinicAsync(
+    private static async Task<(Clinic Clinic, bool Changed)> EnsureBetaClinicAsync(
         ApplicationDbContext context,
         ILogger logger,
         DateTime now)
@@ -770,9 +801,8 @@ public static class DatabaseSeeder
         clinic.Slug = "pfpt-beta";
         clinic.IsActive = true;
 
-        await context.SaveChangesAsync();
-        logger.LogInformation("Ensured PFPT Beta clinic.");
-        return clinic;
+        var changed = await context.SaveChangesAsync() > 0;
+        return (clinic, changed);
     }
 
     private static bool HasBetaSeedPin(string? pinHash, string seedPin)
@@ -2127,7 +2157,8 @@ public static class DatabaseSeeder
         int Created,
         int Updated,
         int Skipped,
-        int Total);
+        int Total,
+        bool Changed);
 
     private sealed record PatientSeedCondition(
         string DiagnosisCode,

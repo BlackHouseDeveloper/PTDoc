@@ -759,45 +759,67 @@ if (app.Environment.IsEnvironment("Beta"))
 
     if (!allowBetaStartupSeed)
     {
-        logger.LogWarning("Beta access startup seed is disabled. Set BetaAccess:AllowStartupSeed=true only for controlled single-instance Beta deployments.");
+        logger.LogInformation("Beta access startup seed is disabled for this slot or instance.");
     }
     else
     {
-        logger.LogWarning(
+        logger.LogInformation(
             "Beta access startup seed is enabled. This path is approved only for controlled single-instance Beta deployments; the SQL Server application lock is a safety net before seed writes.");
 
         var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var betaAccessSeedPin = app.Configuration["BetaAccess:SeedPin"];
+        var configuredLockTimeoutSeconds = app.Configuration.GetValue<int?>("BetaAccess:SeedLockTimeoutSeconds") ?? 15;
+        var lockTimeout = TimeSpan.FromSeconds(Math.Clamp(configuredLockTimeoutSeconds, 0, 60));
+        var startedAt = System.Diagnostics.Stopwatch.StartNew();
+        var seedResult = new PTDoc.Infrastructure.Data.Seeders.BetaAccessSeedResult(
+            PTDoc.Infrastructure.Data.Seeders.BetaAccessSeedStatus.Failed);
 
         try
         {
             if (!IsValidBetaAccessSeedPin(betaAccessSeedPin))
             {
-                logger.LogWarning("Skipping Beta access seed because BetaAccess:SeedPin is not configured as a 4-digit PIN.");
+                seedResult = new PTDoc.Infrastructure.Data.Seeders.BetaAccessSeedResult(
+                    PTDoc.Infrastructure.Data.Seeders.BetaAccessSeedStatus.SkippedConfiguration);
             }
             else if (!await context.Database.CanConnectAsync())
             {
-                logger.LogWarning("Skipping Beta access seed because the database is not reachable.");
+                seedResult = new PTDoc.Infrastructure.Data.Seeders.BetaAccessSeedResult(
+                    PTDoc.Infrastructure.Data.Seeders.BetaAccessSeedStatus.SkippedDatabase);
             }
             else
             {
                 var pendingMigrations = (await context.Database.GetPendingMigrationsAsync()).ToList();
                 if (pendingMigrations.Count > 0)
                 {
-                    logger.LogWarning(
-                        "Skipping Beta access seed because {PendingCount} migration(s) are pending: {Migrations}",
-                        pendingMigrations.Count,
-                        string.Join(", ", pendingMigrations));
+                    seedResult = new PTDoc.Infrastructure.Data.Seeders.BetaAccessSeedResult(
+                        PTDoc.Infrastructure.Data.Seeders.BetaAccessSeedStatus.SkippedDatabase);
                 }
                 else
                 {
-                    await PTDoc.Infrastructure.Data.Seeders.DatabaseSeeder.SeedBetaAccessDataAsync(context, logger, betaAccessSeedPin!);
+                    seedResult = await PTDoc.Infrastructure.Data.Seeders.DatabaseSeeder.SeedBetaAccessDataAsync(
+                        context,
+                        logger,
+                        betaAccessSeedPin!,
+                        lockTimeout);
                 }
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            logger.LogWarning(ex, "Skipping Beta access seed because the database is not ready.");
+            seedResult = new PTDoc.Infrastructure.Data.Seeders.BetaAccessSeedResult(
+                PTDoc.Infrastructure.Data.Seeders.BetaAccessSeedStatus.Failed);
+        }
+        finally
+        {
+            startedAt.Stop();
+            var logLevel = PTDoc.Infrastructure.Data.Seeders.DatabaseSeeder.GetBetaAccessSeedLogLevel(seedResult.Status);
+
+            logger.Log(
+                logLevel,
+                "Beta access startup seed outcome. Status={SeedStatus} LockResult={LockResult} DurationMs={DurationMs}.",
+                seedResult.Status,
+                seedResult.LockResult,
+                startedAt.Elapsed.TotalMilliseconds);
         }
     }
 }
