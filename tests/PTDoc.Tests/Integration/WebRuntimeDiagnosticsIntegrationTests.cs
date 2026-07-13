@@ -18,6 +18,36 @@ namespace PTDoc.Tests.Integration;
 public sealed class WebRuntimeDiagnosticsIntegrationTests
 {
     [Fact]
+    public async Task HealthLive_IsAnonymousAndReturnsHealthy()
+    {
+        await using var factory = new PTDocWebFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/health/live");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("Healthy", payload.RootElement.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task HealthReady_WhenApiIsUnavailable_ReturnsSanitizedServiceUnavailable()
+    {
+        await using var factory = new PTDocWebFactory(new Dictionary<string, string?>
+        {
+            ["ReverseProxy:Clusters:apiCluster:Destinations:api:Address"] = "http://127.0.0.1:1/"
+        });
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/health/ready");
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        var rawPayload = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Unhealthy", rawPayload, StringComparison.Ordinal);
+        Assert.DoesNotContain("127.0.0.1", rawPayload, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task RuntimeDiagnostics_AsAdmin_ReportsConfiguredUpstreamApiAddress_AndReleaseMetadata()
     {
         await using var factory = new PTDocWebFactory(new Dictionary<string, string?>

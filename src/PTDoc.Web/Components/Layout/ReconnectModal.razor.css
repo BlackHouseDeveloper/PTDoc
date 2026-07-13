@@ -1,0 +1,85 @@
+#components-reconnect-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10001;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-4);
+    background: rgba(0, 0, 0, 0.65);
+}
+
+#components-reconnect-modal.components-reconnect-show,
+#components-reconnect-modal.components-reconnect-retrying,
+#components-reconnect-modal.components-reconnect-failed,
+#components-reconnect-modal.components-reconnect-rejected {
+    display: flex;
+}
+
+.reconnect-modal__panel {
+    width: min(100%, 30rem);
+    padding: var(--spacing-6);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+    color: var(--card-foreground);
+    box-shadow: var(--shadow-xl);
+}
+
+.reconnect-modal__title {
+    margin: 0 0 var(--spacing-3);
+    font-size: var(--text-xl);
+}
+
+.reconnect-modal__description,
+.reconnect-modal__attempt {
+    margin: 0 0 var(--spacing-4);
+    color: var(--text-secondary);
+}
+
+.reconnect-modal__failed,
+.reconnect-modal__rejected,
+.components-reconnect-failed .reconnect-modal__retrying,
+.components-reconnect-rejected .reconnect-modal__retrying,
+.components-reconnect-rejected .reconnect-modal__failed {
+    display: none;
+}
+
+.components-reconnect-failed .reconnect-modal__failed,
+.components-reconnect-rejected .reconnect-modal__rejected {
+    display: block;
+}
+
+.reconnect-modal__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--spacing-3);
+}
+
+.reconnect-modal__button {
+    min-height: var(--touch-target-mobile);
+    padding: var(--spacing-2) var(--spacing-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-weight: var(--font-weight-semibold);
+    cursor: pointer;
+}
+
+.reconnect-modal__button--primary {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: var(--primary-foreground);
+}
+
+.reconnect-modal__button--secondary {
+    background: var(--card);
+    color: var(--card-foreground);
+}
+
+.components-reconnect-show .reconnect-modal__actions,
+.components-reconnect-retrying .reconnect-modal__actions,
+.components-reconnect-failed [data-reconnect-reload],
+.components-reconnect-rejected [data-reconnect-retry] {
+    display: none;
+}

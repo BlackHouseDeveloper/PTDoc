@@ -4,12 +4,17 @@ import { attachConsoleCapture, authenticateIfNeeded, expectNoRelevantConsoleErro
 const webBaseUrl = process.env.PTDOC_WEB_BASE_URL ?? 'http://localhost:5145';
 const intakePath = process.env.PTDOC_UI_QA_INTAKE_PATH;
 const writableNoteWorkspacePath = process.env.PTDOC_UI_QA_WRITABLE_NOTE_WORKSPACE_PATH;
+const evaluationDraftPath = process.env.PTDOC_UI_QA_EVALUATION_DRAFT_PATH ?? writableNoteWorkspacePath;
 const patientChartPath = process.env.PTDOC_UI_QA_PATIENT_CHART_PATH
   ?? '/patient/f9c2cb68-4ab4-4f57-a1db-73ed8e2da789';
 const ptUsername = process.env.PTDOC_UI_QA_PT_USERNAME ?? 'amorgan';
 const ptPin = process.env.PTDOC_UI_QA_PT_PIN ?? process.env.PTDOC_UI_QA_PIN;
+const ptaUsername = process.env.PTDOC_UI_QA_PTA_USERNAME;
+const ptaPin = process.env.PTDOC_UI_QA_PTA_PIN ?? process.env.PTDOC_UI_QA_PIN;
 
 test.describe('PTDoc audit remediation QA', () => {
+  test.describe.configure({ mode: 'serial' });
+
   test('public policy pages render anonymously', async ({ page }) => {
     await page.context().clearCookies();
 
@@ -66,6 +71,36 @@ test.describe('PTDoc audit remediation QA', () => {
     await page.getByRole('button', { name: 'Open appointments needing notes today' }).click();
     await expect(page).toHaveURL(/\/appointments\?needsNote=true&dateRange=today$/);
     await expect(page.locator('body')).toContainText(/Appointments/i);
+    await expectNoRelevantConsoleErrors(page);
+  });
+
+  test('menu toggle activates with Enter and Space at desktop and mobile widths', async ({ page }) => {
+    await authenticateIfNeeded(page);
+
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 390, height: 844 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto('/dashboard');
+      await page.waitForLoadState('domcontentloaded');
+
+      const menuToggle = page.locator('button.menu-toggle');
+      await expect(menuToggle).toBeVisible();
+      if (await menuToggle.getAttribute('aria-expanded') === 'true') {
+        await menuToggle.click();
+      }
+
+      await expect(menuToggle).toHaveAttribute('aria-label', 'Open menu');
+      await menuToggle.focus();
+      await page.keyboard.press('Enter');
+      await expect(menuToggle).toHaveAttribute('aria-expanded', 'true');
+
+      await menuToggle.focus();
+      await page.keyboard.press('Space');
+      await expect(menuToggle).toHaveAttribute('aria-expanded', 'false');
+    }
+
     await expectNoRelevantConsoleErrors(page);
   });
 
@@ -166,6 +201,38 @@ test.describe('PTDoc audit remediation QA', () => {
     await expectNoRelevantConsoleErrors(page);
   });
 
+  test('PT Continue Draft and PTA View/PDF Tools actions route to the expected workspace boundary', async ({ page }) => {
+    test.skip(!ptPin || !ptaUsername || !ptaPin, 'Set PT and PTA audit-remediation credentials.');
+
+    await loginThroughForm(page, ptUsername, ptPin!);
+    await page.goto('/notes?status=Draft');
+    await page.waitForLoadState('domcontentloaded');
+    const continueDraft = page.getByRole('button', { name: /^Continue Draft / }).first();
+    if (await continueDraft.count() === 0) {
+      test.skip(true, 'The PT fixture has no editable draft note.');
+    }
+    await continueDraft.click();
+    await expect(page).toHaveURL(/\/patient\/[^/]+\/note\/[^?]+$/);
+
+    await loginThroughForm(page, ptaUsername!, ptaPin!);
+    await page.goto('/notes');
+    await page.waitForLoadState('domcontentloaded');
+    const view = page.getByRole('button', { name: /^View / }).first();
+    if (await view.count() === 0) {
+      test.skip(true, 'The PTA fixture has no view-only note boundary.');
+    }
+    await view.click();
+    await expect(page).toHaveURL(/\/patient\/[^/]+\/note\/[^?]+$/);
+
+    await page.goto('/notes');
+    await page.waitForLoadState('domcontentloaded');
+    const pdfTools = page.getByRole('button', { name: /^Open PDF tools for / }).first();
+    await expect(pdfTools).toBeEnabled();
+    await pdfTools.click();
+    await expect(page).toHaveURL(/\/patient\/[^/]+\/note\/[^?]+\?section=review$/);
+    await expectNoRelevantConsoleErrors(page);
+  });
+
   test('intake pain severity validation and body-map keyboard selection are reachable', async ({ page }) => {
     test.skip(!intakePath, 'Set PTDOC_UI_QA_INTAKE_PATH to a safe editable intake route.');
 
@@ -230,6 +297,78 @@ test.describe('PTDoc audit remediation QA', () => {
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
     await expect(page.locator('[data-testid="note-workspace-page"]')).toBeVisible();
+    await expectNoRelevantConsoleErrors(page);
+  });
+
+  test('evaluation draft saves an exact functional limitation value and cleanup survives a second reload', async ({ page }) => {
+    test.skip(
+      !evaluationDraftPath || !ptPin,
+      'Set PTDOC_UI_QA_EVALUATION_DRAFT_PATH and PTDOC_UI_QA_PIN (or PTDOC_UI_QA_PT_PIN).');
+
+    await loginThroughForm(page, ptUsername, ptPin!);
+    await page.goto(evaluationDraftPath!);
+    await page.waitForLoadState('domcontentloaded');
+
+    const field = page.locator('#additional-functional-limitations');
+    await expect(field).toBeVisible();
+    const originalValue = await field.inputValue();
+    const exactValue = `Beta persistence ${Date.now()} | stairs, 2 flights; carry 18 lb.`;
+
+    await field.fill(exactValue);
+    await page.getByRole('button', { name: /Save Draft/i }).click();
+    await expect(page.getByText(/saved|draft saved/i)).toBeVisible();
+    await page.reload();
+    await expect(field).toHaveValue(exactValue);
+
+    await field.fill(originalValue);
+    await page.getByRole('button', { name: /Save Draft/i }).click();
+    await expect(page.getByText(/saved|draft saved/i)).toBeVisible();
+    await page.reload();
+    await expect(field).toHaveValue(originalValue);
+    await expectNoRelevantConsoleErrors(page);
+  });
+
+  test('two evaluation sessions retain the local draft and offer an explicit stale-write choice', async ({ page, context }) => {
+    test.skip(
+      !evaluationDraftPath || !ptPin,
+      'Set PTDOC_UI_QA_EVALUATION_DRAFT_PATH and PTDOC_UI_QA_PIN (or PTDOC_UI_QA_PT_PIN).');
+
+    await loginThroughForm(page, ptUsername, ptPin!);
+    const secondPage = await context.newPage();
+    attachConsoleCapture(secondPage);
+    await page.goto(evaluationDraftPath!);
+    await secondPage.goto(evaluationDraftPath!);
+    await page.waitForLoadState('domcontentloaded');
+    await secondPage.waitForLoadState('domcontentloaded');
+
+    const firstField = page.locator('#additional-functional-limitations');
+    const secondField = secondPage.locator('#additional-functional-limitations');
+    await expect(firstField).toBeVisible();
+    await expect(secondField).toBeVisible();
+    const originalValue = await firstField.inputValue();
+    const firstValue = `First session ${Date.now()}`;
+    const staleLocalValue = `Second session ${Date.now()}`;
+
+    await firstField.fill(firstValue);
+    await page.getByRole('button', { name: /Save Draft/i }).click();
+    await expect(page.getByText(/saved|draft saved/i)).toBeVisible();
+
+    await secondField.fill(staleLocalValue);
+    await secondPage.getByRole('button', { name: /Save Draft/i }).click();
+    await expect(secondPage.getByText('This note changed in another session')).toBeVisible();
+    await expect(secondField).toHaveValue(staleLocalValue);
+    await expect(secondPage.getByRole('button', { name: 'Stay here' })).toBeVisible();
+    await secondPage.getByRole('button', { name: 'Reload latest' }).click();
+    await expect(secondField).toHaveValue(firstValue);
+
+    await page.reload();
+    await firstField.fill(originalValue);
+    await page.getByRole('button', { name: /Save Draft/i }).click();
+    await expect(page.getByText(/saved|draft saved/i)).toBeVisible();
+    await page.reload();
+    await expect(firstField).toHaveValue(originalValue);
+
+    await secondPage.close();
     await expectNoRelevantConsoleErrors(page);
   });
 });

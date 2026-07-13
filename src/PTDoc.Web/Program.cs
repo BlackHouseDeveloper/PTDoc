@@ -246,6 +246,54 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
 
+app.MapGet("/health/live", () => Results.Ok(new
+{
+    status = "Healthy",
+    app = "PTDoc Web",
+    timestampUtc = DateTimeOffset.UtcNow
+}))
+.AllowAnonymous()
+.WithName("GetWebLiveness");
+
+app.MapGet("/health/ready", async (
+    IHttpClientFactory httpClientFactory,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        using var response = await httpClientFactory
+            .CreateClient("PTDocAuthApi")
+            .GetAsync("/health/ready", cancellationToken);
+
+        if (response.IsSuccessStatusCode)
+        {
+            return Results.Ok(new
+            {
+                status = "Healthy",
+                checks = new[]
+                {
+                    new { name = "api", status = "Healthy", description = "API readiness endpoint is reachable." }
+                }
+            });
+        }
+    }
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    {
+        app.Logger.LogWarning("Web readiness probe could not reach the configured API liveness endpoint.");
+    }
+
+    return Results.Json(new
+    {
+        status = "Unhealthy",
+        checks = new[]
+        {
+            new { name = "api", status = "Unhealthy", description = "API liveness endpoint is unavailable." }
+        }
+    }, statusCode: StatusCodes.Status503ServiceUnavailable);
+})
+.AllowAnonymous()
+.WithName("GetWebReadiness");
+
 if (entraExternalIdOptions.Enabled)
 {
     app.MapGet("/auth/external/start", async (HttpContext httpContext) =>
