@@ -46,6 +46,12 @@ PTDoc follows Robert C. Martin's Clean Architecture with strict dependency rules
 - **Security:** JWT authentication, role-based authorization
 - **Auditing:** Database-level audit trails for PHI access
 
+### Third-party clinical integrations
+
+Humble Fax and Wibbi use clinic-scoped server-side provider adapters. Core owns provider-neutral fax/HEP state; Application owns integration contracts; `PTDoc.Integrations` owns provider HTTP payloads; Infrastructure owns connection persistence, private documents, transactional outbox processing, mappings, checkpoints, reconciliation, and notifications; API/UI are the façade and workflow surfaces. Core/Application never reference provider SDKs or Infrastructure, and browser/MAUI clients never call providers directly.
+
+See [`HUMBLE_FAX_WIBBI_INTEGRATIONS.md`](HUMBLE_FAX_WIBBI_INTEGRATIONS.md) for configuration, data ownership, RBAC, deployment, and recovery.
+
 ### Reference Data Source Model
 
 Clinic reference markdown files under `docs/clinicrefdata/` are governed by the status index in `docs/clinicrefdata/README.md`, which classifies each file as an authoring source, reference-only material, or archived history.

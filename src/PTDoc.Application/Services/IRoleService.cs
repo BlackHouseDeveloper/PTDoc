@@ -54,6 +54,14 @@ public static class Roles
 /// </summary>
 public static class AuthorizationPolicies
 {
+    public const string FaxSend = "FaxSend";
+    public const string FaxRead = "FaxRead";
+    public const string FaxTriage = "FaxTriage";
+    public const string FaxAdmin = "FaxAdmin";
+    public const string HepAuthor = "HepAuthor";
+    public const string HepRead = "HepRead";
+    public const string HepAdmin = "HepAdmin";
+
     /// <summary>Patient-only access to the Wibbi launch broker.</summary>
     public const string PatientHepAccess = "PatientHepAccess";
 
@@ -100,6 +108,27 @@ public static class AuthorizationPolicies
     /// </summary>
     public static void AddPTDocAuthorizationPolicies(this AuthorizationOptions options)
     {
+        options.AddPolicy(FaxSend,
+            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
+
+        options.AddPolicy(FaxRead,
+            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Owner, Roles.FrontDesk));
+
+        options.AddPolicy(FaxTriage,
+            p => p.RequireRole(Roles.Admin, Roles.FrontDesk));
+
+        options.AddPolicy(FaxAdmin,
+            p => p.RequireRole(Roles.Admin, Roles.Owner));
+
+        options.AddPolicy(HepAuthor,
+            p => p.RequireRole(Roles.PT, Roles.PTA));
+
+        options.AddPolicy(HepRead,
+            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Owner));
+
+        options.AddPolicy(HepAdmin,
+            p => p.RequireRole(Roles.Admin, Roles.Owner));
+
         // PatientRead: clinical staff, aides, front desk, billing can view patient demographics
         options.AddPolicy(PatientRead,
             p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Owner, Roles.Aide,

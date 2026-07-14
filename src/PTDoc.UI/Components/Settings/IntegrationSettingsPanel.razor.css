@@ -1,0 +1,20 @@
+.integration-settings { display: grid; gap: var(--spacing-5); }
+.integration-settings header h1, .integration-settings__card h2 { margin: 0 0 var(--spacing-2); color: var(--secondary); }
+.integration-settings header p, .integration-settings__card p { margin: 0; color: var(--muted-foreground); }
+.integration-settings__card { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--spacing-5); background: var(--card); box-shadow: var(--shadow-sm); }
+.integration-settings__heading { display: flex; justify-content: space-between; gap: var(--spacing-4); }
+.integration-settings__health { height: fit-content; padding: var(--spacing-1) var(--spacing-2); background: var(--accent); color: var(--accent-foreground); border-radius: var(--radius-xl); font-size: var(--text-sm); }
+.integration-settings__fields { display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-4); margin: var(--spacing-4) 0; }
+.integration-settings__fields label { display: grid; gap: var(--spacing-2); font-weight: var(--font-weight-medium); }
+.integration-settings__fields input, .integration-settings__fields textarea { width: 100%; border: 1px solid var(--border-input); border-radius: var(--radius-md); background: var(--surface-input); color: var(--text-primary); padding: var(--spacing-2) var(--spacing-3); }
+.integration-settings__wide { grid-column: 1 / -1; }
+.integration-settings__checks, .integration-settings__actions { display: flex; flex-wrap: wrap; gap: var(--spacing-4); margin-top: var(--spacing-3); }
+.integration-settings__checks label { display: flex; align-items: center; gap: var(--spacing-2); }
+.integration-settings__token, .integration-settings__alert { margin-top: var(--spacing-4); padding: var(--spacing-3); border: 1px solid rgba(var(--warning-rgb), .35); border-radius: var(--radius-md); background: rgba(var(--warning-rgb), .08); display: grid; gap: var(--spacing-2); }
+.integration-settings__token code { overflow-wrap: anywhere; user-select: all; }
+.integration-settings__operations { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--spacing-5); background: var(--card); }
+.integration-settings__operations h2 { margin-top: 0; color: var(--secondary); }
+.integration-settings__table-wrap { overflow-x: auto; }
+.integration-settings__operations table { width: 100%; border-collapse: collapse; }
+.integration-settings__operations th, .integration-settings__operations td { padding: var(--spacing-3); border-bottom: 1px solid var(--border-subtle); text-align: left; }
+@media (max-width: 48rem) { .integration-settings__heading, .integration-settings__fields { display: grid; grid-template-columns: 1fr; } .integration-settings__wide { grid-column: auto; } }

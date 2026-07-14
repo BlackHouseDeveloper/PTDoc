@@ -47,6 +47,22 @@
                     Label="Start New Note"
                     Href="@($"/patient/{Uri.EscapeDataString(Id ?? string.Empty)}?action=new-note")" />
 
+                <AuthorizeView Policy="@AuthorizationPolicies.HepRead">
+                    <Authorized>
+                        <PatientPrimaryActionButton
+                            Label="Home Exercise Program"
+                            Href="@($"/patient/{Uri.EscapeDataString(Id ?? string.Empty)}/hep")" />
+                    </Authorized>
+                </AuthorizeView>
+
+                <AuthorizeView Policy="@AuthorizationPolicies.FaxRead">
+                    <Authorized>
+                        <PatientPrimaryActionButton
+                            Label="Fax History"
+                            Href="@($"/fax-center?patientId={Uri.EscapeDataString(Id ?? string.Empty)}")" />
+                    </Authorized>
+                </AuthorizeView>
+
                 @if (isNoteTypeChooserOpen)
                 {
                     <section class="patient-profile-note-chooser"

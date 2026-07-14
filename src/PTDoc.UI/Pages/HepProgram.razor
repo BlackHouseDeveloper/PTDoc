@@ -1,0 +1,342 @@
+@page "/patient/{PatientId:guid}/hep"
+@attribute [Authorize(Policy = AuthorizationPolicies.HepRead)]
+@rendermode InteractiveServer
+@using PTDoc.Application.Integrations
+@inject IIntegrationClientService Integrations
+@inject IPatientService Patients
+@inject IToastService Toasts
+@inject NavigationManager Navigation
+
+<PageTitle>Home Exercise Program - PTDoc</PageTitle>
+
+<div class="hep-page">
+    <GlobalPageHeader />
+    <main class="hep-page__content">
+        <header class="hep-page__header">
+            <div>
+                <button type="button" class="hep-back" @onclick="BackToPatient">← Patient chart</button>
+                <h1>Home Exercise Program</h1>
+                <p>@patientName · PTDoc prescriptions synchronized with Wibbi</p>
+            </div>
+            <button type="button" class="btn btn--secondary" @onclick="LoadProgramsAsync">Refresh</button>
+        </header>
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="hep-alert" role="alert">@errorMessage</div>
+        }
+
+        <AuthorizeView Policy="@AuthorizationPolicies.HepAuthor">
+            <Authorized>
+                <section class="hep-card" aria-labelledby="hep-editor-title">
+                    <h2 id="hep-editor-title">@(editingProgramId.HasValue ? "Revise prescription" : "Create a prescription")</h2>
+                    <div class="hep-fields">
+                        <label><span>Program title</span><input @bind="programTitle" maxlength="255" /></label>
+                        <label><span>Start date</span><InputDate @bind-Value="startDate" /></label>
+                        <label><span>End date</span><InputDate @bind-Value="endDate" /></label>
+                        <label class="hep-fields__wide"><span>Therapist notes</span><textarea @bind="therapistNotes" rows="2"></textarea></label>
+                    </div>
+
+                    <div class="hep-search">
+                        <label><span>Search Wibbi exercises</span><input @bind="exerciseQuery" @bind:event="oninput" placeholder="Type at least two characters" /></label>
+                        <button type="button" class="btn btn--secondary" @onclick="SearchExercisesAsync">Search</button>
+                    </div>
+                    @if (catalogResults.Count > 0)
+                    {
+                        <ul class="hep-catalog" aria-label="Exercise search results">
+                            @foreach (var result in catalogResults)
+                            {
+                                <li>
+                                    <div><strong>@result.Title</strong><small>@result.Description</small></div>
+                                    <button type="button" class="btn btn--secondary" @onclick="() => AddExercise(result)">Add</button>
+                                </li>
+                            }
+                        </ul>
+                    }
+
+                    @if (draftExercises.Count > 0)
+                    {
+                        <div class="hep-prescription-list">
+                            @for (var index = 0; index < draftExercises.Count; index++)
+                            {
+                                var exercise = draftExercises[index];
+                                <article class="hep-exercise">
+                                    <header><strong>@exercise.Title</strong><button type="button" @onclick="() => RemoveExercise(exercise)">Remove</button></header>
+                                    <div class="hep-fields hep-fields--compact">
+                                        <label><span>Sets</span><input @bind="exercise.Sets" /></label>
+                                        <label><span>Repetitions</span><input @bind="exercise.Repetitions" /></label>
+                                        <label><span>Frequency</span><input @bind="exercise.Frequency" /></label>
+                                        <label><span>Hold</span><input @bind="exercise.Hold" /></label>
+                                        <label><span>Weight / resistance</span><input @bind="exercise.Weight" /></label>
+                                        <label><span>Duration</span><input @bind="exercise.Duration" /></label>
+                                        <label><span>Tempo</span><input @bind="exercise.Tempo" /></label>
+                                        <label><span>Rest</span><input @bind="exercise.Rest" /></label>
+                                        <label><span>Level</span><input @bind="exercise.Level" /></label>
+                                        <label><span>Other</span><input @bind="exercise.Other" /></label>
+                                        <label class="hep-fields__wide"><span>Instructions</span><input @bind="exercise.DescriptionOverride" /></label>
+                                        <label class="hep-check"><input type="checkbox" @bind="exercise.IsHomeExercise" /> Home exercise</label>
+                                        <label class="hep-check"><input type="checkbox" @bind="exercise.Mirror" /> Mirror</label>
+                                        <label class="hep-check"><input type="checkbox" @bind="exercise.Flip" /> Flip</label>
+                                    </div>
+                                </article>
+                            }
+                        </div>
+                    }
+                    <button type="button" class="btn btn--primary" @onclick="SaveAndPublishAsync" disabled="@(isSaving || draftExercises.Count == 0)">
+                        @(isSaving ? "Publishing…" : "Save and publish to Wibbi")
+                    </button>
+                    @if (editingProgramId.HasValue)
+                    {
+                        <button type="button" class="btn btn--secondary" @onclick="CancelEditing">Cancel revision</button>
+                    }
+                </section>
+            </Authorized>
+        </AuthorizeView>
+
+        <section class="hep-card" aria-labelledby="current-programs-title">
+            <h2 id="current-programs-title">Program history</h2>
+            @if (isLoading)
+            {
+                <p role="status">Loading programs…</p>
+            }
+            else if (programs.Count == 0)
+            {
+                <p>No HEP program has been created for this patient.</p>
+            }
+            else
+            {
+                <div class="hep-program-list">
+                    @foreach (var program in programs)
+                    {
+                        <article class="hep-program">
+                            <div>
+                                <h3>@(program.CurrentRevision?.Title ?? "Home Exercise Program")</h3>
+                                <p>Revision @(program.CurrentRevision?.Version) · @program.Status · updated @program.UpdatedAtUtc.ToLocalTime().ToString("g")</p>
+                                <p>@(program.CurrentRevision?.Exercises.Count ?? 0) exercises</p>
+                                @if (program.Status == HepProgramStatus.Conflict)
+                                {
+                                    <p class="hep-conflict-message">Wibbi contains a newer external revision. Review the FlowSheet, then explicitly keep and republish the PTDoc prescription.</p>
+                                }
+                            </div>
+                            <div class="hep-actions">
+                                @if (program.Status is not (HepProgramStatus.Queued or HepProgramStatus.Archived))
+                                {
+                                    <AuthorizeView Policy="@AuthorizationPolicies.HepAuthor"><Authorized><button type="button" class="btn btn--secondary" @onclick="() => EditProgram(program)">Revise</button></Authorized></AuthorizeView>
+                                }
+                                @if (program.Status == HepProgramStatus.Draft || program.Status == HepProgramStatus.Failed || program.Status == HepProgramStatus.Conflict)
+                                {
+                                    <AuthorizeView Policy="@AuthorizationPolicies.HepAuthor"><Authorized><button type="button" class="btn btn--primary" @onclick="() => PublishAsync(program.Id)">@(program.Status == HepProgramStatus.Conflict ? "Keep PTDoc and republish" : "Publish")</button></Authorized></AuthorizeView>
+                                }
+                                @if (program.Status is HepProgramStatus.Synced or HepProgramStatus.Conflict)
+                                {
+                                    <AuthorizeView Policy="@AuthorizationPolicies.HepAuthor"><Authorized>
+                                        <button type="button" class="btn btn--secondary" @onclick="() => LaunchAsync(program.Id, false)">Open in Wibbi</button>
+                                        <button type="button" class="btn btn--secondary" @onclick="() => LaunchAsync(program.Id, true)">Open FlowSheet</button>
+                                    </Authorized></AuthorizeView>
+                                    <button type="button" class="btn btn--secondary" @onclick="() => LoadTrackingAsync(program.Id)">View tracking</button>
+                                }
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+
+        @if (tracking.Count > 0)
+        {
+            <section class="hep-card" aria-labelledby="tracking-title">
+                <h2 id="tracking-title">Patient tracking</h2>
+                <p>Provider-reported observations are read-only. Clinical interpretation remains in PTDoc notes.</p>
+                <div class="hep-tracking">
+                    @foreach (var row in tracking)
+                    {
+                        <div><time>@row.ActivityAtUtc.ToLocalTime().ToString("g")</time><strong>@row.Code</strong><span>@row.Value @row.UnitOfMeasure</span></div>
+                    }
+                </div>
+            </section>
+        }
+    </main>
+</div>
+
+@code {
+    [Parameter] public Guid PatientId { get; set; }
+    private string patientName = "Patient";
+    private IReadOnlyList<HepProgramResponse> programs = [];
+    private IReadOnlyList<WibbiExerciseCatalogItem> catalogResults = [];
+    private IReadOnlyList<HepTrackingObservationResponse> tracking = [];
+    private readonly List<DraftExercise> draftExercises = [];
+    private string programTitle = "Home Exercise Program";
+    private string? therapistNotes;
+    private DateTime? startDate = DateTime.Today;
+    private DateTime? endDate = DateTime.Today.AddMonths(1);
+    private string exerciseQuery = string.Empty;
+    private bool isLoading;
+    private bool isSaving;
+    private Guid? editingProgramId;
+    private string? errorMessage;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var patient = await Patients.GetByIdAsync(PatientId);
+        patientName = patient is null ? "Patient" : $"{patient.FirstName} {patient.LastName}".Trim();
+        await LoadProgramsAsync();
+    }
+
+    private async Task LoadProgramsAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+        try { programs = await Integrations.GetHepProgramsAsync(PatientId); }
+        catch (Exception exception) { errorMessage = exception.Message; }
+        finally { isLoading = false; }
+    }
+
+    private async Task SearchExercisesAsync()
+    {
+        try { catalogResults = await Integrations.SearchExercisesAsync(exerciseQuery); }
+        catch (Exception exception) { Toasts.ShowError(exception.Message); }
+    }
+
+    private void AddExercise(WibbiExerciseCatalogItem item)
+    {
+        if (draftExercises.Any(value => value.ExternalExerciseId == item.ExternalExerciseId)) return;
+        draftExercises.Add(new DraftExercise(item));
+    }
+    private void RemoveExercise(DraftExercise item) => draftExercises.Remove(item);
+
+    private async Task SaveAndPublishAsync()
+    {
+        isSaving = true;
+        try
+        {
+            var request = BuildRequest();
+            var saved = editingProgramId.HasValue
+                ? await Integrations.UpdateHepProgramAsync(editingProgramId.Value, request)
+                : await Integrations.CreateHepProgramAsync(PatientId, request);
+            await Integrations.PublishHepProgramAsync(saved.Id);
+            ResetEditor();
+            Toasts.ShowSuccess("HEP saved and queued for Wibbi synchronization.");
+            await LoadProgramsAsync();
+        }
+        catch (Exception exception) { Toasts.ShowError(exception.Message); }
+        finally { isSaving = false; }
+    }
+
+    private async Task PublishAsync(Guid programId)
+    {
+        try { await Integrations.PublishHepProgramAsync(programId); await LoadProgramsAsync(); }
+        catch (Exception exception) { Toasts.ShowError(exception.Message); }
+    }
+
+    private void EditProgram(HepProgramResponse program)
+    {
+        var revision = program.CurrentRevision;
+        if (revision is null)
+        {
+            return;
+        }
+        editingProgramId = program.Id;
+        programTitle = revision.Title;
+        therapistNotes = revision.TherapistNotes;
+        startDate = revision.StartDate?.ToDateTime(TimeOnly.MinValue);
+        endDate = revision.EndDate?.ToDateTime(TimeOnly.MinValue);
+        draftExercises.Clear();
+        draftExercises.AddRange(revision.Exercises.OrderBy(item => item.SortOrder).Select(item => new DraftExercise(item)));
+    }
+
+    private void CancelEditing() => ResetEditor();
+
+    private void ResetEditor()
+    {
+        editingProgramId = null;
+        programTitle = "Home Exercise Program";
+        therapistNotes = null;
+        startDate = DateTime.Today;
+        endDate = DateTime.Today.AddMonths(1);
+        draftExercises.Clear();
+        catalogResults = [];
+    }
+
+    private async Task LaunchAsync(Guid programId, bool flowSheet)
+    {
+        try
+        {
+            var launch = await Integrations.CreateLaunchAsync(programId, flowSheet);
+            Navigation.NavigateTo(launch.LaunchUrl, forceLoad: true);
+        }
+        catch (Exception exception) { Toasts.ShowError(exception.Message); }
+    }
+
+    private async Task LoadTrackingAsync(Guid programId)
+    {
+        try { tracking = await Integrations.GetHepTrackingAsync(programId); }
+        catch (Exception exception) { Toasts.ShowError(exception.Message); }
+    }
+
+    private CreateHepProgramRequest BuildRequest() => new()
+    {
+        Title = programTitle,
+        TherapistNotes = therapistNotes,
+        StartDate = startDate.HasValue ? DateOnly.FromDateTime(startDate.Value) : null,
+        EndDate = endDate.HasValue ? DateOnly.FromDateTime(endDate.Value) : null,
+        Exercises = draftExercises.Select(item => new HepExerciseRequest
+        {
+            ExternalExerciseId = item.ExternalExerciseId,
+            Title = item.Title,
+            DescriptionOverride = item.DescriptionOverride,
+            Sets = item.Sets,
+            Repetitions = item.Repetitions,
+            Weight = item.Weight,
+            Frequency = item.Frequency,
+            Duration = item.Duration,
+            Hold = item.Hold,
+            Tempo = item.Tempo,
+            Rest = item.Rest,
+            Level = item.Level,
+            Other = item.Other,
+            IsHomeExercise = item.IsHomeExercise,
+            Mirror = item.Mirror,
+            Flip = item.Flip
+        }).ToArray()
+    };
+
+    private void BackToPatient() => Navigation.NavigateTo($"/patient/{PatientId:D}");
+
+    private sealed class DraftExercise(WibbiExerciseCatalogItem item)
+    {
+        public string ExternalExerciseId { get; } = item.ExternalExerciseId;
+        public string Title { get; } = item.Title;
+        public string? DescriptionOverride { get; set; } = item.Description;
+        public string? Sets { get; set; }
+        public string? Repetitions { get; set; }
+        public string? Weight { get; set; }
+        public string? Frequency { get; set; }
+        public string? Duration { get; set; }
+        public string? Hold { get; set; }
+        public string? Tempo { get; set; }
+        public string? Rest { get; set; }
+        public string? Level { get; set; }
+        public string? Other { get; set; }
+        public bool IsHomeExercise { get; set; } = true;
+        public bool Mirror { get; set; }
+        public bool Flip { get; set; }
+
+        public DraftExercise(HepExerciseResponse item)
+            : this(new WibbiExerciseCatalogItem(item.ExternalExerciseId, item.Title, item.DescriptionOverride, null, null))
+        {
+            Sets = item.Sets;
+            Repetitions = item.Repetitions;
+            Weight = item.Weight;
+            Frequency = item.Frequency;
+            Duration = item.Duration;
+            Hold = item.Hold;
+            Tempo = item.Tempo;
+            Rest = item.Rest;
+            Level = item.Level;
+            Other = item.Other;
+            IsHomeExercise = item.IsHomeExercise;
+            Mirror = item.Mirror;
+            Flip = item.Flip;
+        }
+    }
+}

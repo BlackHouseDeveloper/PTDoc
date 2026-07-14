@@ -14,6 +14,10 @@ public class PatientDocument
     public long SizeBytes { get; set; }
     public string ContentHashSha256 { get; set; } = string.Empty;
     public byte[] ContentBytes { get; set; } = Array.Empty<byte>();
+    /// <summary>
+    /// Optional private content-store key. Legacy documents continue to use ContentBytes.
+    /// </summary>
+    public string? StorageKey { get; set; }
     public string? Notes { get; set; }
     public Guid UploadedByUserId { get; set; }
     public DateTime UploadedAtUtc { get; set; } = DateTime.UtcNow;

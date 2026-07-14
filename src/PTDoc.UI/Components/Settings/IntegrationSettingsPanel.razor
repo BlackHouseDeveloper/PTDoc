@@ -1,0 +1,198 @@
+@using PTDoc.Application.Integrations
+@inject IIntegrationClientService Integrations
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IToastService Toasts
+
+<section class="integration-settings" aria-labelledby="integration-settings-title">
+    <header>
+        <h1 id="integration-settings-title">Clinical Integrations</h1>
+        <p>Connections are isolated to this clinic. Production enablement requires compliance approval and a secret-manager reference.</p>
+    </header>
+
+    @if (isLoading)
+    {
+        <p role="status">Loading integration settings…</p>
+    }
+    else if (!clinicId.HasValue)
+    {
+        <div class="integration-settings__alert" role="alert">The authenticated session does not include a clinic identifier.</div>
+    }
+    else
+    {
+        @foreach (var editor in editors)
+        {
+            <article class="integration-settings__card">
+                <div class="integration-settings__heading">
+                    <div><h2>@editor.DisplayName</h2><p>@editor.Description</p></div>
+                    <span class="integration-settings__health">@(editor.LastHealthCode ?? "Not verified")</span>
+                </div>
+                <div class="integration-settings__fields">
+                    <label><span>Display name</span><input @bind="editor.DisplayName" maxlength="160" /></label>
+                    <label><span>Secret reference</span><input @bind="editor.SecretReference" maxlength="500" autocomplete="off" placeholder="Integrations:Connections:Clinic:Provider" /></label>
+                    <label class="integration-settings__wide"><span>Provider configuration (JSON)</span><textarea @bind="editor.ConfigurationJson" rows="5" spellcheck="false"></textarea></label>
+                </div>
+                <div class="integration-settings__checks">
+                    <label><input type="checkbox" @bind="editor.ComplianceApproved" /> BAA/vendor-risk approval is complete</label>
+                    <label><input type="checkbox" @bind="editor.IsEnabled" /> Enable for this clinic</label>
+                </div>
+                <div class="integration-settings__actions">
+                    <button type="button" class="btn btn--primary" @onclick="() => SaveAsync(editor)">Save</button>
+                    <button type="button" class="btn btn--secondary" @onclick="() => VerifyAsync(editor)">Verify connection</button>
+                    @if (editor.Provider == "HumbleFax")
+                    {
+                        <button type="button" class="btn btn--secondary" @onclick="() => RotateWebhookAsync(editor)">Rotate webhook token</button>
+                    }
+                </div>
+                @if (!string.IsNullOrWhiteSpace(editor.OneTimeWebhookToken))
+                {
+                    <div class="integration-settings__token" role="status">
+                        <strong>Copy this new webhook token now.</strong>
+                        <code>@editor.OneTimeWebhookToken</code>
+                        <span>It will not be displayed again.</span>
+                    </div>
+                }
+            </article>
+        }
+
+        <section class="integration-settings__operations" aria-labelledby="integration-operations-title">
+            <h2 id="integration-operations-title">Provider work needing attention</h2>
+            @if (deadLetters.Count == 0)
+            {
+                <p>No dead-lettered integration jobs.</p>
+            }
+            else
+            {
+                <div class="integration-settings__table-wrap">
+                    <table>
+                        <thead><tr><th>Provider</th><th>Operation</th><th>Failure</th><th>Updated</th><th>Action</th></tr></thead>
+                        <tbody>
+                            @foreach (var job in deadLetters)
+                            {
+                                <tr>
+                                    <td>@job.Provider</td>
+                                    <td>@job.JobType</td>
+                                    <td>@(job.LastErrorCode ?? "Unknown")</td>
+                                    <td>@job.UpdatedAtUtc.ToLocalTime().ToString("g")</td>
+                                    <td><button type="button" class="btn btn--secondary" @onclick="() => ReplayAsync(job.Id)">Replay safely</button></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+    }
+</section>
+
+@code {
+    private readonly List<ConnectionEditor> editors = [];
+    private IReadOnlyList<IntegrationDeadLetterResponse> deadLetters = [];
+    private Guid? clinicId;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var principal = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+        var clinicClaim = principal.FindFirst("clinic_id")?.Value;
+        clinicId = Guid.TryParse(clinicClaim, out var parsed) ? parsed : null;
+        if (!clinicId.HasValue) { isLoading = false; return; }
+
+        try
+        {
+            var existing = await Integrations.GetConnectionsAsync();
+            editors.Add(BuildEditor("HumbleFax", "Humble Fax", "Outbound and inbound fax transport.",
+                "{\"baseUrl\":\"https://api.humblefax.com\",\"fromNumber\":\"\"}", existing));
+            editors.Add(BuildEditor("Wibbi", "Wibbi HEP", "Clinician SSO, patient provisioning, program publication, and tracking.",
+                "{\"entity\":\"\",\"clinicLicenseId\":\"\",\"locale\":\"en-US\"}", existing));
+            deadLetters = await Integrations.GetDeadLettersAsync();
+        }
+        catch (Exception exception) { Toasts.ShowError(exception.Message); }
+        finally { isLoading = false; }
+    }
+
+    private static ConnectionEditor BuildEditor(
+        string provider,
+        string displayName,
+        string description,
+        string defaultJson,
+        IReadOnlyList<IntegrationConnectionResponse> connections)
+    {
+        var existing = connections.FirstOrDefault(item => item.Provider == provider);
+        return new ConnectionEditor
+        {
+            Provider = provider,
+            DisplayName = existing?.DisplayName ?? displayName,
+            Description = description,
+            ConfigurationJson = existing?.ConfigurationJson ?? defaultJson,
+            IsEnabled = existing?.IsEnabled ?? false,
+            ComplianceApproved = existing?.IsComplianceApproved ?? false,
+            SecretReference = string.Empty,
+            HasStoredSecretReference = existing?.IsSecretConfigured ?? false,
+            LastHealthCode = existing?.LastHealthCode
+        };
+    }
+
+    private async Task SaveAsync(ConnectionEditor editor)
+    {
+        if (!clinicId.HasValue) return;
+        try
+        {
+            var saved = await Integrations.SaveConnectionAsync(clinicId.Value, editor.Provider, new UpsertIntegrationConnectionRequest
+            {
+                DisplayName = editor.DisplayName,
+                ConfigurationJson = editor.ConfigurationJson,
+                SecretReference = editor.SecretReference,
+                ComplianceApproved = editor.ComplianceApproved,
+                IsEnabled = editor.IsEnabled
+            });
+            editor.LastHealthCode = saved.LastHealthCode;
+            editor.HasStoredSecretReference = saved.IsSecretConfigured;
+            Toasts.ShowSuccess($"{editor.DisplayName} settings saved.");
+        }
+        catch (Exception exception) { Toasts.ShowError(exception.Message); }
+    }
+
+    private async Task VerifyAsync(ConnectionEditor editor)
+    {
+        if (!clinicId.HasValue) return;
+        try
+        {
+            var health = await Integrations.VerifyConnectionAsync(clinicId.Value, editor.Provider);
+            editor.LastHealthCode = health.Code;
+            if (health.Success) Toasts.ShowSuccess($"{editor.DisplayName} connection verified."); else Toasts.ShowError($"Verification failed: {health.Code}");
+        }
+        catch (Exception exception) { Toasts.ShowError(exception.Message); }
+    }
+
+    private async Task RotateWebhookAsync(ConnectionEditor editor)
+    {
+        if (!clinicId.HasValue) return;
+        try { editor.OneTimeWebhookToken = (await Integrations.RotateWebhookTokenAsync(clinicId.Value, editor.Provider)).WebhookToken; }
+        catch (Exception exception) { Toasts.ShowError(exception.Message); }
+    }
+
+    private async Task ReplayAsync(Guid jobId)
+    {
+        try
+        {
+            await Integrations.ReplayDeadLetterAsync(jobId);
+            deadLetters = await Integrations.GetDeadLettersAsync();
+            Toasts.ShowSuccess("Integration job queued for a safe replay.");
+        }
+        catch (Exception exception) { Toasts.ShowError(exception.Message); }
+    }
+
+    private sealed class ConnectionEditor
+    {
+        public string Provider { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string ConfigurationJson { get; set; } = "{}";
+        public string SecretReference { get; set; } = string.Empty;
+        public bool HasStoredSecretReference { get; set; }
+        public bool IsEnabled { get; set; }
+        public bool ComplianceApproved { get; set; }
+        public string? LastHealthCode { get; set; }
+        public string? OneTimeWebhookToken { get; set; }
+    }
+}

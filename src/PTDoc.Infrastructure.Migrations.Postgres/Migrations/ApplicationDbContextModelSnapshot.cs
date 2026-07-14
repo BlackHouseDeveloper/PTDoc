@@ -2144,6 +2144,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 {
                     b.Navigation("Sessions");
                 });
+            ApplicationDbContext.ConfigureIntegrationModels(modelBuilder);
 #pragma warning restore 612, 618
         }
     }

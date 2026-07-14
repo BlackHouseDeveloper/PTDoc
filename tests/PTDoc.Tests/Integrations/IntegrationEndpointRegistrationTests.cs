@@ -10,7 +10,7 @@ namespace PTDoc.Tests.Integrations;
 public class IntegrationEndpointRegistrationTests
 {
     [Fact]
-    public void MapIntegrationEndpoints_DoesNotRegisterHepRoutesWhenDisabled()
+    public void MapIntegrationEndpoints_AlwaysRegistersConnectionBackedHepRoutes()
     {
         var app = CreateApp(new Dictionary<string, string?>
         {
@@ -24,7 +24,13 @@ public class IntegrationEndpointRegistrationTests
         var routes = GetRoutes(app);
 
         Assert.DoesNotContain("/api/v1/integrations/hep/assign", routes);
-        Assert.DoesNotContain("/api/v1/integrations/hep/patient-launch", routes);
+        Assert.Contains("/api/v1/integrations/hep/patient-launch", routes);
+        Assert.Contains("/api/v1/integrations/hep/patient-launch-ticket", routes);
+        Assert.Contains("/api/v1/integrations/hep/patient-programs", routes);
+        Assert.Contains("/api/v1/integrations/hep/patients/{patientId:guid}/programs", routes);
+        Assert.Contains("/api/v1/integrations/hep/programs/{programId:guid}/publish", routes);
+        Assert.Contains("/api/v1/integrations/operations/dead-letters", routes);
+        Assert.Contains("/api/v1/integrations/operations/dead-letters/{jobId:guid}/replay", routes);
     }
 
     [Fact]

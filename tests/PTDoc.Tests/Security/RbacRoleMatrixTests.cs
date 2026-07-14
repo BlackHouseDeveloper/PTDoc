@@ -83,7 +83,14 @@ public class RbacRoleMatrixTests : IAsyncDisposable
             AuthorizationPolicies.IntakeRead,
             AuthorizationPolicies.IntakeWrite,
             AuthorizationPolicies.ClinicalStaff,
-            AuthorizationPolicies.AdminOnly
+            AuthorizationPolicies.AdminOnly,
+            AuthorizationPolicies.FaxSend,
+            AuthorizationPolicies.FaxRead,
+            AuthorizationPolicies.FaxTriage,
+            AuthorizationPolicies.FaxAdmin,
+            AuthorizationPolicies.HepAuthor,
+            AuthorizationPolicies.HepRead,
+            AuthorizationPolicies.HepAdmin
         };
 
         Assert.Equal(policyNames.Length, new HashSet<string>(policyNames).Count);
@@ -148,6 +155,13 @@ public class RbacRoleMatrixTests : IAsyncDisposable
         Assert.DoesNotContain(Roles.PT, patientHepRoles);
         Assert.DoesNotContain(Roles.PTA, patientHepRoles);
         Assert.DoesNotContain(Roles.Admin, patientHepRoles);
+
+        Assert.True(new HashSet<string> { Roles.PT, Roles.PTA, Roles.Admin }
+            .SetEquals(GetAllowedRoles(authOptions.GetPolicy(AuthorizationPolicies.FaxSend))));
+        Assert.True(new HashSet<string> { Roles.Admin, Roles.FrontDesk }
+            .SetEquals(GetAllowedRoles(authOptions.GetPolicy(AuthorizationPolicies.FaxTriage))));
+        Assert.True(new HashSet<string> { Roles.PT, Roles.PTA }
+            .SetEquals(GetAllowedRoles(authOptions.GetPolicy(AuthorizationPolicies.HepAuthor))));
     }
 
     // ─── Authorization service evaluation tests ──────────────────────────────
