@@ -196,7 +196,8 @@ public sealed class IntegrationDocumentStore : IIntegrationDocumentStore
     private static void ValidateStorageKey(string storageKey)
     {
         if (string.IsNullOrWhiteSpace(storageKey) || storageKey.Length > 1024 ||
-            storageKey.Contains("..", StringComparison.Ordinal) || storageKey.StartsWith('/'))
+            storageKey.Contains("..", StringComparison.Ordinal) || storageKey.StartsWith('/') ||
+            storageKey.Contains('\\') || storageKey.Contains(':'))
         {
             throw new InvalidOperationException("Integration document storage key is invalid.");
         }

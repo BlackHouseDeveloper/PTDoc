@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - integration workflow resilience
 
 - **Fax Center and HEP search** — Handled patient-search and selected-patient document/note load failures with safe user-facing feedback, and prevented exercise catalog requests until the clinician supplies at least two non-whitespace characters. Reason: transient API failures must not interrupt interactive Blazor workflows, and short searches should not create avoidable provider load.
+- **Fax accessibility and document keys** — Added selected-state semantics to Fax Center tabs and rejected backslashes and colon-based paths in integration document keys, with regression coverage. Reason: tabs must be correctly announced by assistive technology, and provider document references must be platform-safe before filesystem access.
 
 ### Changed - agent guidance captures audit-remediation and beta seed settings
 

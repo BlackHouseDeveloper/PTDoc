@@ -107,8 +107,8 @@
         </AuthorizeView>
 
         <div class="integration-tabs" role="tablist" aria-label="Fax views">
-            <button type="button" class="@(activeTab == "outbox" ? "is-active" : null)" @onclick="ShowOutbox">Outbox</button>
-            <button type="button" class="@(activeTab == "inbox" ? "is-active" : null)" @onclick="ShowInbox">Inbox</button>
+            <button type="button" role="tab" class="@(activeTab == "outbox" ? "is-active" : null)" aria-selected="@(activeTab == "outbox" ? "true" : "false")" @onclick="ShowOutbox">Outbox</button>
+            <button type="button" role="tab" class="@(activeTab == "inbox" ? "is-active" : null)" aria-selected="@(activeTab == "inbox" ? "true" : "false")" @onclick="ShowInbox">Inbox</button>
         </div>
         <div class="integration-filters" aria-label="Fax history filters">
             <label>
