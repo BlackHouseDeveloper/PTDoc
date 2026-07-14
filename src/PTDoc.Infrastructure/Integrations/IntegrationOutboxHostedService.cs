@@ -36,7 +36,7 @@ public sealed class IntegrationOutboxHostedService : BackgroundService
 
         using var timer = new PeriodicTimer(NormalizeInterval(_options.PollInterval));
         var recurringDueAt = DateTime.MinValue;
-        do
+        while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
@@ -57,8 +57,19 @@ public sealed class IntegrationOutboxHostedService : BackgroundService
             {
                 _logger.LogError(exception, "Integration outbox worker pass failed.");
             }
+
+            try
+            {
+                if (!await timer.WaitForNextTickAsync(stoppingToken))
+                {
+                    break;
+                }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
         }
-        while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 
     private static TimeSpan NormalizeInterval(TimeSpan value) =>
