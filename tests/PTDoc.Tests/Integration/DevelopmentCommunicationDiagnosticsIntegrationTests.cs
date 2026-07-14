@@ -4,7 +4,9 @@ using Microsoft.Extensions.DependencyInjection;
 using PTDoc.Application.Communication;
 using PTDoc.Application.Services;
 using PTDoc.Core.Communication;
+using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Communication;
+using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Tests.Integration;
 
@@ -92,6 +94,83 @@ public sealed class DevelopmentCommunicationDiagnosticsIntegrationTests
             Assert.Equal("Your PTDoc intake verification code", message.GetProperty("subject").GetString());
             Assert.Contains("123456", message.GetProperty("plainTextBody").GetString(), StringComparison.Ordinal);
             Assert.Contains("123456", message.GetProperty("htmlBody").GetString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task IntakeOtpDiagnostics_AdminReadsSanitizedRecentOutcomes()
+    {
+        using var env = CreateEnvironment(developerModeEnabled: false);
+        var factory = new PtDocApiFactory();
+
+        try
+        {
+            await factory.InitializeAsync();
+            var intakeId = Guid.NewGuid();
+            var requestId = Guid.NewGuid().ToString("N");
+            using (var scope = factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                db.AuditLogs.Add(new AuditLog
+                {
+                    TimestampUtc = DateTime.UtcNow,
+                    EventType = "IntakeOtpDeliveryFailed",
+                    Severity = "Error",
+                    EntityType = "IntakeForm",
+                    EntityId = intakeId,
+                    CorrelationId = requestId,
+                    Success = false,
+                    ErrorMessage = "ProviderRejected",
+                    MetadataJson =
+                        """{"Channel":"Email","Provider":"AzureCommunicationServices","Outcome":"ProviderRejected","ErrorCode":"AcsRejected"}"""
+                });
+                await db.SaveChangesAsync();
+            }
+
+            using var client = factory.CreateClientWithRole(Roles.Admin);
+            using var response = await client.GetAsync("/diagnostics/intake-otp?take=10");
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var rawPayload = await response.Content.ReadAsStringAsync();
+            using var payload = JsonDocument.Parse(rawPayload);
+            var outcome = Assert.Single(
+                payload.RootElement.GetProperty("outcomes").EnumerateArray(),
+                item => item.GetProperty("requestId").GetString() == requestId);
+            Assert.Equal(intakeId, outcome.GetProperty("intakeId").GetGuid());
+            Assert.Equal(requestId, outcome.GetProperty("requestId").GetString());
+            Assert.Equal("Email", outcome.GetProperty("channel").GetString());
+            Assert.Equal("AzureCommunicationServices", outcome.GetProperty("provider").GetString());
+            Assert.Equal("ProviderRejected", outcome.GetProperty("outcome").GetString());
+            Assert.Equal("AcsRejected", outcome.GetProperty("errorCode").GetString());
+            Assert.DoesNotContain("recipient", rawPayload, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("otpCode", rawPayload, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task IntakeOtpDiagnostics_InvalidTakeReturnsNormalizedBadRequest()
+    {
+        using var env = CreateEnvironment(developerModeEnabled: false);
+        var factory = new PtDocApiFactory();
+
+        try
+        {
+            await factory.InitializeAsync();
+            using var client = factory.CreateClientWithRole(Roles.Admin);
+            using var response = await client.GetAsync("/diagnostics/intake-otp?take=not-a-number");
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal("bad_request", payload.RootElement.GetProperty("code").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(payload.RootElement.GetProperty("correlationId").GetString()));
         }
         finally
         {

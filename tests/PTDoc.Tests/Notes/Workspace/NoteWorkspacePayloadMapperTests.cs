@@ -207,6 +207,29 @@ public sealed class NoteWorkspacePayloadMapperTests
     }
 
     [Fact]
+    public void AdditionalFunctionalLimitations_RoundTripsThroughWorkspaceMapper()
+    {
+        var payload = new NoteWorkspacePayload
+        {
+            WorkspaceNoteType = "Evaluation Note",
+            StructuredPayload = new NoteWorkspaceV2Payload { NoteType = NoteType.Evaluation },
+            Subjective = new SubjectiveVm
+            {
+                AdditionalFunctionalLimitations = "Unable to carry laundry upstairs for more than one trip."
+            },
+            Objective = new ObjectiveVm(),
+            Assessment = new AssessmentWorkspaceVm(),
+            Plan = new PlanVm()
+        };
+
+        var v2 = _mapper.MapToV2Payload(payload, NoteType.Evaluation);
+        var reloaded = _mapper.MapToUiPayload(v2);
+
+        Assert.Equal(payload.Subjective.AdditionalFunctionalLimitations, v2.Subjective.AdditionalFunctionalLimitations);
+        Assert.Equal(payload.Subjective.AdditionalFunctionalLimitations, reloaded.Subjective.AdditionalFunctionalLimitations);
+    }
+
+    [Fact]
     public void MapToV2Payload_RoundTripsAssistiveDevicesHomeLayoutAndMedications()
     {
         var uiPayload = new NoteWorkspacePayload

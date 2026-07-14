@@ -63,6 +63,7 @@ public sealed class NoteWorkspaceApiService(
         {
             Success = true,
             NoteId = workspace.NoteId,
+            LastModifiedUtc = workspace.LastModifiedUtc,
             WorkspaceNoteType = WorkspaceNoteTypeMapper.ResolveWorkspaceNoteType(workspace.Payload),
             DateOfService = workspace.DateOfService,
             IsReEvaluation = workspace.IsReEvaluation,
@@ -172,6 +173,7 @@ public sealed class NoteWorkspaceApiService(
         var request = new NoteWorkspaceV2SaveRequest
         {
             NoteId = draft.IsExistingNote ? draft.NoteId : null,
+            ExpectedLastModifiedUtc = draft.IsExistingNote ? draft.ExpectedLastModifiedUtc : null,
             PatientId = draft.PatientId,
             AppointmentId = draft.AppointmentId,
             DateOfService = draft.DateOfService,
@@ -191,6 +193,7 @@ public sealed class NoteWorkspaceApiService(
                 return new NoteWorkspaceSaveResult
                 {
                     Success = false,
+                    IsConflict = response.StatusCode == HttpStatusCode.Conflict,
                     ErrorMessage = BuildValidationMessage(failedSave.Errors, failedSave.Warnings)
                         ?? ApiErrorReader.ReadMessage(failurePayload, response.StatusCode),
                     Errors = failedSave.Errors,
@@ -205,6 +208,7 @@ public sealed class NoteWorkspaceApiService(
             return new NoteWorkspaceSaveResult
             {
                 Success = false,
+                IsConflict = response.StatusCode == HttpStatusCode.Conflict,
                 ErrorMessage = ApiErrorReader.ReadMessage(failurePayload, response.StatusCode)
             };
         }
@@ -223,6 +227,7 @@ public sealed class NoteWorkspaceApiService(
         {
             Success = true,
             NoteId = saved.Workspace.NoteId,
+            LastModifiedUtc = saved.Workspace.LastModifiedUtc,
             IsReEvaluation = saved.Workspace.IsReEvaluation,
             Status = saved.Workspace.NoteStatus,
             Errors = saved.Errors,

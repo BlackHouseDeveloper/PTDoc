@@ -12,6 +12,24 @@ public interface IIntakeInviteService
     /// <summary>Sends a one-time passcode to the specified contact via the selected channel for a signed invite.</summary>
     Task<bool> SendOtpAsync(string inviteToken, string contact, OtpChannel channel, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Sends an OTP and returns a non-PHI diagnostic outcome. Implementations that do not provide
+    /// detailed diagnostics retain the existing boolean behavior through this default implementation.
+    /// </summary>
+    async Task<IntakeOtpSendResult> SendOtpWithDiagnosticsAsync(
+        string inviteToken,
+        string contact,
+        OtpChannel channel,
+        CancellationToken cancellationToken = default,
+        string? correlationId = null)
+    {
+        var success = await SendOtpAsync(inviteToken, contact, channel, cancellationToken);
+        return new IntakeOtpSendResult(
+            success,
+            string.Empty,
+            success ? IntakeOtpSendOutcome.Delivered : IntakeOtpSendOutcome.ProviderRejected);
+    }
+
     /// <summary>Verifies the OTP and issues a short-lived intake access token bound to the signed invite.</summary>
     Task<IntakeInviteResult> VerifyOtpAndIssueAccessTokenAsync(string inviteToken, string contact, OtpChannel channel, string otpCode, CancellationToken cancellationToken = default);
 

@@ -1,0 +1,30 @@
+<div id="components-reconnect-modal"
+     class="components-reconnect-hide"
+     role="alertdialog"
+     aria-modal="true"
+     aria-labelledby="reconnect-title">
+    <div class="reconnect-modal__panel">
+        <h2 id="reconnect-title" class="reconnect-modal__title">Connection interrupted</h2>
+        <p id="reconnect-description" class="reconnect-modal__description reconnect-modal__retrying">
+            Reconnecting to PTDoc. Keep this page open while the connection is restored.
+        </p>
+        <p class="reconnect-modal__description reconnect-modal__failed">
+            PTDoc could not reconnect. Retry the connection before reloading the page.
+        </p>
+        <p class="reconnect-modal__description reconnect-modal__rejected">
+            The server restarted and this session can no longer reconnect. Reload PTDoc to continue.
+        </p>
+        <p class="reconnect-modal__attempt">
+            Attempt <span id="components-reconnect-current-attempt"></span>
+            of <span id="components-reconnect-max-retries"></span>
+        </p>
+        <div class="reconnect-modal__actions">
+            <button type="button" class="reconnect-modal__button reconnect-modal__button--secondary" data-reconnect-retry>
+                Retry
+            </button>
+            <button type="button" class="reconnect-modal__button reconnect-modal__button--primary" data-reconnect-reload>
+                Reload PTDoc
+            </button>
+        </div>
+    </div>
+</div>

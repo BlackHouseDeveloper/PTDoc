@@ -20,15 +20,22 @@ The beta deployment uses two Azure App Services behind Cloudflare-managed custom
 
 Enable these platform settings on both App Services:
 
+- App Service plan: Standard tier or higher so deployment slots are available
+- Deployment slot: `staging`
 - HTTPS Only: enabled
 - Managed Certificate: bound to the Cloudflare custom domain
 - TLS/SSL binding type: SNI SSL
+- Always On: enabled
+- App Service Health Check path: `/health/live`
+- Remote Debugging: disabled
+- Snapshot Debugger: disabled; remove any installed Snapshot Debugger site extension
 
 Enable this frontend-only setting:
 
 - Web sockets: enabled on `ptdoc-web-prod`
+- ARR affinity: enabled on `ptdoc-web-prod` and its `staging` slot
 
-Use `/health/live` for the Azure App Service health-check path if health checks are enabled. Reserve `/health/ready` for deployment validation and pre-QA smoke checks because readiness can exercise dependencies that cost more to probe frequently.
+Use `/health/live` for the Azure App Service health-check path. Reserve `/health/ready` for deployment validation and pre-QA smoke checks because Web readiness also verifies that the configured API upstream responds.
 
 Use `ASPNETCORE_ENVIRONMENT=Beta` on both App Services so `appsettings.Beta.json` is loaded.
 
@@ -53,6 +60,7 @@ Jwt__SigningKey=<minimum 32 character secret>
 IntakeInvite__SigningKey=<minimum 32 character secret>
 BetaAccess__AllowStartupSeed=true
 BetaAccess__SeedPin=<4 digit beta access PIN from secret store>
+BetaAccess__SeedLockTimeoutSeconds=15
 IntakeInvite__PublicWebBaseUrl=https://ptdoc.bhdevsites.com
 Communication__PublicBaseUrl=https://ptdoc.bhdevsites.com
 Communication__RecipientHashSalt=<random high-entropy secret>
@@ -82,11 +90,13 @@ AzureOpenAIApiVersion=<API version>
 
 Do not commit real connection strings, signing keys, publish profiles, ACS credentials, Azure OpenAI keys, or Entra client secrets.
 
+Configure the API `staging` slot with `BetaAccess__AllowStartupSeed=false` and mark it as a deployment-slot setting. Keep startup seeding enabled only on the production API slot. Mark secrets, connection strings, and slot-specific upstream addresses as deployment-slot settings so a swap does not move staging configuration into production.
+
 ## Seeded Beta Access
 
 When the API runs with `ASPNETCORE_ENVIRONMENT=Beta`, startup seeds a small, idempotent access fixture for manual beta validation. These accounts are not seeded in Production.
 Because Beta uses `Database__AutoMigrate=false`, apply database migrations out-of-band before starting or redeploying the API. If the database is unreachable or migrations are pending, the API logs a warning and skips Beta access seeding for that startup.
-Startup seeding is enabled only through `BetaAccess__AllowStartupSeed=true`, and is approved only while the Beta API App Service remains a controlled single-instance deployment. The seeder also acquires a SQL Server application lock before writes so an accidental overlapping startup skips seeding instead of racing duplicate inserts. If Beta is scaled beyond one instance, either disable startup seeding or keep the lock-protected path in place and verify the logs after each deployment.
+Startup seeding is enabled only through `BetaAccess__AllowStartupSeed=true`, and is approved only while the Beta API App Service remains a controlled single-instance deployment. The seeder waits up to `BetaAccess__SeedLockTimeoutSeconds` for the SQL Server application lock. A `-1`, `-2`, or `-3` lock result is reported as `SkippedLockContention`; it is not a database failure. The single sanitized startup outcome is one of `Completed`, `AlreadyCurrent`, `SkippedLockContention`, `SkippedConfiguration`, `SkippedDatabase`, or `Failed` and includes duration plus the numeric lock result when available.
 The shared Beta seed PIN is not committed; configure it through the API App Service setting `BetaAccess__SeedPin` and rotate it from Azure when needed. The current Beta PIN is managed in Azure settings.
 
 Keep Beta on a single App Service instance with autoscale disabled unless a release explicitly documents a different operating model. If scale-out is enabled, disable startup seeding first or verify the SQL lock behavior immediately after deployment.
@@ -115,14 +125,30 @@ Required Beta database order:
 
 ## GitHub Actions Deployment
 
-Use the manual `Deploy Beta` workflow. It builds, tests, publishes, and deploys the Web and API artifacts separately.
+Use the manual `Deploy Beta` workflow. It builds and tests once, deploys the API to `staging`, validates and swaps the API, then deploys and swaps Web. Web deployment does not begin if the API deployment or post-swap checks fail.
 
 Required GitHub secrets:
 
 ```text
-AZURE_WEBAPP_PUBLISH_PROFILE_PTDOC_WEB_PROD
-AZURE_WEBAPP_PUBLISH_PROFILE_PTDOC_API_PLAN
+AZURE_CLIENT_ID
+AZURE_TENANT_ID
+AZURE_SUBSCRIPTION_ID
+PTDOC_BETA_SEED_PIN
 ```
+
+The first three values identify the beta-environment Azure OIDC deployment identity. Grant that identity only the App Service deploy and slot-swap permissions needed for `ptdoc-api-plan` and `ptdoc-web-prod`; do not restore publish-profile credentials. `PTDOC_BETA_SEED_PIN` is masked by GitHub and is used only for the post-API-swap seeded-role login smoke check.
+
+Deployment order and rollback contract:
+
+1. Apply database migrations out-of-band.
+2. Deploy API artifact to the `staging` slot and verify staging `/health/live` and `/health/ready`.
+3. Swap API `staging` to production, verify production health, and sign in all four seeded roles.
+4. Reverse the API swap immediately if any post-swap check fails. Do not deploy Web after an API failure.
+5. Deploy Web artifact to `staging`, with its API upstream configured for the production API, and verify Web `/health/live` and `/health/ready`.
+6. Swap Web `staging` to production and verify both Web health endpoints.
+7. Reverse the Web swap immediately if post-swap health or SignalR validation fails.
+
+After changing Azure diagnostics settings, restart one service at a time and verify `Production Breakpoint Instrumentation Method` initialization errors are absent across two restarts. Keep normal Application Insights request and dependency telemetry enabled.
 
 The workflow publishes:
 
@@ -134,16 +160,19 @@ dotnet publish src/PTDoc.Api/PTDoc.Api.csproj -c Release -o ./publish/api
 ## Smoke Checklist
 
 - Open `https://ptdoc.bhdevsites.com`.
+- Confirm `https://ptdoc.bhdevsites.com/health/live` and `/health/ready` are healthy.
 - Open `https://api-ptdoc.bhdevsites.com/health`.
 - Confirm `https://api-ptdoc.bhdevsites.com/health/live` is healthy for frequent platform probes.
 - Confirm `http://ptdoc.bhdevsites.com` redirects to HTTPS.
 - Confirm `http://api-ptdoc.bhdevsites.com/health` redirects to HTTPS.
 - Confirm frontend API calls use `https://api-ptdoc.bhdevsites.com`.
 - Confirm the API App Service is still single-instance before relying on startup seeding.
-- Confirm `Database__AutoMigrate=false`, `BetaAccess__AllowStartupSeed=true`, and `BetaAccess__SeedPin` are configured in Azure.
+- Confirm `Database__AutoMigrate=false`, production `BetaAccess__AllowStartupSeed=true`, staging `BetaAccess__AllowStartupSeed=false`, `BetaAccess__SeedLockTimeoutSeconds=15`, and `BetaAccess__SeedPin` are configured in Azure.
 - Confirm AI generation remains disabled unless a beta pass explicitly needs it, and if enabled, confirm `Ai__RateLimits__PermitLimit=10` and `Ai__RateLimits__WindowMinutes=60`. The legacy key `Ai__RateLimits__RequestsPerHour` is still accepted for existing environments, but new settings should use `PermitLimit`.
 - Confirm `https://api-ptdoc.bhdevsites.com/health/ready` is healthy before validating seeded access.
 - Confirm seeded Beta users can sign in with the configured `BetaAccess__SeedPin`.
 - Confirm a new signup receives the pending administrator approval message instead of a generic login failure.
 - Confirm no beta network calls use `localhost`, `127.0.0.1`, `devtunnels.ms`, or temporary `azurewebsites.net` URLs.
 - Confirm Blazor Interactive Server connections stay established after login and navigation.
+- Confirm reconnect UI appears during an induced interruption and offers Retry or Reload when the circuit cannot resume.
+- Confirm exactly one acceptable Beta seed outcome is logged for the production startup and no new Production Breakpoint instrumentation error appears after two controlled restarts.

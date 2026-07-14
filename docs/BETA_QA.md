@@ -38,11 +38,14 @@ Seeded beta patient fixtures:
 ### Environment Gate
 
 - Open `https://ptdoc.bhdevsites.com` and confirm the login page loads without unstyled content.
+- Confirm `https://ptdoc.bhdevsites.com/health/live` and `https://ptdoc.bhdevsites.com/health/ready` are healthy.
 - Confirm `https://api-ptdoc.bhdevsites.com/health/live` returns healthy for basic availability.
 - Confirm `https://api-ptdoc.bhdevsites.com/health/ready` returns healthy once before account validation; do not use readiness as a frequent polling probe.
 - Sign in with `january.beta`, `dani.beta`, `pta.beta`, and `patient.beta`.
 - Confirm no beta browser network calls use `localhost`, `127.0.0.1`, `devtunnels.ms`, or temporary `azurewebsites.net` URLs.
 - Confirm Blazor navigation remains connected after login, page changes, and refreshes.
+- Navigate continuously for 15 minutes and confirm there is no HTTP `503`, blank application state, or unexpected SignalR failure.
+- Confirm the deployment logs contain exactly one acceptable Beta seed outcome and no new `Production Breakpoint Instrumentation Method` errors after two controlled restarts.
 
 ### Admin Readiness (`january.beta`)
 
@@ -65,7 +68,9 @@ Seeded beta patient fixtures:
 - Start or enter a visit note from an appointment and confirm the route lands on the intended note.
 - Open Patients, search seeded fixtures, and create a new draft note from a patient profile.
 - Complete an Evaluation note with subjective, objective, assessment, and plan content.
-- Save a draft, refresh, and confirm entered content persists.
+- Enter a unique exact value in Additional functional limitations, save, refresh, and confirm the exact value persists. Restore the original value, save, and confirm cleanup after a second refresh.
+- Open the same draft in two sessions, save one session, then confirm the stale session retains its local value and shows `This note changed in another session` with `Stay here` and `Reload latest` actions.
+- During a deliberately delayed save, make another edit and confirm the workspace remains dirty until the follow-up save is server-confirmed.
 - Confirm autosave/save feedback is visible for successful saves and actionable for failures.
 - Sign or prepare a note where permitted; record any unclear compliance or validation message.
 - Export or preview PDF output for supported note states.
@@ -79,6 +84,8 @@ Seeded beta patient fixtures:
 - Confirm PTA can save draft note content.
 - Confirm PT-only co-sign/finalization boundaries are clear and not bypassable.
 - Confirm PDF/export and read/write affordances match the PTA role.
+- From Notes, activate a view-only note and confirm the route opens read-only content rather than note-entry controls.
+- Confirm `PDF Tools` routes to Review. Use only an approved synthetic draft before starting a PDF export, verify non-final labeling, then discard the artifact.
 
 ### Patient Coverage
 
@@ -89,7 +96,8 @@ Seeded beta patient fixtures:
 
 ### Intake
 
-- Send or open an intake workflow using seeded or fake `.test` patient data.
+- Send or open an intake workflow using an approved matching-recipient synthetic fixture. Verify send, resend, code verification, expiry, and recovery.
+- For failed sends, give the opaque request ID to an Admin. Confirm `GET /diagnostics/intake-otp` identifies the intake, channel, provider, outcome, and safe error code without contact values, invite tokens, or OTPs.
 - Complete demographics, insurance, care-team, body-part, pain, functional limitation, outcome measure, and review steps where available.
 - Submit intake and confirm the success message is visible without requiring hidden scrolling.
 - Reopen the clinician view and confirm submitted intake context appears in the Evaluation workflow where expected.
@@ -102,6 +110,8 @@ Seeded beta patient fixtures:
 - For mobile/tablet spot checks, record the device, OS, browser, and orientation.
 - Check light mode and dark mode on dashboard, appointments, patients, intake, notes, and settings/progress if reachable.
 - Record any horizontal page overflow, clipped modal footer, unreadable dark-mode text, or sidebar overlap.
+- In real Chromium at desktop and mobile widths, focus `Open menu` and activate it with Enter and Space. Confirm `aria-expanded` and the visible navigation state change each time.
+- During an induced Blazor interruption, confirm the reconnect dialog reports retry attempts; for a rejected circuit, confirm it explains the server restart and offers Reload.
 
 ### Current Route-Backed Retest Focus
 
@@ -109,6 +119,16 @@ Seeded beta patient fixtures:
 - From a seeded patient chart, switch between Timeline, Notes, Documents, and Communications using the visible chart links and direct query URLs such as `/patient/<id>?tab=documents`; confirm the active section changes without needing a full reload.
 - As a PT user, open a seeded patient chart with `/patient/<id>?action=new-note`; confirm the note-type chooser opens, then navigate away from the query and confirm the chooser closes.
 - As a PT user, confirm Export Center appears under the Tools navigation section rather than under Admin.
+
+The focused browser suite accepts these optional safe-fixture settings:
+
+```text
+PTDOC_UI_QA_EVALUATION_DRAFT_PATH=/patient/<patient-id>/note/<note-id>
+PTDOC_UI_QA_PTA_USERNAME=<pta-beta-user>
+PTDOC_UI_QA_PTA_PIN=<out-of-band-pin>
+```
+
+`PTDOC_UI_QA_EVALUATION_DRAFT_PATH` must identify a reversible PT-role Evaluation draft. The test writes a synthetic marker and restores the original value; do not point it at a signed note or real clinical content.
 
 ## Known Issues And Limitations
 
@@ -149,9 +169,14 @@ Good bug reports include the account used, exact route/page, one problem, number
 Beta can start when all of these are true:
 
 - Hosted Web and API beta URLs are reachable and healthy.
+- Staging and production Web/API health checks pass, and post-swap validation did not require an unresolved rollback.
 - Seeded Admin, PT, PTA, and Patient users can sign in with the configured beta PIN.
 - The Admin tester (`january.beta`) can validate the dashboard, patient directory, seeded patients, and intake entry points without unclear setup instructions.
 - The PT tester (`dani.beta`) can validate appointment entry, patient profile navigation, note draft save/reload, note review, and supported PDF export without losing draft work.
+- Exact-value draft reload, rapid-edit follow-up save, and two-session stale-write conflict checks pass.
+- Matching-recipient intake OTP send/resend/verify/expiry/recovery and clinician handoff pass with an approved synthetic fixture.
+- The 15-minute navigation soak has no `503`, blank application state, or unexpected SignalR failure.
+- Seeded-role login smoke checks pass, the seed outcome is acceptable, and the obsolete Production Breakpoint instrumentation error is absent after two restarts.
 - Patient users cannot access clinician-only workflows.
 - Known limitations are documented and not confused with unexpected regressions.
 - Bugs are reported with page, role, device/browser, steps, expected behavior, actual behavior, and screenshot when safe.

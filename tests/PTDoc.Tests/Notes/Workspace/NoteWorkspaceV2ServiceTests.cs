@@ -14,6 +14,8 @@ using PTDoc.Infrastructure.Notes.Workspace;
 using PTDoc.Infrastructure.Outcomes;
 using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.Infrastructure.Services;
+using PTDoc.UI.Components.Notes.Models;
+using PTDoc.UI.Services;
 using Xunit;
 
 namespace PTDoc.Tests.Notes.Workspace;
@@ -257,6 +259,52 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task AdditionalFunctionalLimitations_RoundTripsThroughUiMapperDatabaseAndReload()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Roundtrip",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var mapper = new NoteWorkspacePayloadMapper(
+            new IntakeReferenceDataCatalogService(),
+            new OutcomeMeasureRegistry());
+        const string exactValue = "Unable to carry laundry upstairs for more than one trip; 18 lb basket.";
+        var uiPayload = new NoteWorkspacePayload
+        {
+            WorkspaceNoteType = "Evaluation Note",
+            StructuredPayload = new NoteWorkspaceV2Payload { NoteType = NoteType.Evaluation },
+            Subjective = new SubjectiveVm { AdditionalFunctionalLimitations = exactValue },
+            Objective = new ObjectiveVm(),
+            Assessment = new AssessmentWorkspaceVm(),
+            Plan = new PlanVm()
+        };
+
+        var saved = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            DateOfService = new DateTime(2026, 7, 11),
+            NoteType = NoteType.Evaluation,
+            Payload = mapper.MapToV2Payload(uiPayload, NoteType.Evaluation)
+        });
+
+        Assert.True(saved.IsValid);
+        Assert.NotNull(saved.Workspace);
+        var reloaded = await _service.LoadAsync(patient.Id, saved.Workspace!.NoteId);
+        Assert.NotNull(reloaded);
+        var reloadedUi = mapper.MapToUiPayload(reloaded!.Payload);
+        Assert.Equal(exactValue, reloaded.Payload.Subjective.AdditionalFunctionalLimitations);
+        Assert.Equal(exactValue, reloadedUi.Subjective.AdditionalFunctionalLimitations);
+        var stored = await _context.ClinicalNotes.AsNoTracking().SingleAsync(note => note.Id == saved.Workspace.NoteId);
+        Assert.Contains(exactValue, stored.ContentJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SaveAsync_ExistingAppointmentAssociationCannotBeChanged()
     {
         var clinicId = Guid.NewGuid();
@@ -327,6 +375,68 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
 
         Assert.Equal("Appointment association cannot be changed once set.", ex.Message);
         Assert.Equal(originalAppointment.Id, (await _context.ClinicalNotes.FindAsync(note.Id))!.AppointmentId);
+    }
+
+    [Fact]
+    public async Task SaveAsync_StaleExpectedLastModifiedUtc_RejectsWithoutChangingStoredContent()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Concurrency",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+        var lastModifiedUtc = new DateTime(2026, 7, 11, 12, 0, 0, DateTimeKind.Utc);
+        var originalPayload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Subjective = new WorkspaceSubjectiveV2
+            {
+                AdditionalFunctionalLimitations = "Original functional limitation"
+            }
+        };
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            ClinicId = patient.ClinicId,
+            NoteType = NoteType.Evaluation,
+            NoteStatus = NoteStatus.Draft,
+            DateOfService = new DateTime(2026, 7, 11),
+            ContentJson = JsonSerializer.Serialize(originalPayload),
+            CreatedUtc = lastModifiedUtc,
+            LastModifiedUtc = lastModifiedUtc
+        };
+
+        _context.Patients.Add(patient);
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        var staleRequest = new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            NoteId = note.Id,
+            DateOfService = note.DateOfService,
+            NoteType = note.NoteType,
+            ExpectedLastModifiedUtc = lastModifiedUtc.AddMinutes(-1),
+            Payload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Evaluation,
+                Subjective = new WorkspaceSubjectiveV2
+                {
+                    AdditionalFunctionalLimitations = "Stale overwrite"
+                }
+            }
+        };
+
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => _service.SaveAsync(staleRequest));
+
+        var stored = await _context.ClinicalNotes.AsNoTracking().SingleAsync(existing => existing.Id == note.Id);
+        Assert.Equal(lastModifiedUtc, stored.LastModifiedUtc);
+        Assert.Contains("Original functional limitation", stored.ContentJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("Stale overwrite", stored.ContentJson, StringComparison.Ordinal);
     }
 
     [Fact]

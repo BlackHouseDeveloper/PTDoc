@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PTDoc.Application.Compliance;
@@ -71,6 +72,18 @@ public sealed class BetaAccessSeederTests
         Assert.Equal(Roles.PT, result.Role);
     }
 
+    [Fact]
+    public async Task SeedBetaAccessDataAsync_WhenFixturesAreCurrent_ReturnsAlreadyCurrent()
+    {
+        await using var context = CreateInMemoryContext();
+
+        var first = await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
+        var second = await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
+
+        Assert.Equal(BetaAccessSeedStatus.Completed, first.Status);
+        Assert.Equal(BetaAccessSeedStatus.AlreadyCurrent, second.Status);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("abcd")]
@@ -99,16 +112,50 @@ public sealed class BetaAccessSeederTests
         await using var context = new ApplicationDbContext(options);
         await context.Database.EnsureCreatedAsync();
 
-        await DatabaseSeeder.SeedBetaAccessDataAsync(
+        var result = await DatabaseSeeder.SeedBetaAccessDataAsync(
             context,
             NullLogger.Instance,
             TestBetaSeedPin,
             useSqlServerAppLock: true,
             acquireSqlServerAppLockAsync: _ => Task.FromResult(-1));
 
+        Assert.Equal(BetaAccessSeedStatus.SkippedLockContention, result.Status);
+        Assert.Equal(-1, result.LockResult);
         Assert.False(await context.Clinics.AnyAsync());
         Assert.False(await context.Users.AnyAsync());
         Assert.False(await context.Patients.AnyAsync());
+    }
+
+    [Theory]
+    [InlineData(0, BetaAccessSeedStatus.Completed, LogLevel.Information)]
+    [InlineData(1, BetaAccessSeedStatus.Completed, LogLevel.Information)]
+    [InlineData(-1, BetaAccessSeedStatus.SkippedLockContention, LogLevel.Information)]
+    [InlineData(-2, BetaAccessSeedStatus.SkippedLockContention, LogLevel.Information)]
+    [InlineData(-3, BetaAccessSeedStatus.SkippedLockContention, LogLevel.Information)]
+    [InlineData(-999, BetaAccessSeedStatus.Failed, LogLevel.Error)]
+    public async Task SeedBetaAccessDataAsync_MapsSqlServerLockResultToOutcomeAndLogLevel(
+        int lockResult,
+        BetaAccessSeedStatus expectedStatus,
+        LogLevel expectedLogLevel)
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var result = await DatabaseSeeder.SeedBetaAccessDataAsync(
+            context,
+            NullLogger.Instance,
+            TestBetaSeedPin,
+            useSqlServerAppLock: true,
+            acquireSqlServerAppLockAsync: _ => Task.FromResult(lockResult));
+
+        Assert.Equal(expectedStatus, result.Status);
+        Assert.Equal(lockResult, result.LockResult);
+        Assert.Equal(expectedLogLevel, DatabaseSeeder.GetBetaAccessSeedLogLevel(result.Status));
     }
 
     [Fact]
@@ -412,4 +459,5 @@ public sealed class BetaAccessSeederTests
         Assert.Equal(licenseNumber, user.LicenseNumber);
         Assert.Equal(licenseState, user.LicenseState);
     }
+
 }

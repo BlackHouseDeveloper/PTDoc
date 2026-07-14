@@ -435,6 +435,7 @@ public sealed class WorkspaceProgressNoteQuestionnaireV2
 public sealed class NoteWorkspaceV2SaveRequest
 {
     public Guid? NoteId { get; set; }
+    public DateTime? ExpectedLastModifiedUtc { get; set; }
     public Guid PatientId { get; set; }
     public Guid? AppointmentId { get; set; }
     public DateTime DateOfService { get; set; }
@@ -447,6 +448,7 @@ public sealed class NoteWorkspaceV2SaveRequest
 public sealed class NoteWorkspaceV2LoadResponse
 {
     public Guid NoteId { get; set; }
+    public DateTime LastModifiedUtc { get; set; }
     public Guid PatientId { get; set; }
     public DateTime DateOfService { get; set; }
     public NoteType NoteType { get; set; }

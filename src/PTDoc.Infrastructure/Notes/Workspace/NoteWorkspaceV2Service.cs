@@ -159,6 +159,13 @@ public sealed class NoteWorkspaceV2Service(
             throw new InvalidOperationException("The requested note does not belong to the supplied patient.");
         }
 
+        if (note is not null &&
+            request.ExpectedLastModifiedUtc.HasValue &&
+            note.LastModifiedUtc != request.ExpectedLastModifiedUtc.Value)
+        {
+            throw new DbUpdateConcurrencyException("The note workspace changed while it was being edited.");
+        }
+
         if (note is not null && note.IsFinalized)
         {
             if (auditService is not null)
@@ -1090,6 +1097,7 @@ public sealed class NoteWorkspaceV2Service(
         return new NoteWorkspaceV2LoadResponse
         {
             NoteId = note.Id,
+            LastModifiedUtc = note.LastModifiedUtc,
             PatientId = note.PatientId,
             DateOfService = note.DateOfService,
             NoteType = note.NoteType,

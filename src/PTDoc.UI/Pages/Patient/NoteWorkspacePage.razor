@@ -85,6 +85,24 @@ else
             </div>
         }
 
+        @if (_showSaveConflict)
+        {
+            <section class="note-workspace__alert note-workspace__alert--error"
+                     role="alert"
+                     aria-labelledby="note-save-conflict-title"
+                     aria-describedby="note-save-conflict-description"
+                     data-testid="note-workspace-save-conflict">
+                <strong id="note-save-conflict-title">This note changed in another session</strong>
+                <p id="note-save-conflict-description">
+                    Your unsaved changes are still visible on this page. Reload the latest note before saving again, or stay here to review and copy your changes.
+                </p>
+                <div class="note-workspace__state-actions">
+                    <button type="button" class="btn btn--secondary" @onclick="HandleStayOnConflict">Stay here</button>
+                    <button type="button" class="btn btn--primary" @onclick="HandleReloadAfterConflictAsync">Reload latest</button>
+                </div>
+            </section>
+        }
+
         @if (!IsWorkspaceReadOnly && _blockingValidationMessages.Count > 0)
         {
             <div class="note-workspace__alert note-workspace__alert--error" role="alert" data-testid="note-workspace-blocking-errors">
@@ -584,6 +602,8 @@ else
     private string? _statusMessage;
     private string _statusTone = "info";
     private DateTime _dateOfService = DateTime.UtcNow;
+    private DateTime? _lastModifiedUtc;
+    private long _editGeneration;
     private bool _isDarkMode;
     private bool _isRegeneratingSummary;
     private bool _isRegeneratingGoals;
@@ -595,6 +615,7 @@ else
     private string? _pendingMissingFieldSelector;
     private bool _isNavigatingToMissingField;
     private IJSObjectReference? _noteGuardModule;
+    private IJSObjectReference? _navigationModule;
     private bool? _lastBeforeUnloadShouldGuard;
     private bool _isInitialLoading = true;
     private bool _isSubmittingNote;
@@ -617,6 +638,8 @@ else
     private string _overrideReason = string.Empty;
     private string? _lastSaveFailureMessage;
     private string? _lastAutosaveToastMessage;
+    private bool _hasSaveConflict;
+    private bool _showSaveConflict;
     private static readonly TimeSpan MinimumVisibleSavingStateDuration = TimeSpan.FromMilliseconds(350);
 
     private bool IsDailyTreatment => string.Equals(_note.NoteType, "Daily Treatment Note", StringComparison.OrdinalIgnoreCase);
@@ -724,12 +747,13 @@ else
     private bool CanSubmitCurrentNote => !_isInitialLoading && !_isSubmittingNote && (CanSignDraftNote || CanFinalizePendingCoSign);
     private bool CanSignDraftNote => _note.Status == NoteStatus.Draft && HasSignPermissionForNoteType(_note.NoteType);
     private bool CanSaveDraft => !_isInitialLoading && !_isSubmittingNote && CanEditCurrentDraft && _patientGuid.HasValue;
-    private bool CanCurrentUserApplyOverride => CanSaveDraft && IsPtUser && _requiresOverride && _isOverridable && _overrideRuleType.HasValue;
+    private bool CanPersistDraft => CanSaveDraft && !_hasSaveConflict;
+    private bool CanCurrentUserApplyOverride => CanPersistDraft && IsPtUser && _requiresOverride && _isOverridable && _overrideRuleType.HasValue;
     private bool CanApplyOverrideSubmission =>
         CanCurrentUserApplyOverride &&
         !DraftAutosaveService.IsSaving &&
         !string.IsNullOrWhiteSpace(_overrideReason);
-    private bool DisableSaveAction => !CanSaveDraft || DraftAutosaveService.IsSaving;
+    private bool DisableSaveAction => !CanPersistDraft || DraftAutosaveService.IsSaving;
     private bool DisableSubmitAction => !CanSubmitCurrentNote || DraftAutosaveService.IsSaving;
     private bool CanExportPdf => IsPtUser || IsPtaUser || IsAdminUser;
     private bool HasPendingClinicalSummary => !string.IsNullOrWhiteSpace(_pendingClinicalSummary);
@@ -755,7 +779,7 @@ else
     {
         _navGuard = NavigationManager.RegisterLocationChangingHandler(OnLocationChangingAsync);
         DraftAutosaveService.StateChanged += HandleAutosaveStateChanged;
-        DraftAutosaveService.Configure(AutosaveSaveAsync, () => CanSaveDraft);
+        DraftAutosaveService.Configure(AutosaveSaveAsync, () => CanPersistDraft);
 
         await LoadWorkspaceAsync();
     }
@@ -780,6 +804,8 @@ else
         ClearValidationDetails();
         ClearStatusMessage();
         DraftAutosaveService.Reset();
+        _hasSaveConflict = false;
+        _showSaveConflict = false;
         StateHasChanged();
 
         try
@@ -865,6 +891,10 @@ else
         _isDarkMode = false;
         _lastEditableSection = SoapSection.Plan;
         _pendingClinicalSummary = null;
+        _lastModifiedUtc = null;
+        _editGeneration = 0;
+        _hasSaveConflict = false;
+        _showSaveConflict = false;
         _hasAppliedEvaluationSeed = false;
         _hasAttemptedEvaluationSeed = false;
         _attemptedCarryForwardSeedNoteTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -890,18 +920,21 @@ else
             throw new HttpRequestException(result.ErrorMessage ?? "Unable to load note data.");
         }
 
-        ApplyWorkspaceState(result.NoteId, result.WorkspaceNoteType, result.DateOfService, result.IsReEvaluation, result.Status, result.Payload);
+        ApplyWorkspaceState(result.NoteId, result.LastModifiedUtc, result.WorkspaceNoteType, result.DateOfService, result.IsReEvaluation, result.Status, result.Payload);
     }
 
     private void ApplyWorkspaceState(
         Guid noteId,
+        DateTime lastModifiedUtc,
         string workspaceNoteType,
         DateTime dateOfService,
         bool isReEvaluation,
         NoteStatus status,
-        NoteWorkspacePayload? payload)
+        NoteWorkspacePayload? payload,
+        bool resetAutosave = true)
     {
         _currentNoteId = noteId;
+        _lastModifiedUtc = lastModifiedUtc == default ? null : lastModifiedUtc;
         _note.NoteId = noteId;
         _note.Mode = NoteMode.Existing;
         _note.NoteType = string.IsNullOrWhiteSpace(workspaceNoteType) ? _note.NoteType : workspaceNoteType;
@@ -927,9 +960,21 @@ else
         _note.MarkSaved();
         _pendingClinicalSummary = null;
         _dateOfService = dateOfService == default ? DateTime.UtcNow : dateOfService;
-        DraftAutosaveService.Reset();
+        if (resetAutosave)
+        {
+            DraftAutosaveService.Reset();
+            _editGeneration = 0;
+        }
         ClearValidationDetails();
     }
+
+    private void HandleStayOnConflict()
+    {
+        _showSaveConflict = false;
+        SetStatusMessage("Unsaved changes are retained on this page. Reload the latest note before saving again.", "error");
+    }
+
+    private Task HandleReloadAfterConflictAsync() => LoadWorkspaceAsync();
 
     private async Task HandleReloadAsync()
     {
@@ -1576,9 +1621,14 @@ else
 
     private async Task HandleSaveAsync()
     {
-        if (!CanSaveDraft)
+        if (!CanPersistDraft)
         {
-            if (!string.IsNullOrWhiteSpace(GetReadOnlySaveMessage()))
+            if (_hasSaveConflict)
+            {
+                _showSaveConflict = true;
+                SetStatusMessage("Reload the latest note before saving again.", "error");
+            }
+            else if (!string.IsNullOrWhiteSpace(GetReadOnlySaveMessage()))
             {
                 SetStatusMessage(GetReadOnlySaveMessage()!, "error", showToast: true, toastTitle: "Save unavailable");
             }
@@ -1590,9 +1640,17 @@ else
             ? await DraftAutosaveService.FlushAsync()
             : await PersistDraftAsync(showFeedback: true, CancellationToken.None);
 
-        if (saveSucceeded && _warningValidationMessages.Count == 0 && !_requiresOverride)
+        if (saveSucceeded &&
+            !DraftAutosaveService.IsDirty &&
+            !_note.IsDirty &&
+            _warningValidationMessages.Count == 0 &&
+            !_requiresOverride)
         {
             SetStatusMessage("Draft saved.", "success", showToast: flushedAutosave, toastTitle: "Draft saved");
+        }
+        else if (saveSucceeded && (DraftAutosaveService.IsDirty || _note.IsDirty))
+        {
+            SetStatusMessage("Newer changes are still being saved.", "info");
         }
         else if (!saveSucceeded)
         {
@@ -1638,7 +1696,7 @@ else
         CancellationToken cancellationToken,
         OverrideSubmission? overrideSubmission = null)
     {
-        if (!_patientGuid.HasValue || !CanSaveDraft)
+        if (!_patientGuid.HasValue || !CanPersistDraft)
         {
             return false;
         }
@@ -1647,13 +1705,14 @@ else
         DateTimeOffset? savingStateStartedAt = null;
         try
         {
-            if (!_patientGuid.HasValue || !CanSaveDraft)
+            if (!_patientGuid.HasValue || !CanPersistDraft)
             {
                 return false;
             }
 
             _lastSaveFailureMessage = null;
             _dateOfService = ResolveDateOfService();
+            var saveGeneration = _editGeneration;
             _note.StartSaving();
             savingStateStartedAt = DateTimeOffset.UtcNow;
             await InvokeAsync(StateHasChanged);
@@ -1673,6 +1732,11 @@ else
             if (!saveResult.Success)
             {
                 _note.MarkSaveError();
+                if (saveResult.IsConflict)
+                {
+                    _hasSaveConflict = true;
+                    _showSaveConflict = true;
+                }
                 var message = saveResult.ErrorMessage ?? "Unable to save draft right now. Please retry.";
                 _lastSaveFailureMessage = message;
                 if (showFeedback || saveResult.Errors.Count > 0 || saveResult.Warnings.Count > 0)
@@ -1687,32 +1751,43 @@ else
                 return false;
             }
 
-            if (saveResult.Payload is not null)
+            var hasNewerEdits = _editGeneration != saveGeneration;
+            if (!hasNewerEdits && saveResult.Payload is not null)
             {
                 ApplyWorkspaceState(
                     saveResult.NoteId,
+                    saveResult.LastModifiedUtc,
                     saveResult.Payload.WorkspaceNoteType,
                     _dateOfService,
                     saveResult.IsReEvaluation,
                     saveResult.Status,
-                    saveResult.Payload);
+                    saveResult.Payload,
+                    resetAutosave: false);
             }
             else
             {
                 _currentNoteId = saveResult.NoteId;
+                _lastModifiedUtc = saveResult.LastModifiedUtc == default ? _lastModifiedUtc : saveResult.LastModifiedUtc;
                 _note.NoteId = saveResult.NoteId;
                 _note.Mode = NoteMode.Existing;
                 _note.Status = saveResult.Status;
-                _note.MarkSaved();
+                if (!hasNewerEdits)
+                {
+                    _note.MarkSaved();
+                }
             }
 
-            EnsureSavedNoteRoute(saveResult.NoteId);
+            await EnsureSavedNoteRouteAsync(saveResult.NoteId, preserveLocalEdits: hasNewerEdits);
 
             ApplyWorkspaceNotice();
             _lastSaveFailureMessage = null;
             _lastAutosaveToastMessage = null;
 
-            if (saveResult.Warnings.Count > 0)
+            if (hasNewerEdits)
+            {
+                SetStatusMessage("Newer changes are still being saved.", "info");
+            }
+            else if (saveResult.Warnings.Count > 0)
             {
                 SetStatusMessage(
                     saveResult.ErrorMessage ?? (overrideSubmission is null
@@ -1781,6 +1856,13 @@ else
 
     private async Task<bool> EnsureDraftPersistedAsync(bool forceIfClean = false)
     {
+        if (_hasSaveConflict)
+        {
+            _showSaveConflict = true;
+            SetStatusMessage("Reload the latest note before leaving this workspace.", "error");
+            return false;
+        }
+
         if (!CanSaveDraft)
         {
             return true;
@@ -1901,7 +1983,7 @@ else
         }
     }
 
-    private void EnsureSavedNoteRoute(Guid noteId)
+    private async Task EnsureSavedNoteRouteAsync(Guid noteId, bool preserveLocalEdits)
     {
         if (noteId == Guid.Empty)
         {
@@ -1921,7 +2003,22 @@ else
         }
 
         var activeSection = Uri.EscapeDataString(_note.ActiveSection.ToString().ToLowerInvariant());
-        NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(PatientId)}/note/{noteId:D}?section={activeSection}", replace: true);
+        var target = $"/patient/{Uri.EscapeDataString(PatientId)}/note/{noteId:D}?section={activeSection}";
+        if (!preserveLocalEdits)
+        {
+            NavigationManager.NavigateTo(target, replace: true);
+            return;
+        }
+
+        try
+        {
+            _navigationModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/navigation.js");
+            await _navigationModule.InvokeVoidAsync("replaceUrl", target);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Unable to replace the saved-note URL while preserving newer local edits.");
+        }
     }
 
     private async Task HandleSubmitAsync()
@@ -2096,6 +2193,7 @@ else
         return new NoteWorkspaceDraft
         {
             NoteId = _note.NoteId,
+            ExpectedLastModifiedUtc = _lastModifiedUtc,
             PatientId = patientId,
             AppointmentId = _sourceAppointmentId,
             WorkspaceNoteType = _note.NoteType,
@@ -2413,6 +2511,7 @@ else
 
         ClearValidationDetails();
         ClearStatusMessage();
+        _editGeneration++;
         _note.MarkDirty();
         DraftAutosaveService.MarkDirty();
     }
@@ -3386,6 +3485,17 @@ else
                     false);
                 _lastBeforeUnloadShouldGuard = false;
                 await _noteGuardModule.DisposeAsync();
+            }
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            if (_navigationModule is not null)
+            {
+                await _navigationModule.DisposeAsync();
             }
         }
         catch

@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -41,7 +42,8 @@ public static class IntakeAccessEndpoints
 
         group.MapPost("/send-otp", SendOtp)
             .WithName("SendIntakeOtp")
-            .WithSummary("Send a one-time intake access code through email or SMS");
+            .WithSummary("Send a one-time intake access code through email or SMS")
+            .RequireRateLimiting("IntakeOtpDelivery");
 
         group.MapPost("/verify-otp", VerifyOtp)
             .WithName("VerifyIntakeOtp")
@@ -96,8 +98,10 @@ public static class IntakeAccessEndpoints
     private static async Task<IResult> SendOtp(
         HttpContext httpContext,
         [FromServices] IIntakeInviteService inviteService,
+        [FromServices] IAuditService auditService,
         CancellationToken cancellationToken)
     {
+        var requestId = Guid.NewGuid().ToString("N");
         using var document = await SafeAnonymousJsonBodyReader.TryReadObjectAsync(
             httpContext,
             "SendIntakeOtp",
@@ -107,15 +111,37 @@ public static class IntakeAccessEndpoints
             string.IsNullOrWhiteSpace(ReadStringProperty(document.RootElement, "contact")) ||
             !TryReadOtpChannel(document.RootElement, out var channel))
         {
-            return Results.Ok(new SendIntakeOtpResponse { Success = false });
+            await auditService.LogIntakeEventAsync(new AuditEvent
+            {
+                EventType = "IntakeOtpDeliveryFailed",
+                CorrelationId = requestId,
+                Severity = "Warning",
+                Success = false,
+                ErrorMessage = IntakeOtpSendOutcome.ContactInvalid.ToString(),
+                Metadata = new Dictionary<string, object>
+                {
+                    ["Channel"] = "Unknown",
+                    ["Provider"] = "InternalValidation",
+                    ["ProviderMessageId"] = string.Empty,
+                    ["Outcome"] = IntakeOtpSendOutcome.ContactInvalid.ToString(),
+                    ["ErrorCode"] = "RequestInvalid",
+                    ["TimestampUtc"] = DateTime.UtcNow
+                }
+            }, cancellationToken);
+            return Results.Ok(new SendIntakeOtpResponse { Success = false, RequestId = requestId });
         }
 
-        var success = await inviteService.SendOtpAsync(
+        var result = await inviteService.SendOtpWithDiagnosticsAsync(
             ReadStringProperty(document.RootElement, "inviteToken")!,
             ReadStringProperty(document.RootElement, "contact")!,
             channel,
-            cancellationToken);
-        return Results.Ok(new SendIntakeOtpResponse { Success = success });
+            cancellationToken,
+            correlationId: requestId);
+        return Results.Ok(new SendIntakeOtpResponse
+        {
+            Success = result.Success,
+            RequestId = string.IsNullOrWhiteSpace(result.RequestId) ? requestId : result.RequestId
+        });
     }
 
     private static async Task<IResult> VerifyOtp(

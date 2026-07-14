@@ -246,6 +246,63 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
 
+app.MapGet("/health/live", () => Results.Ok(new
+{
+    status = "Healthy",
+    app = "PTDoc Web",
+    timestampUtc = DateTimeOffset.UtcNow
+}))
+.AllowAnonymous()
+.WithName("GetWebLiveness");
+
+app.MapGet("/health/ready", async (
+    IHttpClientFactory httpClientFactory,
+    CancellationToken cancellationToken) =>
+{
+    try
+    {
+        using var client = httpClientFactory.CreateClient("PTDocAuthApi");
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(3));
+        using var response = await client.GetAsync("/health/ready", timeoutCts.Token);
+
+        if (response.IsSuccessStatusCode)
+        {
+            return Results.Ok(new
+            {
+                status = "Healthy",
+                checks = new[]
+                {
+                    new { name = "api", status = "Healthy", description = "API readiness endpoint is reachable." }
+                }
+            });
+        }
+    }
+    catch (HttpRequestException ex)
+    {
+        app.Logger.LogWarning(ex, "Web readiness probe could not reach the configured API readiness endpoint.");
+    }
+    catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+    {
+        app.Logger.LogWarning(ex, "Web readiness probe could not reach the configured API readiness endpoint.");
+    }
+    catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+    {
+        app.Logger.LogError(ex, "Web readiness probe failed unexpectedly.");
+    }
+
+    return Results.Json(new
+    {
+        status = "Unhealthy",
+        checks = new[]
+        {
+            new { name = "api", status = "Unhealthy", description = "API readiness endpoint is unavailable." }
+        }
+    }, statusCode: StatusCodes.Status503ServiceUnavailable);
+})
+.AllowAnonymous()
+.WithName("GetWebReadiness");
+
 if (entraExternalIdOptions.Enabled)
 {
     app.MapGet("/auth/external/start", async (HttpContext httpContext) =>

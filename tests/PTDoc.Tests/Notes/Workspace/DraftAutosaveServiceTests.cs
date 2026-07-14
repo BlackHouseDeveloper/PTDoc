@@ -128,6 +128,82 @@ public sealed class DraftAutosaveServiceTests
         Assert.Equal("Connection refused (localhost:5170)", autosave.LastErrorMessage);
     }
 
+    [Fact]
+    public async Task EditDuringInFlightSave_RemainsDirty_AndQueuesFollowUpSave()
+    {
+        await using var autosave = new DraftAutosaveService();
+        var firstSaveStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstSave = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondSaveCompleted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var saveCount = 0;
+
+        autosave.Configure(
+            async cancellationToken =>
+            {
+                var attempt = Interlocked.Increment(ref saveCount);
+                if (attempt == 1)
+                {
+                    firstSaveStarted.TrySetResult(true);
+                    await releaseFirstSave.Task.WaitAsync(cancellationToken);
+                }
+                else
+                {
+                    secondSaveCompleted.TrySetResult(true);
+                }
+
+                return DraftAutosaveSaveResult.Succeeded();
+            },
+            () => true);
+
+        autosave.MarkDirty();
+        var firstFlush = autosave.FlushAsync();
+        await firstSaveStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        autosave.MarkDirty();
+        Assert.True(autosave.IsDirty);
+        releaseFirstSave.TrySetResult(true);
+
+        Assert.True(await firstFlush);
+
+        await secondSaveCompleted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await WaitForConditionAsync(() => !autosave.IsSaving && !autosave.IsDirty, TimeSpan.FromSeconds(1));
+
+        Assert.Equal(2, Volatile.Read(ref saveCount));
+        Assert.False(autosave.IsDirty);
+        Assert.NotNull(autosave.LastSavedAt);
+    }
+
+    [Fact]
+    public async Task ResetDuringInFlightSave_RemainsCleanWhenOlderSaveCompletes()
+    {
+        await using var autosave = new DraftAutosaveService();
+        var saveStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSave = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        autosave.Configure(
+            async cancellationToken =>
+            {
+                saveStarted.TrySetResult(true);
+                await releaseSave.Task.WaitAsync(cancellationToken);
+                return DraftAutosaveSaveResult.Succeeded();
+            },
+            () => true);
+
+        autosave.MarkDirty();
+        var saveTask = autosave.FlushAsync();
+        await saveStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        var generationBeforeReset = autosave.DirtyVersion;
+        autosave.Reset();
+        Assert.True(autosave.DirtyVersion > generationBeforeReset);
+
+        releaseSave.TrySetResult(true);
+        Assert.True(await saveTask);
+
+        Assert.False(autosave.IsDirty);
+        Assert.Null(autosave.LastSavedAt);
+    }
+
     private static async Task WaitForConditionAsync(Func<bool> condition, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;

@@ -1,5 +1,6 @@
 @using Microsoft.AspNetCore.Components.Web
 @using PTDoc.UI.Components
+@using PTDoc.Web.Components.Layout
 
 <!DOCTYPE html>
 <html lang="en">
@@ -16,9 +17,11 @@
 </head>
 <body>
     <AppRoot />
+    <ReconnectModal />
 
     <script src="_content/PTDoc.UI/js/theme.js"></script>
     <script src="js/auth.js"></script>
     <script src="_framework/blazor.web.js"></script>
+    <script src="js/reconnect.js"></script>
 </body>
 </html>

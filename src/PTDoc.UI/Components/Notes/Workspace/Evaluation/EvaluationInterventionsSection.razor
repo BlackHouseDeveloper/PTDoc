@@ -247,15 +247,15 @@
                         <div class="pt-card__row-2col">
                             <label class="pt-card__field">
                                 <span class="pt-card__field-label">Suggested activity</span>
-                                <input class="pt-card__search-input" value="@row.SuggestedExercise" disabled="@IsReadOnly" @onchange="e => UpdateExerciseRow(row, item => item.SuggestedExercise = e.Value?.ToString() ?? string.Empty)" />
+                                <input class="pt-card__search-input" value="@row.SuggestedExercise" disabled="@IsReadOnly" @oninput="e => UpdateExerciseRow(row, item => item.SuggestedExercise = e.Value?.ToString() ?? string.Empty)" />
                             </label>
                             <label class="pt-card__field">
                                 <span class="pt-card__field-label">Performed</span>
-                                <input class="pt-card__search-input" value="@row.ActualExercisePerformed" disabled="@IsReadOnly" @onchange="e => UpdateExerciseRow(row, item => item.ActualExercisePerformed = e.Value?.ToString() ?? string.Empty)" />
+                                <input class="pt-card__search-input" value="@row.ActualExercisePerformed" disabled="@IsReadOnly" @oninput="e => UpdateExerciseRow(row, item => item.ActualExercisePerformed = e.Value?.ToString() ?? string.Empty)" />
                             </label>
                             <label class="pt-card__field">
                                 <span class="pt-card__field-label">Sets / reps / duration</span>
-                                <input class="pt-card__search-input" value="@row.SetsRepsDuration" disabled="@IsReadOnly" @onchange="e => UpdateExerciseRow(row, item => item.SetsRepsDuration = e.Value?.ToString())" />
+                                <input class="pt-card__search-input" value="@row.SetsRepsDuration" disabled="@IsReadOnly" @oninput="e => UpdateExerciseRow(row, item => item.SetsRepsDuration = e.Value?.ToString())" />
                             </label>
                             <label class="pt-card__field">
                                 <span class="pt-card__field-label">CPT for this intervention</span>
@@ -351,7 +351,7 @@
                         <div class="pt-card__row-2col">
                             <label class="pt-card__field">
                                 <span class="pt-card__field-label">Intervention</span>
-                                <input class="pt-card__search-input" value="@intervention.Name" disabled="@IsReadOnly" @onchange="e => UpdateGeneralIntervention(intervention, entry => entry.Name = e.Value?.ToString() ?? string.Empty)" />
+                                <input class="pt-card__search-input" value="@intervention.Name" disabled="@IsReadOnly" @oninput="e => UpdateGeneralIntervention(intervention, entry => entry.Name = e.Value?.ToString() ?? string.Empty)" />
                             </label>
                             <label class="pt-card__field">
                                 <span class="pt-card__field-label">CPT for this intervention</span>
@@ -389,7 +389,7 @@
                             </label>
                             <label class="pt-card__field">
                                 <span class="pt-card__field-label">Response</span>
-                                <input class="pt-card__search-input" value="@intervention.Response" disabled="@IsReadOnly" @onchange="e => UpdateGeneralIntervention(intervention, entry => entry.Response = e.Value?.ToString())" />
+                                <input class="pt-card__search-input" value="@intervention.Response" disabled="@IsReadOnly" @oninput="e => UpdateGeneralIntervention(intervention, entry => entry.Response = e.Value?.ToString())" />
                             </label>
                         </div>
                         <label class="pt-card__checkbox-row">
@@ -420,7 +420,7 @@
                   placeholder="Supplement linked activities with frequency, precautions, and patient education..."
                   disabled="@IsReadOnly"
                   value="@Plan.HomeExerciseProgramNotes"
-                  @onchange="e => SetPlanAndNotify(vm => vm.HomeExerciseProgramNotes = e.Value?.ToString())"></textarea>
+                  @oninput="e => SetPlanAndNotify(vm => vm.HomeExerciseProgramNotes = e.Value?.ToString())"></textarea>
     </div>
 </section>
 

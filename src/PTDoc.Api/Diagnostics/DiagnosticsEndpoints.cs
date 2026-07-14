@@ -1,6 +1,8 @@
 using System.Reflection;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Api.AI;
+using PTDoc.Api.RequestParsing;
 using PTDoc.Application.AI;
 using PTDoc.Application.Communication;
 using PTDoc.Application.Services;
@@ -163,6 +165,56 @@ public static class DiagnosticsEndpoints
         })
         .WithName("GetRuntimeDiagnostics");
 
+        group.MapGet("/intake-otp", async (
+            ApplicationDbContext dbContext,
+            string? take,
+            HttpContext httpContext,
+            CancellationToken cancellationToken) =>
+        {
+            if (!ListQueryParameterParser.TryNormalizeTake(take, 50, 200, httpContext, out var normalizedTake, out var failure))
+            {
+                return failure!;
+            }
+
+            var auditRows = await dbContext.AuditLogs
+                .AsNoTracking()
+                .Where(log =>
+                    log.EventType == "IntakeOtpDelivered" ||
+                    log.EventType == "IntakeOtpDeliveryFailed")
+                .OrderByDescending(log => log.TimestampUtc)
+                .Take(normalizedTake)
+                .Select(log => new
+                {
+                    log.TimestampUtc,
+                    log.EventType,
+                    log.EntityId,
+                    log.CorrelationId,
+                    log.Success,
+                    log.MetadataJson
+                })
+                .ToListAsync(cancellationToken);
+
+            var outcomes = auditRows.Select(row =>
+            {
+                using var metadata = ParseAuditMetadata(row.MetadataJson);
+                var root = metadata.RootElement;
+                return new
+                {
+                    occurredAtUtc = row.TimestampUtc,
+                    intakeId = row.EntityId,
+                    requestId = row.CorrelationId,
+                    channel = ReadAuditMetadata(root, "Channel"),
+                    provider = ReadAuditMetadata(root, "Provider"),
+                    outcome = ReadAuditMetadata(root, "Outcome"),
+                    errorCode = ReadAuditMetadata(root, "ErrorCode"),
+                    success = row.Success
+                };
+            }).ToArray();
+
+            return Results.Ok(new { outcomes });
+        })
+        .WithName("GetIntakeOtpDiagnostics");
+
         group.MapGet("/ai-faults", (
             IConfiguration configuration,
             AiDiagnosticsFaultStore faultStore) =>
@@ -318,6 +370,23 @@ public static class DiagnosticsEndpoints
         return Environment.GetEnvironmentVariable(environmentVariableName)
             ?? configuration[configKey];
     }
+
+    private static JsonDocument ParseAuditMetadata(string metadataJson)
+    {
+        try
+        {
+            return JsonDocument.Parse(metadataJson);
+        }
+        catch (JsonException)
+        {
+            return JsonDocument.Parse("{}");
+        }
+    }
+
+    private static string? ReadAuditMetadata(JsonElement root, string propertyName)
+        => root.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
 
     private static string? GetAssemblyMetadata(Assembly assembly, string key)
     {

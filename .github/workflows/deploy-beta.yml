@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: beta-deployment
@@ -15,6 +16,10 @@ env:
   WEB_PROJECT: src/PTDoc.Web/PTDoc.Web.csproj
   API_PROJECT: src/PTDoc.Api/PTDoc.Api.csproj
   TEST_PROJECT: tests/PTDoc.Tests/PTDoc.Tests.csproj
+  AZURE_RESOURCE_GROUP: PTDoc-prod
+  WEB_APP_NAME: ptdoc-web-prod
+  API_APP_NAME: ptdoc-api-plan
+  DEPLOYMENT_SLOT: staging
 
 jobs:
   build-test-publish:
@@ -68,6 +73,7 @@ jobs:
         test -f ./publish/web/wwwroot/_content/PTDoc.UI/js/theme.js
         test -f ./publish/web/wwwroot/_content/PTDoc.UI/ptdoclogo.png
         test -f ./publish/web/wwwroot/PTDoc.Web.styles.css
+        test -f ./publish/web/wwwroot/js/reconnect.js
 
     - name: Publish API
       run: dotnet publish "$API_PROJECT" --no-restore --configuration "$DOTNET_CONFIGURATION" -o ./publish/api
@@ -88,7 +94,7 @@ jobs:
 
   deploy-web:
     name: Deploy Web App Service
-    needs: build-test-publish
+    needs: [build-test-publish, deploy-api]
     runs-on: ubuntu-latest
     environment: beta
 
@@ -99,12 +105,95 @@ jobs:
         name: ptdoc-web-beta
         path: ./publish/web
 
-    - name: Deploy Web to Azure App Service
+    - name: Sign in to Azure
+      uses: azure/login@v2
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Validate Web slot and Blazor hosting prerequisites
+      run: |
+        plan_id="$(az webapp show --resource-group "$AZURE_RESOURCE_GROUP" --name "$WEB_APP_NAME" --query serverFarmId --output tsv)"
+        plan_tier="$(az appservice plan show --ids "$plan_id" --query sku.tier --output tsv)"
+        case "$plan_tier" in
+          Standard|Premium|PremiumV2|PremiumV3|Isolated|IsolatedV2) ;;
+          *) echo "Web App Service plan tier does not support the required staging slot: $plan_tier" >&2; exit 1 ;;
+        esac
+        test "$(az webapp deployment slot list \
+          --resource-group "$AZURE_RESOURCE_GROUP" \
+          --name "$WEB_APP_NAME" \
+          --query "[?name=='${DEPLOYMENT_SLOT}'] | length(@)" \
+          --output tsv)" = 1
+        for slot in production "$DEPLOYMENT_SLOT"; do
+          slot_args=()
+          if [ "$slot" != production ]; then slot_args=(--slot "$slot"); fi
+          config="$(az webapp config show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$WEB_APP_NAME" \
+            "${slot_args[@]}" \
+            --output json)"
+          site="$(az webapp show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$WEB_APP_NAME" \
+            "${slot_args[@]}" \
+            --output json)"
+          test "$(jq -r '.alwaysOn' <<< "$config")" = true
+          test "$(jq -r '.webSocketsEnabled' <<< "$config")" = true
+          test "$(jq -r '.clientAffinityEnabled' <<< "$site")" = true
+          test "$(jq -r '.remoteDebuggingEnabled' <<< "$config")" = false
+          test "$(jq -r '.healthCheckPath' <<< "$config")" = /health/live
+        done
+
+    - name: Deploy Web to staging slot
       uses: azure/webapps-deploy@v3
       with:
-        app-name: ptdoc-web-prod
-        publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_PTDOC_WEB_PROD }}
+        app-name: ${{ env.WEB_APP_NAME }}
+        slot-name: ${{ env.DEPLOYMENT_SLOT }}
         package: ./publish/web
+
+    - name: Validate Web staging slot
+      run: |
+        staging_origin="https://${WEB_APP_NAME}-${DEPLOYMENT_SLOT}.azurewebsites.net"
+        curl --fail --silent --show-error --retry 6 --retry-delay 5 \
+          "${staging_origin}/health/live"
+        curl --fail --silent --show-error --retry 6 --retry-delay 5 \
+          "${staging_origin}/health/ready"
+        curl --fail --silent --show-error "${staging_origin}/_content/PTDoc.UI/css/app.css" --output /dev/null
+        curl --fail --silent --show-error --request POST \
+          "${staging_origin}/_blazor/negotiate?negotiateVersion=1" \
+          | jq -e '.availableTransports | any(.transport == "WebSockets")' >/dev/null
+
+    - name: Swap Web staging into production
+      id: swap_web
+      run: |
+        az webapp deployment slot swap \
+          --resource-group "$AZURE_RESOURCE_GROUP" \
+          --name "$WEB_APP_NAME" \
+          --slot "$DEPLOYMENT_SLOT" \
+          --target-slot production
+
+    - name: Validate Web production after swap
+      run: |
+        curl --fail --silent --show-error --retry 6 --retry-delay 5 \
+          "https://ptdoc.bhdevsites.com/health/live"
+        curl --fail --silent --show-error --retry 6 --retry-delay 5 \
+          "https://ptdoc.bhdevsites.com/health/ready"
+        curl --fail --silent --show-error \
+          "https://ptdoc.bhdevsites.com/_content/PTDoc.UI/css/app.css" \
+          --output /dev/null
+        curl --fail --silent --show-error --request POST \
+          "https://ptdoc.bhdevsites.com/_blazor/negotiate?negotiateVersion=1" \
+          | jq -e '.availableTransports | any(.transport == "WebSockets")' >/dev/null
+
+    - name: Roll back Web swap after failed production validation
+      if: ${{ failure() && steps.swap_web.outcome == 'success' }}
+      run: |
+        az webapp deployment slot swap \
+          --resource-group "$AZURE_RESOURCE_GROUP" \
+          --name "$WEB_APP_NAME" \
+          --slot "$DEPLOYMENT_SLOT" \
+          --target-slot production
 
   deploy-api:
     name: Deploy API App Service
@@ -119,9 +208,98 @@ jobs:
         name: ptdoc-api-beta
         path: ./publish/api
 
-    - name: Deploy API to Azure App Service
+    - name: Sign in to Azure
+      uses: azure/login@v2
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Validate API slot and sticky seed settings
+      run: |
+        plan_id="$(az webapp show --resource-group "$AZURE_RESOURCE_GROUP" --name "$API_APP_NAME" --query serverFarmId --output tsv)"
+        plan_tier="$(az appservice plan show --ids "$plan_id" --query sku.tier --output tsv)"
+        case "$plan_tier" in
+          Standard|Premium|PremiumV2|PremiumV3|Isolated|IsolatedV2) ;;
+          *) echo "API App Service plan tier does not support the required staging slot: $plan_tier" >&2; exit 1 ;;
+        esac
+        test "$(az webapp deployment slot list \
+          --resource-group "$AZURE_RESOURCE_GROUP" \
+          --name "$API_APP_NAME" \
+          --query "[?name=='${DEPLOYMENT_SLOT}'] | length(@)" \
+          --output tsv)" = 1
+        staging_settings="$(az webapp config appsettings list \
+          --resource-group "$AZURE_RESOURCE_GROUP" \
+          --name "$API_APP_NAME" \
+          --slot "$DEPLOYMENT_SLOT" \
+          --output json)"
+        production_settings="$(az webapp config appsettings list \
+          --resource-group "$AZURE_RESOURCE_GROUP" \
+          --name "$API_APP_NAME" \
+          --output json)"
+        test "$(jq -r '.[] | select(.name == "BetaAccess__AllowStartupSeed") | .value' <<< "$staging_settings")" = false
+        test "$(jq -r '.[] | select(.name == "BetaAccess__AllowStartupSeed") | .slotSetting' <<< "$staging_settings")" = true
+        test "$(jq -r '.[] | select(.name == "BetaAccess__AllowStartupSeed") | .value' <<< "$production_settings")" = true
+        test "$(jq -r '.[] | select(.name == "BetaAccess__AllowStartupSeed") | .slotSetting' <<< "$production_settings")" = true
+        test "$(jq -r '.[] | select(.name == "BetaAccess__SeedLockTimeoutSeconds") | .value' <<< "$production_settings")" = 15
+        for slot in production "$DEPLOYMENT_SLOT"; do
+          slot_args=()
+          if [ "$slot" != production ]; then slot_args=(--slot "$slot"); fi
+          config="$(az webapp config show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$API_APP_NAME" \
+            "${slot_args[@]}" \
+            --output json)"
+          test "$(jq -r '.alwaysOn' <<< "$config")" = true
+          test "$(jq -r '.remoteDebuggingEnabled' <<< "$config")" = false
+          test "$(jq -r '.healthCheckPath' <<< "$config")" = /health/live
+        done
+
+    - name: Deploy API to staging slot
       uses: azure/webapps-deploy@v3
       with:
-        app-name: ptdoc-api-plan
-        publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_PTDOC_API_PLAN }}
+        app-name: ${{ env.API_APP_NAME }}
+        slot-name: ${{ env.DEPLOYMENT_SLOT }}
         package: ./publish/api
+
+    - name: Validate API staging slot
+      run: |
+        curl --fail --silent --show-error --retry 6 --retry-delay 5 \
+          "https://${API_APP_NAME}-${DEPLOYMENT_SLOT}.azurewebsites.net/health/live"
+        curl --fail --silent --show-error --retry 6 --retry-delay 5 \
+          "https://${API_APP_NAME}-${DEPLOYMENT_SLOT}.azurewebsites.net/health/ready"
+
+    - name: Swap API staging into production
+      id: swap_api
+      run: |
+        az webapp deployment slot swap \
+          --resource-group "$AZURE_RESOURCE_GROUP" \
+          --name "$API_APP_NAME" \
+          --slot "$DEPLOYMENT_SLOT" \
+          --target-slot production
+
+    - name: Validate API production and seeded beta access
+      env:
+        PTDOC_BETA_SEED_PIN: ${{ secrets.PTDOC_BETA_SEED_PIN }}
+      run: |
+        curl --fail --silent --show-error --retry 6 --retry-delay 5 \
+          "https://api-ptdoc.bhdevsites.com/health/live"
+        curl --fail --silent --show-error --retry 6 --retry-delay 5 \
+          "https://api-ptdoc.bhdevsites.com/health/ready"
+        for username in january.beta dani.beta pta.beta patient.beta; do
+          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --header 'Content-Type: application/json' \
+            --data "{\"username\":\"${username}\",\"pin\":\"${PTDOC_BETA_SEED_PIN}\"}" \
+            'https://api-ptdoc.bhdevsites.com/api/v1/auth/pin-login')"
+          test "$status" = "200"
+          echo "Seeded beta login smoke passed for ${username}."
+        done
+
+    - name: Roll back API swap after failed production validation
+      if: ${{ failure() && steps.swap_api.outcome == 'success' }}
+      run: |
+        az webapp deployment slot swap \
+          --resource-group "$AZURE_RESOURCE_GROUP" \
+          --name "$API_APP_NAME" \
+          --slot "$DEPLOYMENT_SLOT" \
+          --target-slot production

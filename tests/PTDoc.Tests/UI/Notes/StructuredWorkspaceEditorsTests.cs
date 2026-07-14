@@ -551,10 +551,10 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
         Assert.Null(mmtInputs[1].GetAttribute("disabled"));
         Assert.Null(mmtInputs[2].GetAttribute("disabled"));
 
-        FindMetricInputs("objective-rom-row")[1].Change("140");
-        FindMetricInputs("objective-rom-row")[2].Change("115");
-        FindMetricInputs("objective-mmt-row")[1].Change("5-/5");
-        FindMetricInputs("objective-mmt-row")[2].Change("4-/5");
+        Bunit.InputEventDispatchExtensions.Input(FindMetricInputs("objective-rom-row")[1], "140");
+        Bunit.InputEventDispatchExtensions.Input(FindMetricInputs("objective-rom-row")[2], "115");
+        Bunit.InputEventDispatchExtensions.Input(FindMetricInputs("objective-mmt-row")[1], "5-/5");
+        Bunit.InputEventDispatchExtensions.Input(FindMetricInputs("objective-mmt-row")[2], "4-/5");
 
         cut.WaitForAssertion(() =>
         {
