@@ -707,6 +707,7 @@ else
     private bool IsAdminUser => _user.IsInRole(Roles.Admin);
     private bool IsOwnerUser => _user.IsInRole(Roles.Owner);
     private bool IsBillingUser => _user.IsInRole(Roles.Billing);
+    private bool CanReadHep => IsPtUser || IsPtaUser || IsAdminUser || IsOwnerUser;
 
     private string DisplayPatientName => string.IsNullOrWhiteSpace(_note.PatientName) ? "Unknown Patient" : _note.PatientName;
 
@@ -896,7 +897,10 @@ else
                 }
             }
 
-            await LoadHepSummaryAsync();
+            if (CanReadHep)
+            {
+                await LoadHepSummaryAsync();
+            }
 
             ApplyWorkspaceNotice();
             ApplyRequestedSection();
@@ -953,7 +957,7 @@ else
 
     private async Task LoadHepSummaryAsync()
     {
-        if (!_patientGuid.HasValue)
+        if (!_patientGuid.HasValue || !CanReadHep)
         {
             return;
         }

@@ -72,17 +72,17 @@ public sealed class IntegrationDocumentStore : IIntegrationDocumentStore
                         }
                     },
                     cancellationToken);
+
+                var properties = await blob.GetPropertiesAsync(cancellationToken: cancellationToken);
+                await using var hashStream = (await blob.DownloadStreamingAsync(cancellationToken: cancellationToken)).Value.Content;
+                var hash = await ComputeHashAsync(hashStream, cancellationToken);
+                return new StoredIntegrationDocument(storageKey, safeFileName, contentType, properties.Value.ContentLength, hash);
             }
             catch
             {
-                await blob.DeleteIfExistsAsync(cancellationToken: cancellationToken);
+                await blob.DeleteIfExistsAsync(cancellationToken: CancellationToken.None);
                 throw;
             }
-
-            var properties = await blob.GetPropertiesAsync(cancellationToken: cancellationToken);
-            await using var hashStream = (await blob.DownloadStreamingAsync(cancellationToken: cancellationToken)).Value.Content;
-            var hash = await ComputeHashAsync(hashStream, cancellationToken);
-            return new StoredIntegrationDocument(storageKey, safeFileName, contentType, properties.Value.ContentLength, hash);
         }
 
         var root = _developmentRoot
