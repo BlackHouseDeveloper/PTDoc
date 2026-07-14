@@ -4,7 +4,7 @@ import { attachConsoleCapture, authenticateIfNeeded, expectNoRelevantConsoleErro
 const webBaseUrl = process.env.PTDOC_WEB_BASE_URL ?? 'http://localhost:5145';
 const intakePath = process.env.PTDOC_UI_QA_INTAKE_PATH;
 const writableNoteWorkspacePath = process.env.PTDOC_UI_QA_WRITABLE_NOTE_WORKSPACE_PATH;
-const evaluationDraftPath = process.env.PTDOC_UI_QA_EVALUATION_DRAFT_PATH ?? writableNoteWorkspacePath;
+const evaluationDraftPath = process.env.PTDOC_UI_QA_EVALUATION_DRAFT_PATH;
 const patientChartPath = process.env.PTDOC_UI_QA_PATIENT_CHART_PATH
   ?? '/patient/f9c2cb68-4ab4-4f57-a1db-73ed8e2da789';
 const ptUsername = process.env.PTDOC_UI_QA_PT_USERNAME ?? 'amorgan';
