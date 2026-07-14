@@ -278,7 +278,11 @@ app.MapGet("/health/ready", async (
             });
         }
     }
-    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    catch (HttpRequestException)
+    {
+        app.Logger.LogWarning("Web readiness probe could not reach the configured API readiness endpoint.");
+    }
+    catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
     {
         app.Logger.LogWarning("Web readiness probe could not reach the configured API readiness endpoint.");
     }
