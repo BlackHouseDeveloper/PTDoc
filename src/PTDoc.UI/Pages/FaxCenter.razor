@@ -436,7 +436,7 @@
     {
         if (!assigningFaxId.HasValue || !Guid.TryParse(assignmentPatientIdText, out var patientId))
         {
-            Toasts.ShowError("Enter a valid patient ID.");
+            Toasts.ShowError("Select a patient to assign this fax.");
             return;
         }
         try
