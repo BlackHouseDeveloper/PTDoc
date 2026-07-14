@@ -261,9 +261,10 @@ app.MapGet("/health/ready", async (
 {
     try
     {
-        using var response = await httpClientFactory
-            .CreateClient("PTDocAuthApi")
-            .GetAsync("/health/ready", cancellationToken);
+        using var client = httpClientFactory.CreateClient("PTDocAuthApi");
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(3));
+        using var response = await client.GetAsync("/health/ready", timeoutCts.Token);
 
         if (response.IsSuccessStatusCode)
         {
