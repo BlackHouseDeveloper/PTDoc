@@ -155,6 +155,36 @@ public sealed class AnonymousNegativePathIntegrationTests : IClassFixture<PtDocA
         Assert.Equal(beforeCount, await CountOtpChallengesAsync());
     }
 
+    [Fact]
+    public async Task IntakeSendOtpRateLimit_CapsMalformedRequestAuditWrites()
+    {
+        var factory = new PtDocApiFactory();
+        try
+        {
+            await factory.InitializeAsync();
+            using var client = factory.CreateUnauthenticatedClient();
+            var clientIp = $"198.51.{Random.Shared.Next(0, 255)}.10";
+            var auditCountBefore = await CountOtpDeliveryAuditsAsync(factory);
+
+            for (var i = 0; i < 30; i++)
+            {
+                using var response = await PostIntakeOtpWithForwardedForAsync(client, clientIp, "{");
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                Assert.False(await ReadBooleanPropertyAsync(response, "success"));
+            }
+
+            using var rateLimitedResponse = await PostIntakeOtpWithForwardedForAsync(client, clientIp, "{");
+            Assert.Equal(HttpStatusCode.OK, rateLimitedResponse.StatusCode);
+            Assert.False(await ReadBooleanPropertyAsync(rateLimitedResponse, "success"));
+            Assert.False(string.IsNullOrWhiteSpace(await ReadStringPropertyAsync(rateLimitedResponse, "requestId")));
+            Assert.Equal(auditCountBefore + 30, await CountOtpDeliveryAuditsAsync(factory));
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+    }
+
     [Theory]
     [InlineData("""{"inviteToken":"definitely-invalid","contact":"patient@example.com","channel":1,"otpCode":"123456"}""")]
     [InlineData("""{"inviteToken":"definitely-invalid","contact":"patient@example.com","channel":"Email","otpCode":"123456"}""")]
@@ -216,6 +246,13 @@ public sealed class AnonymousNegativePathIntegrationTests : IClassFixture<PtDocA
         return await db.IntakeOtpChallenges.CountAsync();
     }
 
+    private static async Task<int> CountOtpDeliveryAuditsAsync(PtDocApiFactory factory)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        return await db.AuditLogs.CountAsync(log => log.EventType == "IntakeOtpDeliveryFailed");
+    }
+
     private static StringContent Json(string body)
         => new(body, Encoding.UTF8, "application/json");
 
@@ -226,6 +263,20 @@ public sealed class AnonymousNegativePathIntegrationTests : IClassFixture<PtDocA
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/communications/password-reset/validate")
         {
             Content = Json("""{"token":"definitely-invalid"}""")
+        };
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", forwardedFor);
+        request.Headers.TryAddWithoutValidation("X-Forwarded-Proto", "https");
+        return await client.SendAsync(request);
+    }
+
+    private static async Task<HttpResponseMessage> PostIntakeOtpWithForwardedForAsync(
+        HttpClient client,
+        string forwardedFor,
+        string body)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/intake/access/send-otp")
+        {
+            Content = Json(body)
         };
         request.Headers.TryAddWithoutValidation("X-Forwarded-For", forwardedFor);
         request.Headers.TryAddWithoutValidation("X-Forwarded-Proto", "https");

@@ -1288,12 +1288,15 @@ public sealed class NoteWorkspacePageTests : TestContext
                 });
             });
 
+        JSInterop.Mode = JSRuntimeMode.Loose;
         Services.AddAuthorizationCore();
         Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
         Services.AddSingleton(patientService.Object);
         Services.AddSingleton(noteWorkspaceService.Object);
         Services.AddSingleton(aiService.Object);
         Services.AddSingleton(new DraftAutosaveService());
+
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/patient/{patientId}/new-note");
 
         var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
             .Add(component => component.PatientId, patientId.ToString())
@@ -1330,6 +1333,12 @@ public sealed class NoteWorkspacePageTests : TestContext
                 Assert.Equal("Newer local edit must win", savedDrafts[^1].Payload.Subjective.AdditionalFunctionalLimitations);
                 Assert.Equal("Newer local edit must win", cut.Find("#additional-functional-limitations").GetAttribute("value"));
                 Assert.Contains("Saved", cut.Find("[data-testid='footer-state-label']").TextContent, StringComparison.Ordinal);
+                Assert.Contains(JSInterop.Invocations["import"], invocation =>
+                    invocation.Arguments.Count > 0 &&
+                    string.Equals(
+                        invocation.Arguments[0]?.ToString(),
+                        "./_content/PTDoc.UI/js/navigation.js",
+                        StringComparison.Ordinal));
             },
             TimeSpan.FromSeconds(3));
     }

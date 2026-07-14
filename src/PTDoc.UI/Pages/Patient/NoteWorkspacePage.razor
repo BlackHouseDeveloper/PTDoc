@@ -615,6 +615,7 @@ else
     private string? _pendingMissingFieldSelector;
     private bool _isNavigatingToMissingField;
     private IJSObjectReference? _noteGuardModule;
+    private IJSObjectReference? _navigationModule;
     private bool? _lastBeforeUnloadShouldGuard;
     private bool _isInitialLoading = true;
     private bool _isSubmittingNote;
@@ -1776,10 +1777,7 @@ else
                 }
             }
 
-            if (!hasNewerEdits)
-            {
-                EnsureSavedNoteRoute(saveResult.NoteId);
-            }
+            await EnsureSavedNoteRouteAsync(saveResult.NoteId, preserveLocalEdits: hasNewerEdits);
 
             ApplyWorkspaceNotice();
             _lastSaveFailureMessage = null;
@@ -1985,7 +1983,7 @@ else
         }
     }
 
-    private void EnsureSavedNoteRoute(Guid noteId)
+    private async Task EnsureSavedNoteRouteAsync(Guid noteId, bool preserveLocalEdits)
     {
         if (noteId == Guid.Empty)
         {
@@ -2005,7 +2003,22 @@ else
         }
 
         var activeSection = Uri.EscapeDataString(_note.ActiveSection.ToString().ToLowerInvariant());
-        NavigationManager.NavigateTo($"/patient/{Uri.EscapeDataString(PatientId)}/note/{noteId:D}?section={activeSection}", replace: true);
+        var target = $"/patient/{Uri.EscapeDataString(PatientId)}/note/{noteId:D}?section={activeSection}";
+        if (!preserveLocalEdits)
+        {
+            NavigationManager.NavigateTo(target, replace: true);
+            return;
+        }
+
+        try
+        {
+            _navigationModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/navigation.js");
+            await _navigationModule.InvokeVoidAsync("replaceUrl", target);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Unable to replace the saved-note URL while preserving newer local edits.");
+        }
     }
 
     private async Task HandleSubmitAsync()
@@ -3472,6 +3485,17 @@ else
                     false);
                 _lastBeforeUnloadShouldGuard = false;
                 await _noteGuardModule.DisposeAsync();
+            }
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            if (_navigationModule is not null)
+            {
+                await _navigationModule.DisposeAsync();
             }
         }
         catch

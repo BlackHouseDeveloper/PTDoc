@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -41,7 +42,8 @@ public static class IntakeAccessEndpoints
 
         group.MapPost("/send-otp", SendOtp)
             .WithName("SendIntakeOtp")
-            .WithSummary("Send a one-time intake access code through email or SMS");
+            .WithSummary("Send a one-time intake access code through email or SMS")
+            .RequireRateLimiting("IntakeOtpDelivery");
 
         group.MapPost("/verify-otp", VerifyOtp)
             .WithName("VerifyIntakeOtp")

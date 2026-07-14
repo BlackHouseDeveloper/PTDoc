@@ -133,7 +133,21 @@ builder.Services.AddRateLimiter(options =>
 
     options.AddPolicy("PasswordResetCommunication", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
-            GetPasswordResetRateLimitPartitionKey(
+            GetAnonymousRequestRateLimitPartitionKey(
+                httpContext,
+                builder.Configuration,
+                builder.Environment),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(15),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
+    options.AddPolicy("IntakeOtpDelivery", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            GetAnonymousRequestRateLimitPartitionKey(
                 httpContext,
                 builder.Configuration,
                 builder.Environment),
@@ -159,7 +173,9 @@ builder.Services.AddRateLimiter(options =>
     options.OnRejected = (context, cancellationToken) =>
         new ValueTask(UsesAiGenerationRateLimitPolicy(context.HttpContext)
             ? AiRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken)
-            : PasswordResetRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken));
+            : UsesIntakeOtpDeliveryRateLimitPolicy(context.HttpContext)
+                ? IntakeOtpRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken)
+                : PasswordResetRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken));
 });
 builder.Services.Configure<EntraExternalIdOptions>(builder.Configuration.GetSection(EntraExternalIdOptions.SectionName));
 builder.Services.AddTransient<IClaimsTransformation, EntraExternalIdClaimsTransformation>();
@@ -1050,7 +1066,7 @@ static Microsoft.AspNetCore.HttpOverrides.IPNetwork ParseKnownNetwork(string val
     return new Microsoft.AspNetCore.HttpOverrides.IPNetwork(prefix, prefixLength);
 }
 
-static string GetPasswordResetRateLimitPartitionKey(
+static string GetAnonymousRequestRateLimitPartitionKey(
     HttpContext httpContext,
     IConfiguration configuration,
     IHostEnvironment environment)
@@ -1100,6 +1116,10 @@ static string GetAiGenerationRateLimitPartitionKey(HttpContext httpContext)
 static bool UsesAiGenerationRateLimitPolicy(HttpContext httpContext) =>
     httpContext.GetEndpoint()?.Metadata.GetOrderedMetadata<EnableRateLimitingAttribute>()
         .Any(metadata => string.Equals(metadata.PolicyName, "AiGeneration", StringComparison.Ordinal)) == true;
+
+static bool UsesIntakeOtpDeliveryRateLimitPolicy(HttpContext httpContext) =>
+    httpContext.GetEndpoint()?.Metadata.GetOrderedMetadata<EnableRateLimitingAttribute>()
+        .Any(metadata => string.Equals(metadata.PolicyName, "IntakeOtpDelivery", StringComparison.Ordinal)) == true;
 
 static bool IsValidBetaAccessSeedPin(string? seedPin) =>
     !string.IsNullOrWhiteSpace(seedPin)
