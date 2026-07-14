@@ -5,8 +5,15 @@
     }
 
     modal.querySelector('[data-reconnect-retry]')?.addEventListener('click', async () => {
-        const reconnected = await window.Blazor?.reconnect?.();
-        if (!reconnected) {
+        try {
+            const reconnect = window.Blazor?.reconnect;
+            const reconnected = typeof reconnect === 'function'
+                ? await reconnect.call(window.Blazor)
+                : false;
+            if (!reconnected) {
+                modal.classList.add('components-reconnect-failed');
+            }
+        } catch {
             modal.classList.add('components-reconnect-failed');
         }
     });
