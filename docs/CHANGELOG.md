@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - agent guidance captures audit-remediation and beta seed settings
+
+- **`AGENTS.md`** — Added the documented audit-remediation Playwright overrides for PTA-role coverage and reversible evaluation-draft routes, plus the Beta `BetaAccess__SeedLockTimeoutSeconds` setting and lock-wait behavior note. Reason: keep agent instructions aligned with the current browser-QA and beta deployment docs without expanding unrelated guidance.
+
 ### Fixed - beta reliability and audit remediation
 
 - **Review corrections** — Propagated the API-generated opaque OTP correlation ID through the production delivery path, clarified server-owned client correlation, normalized malformed intake-diagnostic list queries, bounded Web readiness probes to three seconds, corrected Web readiness terminology, handled unavailable or rejected reconnect attempts, removed the reconnect dialog's unstable hidden description reference, changed the inline stale-write notice to an alert rather than an unfocused dialog, and made autosave generations atomic across reset/in-flight-save races. Reason: PR review identified operator correlation and accessibility/operational clarity gaps in the remediation implementation.
