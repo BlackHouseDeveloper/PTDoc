@@ -278,13 +278,17 @@ app.MapGet("/health/ready", async (
             });
         }
     }
-    catch (HttpRequestException)
+    catch (HttpRequestException ex)
     {
-        app.Logger.LogWarning("Web readiness probe could not reach the configured API readiness endpoint.");
+        app.Logger.LogWarning(ex, "Web readiness probe could not reach the configured API readiness endpoint.");
     }
-    catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+    catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
     {
-        app.Logger.LogWarning("Web readiness probe could not reach the configured API readiness endpoint.");
+        app.Logger.LogWarning(ex, "Web readiness probe could not reach the configured API readiness endpoint.");
+    }
+    catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+    {
+        app.Logger.LogError(ex, "Web readiness probe failed unexpectedly.");
     }
 
     return Results.Json(new
