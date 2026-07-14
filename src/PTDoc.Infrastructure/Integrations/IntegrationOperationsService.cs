@@ -2466,12 +2466,12 @@ public sealed class IntegrationOperationsService : IIntegrationOperationsService
         string source,
         string? failureCode = null,
         string? providerStatus = null) => new()
-    {
-        Status = status,
-        Source = source,
-        FailureCode = failureCode,
-        ProviderStatus = providerStatus
-    };
+        {
+            Status = status,
+            Source = source,
+            FailureCode = failureCode,
+            ProviderStatus = providerStatus
+        };
 
     private static FaxTransmissionStatus MapFaxStatus(string status) => status.Trim().ToLowerInvariant() switch
     {

@@ -371,8 +371,8 @@ public static class IntegrationMigrationOperations
         migrationBuilder.CreateIndex("IX_IntegrationConnections_ClinicId_Provider", "IntegrationConnections", new[] { "ClinicId", "Provider" }, unique: true);
         migrationBuilder.CreateIndex("IX_IntegrationConnections_IsEnabled", "IntegrationConnections", "IsEnabled");
         migrationBuilder.CreateIndex("IX_IntegrationExternalMappings_ClinicId", "IntegrationExternalMappings", "ClinicId");
-        migrationBuilder.CreateIndex("IX_IntegrationExternalMappings_IntegrationConnectionId_EntityType_InternalEntityId", "IntegrationExternalMappings", new[] { "IntegrationConnectionId", "EntityType", "InternalEntityId" }, unique: true);
-        migrationBuilder.CreateIndex("IX_IntegrationExternalMappings_IntegrationConnectionId_EntityType_ExternalId", "IntegrationExternalMappings", new[] { "IntegrationConnectionId", "EntityType", "ExternalId" }, unique: true);
+        migrationBuilder.CreateIndex("IX_IntExtMap_Conn_Entity_Internal", "IntegrationExternalMappings", new[] { "IntegrationConnectionId", "EntityType", "InternalEntityId" }, unique: true);
+        migrationBuilder.CreateIndex("IX_IntExtMap_Conn_Entity_External", "IntegrationExternalMappings", new[] { "IntegrationConnectionId", "EntityType", "ExternalId" }, unique: true);
         migrationBuilder.CreateIndex("IX_IntegrationOutboxItems_Status_NextAttemptAtUtc", "IntegrationOutboxItems", new[] { "Status", "NextAttemptAtUtc" });
         migrationBuilder.CreateIndex("IX_IntegrationOutboxItems_IntegrationConnectionId_IdempotencyKey", "IntegrationOutboxItems", new[] { "IntegrationConnectionId", "IdempotencyKey" }, unique: true);
         migrationBuilder.CreateIndex("IX_IntegrationOutboxItems_AggregateType_AggregateId", "IntegrationOutboxItems", new[] { "AggregateType", "AggregateId" });
