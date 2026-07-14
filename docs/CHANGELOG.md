@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Operations guide and security gates** — Added `docs/HUMBLE_FAX_WIBBI_INTEGRATIONS.md` with BAA/vendor-risk activation gates, configuration, secret handling, ownership, roles, workflows, monitoring, recovery, migration order, test commands, and vendor confirmations. Reason: the integrations require an executable deployment and support contract, not only application code.
 - **Integration migration compatibility** — Made compact integration snapshots relationally complete without duplicating shared entity types, added an API design-time context factory, and shortened external-mapping index names for PostgreSQL’s identifier limit. Reason: provider migrations must validate and apply consistently in SQLite, SQL Server, and PostgreSQL CI jobs.
 
+### Fixed - integration workflow resilience
+
+- **Fax Center and HEP search** — Handled patient-search and selected-patient document/note load failures with safe user-facing feedback, and prevented exercise catalog requests until the clinician supplies at least two non-whitespace characters. Reason: transient API failures must not interrupt interactive Blazor workflows, and short searches should not create avoidable provider load.
+
 ### Changed - agent guidance captures audit-remediation and beta seed settings
 
 - **`AGENTS.md`** — Added the documented audit-remediation Playwright overrides for PTA-role coverage and reversible evaluation-draft routes, plus the Beta `BetaAccess__SeedLockTimeoutSeconds` setting and lock-wait behavior note. Reason: keep agent instructions aligned with the current browser-QA and beta deployment docs without expanding unrelated guidance.

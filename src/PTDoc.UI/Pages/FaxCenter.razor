@@ -298,11 +298,27 @@
 
     private async Task SearchPatientsAsync()
     {
-        patientResults = await Patients.SearchAsync(patientQuery, 25);
+        try
+        {
+            patientResults = await Patients.SearchAsync(patientQuery, 25);
+        }
+        catch (Exception)
+        {
+            Toasts.ShowError("Unable to search for patients. Please try again.");
+        }
     }
 
-    private async Task SearchAssignmentPatientsAsync() =>
-        assignmentPatientResults = await Patients.SearchAsync(assignmentPatientQuery, 25);
+    private async Task SearchAssignmentPatientsAsync()
+    {
+        try
+        {
+            assignmentPatientResults = await Patients.SearchAsync(assignmentPatientQuery, 25);
+        }
+        catch (Exception)
+        {
+            Toasts.ShowError("Unable to search for patients to assign this fax. Please try again.");
+        }
+    }
 
     private async Task HandlePatientChangedAsync()
     {
@@ -313,11 +329,18 @@
         {
             return;
         }
-        var documents = PatientDocuments.ListDocumentsAsync(patientId);
-        var notes = Notes.GetNotesAsync(patientId, take: 100);
-        await Task.WhenAll(documents, notes);
-        patientDocumentRows = await documents;
-        patientNoteRows = await notes;
+        try
+        {
+            var documents = PatientDocuments.ListDocumentsAsync(patientId);
+            var notes = Notes.GetNotesAsync(patientId, take: 100);
+            await Task.WhenAll(documents, notes);
+            patientDocumentRows = await documents;
+            patientNoteRows = await notes;
+        }
+        catch (Exception)
+        {
+            Toasts.ShowError("Unable to load documents and notes for the selected patient. Please try again.");
+        }
     }
 
     private async Task QueueFaxAsync()
