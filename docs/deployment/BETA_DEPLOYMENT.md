@@ -150,11 +150,13 @@ An Azure administrator can validate the identity and assignment before dispatchi
 az account show --subscription "<AZURE_SUBSCRIPTION_ID>" --query '{id:id,tenantId:tenantId,state:state}'
 az ad sp show --id "<AZURE_CLIENT_ID>" --query '{appId:appId,objectId:id}'
 az role assignment list \
-  --assignee "<AZURE_CLIENT_ID>" \
+  --assignee-object-id "<SERVICE_PRINCIPAL_OBJECT_ID>" \
   --all \
   --include-inherited \
   --query "[?roleDefinitionName=='Website Contributor'].{role:roleDefinitionName,scope:scope}"
 ```
+
+Set `SERVICE_PRINCIPAL_OBJECT_ID` to the `objectId` returned by the preceding `az ad sp show` command; it is not the application (client) ID stored in `AZURE_CLIENT_ID`.
 
 If the assignment is absent, an Azure administrator can add the resource-group-scoped role with the service principal's object ID:
 

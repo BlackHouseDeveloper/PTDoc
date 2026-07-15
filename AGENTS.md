@@ -8,6 +8,7 @@ Use these repo-specific rules before guessing structure, commands, or architectu
 - Reuse existing patterns; do not refactor unrelated code.
 - Check file placement against [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) before adding files.
 - When asked to write, rewrite, or summarize a pull request, always read and use [`.github/pull_request_template.md`](.github/pull_request_template.md) as the required structure and context; do not invent an alternate PR-summary format.
+- For every pull-request review pass, retrieve current thread-aware feedback, verify each comment against the branch, and implement every verified actionable item. Report invalid, outdated, duplicate, or ambiguous comments with the supporting rationale instead of changing code. Do not reply to comments or resolve review threads unless the user explicitly authorizes that GitHub write action.
 - Do not run `dotnet build`, `dotnet test`, or other heavy verification commands automatically. Ask the user to run them and use their output to iterate.
 - Exception: when the task is to fix a GitHub Actions CI failure and the user explicitly asks to rerun the CI test locally, reproduce the relevant workflow command from `.github/workflows/` on the current branch before handing back. Prefer the smallest failing job command first (for example the `Core CI` `Category=CoreCi` test filter) and report the exact command and result.
 - Never create a git commit unless the user has confirmed the relevant build and tests passed, or the user gives explicit permission to commit without that confirmation.

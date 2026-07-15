@@ -7,9 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - pull-request review discipline
+
+- **Agent and Copilot instructions** — Require every pull-request review pass to retrieve thread-aware feedback, verify it against the branch, implement verified actionable comments, and report non-actionable feedback with rationale. GitHub replies and thread resolution remain explicit user-authorized actions. Reason: review feedback must produce evidence-based fixes without silently accepting invalid suggestions or changing remote review state.
+
 ### Fixed - Beta deployment OIDC authentication guidance
 
-- **Beta deployment workflow and runbook** — Upgraded Azure Login to its native Node 24 action, corrected CI documentation that still described publish-profile deployment, and documented the exact GitHub environment subject, Azure identity values, resource-group-scoped Website Contributor assignment, validation commands, and `No subscriptions found` recovery path. Reason: the first OIDC-based Beta deployment emitted a Node 20 deprecation notice and then failed because the configured identity could not access the configured Azure subscription.
+- **Beta deployment workflow and runbook** — Upgraded Azure Login to its native Node 24 action, corrected CI documentation that still described publish-profile deployment, and documented the exact GitHub environment subject, Azure identity values, resource-group-scoped Website Contributor assignment, object-ID-based RBAC validation commands, and `No subscriptions found` recovery path. Reason: the first OIDC-based Beta deployment emitted a Node 20 deprecation notice and then failed because the configured identity could not access the configured Azure subscription.
 
 ### Added - production Humble Fax and Wibbi clinical integrations
 
