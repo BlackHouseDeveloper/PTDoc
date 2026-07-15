@@ -38,7 +38,7 @@
                     </div>
 
                     <div class="hep-search">
-                        <label><span>Search Wibbi exercises</span><input @bind="exerciseQuery" @bind:event="oninput" placeholder="Type at least two characters" /></label>
+                        <label><span>Search Wibbi exercises</span><input @bind="exerciseQuery" @bind:event="oninput" @bind:after="HandleExerciseQueryChanged" placeholder="Type at least two characters" /></label>
                         <button type="button" class="btn btn--secondary" @onclick="SearchExercisesAsync" disabled="@(exerciseQuery.Trim().Length < 2)">Search</button>
                     </div>
                     @if (catalogResults.Count > 0)
@@ -213,6 +213,14 @@
 
         try { catalogResults = await Integrations.SearchExercisesAsync(exerciseQuery); }
         catch (Exception exception) { Toasts.ShowError(exception.Message); }
+    }
+
+    private void HandleExerciseQueryChanged()
+    {
+        if (exerciseQuery.Trim().Length < 2)
+        {
+            catalogResults = [];
+        }
     }
 
     private void AddExercise(WibbiExerciseCatalogItem item)

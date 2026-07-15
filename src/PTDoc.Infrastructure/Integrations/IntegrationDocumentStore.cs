@@ -206,9 +206,13 @@ public sealed class IntegrationDocumentStore : IIntegrationDocumentStore
     private static string GetSafeLocalPath(string root, string storageKey)
     {
         ValidateStorageKey(storageKey);
-        var path = Path.GetFullPath(Path.Combine(root, storageKey.Replace('/', Path.DirectorySeparatorChar)));
-        var normalizedRoot = root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar;
-        if (!path.StartsWith(normalizedRoot, StringComparison.Ordinal))
+        var normalizedRoot = Path.GetFullPath(root);
+        var path = Path.GetFullPath(Path.Combine(normalizedRoot, storageKey.Replace('/', Path.DirectorySeparatorChar)));
+        normalizedRoot = normalizedRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? normalizedRoot
+            : normalizedRoot + Path.DirectorySeparatorChar;
+        var pathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (!path.StartsWith(normalizedRoot, pathComparison))
         {
             throw new InvalidOperationException("Integration document storage key escaped its root.");
         }

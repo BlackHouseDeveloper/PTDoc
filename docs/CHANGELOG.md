@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Patient-scoped fax history and stylesheet maintainability** — Kept patient-history Fax Center views outbox-only, and reformatted the Fax Center and HEP stylesheets into the repository’s standard multi-line style. Reason: chart-scoped history must not load unrelated inbound faxes, and integration UI styles need readable, reviewable diffs.
 - **Fax filtering and integration-settings stylesheet readability** — Limited Fax Center status choices to the active tab and cleared obsolete selections on tab changes; reformatted the integration settings stylesheet. Reason: filters must only offer meaningful values for the displayed data set, and settings styles need maintainable review diffs.
 - **Inbound fax triage state reset** — Cleared assignment patient, type, and reason values when beginning or cancelling a fax assignment. Reason: data entered for one fax must not carry into another chart-association decision.
+- **Document-store containment and HEP search freshness** — Made the local document-store root comparison platform-aware and cleared HEP catalog results below the minimum query length. Reason: safe-path validation must be correct on Windows and Unix, and clinicians must not see stale exercise results after shortening a query.
 
 ### Changed - agent guidance captures audit-remediation and beta seed settings
 
