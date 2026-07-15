@@ -9,6 +9,7 @@ The beta deployment uses two Azure App Services behind Cloudflare-managed custom
 | Frontend | `ptdoc-web-prod` | `https://ptdoc.bhdevsites.com` |
 | API | `ptdoc-api-plan` | `https://api-ptdoc.bhdevsites.com` |
 
+- `ptdoc-api-plan` is the historical API Web App resource name despite its plan-like suffix; do not replace it with an assumed name without confirming the Azure Web App resource.
 - Resource group: `PTDoc-prod`
 - Runtime: .NET 8
 - DNS provider: Cloudflare
@@ -20,8 +21,7 @@ The beta deployment uses two Azure App Services behind Cloudflare-managed custom
 
 Enable these platform settings on both App Services:
 
-- App Service plan: Standard tier or higher so deployment slots are available
-- Deployment slot: `staging`
+- App Service plan: Basic tier or higher; the Beta workflow deploys directly and does not require deployment slots
 - HTTPS Only: enabled
 - Managed Certificate: bound to the Cloudflare custom domain
 - TLS/SSL binding type: SNI SSL
@@ -33,7 +33,7 @@ Enable these platform settings on both App Services:
 Enable this frontend-only setting:
 
 - Web sockets: enabled on `ptdoc-web-prod`
-- ARR affinity: enabled on `ptdoc-web-prod` and its `staging` slot
+- ARR affinity: enabled on `ptdoc-web-prod`
 
 Use `/health/live` for the Azure App Service health-check path. Reserve `/health/ready` for deployment validation and pre-QA smoke checks because Web readiness also verifies that the configured API upstream responds.
 
@@ -90,7 +90,7 @@ AzureOpenAIApiVersion=<API version>
 
 Do not commit real connection strings, signing keys, publish profiles, ACS credentials, Azure OpenAI keys, or Entra client secrets.
 
-Configure the API `staging` slot with `BetaAccess__AllowStartupSeed=false` and mark it as a deployment-slot setting. Keep startup seeding enabled only on the production API slot. Mark secrets, connection strings, and slot-specific upstream addresses as deployment-slot settings so a swap does not move staging configuration into production.
+The workflow deploys directly to the live Beta apps, so configure these settings on the primary App Service resources. No staging-slot settings are required.
 
 ## Seeded Beta Access
 
@@ -125,7 +125,7 @@ Required Beta database order:
 
 ## GitHub Actions Deployment
 
-Use the manual `Deploy Beta` workflow. It builds and tests once, deploys the API to `staging`, validates and swaps the API, then deploys and swaps Web. Web deployment does not begin if the API deployment or post-swap checks fail.
+Use the manual `Deploy Beta` workflow. It builds and tests once, deploys the API directly to the live Beta app, validates API health and all four seeded roles, and only then deploys and validates Web. Web deployment does not begin if the API deployment or post-deployment checks fail.
 
 Required GitHub secrets:
 
@@ -142,7 +142,7 @@ The first three values identify the beta-environment Azure OIDC deployment ident
 repo:BlackHouseDeveloper/PTDoc:environment:beta
 ```
 
-Grant the identity the built-in `Website Contributor` role at the `PTDoc-prod` resource-group scope. The workflow must read the App Service plans and app configuration, deploy both apps and their staging slots, and swap slots; app-only deployment access without plan-read access is insufficient. If the resource group later contains unrelated Web resources, replace the resource-group assignment with `Website Contributor` on both target apps plus `Reader` on their backing App Service plans. Do not grant subscription-wide Contributor access and do not restore publish-profile credentials.
+Grant the identity the built-in `Website Contributor` role at the `PTDoc-prod` resource-group scope. The workflow reads both apps' configuration and deploys directly to their primary resources. If the resource group later contains unrelated Web resources, replace the resource-group assignment with `Website Contributor` on both target apps. App Service plan read access is not required by this direct-deployment workflow. Do not grant subscription-wide Contributor access and do not restore publish-profile credentials.
 
 An Azure administrator can validate the identity and assignment before dispatching the workflow. Use the real IDs without committing or pasting them into issue text:
 
@@ -169,17 +169,17 @@ az role assignment create \
   --scope "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/PTDoc-prod"
 ```
 
-After confirming the Azure values, store the client, tenant, and subscription IDs as secrets on the GitHub `beta` environment, wait for Azure RBAC propagation, and rerun `Deploy Beta`. `No subscriptions found` from `azure/login` means the configured identity cannot see the configured subscription: recheck the three IDs and the role assignment. Do not set `allow-no-subscriptions: true`; every subsequent validation, deployment, and slot-swap command requires subscription-backed Azure Resource Manager access. `PTDOC_BETA_SEED_PIN` is masked by GitHub and is used only for the post-API-swap seeded-role login smoke check.
+After confirming the Azure values, store the client, tenant, and subscription IDs as secrets on the GitHub `beta` environment, wait for Azure RBAC propagation, and rerun `Deploy Beta`. `No subscriptions found` from `azure/login` means the configured identity cannot see the configured subscription: recheck the three IDs and the role assignment. Do not set `allow-no-subscriptions: true`; every subsequent configuration-validation and deployment command requires subscription-backed Azure Resource Manager access. `PTDOC_BETA_SEED_PIN` is masked by GitHub and is used only for the post-API-deploy seeded-role login smoke check.
 
-Deployment order and rollback contract:
+Deployment order and recovery contract:
 
 1. Apply database migrations out-of-band.
-2. Deploy API artifact to the `staging` slot and verify staging `/health/live` and `/health/ready`.
-3. Swap API `staging` to production, verify production health, and sign in all four seeded roles.
-4. Reverse the API swap immediately if any post-swap check fails. Do not deploy Web after an API failure.
-5. Deploy Web artifact to `staging`, with its API upstream configured for the production API, and verify Web `/health/live` and `/health/ready`.
-6. Swap Web `staging` to production and verify both Web health endpoints.
-7. Reverse the Web swap immediately if post-swap health or SignalR validation fails.
+2. Validate the live API App Service settings, then deploy the API artifact directly.
+3. Verify API `/health/live`, `/health/ready`, and all four seeded-role logins. Do not deploy Web after an API failure.
+4. Validate the live Web App Service settings, then deploy the Web artifact directly.
+5. Verify Web `/health/live`, `/health/ready`, static assets, and SignalR WebSocket negotiation.
+
+Direct deployment keeps the existing Basic plans and avoids the cost of upgrading solely for slots, but it can briefly restart the live Beta apps and has no automatic swap rollback. If post-deployment validation fails, correct the configuration or deploy a known-good repository ref again; keep database migrations backward-compatible with the version selected for recovery.
 
 After changing Azure diagnostics settings, restart one service at a time and verify `Production Breakpoint Instrumentation Method` initialization errors are absent across two restarts. Keep normal Application Insights request and dependency telemetry enabled.
 
@@ -200,7 +200,7 @@ dotnet publish src/PTDoc.Api/PTDoc.Api.csproj -c Release -o ./publish/api
 - Confirm `http://api-ptdoc.bhdevsites.com/health` redirects to HTTPS.
 - Confirm frontend API calls use `https://api-ptdoc.bhdevsites.com`.
 - Confirm the API App Service is still single-instance before relying on startup seeding.
-- Confirm `Database__AutoMigrate=false`, production `BetaAccess__AllowStartupSeed=true`, staging `BetaAccess__AllowStartupSeed=false`, `BetaAccess__SeedLockTimeoutSeconds=15`, and `BetaAccess__SeedPin` are configured in Azure.
+- Confirm `Database__AutoMigrate=false`, `BetaAccess__AllowStartupSeed=true`, `BetaAccess__SeedLockTimeoutSeconds=15`, and `BetaAccess__SeedPin` are configured on the live Beta API App Service.
 - Confirm AI generation remains disabled unless a beta pass explicitly needs it, and if enabled, confirm `Ai__RateLimits__PermitLimit=10` and `Ai__RateLimits__WindowMinutes=60`. The legacy key `Ai__RateLimits__RequestsPerHour` is still accepted for existing environments, but new settings should use `PermitLimit`.
 - Confirm `https://api-ptdoc.bhdevsites.com/health/ready` is healthy before validating seeded access.
 - Confirm seeded Beta users can sign in with the configured `BetaAccess__SeedPin`.
