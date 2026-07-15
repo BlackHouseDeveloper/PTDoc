@@ -177,8 +177,20 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        var patient = await Patients.GetByIdAsync(PatientId);
-        patientName = patient is null ? "Patient" : $"{patient.FirstName} {patient.LastName}".Trim();
+        try
+        {
+            var patient = await Patients.GetByIdAsync(PatientId);
+            patientName = patient is null ? "Patient" : $"{patient.FirstName} {patient.LastName}".Trim();
+        }
+        catch (Exception)
+        {
+            patientName = "Patient";
+            programs = [];
+            tracking = [];
+            errorMessage = "Unable to load patient details. Please try again.";
+            return;
+        }
+
         await LoadProgramsAsync();
     }
 

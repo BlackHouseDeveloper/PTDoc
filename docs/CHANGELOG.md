@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **HEP and blob workflow recovery** — Suppressed HEP calls for note-workspace users without `HepRead`, and extended blob cleanup to failures after a successful upload, including cancellation. Reason: authorization-gated UI must not generate avoidable provider failures, and failed document persistence must not leave orphaned PHI blobs.
 - **Integration worker shutdown** — Handled polling-timer cancellation inside the outbox worker loop. Reason: an expected application shutdown must exit the provider worker cleanly without emitting a cancellation failure.
 - **Inbound fax triage guidance** — Updated the missing-patient validation message to match the selection-based assignment workflow. Reason: staff should receive an actionable instruction that reflects the visible control.
+- **HEP patient context recovery** — Handled failures while loading the HEP patient header without interrupting page rendering. Reason: transient patient API failures should leave the HEP workflow recoverable rather than terminate the interactive component.
 
 ### Changed - agent guidance captures audit-remediation and beta seed settings
 
