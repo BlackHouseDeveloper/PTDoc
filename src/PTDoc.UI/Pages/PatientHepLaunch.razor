@@ -1,0 +1,106 @@
+@page "/my-hep"
+@attribute [Authorize(Policy = AuthorizationPolicies.PatientHepAccess)]
+@rendermode InteractiveServer
+@using PTDoc.Application.Integrations
+@inject IIntegrationClientService Integrations
+@inject IToastService Toasts
+@inject NavigationManager Navigation
+
+<PageTitle>My Home Exercise Program - PTDoc</PageTitle>
+
+<div class="patient-hep-launch">
+    <GlobalPageHeader />
+    <main>
+        <section>
+            <p class="patient-hep-launch__eyebrow">HOME EXERCISE PROGRAM</p>
+            <h1>Continue your exercises</h1>
+            <p>Open your current program, exercise instructions, videos, and activity tracking in Wibbi without another sign-in.</p>
+            @if (isLoading)
+            {
+                <p role="status">Loading your prescription…</p>
+            }
+            else if (currentProgram?.CurrentRevision is { } revision)
+            {
+                <div class="patient-hep-launch__summary">
+                    <h2>@revision.Title</h2>
+                    <p>@revision.Exercises.Count exercise(s) · updated @currentProgram.UpdatedAtUtc.ToLocalTime().ToString("g")</p>
+                    <ul>
+                        @foreach (var exercise in revision.Exercises)
+                        {
+                            <li>
+                                <strong>@exercise.Title</strong>
+                                <span>@FormatPrescription(exercise)</span>
+                            </li>
+                        }
+                    </ul>
+                    @if (currentProgram.Status != HepProgramStatus.Synced)
+                    {
+                        <p role="status">Your care team's latest program is saved in PTDoc and is currently @currentProgram.Status.ToString().ToLowerInvariant().</p>
+                    }
+                </div>
+            }
+            else
+            {
+                <p>No home exercise prescription is available yet.</p>
+            }
+            @if (!string.IsNullOrWhiteSpace(loadError))
+            {
+                <p role="alert">Your PTDoc prescription could not be refreshed. You can try again later.</p>
+            }
+            <button type="button" class="btn btn--primary" @onclick="OpenAsync" disabled="@isOpening">
+                @(isOpening ? "Opening…" : "Open my exercise program")
+            </button>
+        </section>
+    </main>
+</div>
+
+@code {
+    private bool isOpening;
+    private bool isLoading = true;
+    private HepProgramResponse? currentProgram;
+    private string? loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            currentProgram = (await Integrations.GetCurrentPatientHepProgramsAsync())
+                .OrderByDescending(program => program.UpdatedAtUtc)
+                .FirstOrDefault();
+        }
+        catch (Exception exception)
+        {
+            loadError = exception.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task OpenAsync()
+    {
+        isOpening = true;
+        try
+        {
+            var launch = await Integrations.CreatePatientLaunchAsync();
+            Navigation.NavigateTo(launch.LaunchUrl, forceLoad: true);
+        }
+        catch
+        {
+            Toasts.ShowError("Unable to open your exercise program right now. Please try again later or contact your care team.");
+            isOpening = false;
+        }
+    }
+
+    private static string FormatPrescription(HepExerciseResponse exercise)
+    {
+        var values = new[]
+        {
+            string.IsNullOrWhiteSpace(exercise.Sets) ? null : $"{exercise.Sets} sets",
+            string.IsNullOrWhiteSpace(exercise.Repetitions) ? null : $"{exercise.Repetitions} reps",
+            exercise.Frequency
+        }.Where(value => !string.IsNullOrWhiteSpace(value));
+        return string.Join(" · ", values);
+    }
+}

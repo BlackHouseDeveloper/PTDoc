@@ -54,6 +54,20 @@ public class ApplicationDbContext : DbContext
     public DbSet<SyncQueueItem> SyncQueueItems => Set<SyncQueueItem>();
     public DbSet<SyncConflictArchive> SyncConflictArchives => Set<SyncConflictArchive>();
     public DbSet<ExternalSystemMapping> ExternalSystemMappings => Set<ExternalSystemMapping>();
+    public DbSet<IntegrationConnection> IntegrationConnections => Set<IntegrationConnection>();
+    public DbSet<IntegrationExternalMapping> IntegrationExternalMappings => Set<IntegrationExternalMapping>();
+    public DbSet<IntegrationOutboxItem> IntegrationOutboxItems => Set<IntegrationOutboxItem>();
+    public DbSet<IntegrationSyncCheckpoint> IntegrationSyncCheckpoints => Set<IntegrationSyncCheckpoint>();
+    public DbSet<IntegrationConflict> IntegrationConflicts => Set<IntegrationConflict>();
+    public DbSet<ProcessedIntegrationWebhook> ProcessedIntegrationWebhooks => Set<ProcessedIntegrationWebhook>();
+    public DbSet<FaxTransmission> FaxTransmissions => Set<FaxTransmission>();
+    public DbSet<FaxRecipient> FaxRecipients => Set<FaxRecipient>();
+    public DbSet<FaxStatusEvent> FaxStatusEvents => Set<FaxStatusEvent>();
+    public DbSet<InboundFax> InboundFaxes => Set<InboundFax>();
+    public DbSet<HepProgram> HepPrograms => Set<HepProgram>();
+    public DbSet<HepProgramRevision> HepProgramRevisions => Set<HepProgramRevision>();
+    public DbSet<HepPrescriptionExercise> HepPrescriptionExercises => Set<HepPrescriptionExercise>();
+    public DbSet<HepTrackingObservation> HepTrackingObservations => Set<HepTrackingObservation>();
     public DbSet<ObjectiveMetric> ObjectiveMetrics => Set<ObjectiveMetric>();
     public DbSet<PatientGoal> PatientGoals => Set<PatientGoal>();
 
@@ -374,6 +388,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.ContentHashSha256).HasMaxLength(64).IsRequired();
             entity.Property(e => e.Notes).HasMaxLength(1000);
             entity.Property(e => e.ContentBytes).IsRequired();
+            entity.Property(e => e.StorageKey).HasMaxLength(1024);
 
             entity.HasOne(e => e.Patient)
                 .WithMany(e => e.Documents)
@@ -478,6 +493,8 @@ public class ApplicationDbContext : DbContext
                 .HasForeignKey(e => e.InternalPatientId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
+
+        ConfigureIntegrationModels(modelBuilder);
 
         modelBuilder.Entity<AppointmentPaymentTransaction>(entity =>
         {
@@ -794,6 +811,39 @@ public class ApplicationDbContext : DbContext
             .HasQueryFilter(r => CurrentClinicId == null
                 || (r.NoteId != null ? r.Note!.ClinicId == CurrentClinicId : r.User!.ClinicId == CurrentClinicId));
 
+        // Integration records are clinic-scoped at the persistence boundary as
+        // well as at API authorization checks. Child rows inherit scope through
+        // their parent aggregate so a missed endpoint predicate cannot disclose
+        // another clinic's fax or HEP data.
+        modelBuilder.Entity<IntegrationConnection>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<IntegrationExternalMapping>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<IntegrationOutboxItem>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<IntegrationSyncCheckpoint>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<IntegrationConflict>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<ProcessedIntegrationWebhook>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<FaxTransmission>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<FaxRecipient>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.FaxTransmission!.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<FaxStatusEvent>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.FaxTransmission!.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<InboundFax>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<HepProgram>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<HepProgramRevision>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.HepProgram!.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<HepPrescriptionExercise>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.HepProgramRevision!.HepProgram!.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<HepTrackingObservation>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+
     }
 
     /// <summary>
@@ -801,6 +851,348 @@ public class ApplicationDbContext : DbContext
     /// Evaluated at query execution time, not at model creation time.
     /// </summary>
     private Guid? CurrentClinicId => _tenantContext?.GetCurrentClinicId();
+
+    public static void ConfigureIntegrationModels(ModelBuilder modelBuilder, bool includeBaseNavigations = true)
+    {
+        modelBuilder.Entity<IntegrationConnection>(entity =>
+        {
+            entity.ToTable("IntegrationConnections");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.ClinicId, e.Provider }).IsUnique();
+            entity.HasIndex(e => e.IsEnabled);
+            entity.Property(e => e.Provider).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.DisplayName).HasMaxLength(160).IsRequired();
+            entity.Property(e => e.ConfigurationJson).IsRequired();
+            entity.Property(e => e.SecretReference).HasMaxLength(500).IsRequired();
+            entity.Property(e => e.WebhookTokenHash).HasMaxLength(64);
+            entity.Property(e => e.ComplianceApprovedAtUtc);
+            entity.Property(e => e.ComplianceApprovedByUserId);
+            entity.Property(e => e.CreatedAtUtc);
+            entity.Property(e => e.UpdatedAtUtc);
+            entity.Property(e => e.LastVerifiedAtUtc);
+            entity.Property(e => e.LastHealthCode).HasMaxLength(100);
+            if (includeBaseNavigations)
+            {
+                entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
+            }
+            else
+            {
+                entity.HasOne(typeof(Clinic).FullName!, navigationName: null).WithMany().HasForeignKey(nameof(IntegrationConnection.ClinicId)).OnDelete(DeleteBehavior.Restrict);
+            }
+        });
+
+        modelBuilder.Entity<IntegrationExternalMapping>(entity =>
+        {
+            entity.ToTable("IntegrationExternalMappings");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.IntegrationConnectionId, e.EntityType, e.InternalEntityId })
+                .HasDatabaseName("IX_IntExtMap_Conn_Entity_Internal")
+                .IsUnique();
+            entity.HasIndex(e => new { e.IntegrationConnectionId, e.EntityType, e.ExternalId })
+                .HasDatabaseName("IX_IntExtMap_Conn_Entity_External")
+                .IsUnique();
+            entity.HasIndex(e => e.ClinicId);
+            entity.Property(e => e.EntityType).HasMaxLength(80).IsRequired();
+            entity.Property(e => e.ExternalId).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.IsActive);
+            entity.Property(e => e.CreatedAtUtc);
+            entity.Property(e => e.LastSyncedAtUtc);
+            entity.HasOne(e => e.IntegrationConnection).WithMany().HasForeignKey(e => e.IntegrationConnectionId).OnDelete(DeleteBehavior.Cascade);
+            if (includeBaseNavigations)
+            {
+                entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
+            }
+            else
+            {
+                entity.HasOne(typeof(Clinic).FullName!, navigationName: null).WithMany().HasForeignKey(nameof(IntegrationExternalMapping.ClinicId)).OnDelete(DeleteBehavior.Restrict);
+            }
+        });
+
+        modelBuilder.Entity<IntegrationOutboxItem>(entity =>
+        {
+            entity.ToTable("IntegrationOutboxItems");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.Status, e.NextAttemptAtUtc });
+            entity.HasIndex(e => new { e.IntegrationConnectionId, e.IdempotencyKey }).IsUnique();
+            entity.HasIndex(e => new { e.AggregateType, e.AggregateId });
+            entity.Property(e => e.JobType).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.AggregateType).HasMaxLength(80).IsRequired();
+            entity.Property(e => e.IdempotencyKey).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.CorrelationId).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.LeaseOwner).HasMaxLength(160);
+            entity.Property(e => e.LastErrorCode).HasMaxLength(160);
+            entity.Property(e => e.PayloadJson).IsRequired();
+            entity.Property(e => e.ClinicId);
+            entity.Property(e => e.AttemptCount);
+            entity.Property(e => e.MaxAttempts);
+            entity.Property(e => e.LeaseExpiresAtUtc);
+            entity.Property(e => e.CreatedAtUtc);
+            entity.Property(e => e.UpdatedAtUtc);
+            entity.Property(e => e.CompletedAtUtc);
+            entity.HasOne(e => e.IntegrationConnection).WithMany().HasForeignKey(e => e.IntegrationConnectionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<IntegrationSyncCheckpoint>(entity =>
+        {
+            entity.ToTable("IntegrationSyncCheckpoints");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.IntegrationConnectionId, e.SyncType }).IsUnique();
+            entity.Property(e => e.SyncType).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Cursor).HasMaxLength(500);
+            entity.Property(e => e.ClinicId);
+            entity.Property(e => e.LastSuccessfulAtUtc);
+            entity.Property(e => e.UpdatedAtUtc);
+            entity.HasOne(e => e.IntegrationConnection).WithMany().HasForeignKey(e => e.IntegrationConnectionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<IntegrationConflict>(entity =>
+        {
+            entity.ToTable("IntegrationConflicts");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.IntegrationConnectionId, e.Status });
+            entity.HasIndex(e => new { e.EntityType, e.InternalEntityId });
+            entity.Property(e => e.EntityType).HasMaxLength(80).IsRequired();
+            entity.Property(e => e.ConflictType).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.DetailsJson).IsRequired();
+            entity.Property(e => e.ClinicId);
+            entity.Property(e => e.CreatedAtUtc);
+            entity.Property(e => e.ResolvedAtUtc);
+            entity.Property(e => e.ResolvedByUserId);
+            entity.HasOne(e => e.IntegrationConnection).WithMany().HasForeignKey(e => e.IntegrationConnectionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ProcessedIntegrationWebhook>(entity =>
+        {
+            entity.ToTable("ProcessedIntegrationWebhooks");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.IntegrationConnectionId, e.ProviderMessageId }).IsUnique();
+            entity.Property(e => e.ProviderMessageId).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.EventType).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.PayloadHashSha256).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.ClinicId);
+            entity.Property(e => e.ReceivedAtUtc);
+            entity.HasOne(e => e.IntegrationConnection).WithMany().HasForeignKey(e => e.IntegrationConnectionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<FaxTransmission>(entity =>
+        {
+            entity.ToTable("FaxTransmissions");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.ClinicId, e.CreatedAtUtc });
+            entity.HasIndex(e => e.PatientId);
+            entity.HasIndex(e => e.ProviderFaxId);
+            entity.HasIndex(e => new { e.IntegrationConnectionId, e.ClientCorrelationId }).IsUnique();
+            entity.Property(e => e.ClientCorrelationId).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.ProviderFaxId).HasMaxLength(100);
+            entity.Property(e => e.DocumentStorageKey).HasMaxLength(1024).IsRequired();
+            entity.Property(e => e.DocumentFileName).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.DocumentContentType).HasMaxLength(120).IsRequired();
+            entity.Property(e => e.DocumentHashSha256).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.DocumentType).HasMaxLength(80).IsRequired();
+            entity.Property(e => e.CoverSubject).HasMaxLength(1045);
+            entity.Property(e => e.CoverMessage).HasMaxLength(9945);
+            entity.Property(e => e.ProviderStatus).HasMaxLength(100);
+            entity.Property(e => e.FailureCode).HasMaxLength(160);
+            entity.Property(e => e.OriginalTransmissionId);
+            entity.Property(e => e.SourceDocumentId);
+            entity.Property(e => e.SourceClinicalNoteId);
+            entity.Property(e => e.RequestedByUserId);
+            entity.Property(e => e.DocumentSizeBytes);
+            entity.Property(e => e.IncludeCoverSheet);
+            entity.Property(e => e.Status);
+            entity.Property(e => e.UpdatedAtUtc);
+            entity.Property(e => e.SubmittedAtUtc);
+            entity.Property(e => e.CompletedAtUtc);
+            if (includeBaseNavigations)
+            {
+                entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
+            }
+            else
+            {
+                entity.HasOne(typeof(Clinic).FullName!, navigationName: null).WithMany().HasForeignKey(nameof(FaxTransmission.ClinicId)).OnDelete(DeleteBehavior.Restrict);
+            }
+            entity.HasOne(e => e.IntegrationConnection).WithMany().HasForeignKey(e => e.IntegrationConnectionId).OnDelete(DeleteBehavior.Restrict);
+            if (includeBaseNavigations)
+            {
+                entity.HasOne(e => e.Patient).WithMany().HasForeignKey(e => e.PatientId).OnDelete(DeleteBehavior.Restrict);
+            }
+            else
+            {
+                entity.HasOne(typeof(Patient).FullName!, navigationName: null).WithMany().HasForeignKey(nameof(FaxTransmission.PatientId)).OnDelete(DeleteBehavior.Restrict);
+            }
+        });
+
+        modelBuilder.Entity<FaxRecipient>(entity =>
+        {
+            entity.ToTable("FaxRecipients");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.FaxTransmissionId);
+            entity.Property(e => e.FaxNumber).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.RecipientName).HasMaxLength(245);
+            entity.Property(e => e.ProviderStatus).HasMaxLength(100);
+            entity.Property(e => e.FailureCode).HasMaxLength(160);
+            entity.Property(e => e.Status);
+            entity.Property(e => e.AttemptCount);
+            entity.Property(e => e.CompletedAtUtc);
+            entity.HasOne(e => e.FaxTransmission).WithMany(e => e.Recipients).HasForeignKey(e => e.FaxTransmissionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<FaxStatusEvent>(entity =>
+        {
+            entity.ToTable("FaxStatusEvents");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.FaxTransmissionId, e.OccurredAtUtc });
+            entity.Property(e => e.ProviderStatus).HasMaxLength(100);
+            entity.Property(e => e.FailureCode).HasMaxLength(160);
+            entity.Property(e => e.Source).HasMaxLength(40).IsRequired();
+            entity.Property(e => e.Status);
+            entity.HasOne(e => e.FaxTransmission).WithMany(e => e.StatusEvents).HasForeignKey(e => e.FaxTransmissionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InboundFax>(entity =>
+        {
+            entity.ToTable("InboundFaxes");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.IntegrationConnectionId, e.ProviderFaxId }).IsUnique();
+            entity.HasIndex(e => new { e.ClinicId, e.Status, e.ReceivedAtUtc });
+            entity.HasIndex(e => e.AssignedPatientId);
+            entity.HasIndex(e => e.PatientDocumentId);
+            entity.Property(e => e.ProviderFaxId).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.ProviderStatus).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.FromNumber).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.ToNumber).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.SenderName).HasMaxLength(245);
+            entity.Property(e => e.DocumentStorageKey).HasMaxLength(1024).IsRequired();
+            entity.Property(e => e.DocumentFileName).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.DocumentContentType).HasMaxLength(120).IsRequired();
+            entity.Property(e => e.DocumentHashSha256).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.AssignmentReason).HasMaxLength(1000);
+            entity.Property(e => e.PageCount);
+            entity.Property(e => e.DocumentSizeBytes);
+            entity.Property(e => e.AssignedByUserId);
+            entity.Property(e => e.AssignedAtUtc);
+            entity.HasOne(e => e.IntegrationConnection).WithMany().HasForeignKey(e => e.IntegrationConnectionId).OnDelete(DeleteBehavior.Restrict);
+            if (includeBaseNavigations)
+            {
+                entity.HasOne(e => e.AssignedPatient).WithMany().HasForeignKey(e => e.AssignedPatientId).OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(e => e.PatientDocument).WithMany().HasForeignKey(e => e.PatientDocumentId).OnDelete(DeleteBehavior.Restrict);
+            }
+            else
+            {
+                entity.HasOne(typeof(Patient).FullName!, navigationName: null).WithMany().HasForeignKey(nameof(InboundFax.AssignedPatientId)).OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(typeof(PatientDocument).FullName!, navigationName: null).WithMany().HasForeignKey(nameof(InboundFax.PatientDocumentId)).OnDelete(DeleteBehavior.Restrict);
+            }
+        });
+
+        modelBuilder.Entity<HepProgram>(entity =>
+        {
+            entity.ToTable("HepPrograms");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.PatientId, e.UpdatedAtUtc });
+            entity.HasIndex(e => e.CurrentRevisionId);
+            entity.HasIndex(e => e.ClinicId);
+            entity.HasIndex(e => e.IntegrationConnectionId);
+            entity.HasIndex(e => e.CreatedByUserId);
+            entity.Property(e => e.ProviderProgramId).HasMaxLength(255);
+            entity.Property(e => e.ProviderEpisodeId).HasMaxLength(255);
+            entity.Property(e => e.LastFailureCode).HasMaxLength(160);
+            entity.Property(e => e.Status);
+            entity.Property(e => e.CreatedAtUtc);
+            entity.Property(e => e.LastSyncedAtUtc);
+            entity.Property(e => e.LastTrackingSyncAtUtc);
+            if (includeBaseNavigations)
+            {
+                entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
+            }
+            else
+            {
+                entity.HasOne(typeof(Clinic).FullName!, navigationName: null).WithMany().HasForeignKey(nameof(HepProgram.ClinicId)).OnDelete(DeleteBehavior.Restrict);
+            }
+            entity.HasOne(e => e.IntegrationConnection).WithMany().HasForeignKey(e => e.IntegrationConnectionId).OnDelete(DeleteBehavior.Restrict);
+            if (includeBaseNavigations)
+            {
+                entity.HasOne(e => e.Patient).WithMany().HasForeignKey(e => e.PatientId).OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(e => e.CreatedByUser).WithMany().HasForeignKey(e => e.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            }
+            else
+            {
+                entity.HasOne(typeof(Patient).FullName!, navigationName: null).WithMany().HasForeignKey(nameof(HepProgram.PatientId)).OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne(typeof(User).FullName!, navigationName: null).WithMany().HasForeignKey(nameof(HepProgram.CreatedByUserId)).OnDelete(DeleteBehavior.Restrict);
+            }
+        });
+
+        modelBuilder.Entity<HepProgramRevision>(entity =>
+        {
+            entity.ToTable("HepProgramRevisions");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.HepProgramId, e.Version }).IsUnique();
+            entity.HasIndex(e => e.CreatedByUserId);
+            entity.Property(e => e.Title).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.TherapistNotes).HasMaxLength(4000);
+            entity.Property(e => e.ProviderVersion).HasMaxLength(255);
+            entity.Property(e => e.Source);
+            entity.Property(e => e.StartDate);
+            entity.Property(e => e.EndDate);
+            entity.Property(e => e.CreatedAtUtc);
+            entity.Property(e => e.PublishedAtUtc);
+            entity.HasOne(e => e.HepProgram).WithMany(e => e.Revisions).HasForeignKey(e => e.HepProgramId).OnDelete(DeleteBehavior.Cascade);
+            if (includeBaseNavigations)
+            {
+                entity.HasOne(e => e.CreatedByUser).WithMany().HasForeignKey(e => e.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            }
+            else
+            {
+                entity.HasOne(typeof(User).FullName!, navigationName: null).WithMany().HasForeignKey(nameof(HepProgramRevision.CreatedByUserId)).OnDelete(DeleteBehavior.Restrict);
+            }
+        });
+
+        modelBuilder.Entity<HepPrescriptionExercise>(entity =>
+        {
+            entity.ToTable("HepPrescriptionExercises");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.HepProgramRevisionId, e.SortOrder }).IsUnique();
+            entity.Property(e => e.ExternalExerciseId).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.Title).HasMaxLength(500).IsRequired();
+            entity.Property(e => e.DescriptionOverride).HasMaxLength(4000);
+            entity.Property(e => e.Sets).HasMaxLength(100);
+            entity.Property(e => e.Repetitions).HasMaxLength(100);
+            entity.Property(e => e.Weight).HasMaxLength(100);
+            entity.Property(e => e.Frequency).HasMaxLength(200);
+            entity.Property(e => e.Duration).HasMaxLength(100);
+            entity.Property(e => e.Hold).HasMaxLength(100);
+            entity.Property(e => e.Tempo).HasMaxLength(100);
+            entity.Property(e => e.Rest).HasMaxLength(100);
+            entity.Property(e => e.Level).HasMaxLength(100);
+            entity.Property(e => e.Other).HasMaxLength(1000);
+            entity.Property(e => e.IsHomeExercise);
+            entity.Property(e => e.Mirror);
+            entity.Property(e => e.Flip);
+            entity.HasOne(e => e.HepProgramRevision).WithMany(e => e.Exercises).HasForeignKey(e => e.HepProgramRevisionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<HepTrackingObservation>(entity =>
+        {
+            entity.ToTable("HepTrackingObservations");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.HepProgramId, e.ProviderObservationId }).IsUnique();
+            entity.HasIndex(e => new { e.HepProgramId, e.ActivityAtUtc });
+            entity.Property(e => e.ProviderObservationId).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.ExternalExerciseId).HasMaxLength(255);
+            entity.Property(e => e.Code).HasMaxLength(80).IsRequired();
+            entity.Property(e => e.Value).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.UnitOfMeasure).HasMaxLength(80);
+            entity.Property(e => e.ClinicId);
+            entity.Property(e => e.ImportedAtUtc);
+            entity.HasOne(e => e.HepProgram).WithMany(e => e.TrackingObservations).HasForeignKey(e => e.HepProgramId).OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    public static void ConfigureIntegrationSnapshotModels(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity(typeof(PatientDocument).FullName!, entity =>
+            entity.Property<string>(nameof(PatientDocument.StorageKey)).HasMaxLength(1024));
+        ConfigureIntegrationModels(modelBuilder, includeBaseNavigations: false);
+    }
 
     private void NormalizeTrackedUsers()
     {

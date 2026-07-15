@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Integrations;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Identity;
@@ -733,5 +734,60 @@ public class TenantIsolationTests
         var addendums = await sysCtx.ClinicalNotes.Where(note => note.IsAddendum).ToListAsync();
 
         Assert.Equal(2, addendums.Count);
+    }
+
+    [Fact]
+    public async Task Integration_QueryFilters_Isolate_Direct_And_Child_Rows()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        await using var seedCtx = CreateSystemContext(dbName);
+        var connectionA = new IntegrationConnection
+        {
+            ClinicId = ClinicA,
+            Provider = IntegrationProviders.HumbleFax,
+            DisplayName = "Clinic A Fax"
+        };
+        var connectionB = new IntegrationConnection
+        {
+            ClinicId = ClinicB,
+            Provider = IntegrationProviders.HumbleFax,
+            DisplayName = "Clinic B Fax"
+        };
+        var transmissionA = new FaxTransmission
+        {
+            ClinicId = ClinicA,
+            IntegrationConnectionId = connectionA.Id,
+            DocumentStorageKey = "a",
+            DocumentFileName = "a.pdf",
+            DocumentHashSha256 = new string('a', 64),
+            DocumentType = "Test"
+        };
+        var transmissionB = new FaxTransmission
+        {
+            ClinicId = ClinicB,
+            IntegrationConnectionId = connectionB.Id,
+            DocumentStorageKey = "b",
+            DocumentFileName = "b.pdf",
+            DocumentHashSha256 = new string('b', 64),
+            DocumentType = "Test"
+        };
+        transmissionA.Recipients.Add(new FaxRecipient { FaxNumber = "15555550101" });
+        transmissionB.Recipients.Add(new FaxRecipient { FaxNumber = "15555550202" });
+        seedCtx.IntegrationConnections.AddRange(connectionA, connectionB);
+        seedCtx.FaxTransmissions.AddRange(transmissionA, transmissionB);
+        await seedCtx.SaveChangesAsync();
+
+        await using var ctxA = CreateTenantContext(ClinicA, dbName);
+
+        var connections = await ctxA.IntegrationConnections.ToListAsync();
+        var transmissions = await ctxA.FaxTransmissions.ToListAsync();
+        var recipients = await ctxA.FaxRecipients.ToListAsync();
+
+        Assert.Single(connections);
+        Assert.Equal(connectionA.Id, connections[0].Id);
+        Assert.Single(transmissions);
+        Assert.Equal(transmissionA.Id, transmissions[0].Id);
+        Assert.Single(recipients);
+        Assert.Equal("15555550101", recipients[0].FaxNumber);
     }
 }

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using PTDoc.Api.RequestParsing;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Integrations;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -149,6 +150,7 @@ public static class PatientEndpoints
         [FromServices] ApplicationDbContext db,
         [FromServices] ITenantContextAccessor tenantContext,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IIntegrationOperationsService integrations,
         CancellationToken cancellationToken)
     {
         // Validate required fields explicitly.
@@ -204,6 +206,7 @@ public static class PatientEndpoints
         };
 
         db.Patients.Add(patient);
+        await integrations.QueuePatientSynchronizationAsync(patient.Id, userId, patient.LastModifiedUtc, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
 
         return Results.Created($"/api/v1/patients/{patient.Id}", ToResponse(patient));
@@ -231,6 +234,7 @@ public static class PatientEndpoints
         [FromBody] UpdatePatientRequest request,
         [FromServices] ApplicationDbContext db,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IIntegrationOperationsService integrations,
         CancellationToken cancellationToken)
     {
         var patient = await db.Patients
@@ -340,6 +344,7 @@ public static class PatientEndpoints
         patient.ModifiedByUserId = identityContext.GetCurrentUserId();
         patient.SyncState = SyncState.Pending;
 
+        await integrations.QueuePatientSynchronizationAsync(patient.Id, patient.ModifiedByUserId, patient.LastModifiedUtc, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
 
         return Results.Ok(ToResponse(patient));
@@ -593,6 +598,7 @@ public static class PatientEndpoints
         Guid id,
         Guid documentId,
         [FromServices] ApplicationDbContext db,
+        [FromServices] IIntegrationDocumentStore integrationDocumentStore,
         CancellationToken cancellationToken)
     {
         var document = await db.PatientDocuments
@@ -602,6 +608,12 @@ public static class PatientEndpoints
         if (document is null)
         {
             return Results.NotFound();
+        }
+
+        if (!string.IsNullOrWhiteSpace(document.StorageKey))
+        {
+            var stream = await integrationDocumentStore.OpenReadAsync(document.StorageKey, cancellationToken);
+            return Results.Stream(stream, document.ContentType, document.FileName);
         }
 
         return Results.File(document.ContentBytes, document.ContentType, document.FileName);

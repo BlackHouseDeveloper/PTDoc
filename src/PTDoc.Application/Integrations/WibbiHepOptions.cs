@@ -15,6 +15,8 @@ public sealed class WibbiHepOptions
 
     public string BaseUrl { get; set; } = "https://v4.api.wibbi.com";
 
+    public string PublicBrokerBaseUrl { get; set; } = string.Empty;
+
     public string ApiUsername { get; set; } = string.Empty;
 
     public string ApiPassword { get; set; } = string.Empty;
@@ -23,7 +25,9 @@ public sealed class WibbiHepOptions
 
     public string ClinicLicenseId { get; set; } = string.Empty;
 
-    public bool AllowCredentialBearingRedirects { get; set; }
+    public TimeSpan TokenRefreshSkew { get; set; } = TimeSpan.FromMinutes(5);
 
-    public TimeSpan TokenRefreshSkew { get; set; } = TimeSpan.FromMinutes(1);
+    public string[] AllowedLaunchHosts { get; set; } = ["wibbi.com", "physiotec.ca"];
+
+    public string DefaultLocale { get; set; } = "en-US";
 }

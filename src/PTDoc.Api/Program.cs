@@ -159,6 +159,20 @@ builder.Services.AddRateLimiter(options =>
                 AutoReplenishment = true
             }));
 
+    options.AddPolicy("IntegrationWebhook", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            GetAnonymousRequestRateLimitPartitionKey(
+                httpContext,
+                builder.Configuration,
+                builder.Environment),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 120,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
     options.AddPolicy("AiGeneration", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
             GetAiGenerationRateLimitPartitionKey(httpContext),
@@ -239,13 +253,43 @@ builder.Services.AddSingleton<PTDoc.Application.Outcomes.IOutcomeMeasureRegistry
 builder.Services.AddSingleton<IIntakeDraftCanonicalizer, IntakeDraftCanonicalizer>();
 builder.Services.AddScoped<PTDoc.Application.Outcomes.IOutcomeMeasureService, PTDoc.Infrastructure.Outcomes.OutcomeMeasureService>();
 
-// Register integration services
+// Register integration services. Provider clients are always server-side and are
+// resolved through provider-neutral Application contracts.
 builder.Services.AddHttpClient(); // Required for payment/fax/HEP services
+builder.Services.AddHttpClient(nameof(HumbleFaxService), client =>
+    client.Timeout = TimeSpan.FromMinutes(2));
+builder.Services.AddHttpClient(nameof(WibbiHepService), client =>
+    client.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddScoped<IPaymentService, AuthorizeNetPaymentService>();
-builder.Services.AddScoped<IFaxService, HumbleFaxService>();
+builder.Services.AddScoped<HumbleFaxService>();
+builder.Services.AddScoped<IFaxService>(sp => sp.GetRequiredService<HumbleFaxService>());
+builder.Services.AddScoped<IFaxProviderClient>(sp => sp.GetRequiredService<HumbleFaxService>());
 builder.Services.AddPTDocCommunication(builder.Configuration, builder.Environment);
-builder.Services.AddScoped<IHomeExerciseProgramService, WibbiHepService>();
+builder.Services.AddScoped<WibbiHepService>();
+builder.Services.AddScoped<IHomeExerciseProgramService>(sp => sp.GetRequiredService<WibbiHepService>());
+builder.Services.AddScoped<IWibbiProviderClient>(sp => sp.GetRequiredService<WibbiHepService>());
 builder.Services.AddScoped<IExternalSystemMappingService, ExternalSystemMappingService>();
+builder.Services.AddSingleton<IIntegrationSecretResolver, ConfigurationIntegrationSecretResolver>();
+builder.Services.AddSingleton(_ =>
+    builder.Configuration.GetSection(IntegrationDocumentStoreOptions.SectionName).Get<IntegrationDocumentStoreOptions>()
+    ?? new IntegrationDocumentStoreOptions());
+builder.Services.AddSingleton(_ =>
+    builder.Configuration.GetSection(IntegrationDocumentScannerOptions.SectionName).Get<IntegrationDocumentScannerOptions>()
+    ?? new IntegrationDocumentScannerOptions());
+builder.Services.Configure<IntegrationWorkerOptions>(
+    builder.Configuration.GetSection(IntegrationWorkerOptions.SectionName));
+builder.Services.Configure<IntegrationFeatureOptions>(
+    builder.Configuration.GetSection(IntegrationFeatureOptions.SectionName));
+builder.Services.Configure<WibbiHepOptions>(
+    builder.Configuration.GetSection(WibbiHepOptions.SectionName));
+builder.Services.AddSingleton<IIntegrationDocumentStore, IntegrationDocumentStore>();
+builder.Services.AddSingleton<IIntegrationDocumentScanner, ClamAvIntegrationDocumentScanner>();
+builder.Services.AddSingleton<IIntegrationLaunchTicketStore, IntegrationLaunchTicketStore>();
+builder.Services.AddScoped<IntegrationOperationsService>();
+builder.Services.AddScoped<IIntegrationOperationsService>(sp => sp.GetRequiredService<IntegrationOperationsService>());
+builder.Services.AddScoped<IIntegrationJobProcessor>(sp => sp.GetRequiredService<IntegrationOperationsService>());
+builder.Services.AddScoped<IUserNotificationWriter, UserNotificationWriter>();
+builder.Services.AddHostedService<IntegrationOutboxHostedService>();
 builder.Services.AddScoped<IIntakeService, IntakeService>();
 builder.Services.AddScoped<PTDoc.Application.Services.IUserNotificationService, PTDoc.Infrastructure.Services.UserNotificationService>();
 builder.Services.AddScoped<IIntakeInviteService, JwtIntakeInviteService>();

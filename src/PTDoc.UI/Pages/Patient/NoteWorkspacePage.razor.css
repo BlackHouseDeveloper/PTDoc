@@ -430,3 +430,49 @@
     gap: var(--spacing-3);
     margin-top: var(--spacing-2);
 }
+
+.note-workspace__hep-summary,
+::deep .note-workspace__hep-summary {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-4);
+    margin: var(--spacing-4) 0;
+    padding: var(--spacing-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+}
+
+.note-workspace__hep-summary h2,
+::deep .note-workspace__hep-summary h2 {
+    margin: 0 0 var(--spacing-2);
+    color: var(--secondary);
+    font-size: var(--text-lg);
+}
+
+.note-workspace__hep-summary p,
+::deep .note-workspace__hep-summary p {
+    margin: var(--spacing-1) 0;
+    color: var(--muted-foreground);
+}
+
+.note-workspace__hep-actions,
+::deep .note-workspace__hep-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--spacing-2);
+}
+
+@media (max-width: 48rem) {
+    .note-workspace__hep-summary,
+    ::deep .note-workspace__hep-summary {
+        display: grid;
+    }
+
+    .note-workspace__hep-actions,
+    ::deep .note-workspace__hep-actions {
+        justify-content: flex-start;
+    }
+}

@@ -2,16 +2,24 @@ namespace PTDoc.Application.Integrations;
 
 public sealed class WibbiAuthenticationException : Exception
 {
-    public WibbiAuthenticationException(string message, string operation, int? upstreamStatusCode = null, Exception? innerException = null)
+    public WibbiAuthenticationException(
+        string message,
+        string operation,
+        int? upstreamStatusCode = null,
+        Exception? innerException = null,
+        TimeSpan? retryAfter = null)
         : base(message, innerException)
     {
         Operation = operation;
         UpstreamStatusCode = upstreamStatusCode;
+        RetryAfter = retryAfter;
     }
 
     public string Operation { get; }
 
     public int? UpstreamStatusCode { get; }
+
+    public TimeSpan? RetryAfter { get; }
 }
 
 public sealed class WibbiConfigurationException : Exception

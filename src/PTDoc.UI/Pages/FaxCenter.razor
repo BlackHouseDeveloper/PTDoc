@@ -1,0 +1,503 @@
+@page "/fax-center"
+@attribute [Authorize(Policy = AuthorizationPolicies.FaxRead)]
+@rendermode InteractiveServer
+@using PTDoc.Application.DTOs
+@using PTDoc.Application.Integrations
+@inject IIntegrationClientService Integrations
+@inject IPatientService Patients
+@inject IPatientChartStorageService PatientDocuments
+@inject INoteService Notes
+@inject IToastService Toasts
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<PageTitle>Fax Center - PTDoc</PageTitle>
+
+<div class="integration-page">
+    <GlobalPageHeader />
+    <main class="integration-page__content">
+        <header class="integration-page__header">
+            <div>
+                <h1>Fax Center</h1>
+                <p>Send chart documents, monitor delivery, and triage incoming faxes.</p>
+            </div>
+            <button type="button" class="btn btn--secondary" @onclick="LoadAsync" disabled="@isLoading">Refresh</button>
+        </header>
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="integration-alert integration-alert--error" role="alert">@errorMessage</div>
+        }
+
+        <AuthorizeView Policy="@AuthorizationPolicies.FaxSend">
+            <Authorized>
+                <section class="integration-card" aria-labelledby="send-fax-title">
+                    <h2 id="send-fax-title">Send a patient document</h2>
+                    <div class="integration-form-grid">
+                        <label>
+                            <span>Find patient</span>
+                            <input @bind="patientQuery" @bind:event="oninput" placeholder="Name or MRN" />
+                        </label>
+                        <div class="integration-field-action">
+                            <button type="button" class="btn btn--secondary" @onclick="SearchPatientsAsync" disabled="@isSending">Search</button>
+                        </div>
+                        <label>
+                            <span>Patient</span>
+                            <select @bind="selectedPatientIdText" @bind:after="HandlePatientChangedAsync">
+                                <option value="">Select a patient</option>
+                                @foreach (var patient in patientResults)
+                                {
+                                    <option value="@patient.Id">@patient.DisplayName (@(patient.MedicalRecordNumber ?? "No MRN"))</option>
+                                }
+                            </select>
+                        </label>
+                        <label>
+                            <span>PDF document or signed note</span>
+                            <select @bind="selectedSourceText">
+                                <option value="">Select a source</option>
+                                @foreach (var document in patientDocumentRows.Where(item => item.ContentType == "application/pdf"))
+                                {
+                                    <option value="document:@document.Id">@document.DocumentType — @document.FileName</option>
+                                }
+                                @foreach (var note in patientNoteRows.Where(item => item.IsSigned))
+                                {
+                                    <option value="note:@note.Id">Signed @note.NoteType — @note.DateOfService.ToString("d")</option>
+                                }
+                            </select>
+                        </label>
+                        <label>
+                            <span>Recipient fax number</span>
+                            <input @bind="recipientNumber" inputmode="tel" placeholder="(555) 555-5555" />
+                        </label>
+                        <label>
+                            <span>Recipient name (optional)</span>
+                            <input @bind="recipientName" maxlength="245" />
+                        </label>
+                        <label>
+                            <span>Second recipient fax (optional)</span>
+                            <input @bind="recipientNumberTwo" inputmode="tel" />
+                        </label>
+                        <label>
+                            <span>Second recipient name</span>
+                            <input @bind="recipientNameTwo" maxlength="245" />
+                        </label>
+                        <label>
+                            <span>Third recipient fax (optional)</span>
+                            <input @bind="recipientNumberThree" inputmode="tel" />
+                        </label>
+                        <label>
+                            <span>Third recipient name</span>
+                            <input @bind="recipientNameThree" maxlength="245" />
+                        </label>
+                        <label class="integration-form-grid__wide">
+                            <span>Cover subject</span>
+                            <input @bind="coverSubject" maxlength="1045" />
+                        </label>
+                        <label class="integration-form-grid__wide">
+                            <span>Cover message</span>
+                            <textarea @bind="coverMessage" rows="3" maxlength="9945"></textarea>
+                        </label>
+                    </div>
+                    <label class="integration-check"><input type="checkbox" @bind="includeCoverSheet" /> Include cover sheet</label>
+                    <button type="button" class="btn btn--primary" @onclick="QueueFaxAsync" disabled="@isSending">
+                        @(isSending ? "Queuing…" : "Queue fax")
+                    </button>
+                </section>
+            </Authorized>
+        </AuthorizeView>
+
+        <div class="integration-tabs" role="tablist" aria-label="Fax views">
+            <button type="button" role="tab" class="@(activeTab == "outbox" ? "is-active" : null)" aria-selected="@(activeTab == "outbox" ? "true" : "false")" @onclick="ShowOutbox">Outbox</button>
+            @if (!PatientId.HasValue)
+            {
+                <button type="button" role="tab" class="@(activeTab == "inbox" ? "is-active" : null)" aria-selected="@(activeTab == "inbox" ? "true" : "false")" @onclick="ShowInbox">Inbox</button>
+            }
+        </div>
+        <div class="integration-filters" aria-label="Fax history filters">
+            <label>
+                <span>Search history</span>
+                <input @bind="historyQuery" @bind:event="oninput" placeholder="Document, recipient, or sender" />
+            </label>
+            <label>
+                <span>Status</span>
+                <select @bind="historyStatus">
+                    <option value="">All statuses</option>
+                    @foreach (var status in AvailableStatuses)
+                    {
+                        <option value="@status">@status</option>
+                    }
+                </select>
+            </label>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="integration-card" role="status">Loading fax activity…</div>
+        }
+        else if (activeTab == "outbox")
+        {
+            <section class="integration-card" aria-label="Fax outbox">
+                <div class="integration-table-wrap">
+                    <table class="integration-table">
+                        <thead><tr><th>Queued</th><th>Document</th><th>Recipient</th><th>Status</th><th>Action</th></tr></thead>
+                        <tbody>
+                            @foreach (var fax in FilteredTransmissions)
+                            {
+                                <tr>
+                                    <td>@fax.CreatedAtUtc.ToLocalTime().ToString("g")</td>
+                                    <td>@fax.DocumentType<br /><small>@fax.DocumentFileName</small></td>
+                                    <td>@string.Join(", ", fax.Recipients.Select(item => item.FaxNumber))</td>
+                                    <td><span class="integration-status">@fax.Status</span></td>
+                                    <td>
+                                        @if (fax.Status is FaxTransmissionStatus.Failed or FaxTransmissionStatus.PartiallyDelivered or FaxTransmissionStatus.Cancelled)
+                                        {
+                                            <button type="button" class="btn btn--secondary" @onclick="() => ResendAsync(fax.Id)">Resend failed</button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        }
+        else
+        {
+            <section class="integration-card" aria-label="Fax inbox">
+                <div class="integration-table-wrap">
+                    <table class="integration-table">
+                        <thead><tr><th>Received</th><th>From</th><th>Pages</th><th>Status</th><th>Patient assignment</th></tr></thead>
+                        <tbody>
+                            @foreach (var fax in FilteredInboundFaxes)
+                            {
+                                <tr>
+                                    <td>@fax.ReceivedAtUtc.ToLocalTime().ToString("g")</td>
+                                    <td>
+                                        <span>@fax.FromNumber</span><br />
+                                        <button type="button" class="integration-link-button" @onclick="() => DownloadInboundFaxAsync(fax.Id)">Download fax</button>
+                                    </td>
+                                    <td>@fax.PageCount</td>
+                                    <td><span class="integration-status">@fax.Status</span></td>
+                                    <td>
+                                        <AuthorizeView Policy="@AuthorizationPolicies.FaxTriage">
+                                            <Authorized>
+                                                <button type="button" class="btn btn--secondary" @onclick="() => BeginAssignment(fax.Id)">
+                                                    @(fax.Status == InboundFaxStatus.Assigned ? "Reassign" : "Assign")
+                                                </button>
+                                            </Authorized>
+                                            <NotAuthorized>
+                                                <span>@(fax.Status == InboundFaxStatus.Assigned ? "Attached to chart" : "Awaiting triage")</span>
+                                            </NotAuthorized>
+                                        </AuthorizeView>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        }
+
+        @if (assigningFaxId.HasValue)
+        {
+            <section class="integration-card" aria-labelledby="assign-fax-title">
+                <h2 id="assign-fax-title">Assign inbound fax</h2>
+                <div class="integration-form-grid">
+                    <label><span>Find patient</span><input @bind="assignmentPatientQuery" @bind:event="oninput" placeholder="Name or MRN" /></label>
+                    <div class="integration-field-action"><button type="button" class="btn btn--secondary" @onclick="SearchAssignmentPatientsAsync">Search</button></div>
+                    <label>
+                        <span>Patient</span>
+                        <select @bind="assignmentPatientIdText">
+                            <option value="">Select a patient</option>
+                            @foreach (var patient in assignmentPatientResults)
+                            {
+                                <option value="@patient.Id">@patient.DisplayName (@(patient.MedicalRecordNumber ?? "No MRN"))</option>
+                            }
+                        </select>
+                    </label>
+                    <label><span>Document type</span><input @bind="assignmentDocumentType" maxlength="80" /></label>
+                    <label class="integration-form-grid__wide"><span>Reason</span><input @bind="assignmentReason" maxlength="1000" /></label>
+                </div>
+                <div class="integration-actions">
+                    <button type="button" class="btn btn--primary" @onclick="AssignFaxAsync">Attach to chart</button>
+                    <button type="button" class="btn btn--secondary" @onclick="CancelAssignment">Cancel</button>
+                </div>
+            </section>
+        }
+    </main>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "patientId")]
+    public Guid? PatientId { get; set; }
+
+    private IReadOnlyList<FaxTransmissionResponse> transmissions = [];
+    private IReadOnlyList<InboundFaxResponse> inboundFaxes = [];
+    private IReadOnlyList<PatientListItemResponse> patientResults = [];
+    private IReadOnlyList<PatientDocumentResponse> patientDocumentRows = [];
+    private IReadOnlyList<NoteListItemApiResponse> patientNoteRows = [];
+    private string activeTab = "outbox";
+    private string historyQuery = string.Empty;
+    private string historyStatus = string.Empty;
+    private string patientQuery = string.Empty;
+    private string selectedPatientIdText = string.Empty;
+    private string selectedSourceText = string.Empty;
+    private string recipientNumber = string.Empty;
+    private string recipientName = string.Empty;
+    private string recipientNumberTwo = string.Empty;
+    private string recipientNameTwo = string.Empty;
+    private string recipientNumberThree = string.Empty;
+    private string recipientNameThree = string.Empty;
+    private string coverSubject = string.Empty;
+    private string coverMessage = string.Empty;
+    private bool includeCoverSheet = true;
+    private bool isLoading;
+    private bool isSending;
+    private string? errorMessage;
+    private Guid? assigningFaxId;
+    private string assignmentPatientIdText = string.Empty;
+    private string assignmentPatientQuery = string.Empty;
+    private IReadOnlyList<PatientListItemResponse> assignmentPatientResults = [];
+    private string assignmentDocumentType = "Fax";
+    private string assignmentReason = "Reviewed and matched to the patient chart.";
+    private IJSObjectReference? downloadModule;
+
+    private IEnumerable<FaxTransmissionResponse> FilteredTransmissions => transmissions.Where(fax =>
+        (string.IsNullOrWhiteSpace(historyStatus) || string.Equals(fax.Status.ToString(), historyStatus, StringComparison.OrdinalIgnoreCase)) &&
+        (string.IsNullOrWhiteSpace(historyQuery) ||
+         fax.DocumentType.Contains(historyQuery, StringComparison.OrdinalIgnoreCase) ||
+         fax.DocumentFileName.Contains(historyQuery, StringComparison.OrdinalIgnoreCase) ||
+         fax.Recipients.Any(recipient => recipient.FaxNumber.Contains(historyQuery, StringComparison.OrdinalIgnoreCase) ||
+             recipient.RecipientName?.Contains(historyQuery, StringComparison.OrdinalIgnoreCase) == true)));
+
+    private IEnumerable<InboundFaxResponse> FilteredInboundFaxes => inboundFaxes.Where(fax =>
+        (string.IsNullOrWhiteSpace(historyStatus) || string.Equals(fax.Status.ToString(), historyStatus, StringComparison.OrdinalIgnoreCase)) &&
+        (string.IsNullOrWhiteSpace(historyQuery) ||
+         fax.FromNumber.Contains(historyQuery, StringComparison.OrdinalIgnoreCase) ||
+         fax.ToNumber.Contains(historyQuery, StringComparison.OrdinalIgnoreCase) ||
+         fax.SenderName?.Contains(historyQuery, StringComparison.OrdinalIgnoreCase) == true));
+
+    private IEnumerable<string> AvailableStatuses => activeTab == "inbox"
+        ? Enum.GetNames<InboundFaxStatus>()
+        : Enum.GetNames<FaxTransmissionStatus>();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+        try
+        {
+            var outbox = Integrations.GetFaxTransmissionsAsync(PatientId);
+            if (PatientId.HasValue)
+            {
+                transmissions = await outbox;
+                inboundFaxes = [];
+                activeTab = "outbox";
+                return;
+            }
+
+            var inbox = Integrations.GetInboundFaxesAsync();
+            await Task.WhenAll(outbox, inbox);
+            transmissions = await outbox;
+            inboundFaxes = await inbox;
+        }
+        catch (Exception exception) { errorMessage = exception.Message; }
+        finally { isLoading = false; }
+    }
+
+    private async Task SearchPatientsAsync()
+    {
+        try
+        {
+            patientResults = await Patients.SearchAsync(patientQuery, 25);
+        }
+        catch (Exception)
+        {
+            Toasts.ShowError("Unable to search for patients. Please try again.");
+        }
+    }
+
+    private async Task SearchAssignmentPatientsAsync()
+    {
+        try
+        {
+            assignmentPatientResults = await Patients.SearchAsync(assignmentPatientQuery, 25);
+        }
+        catch (Exception)
+        {
+            Toasts.ShowError("Unable to search for patients to assign this fax. Please try again.");
+        }
+    }
+
+    private async Task HandlePatientChangedAsync()
+    {
+        selectedSourceText = string.Empty;
+        patientDocumentRows = [];
+        patientNoteRows = [];
+        if (!Guid.TryParse(selectedPatientIdText, out var patientId))
+        {
+            return;
+        }
+        try
+        {
+            var documents = PatientDocuments.ListDocumentsAsync(patientId);
+            var notes = Notes.GetNotesAsync(patientId, take: 100);
+            await Task.WhenAll(documents, notes);
+            patientDocumentRows = await documents;
+            patientNoteRows = await notes;
+        }
+        catch (Exception)
+        {
+            Toasts.ShowError("Unable to load documents and notes for the selected patient. Please try again.");
+        }
+    }
+
+    private async Task QueueFaxAsync()
+    {
+        if (!Guid.TryParse(selectedPatientIdText, out var patientId) ||
+            !TryParseSource(selectedSourceText, out var sourceType, out var sourceId))
+        {
+            Toasts.ShowError("Select a patient and a PDF document or signed note.");
+            return;
+        }
+        var recipients = new[]
+        {
+            new FaxRecipientRequest { FaxNumber = recipientNumber, RecipientName = recipientName },
+            new FaxRecipientRequest { FaxNumber = recipientNumberTwo, RecipientName = recipientNameTwo },
+            new FaxRecipientRequest { FaxNumber = recipientNumberThree, RecipientName = recipientNameThree }
+        }.Where(item => !string.IsNullOrWhiteSpace(item.FaxNumber)).ToArray();
+        if (recipients.Length == 0)
+        {
+            Toasts.ShowError("Enter at least one recipient fax number.");
+            return;
+        }
+        isSending = true;
+        try
+        {
+            await Integrations.QueueFaxAsync(new CreateFaxTransmissionRequest
+            {
+                PatientId = patientId,
+                PatientDocumentId = sourceType == "document" ? sourceId : null,
+                ClinicalNoteId = sourceType == "note" ? sourceId : null,
+                DocumentType = sourceType == "document"
+                    ? patientDocumentRows.FirstOrDefault(item => item.Id == sourceId)?.DocumentType ?? "Patient document"
+                    : patientNoteRows.FirstOrDefault(item => item.Id == sourceId)?.NoteType ?? "Clinical note",
+                CoverSubject = coverSubject,
+                CoverMessage = coverMessage,
+                IncludeCoverSheet = includeCoverSheet,
+                Recipients = recipients
+            });
+            Toasts.ShowSuccess("Fax queued for delivery.");
+            recipientNumber = recipientName = recipientNumberTwo = recipientNameTwo = string.Empty;
+            recipientNumberThree = recipientNameThree = coverSubject = coverMessage = string.Empty;
+            await LoadAsync();
+        }
+        catch (Exception exception) { Toasts.ShowError(exception.Message); }
+        finally { isSending = false; }
+    }
+
+    private async Task ResendAsync(Guid id)
+    {
+        try { await Integrations.ResendFaxAsync(id); await LoadAsync(); Toasts.ShowSuccess("Failed recipients were queued for resend."); }
+        catch (Exception exception) { Toasts.ShowError(exception.Message); }
+    }
+
+    private async Task DownloadInboundFaxAsync(Guid id)
+    {
+        try
+        {
+            await using var download = await Integrations.DownloadInboundFaxAsync(id);
+            downloadModule ??= await JS.InvokeAsync<IJSObjectReference>(
+                "import",
+                "./_content/PTDoc.UI/js/export-preview.js");
+            using var streamReference = new DotNetStreamReference(download.Content);
+            await downloadModule.InvokeVoidAsync(
+                "downloadStreamFile",
+                download.FileName,
+                download.ContentType,
+                streamReference);
+        }
+        catch (Exception exception)
+        {
+            Toasts.ShowError(exception.Message);
+        }
+    }
+
+    private void BeginAssignment(Guid id)
+    {
+        assigningFaxId = id;
+        activeTab = "inbox";
+        ResetAssignmentFields();
+    }
+    private void ShowOutbox()
+    {
+        activeTab = "outbox";
+        historyStatus = string.Empty;
+    }
+
+    private void ShowInbox()
+    {
+        activeTab = "inbox";
+        historyStatus = string.Empty;
+    }
+    private void CancelAssignment()
+    {
+        assigningFaxId = null;
+        ResetAssignmentFields();
+    }
+
+    private void ResetAssignmentFields()
+    {
+        assignmentPatientIdText = string.Empty;
+        assignmentPatientQuery = string.Empty;
+        assignmentPatientResults = [];
+        assignmentDocumentType = "Fax";
+        assignmentReason = "Reviewed and matched to the patient chart.";
+    }
+
+    private static bool TryParseSource(string value, out string sourceType, out Guid sourceId)
+    {
+        sourceType = string.Empty;
+        sourceId = Guid.Empty;
+        var separator = value.IndexOf(':');
+        if (separator <= 0 || !Guid.TryParse(value[(separator + 1)..], out sourceId))
+        {
+            return false;
+        }
+        sourceType = value[..separator];
+        return sourceType is "document" or "note";
+    }
+
+    private async Task AssignFaxAsync()
+    {
+        if (!assigningFaxId.HasValue || !Guid.TryParse(assignmentPatientIdText, out var patientId))
+        {
+            Toasts.ShowError("Select a patient to assign this fax.");
+            return;
+        }
+        try
+        {
+            await Integrations.AssignInboundFaxAsync(assigningFaxId.Value, new AssignInboundFaxRequest
+            {
+                PatientId = patientId,
+                DocumentType = assignmentDocumentType,
+                Reason = assignmentReason
+            });
+            CancelAssignment();
+            await LoadAsync();
+            Toasts.ShowSuccess("Inbound fax attached to the patient chart.");
+        }
+        catch (Exception exception) { Toasts.ShowError(exception.Message); }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (downloadModule is not null)
+        {
+            try { await downloadModule.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+}

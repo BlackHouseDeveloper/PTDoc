@@ -1,4 +1,5 @@
 using Bunit;
+using Bunit.TestDoubles;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using PTDoc.Application.Configurations.Header;
@@ -633,6 +634,10 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
 
     private void RegisterCommonServices()
     {
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("test-user");
+        authorization.SetRoles(Roles.PT);
+
         var headerConfigurationService = new Mock<IHeaderConfigurationService>(MockBehavior.Loose);
         headerConfigurationService
             .Setup(service => service.GetConfiguration(It.IsAny<string>()))

@@ -58,6 +58,7 @@ public class IntegrationServicesTests
                 ["Integrations:Payments:Environment"] = "Sandbox",
                 ["Integrations:Fax:Enabled"] = enabled.ToString(),
                 ["Integrations:Fax:ApiKey"] = "test_fax_key",
+                ["Integrations:Fax:ApiSecret"] = "test_fax_secret",
                 ["Integrations:Hep:Enabled"] = enabled.ToString(),
                 ["Integrations:Hep:PatientLaunchEnabled"] = enabled.ToString(),
                 ["Integrations:Hep:ClinicianAssignmentEnabled"] = "false",
@@ -66,11 +67,28 @@ public class IntegrationServicesTests
                 ["Integrations:Hep:ApiPassword"] = "super-secret",
                 ["Integrations:Hep:Entity"] = "entity-123",
                 ["Integrations:Hep:ClinicLicenseId"] = "clm-123",
-                ["Integrations:Hep:AllowCredentialBearingRedirects"] = "false",
                 ["Integrations:Hep:TokenRefreshSkew"] = "00:01:00"
             })
             .Build();
         return config;
+    }
+
+    [Fact]
+    public async Task ConfigurationSecretResolver_RejectsReferencesOutsideIntegrationConnections()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Jwt:SigningKey:Username"] = "must-not-be-read",
+                ["Jwt:SigningKey:Password"] = "must-not-be-read"
+            })
+            .Build();
+        var resolver = new ConfigurationIntegrationSecretResolver(configuration);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            resolver.ResolveAsync("Jwt:SigningKey"));
+
+        Assert.Equal("Integration secret reference is invalid.", exception.Message);
     }
 
     [Fact]
@@ -531,6 +549,180 @@ public class IntegrationServicesTests
     }
 
     [Fact]
+    public async Task HumbleProvider_SubmitFax_UsesBasicAuthMultipartAndStableCorrelationId()
+    {
+        string? authorization = null;
+        string? mediaType = null;
+        string? multipartBody = null;
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            authorization = request.Headers.Authorization?.ToString();
+            mediaType = request.Content?.Headers.ContentType?.MediaType;
+            multipartBody = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+            return StubHttpMessageHandler.JsonResponse("""
+            {
+              "data": {
+                "fax": {
+                  "id": "fax-123",
+                  "status": "queued",
+                  "numPages": 2,
+                  "recipients": [{"toNumber":"15555550123","status":"queued","numAttempts":0}]
+                }
+              }
+            }
+            """);
+        });
+        var config = CreateTestConfiguration(enabled: true);
+        var service = new HumbleFaxService(new MockHttpClientFactory(new HttpClient(handler)), config);
+        await using var content = new MemoryStream("%PDF-test"u8.ToArray());
+
+        var result = await service.SubmitFaxAsync(
+            new IntegrationConnectionContext(Guid.NewGuid(), Guid.NewGuid(), IntegrationProviders.HumbleFax,
+                "{\"baseUrl\":\"https://api.humblefax.com\",\"fromNumber\":\"15555550000\"}", "legacy"),
+            new ProviderFaxSubmitRequest(
+                "stable-correlation-id",
+                ["15555550123"],
+                "Referral office",
+                "progress-note.pdf",
+                "application/pdf",
+                content,
+                "Progress note",
+                "Requested documentation",
+                true));
+
+        Assert.Equal("fax-123", result.ProviderFaxId);
+        Assert.StartsWith("Basic ", authorization);
+        Assert.Equal("multipart/form-data", mediaType);
+        Assert.Contains("stable-correlation-id", multipartBody);
+        Assert.Contains("progress-note.pdf", multipartBody);
+    }
+
+    [Fact]
+    public async Task HumbleProvider_GetInboundFaxes_UsesDestinationAndParsesResults()
+    {
+        Uri? requestedUri = null;
+        string? authorization = null;
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            requestedUri = request.RequestUri;
+            authorization = request.Headers.Authorization?.ToString();
+            return StubHttpMessageHandler.JsonResponse("""
+            {
+              "data": {
+                "numResults": 1,
+                "incomingFaxes": [
+                  {
+                    "id": 23498732,
+                    "status": "received",
+                    "fromNumber": 15555550123,
+                    "toNumber": 15555550000,
+                    "fromNameIdentity": "Referral office",
+                    "numPages": 3,
+                    "time": 1783998000
+                  }
+                ]
+              }
+            }
+            """);
+        });
+        var config = CreateTestConfiguration(enabled: true);
+        var service = new HumbleFaxService(new MockHttpClientFactory(new HttpClient(handler)), config);
+        var connection = new IntegrationConnectionContext(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            IntegrationProviders.HumbleFax,
+            "{\"baseUrl\":\"https://api.humblefax.com\",\"fromNumber\":\"15555550000\"}",
+            "legacy");
+
+        var result = await service.GetInboundFaxesAsync(
+            connection,
+            new DateTime(2026, 7, 13, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 7, 14, 0, 0, 0, DateTimeKind.Utc));
+
+        Assert.NotNull(requestedUri);
+        Assert.Equal("/incomingFaxes", requestedUri.AbsolutePath);
+        Assert.Contains("timeFrom=", requestedUri.Query, StringComparison.Ordinal);
+        Assert.Contains("timeTo=", requestedUri.Query, StringComparison.Ordinal);
+        Assert.Contains("toNumber=15555550000", requestedUri.Query, StringComparison.Ordinal);
+        Assert.StartsWith("Basic ", authorization);
+        var inbound = Assert.Single(result);
+        Assert.Equal("23498732", inbound.ProviderFaxId);
+        Assert.Equal("15555550123", inbound.FromNumber);
+        Assert.Equal("15555550000", inbound.ToNumber);
+        Assert.Equal("Referral office", inbound.SenderName);
+        Assert.Equal(3, inbound.PageCount);
+    }
+
+    [Fact]
+    public async Task HumbleProvider_Throttling_PreservesRetryAfter()
+    {
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+            response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(17));
+            return response;
+        });
+        var service = new HumbleFaxService(
+            new MockHttpClientFactory(new HttpClient(handler)),
+            CreateTestConfiguration(enabled: true));
+        var connection = new IntegrationConnectionContext(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            IntegrationProviders.HumbleFax,
+            "{\"baseUrl\":\"https://api.humblefax.com\"}",
+            "legacy");
+
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(
+            () => service.GetFaxStatusAsync(connection, "fax-123"));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, exception.StatusCode);
+        Assert.Equal(17_000d, Assert.IsType<double>(exception.Data["RetryAfterMilliseconds"]));
+    }
+
+    [Fact]
+    public async Task WibbiProvider_Throttling_PreservesRetryAfter()
+    {
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/api/v4/authentication/login", StringComparison.Ordinal))
+            {
+                return StubHttpMessageHandler.JsonResponse("""
+                {
+                  "token": "wibbi-api-token",
+                  "expires": "2030-01-01T00:00:00+00:00"
+                }
+                """);
+            }
+
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+            response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(23));
+            return response;
+        });
+        await using var context = CreateInMemoryContext();
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var service = new WibbiHepService(
+            new MockHttpClientFactory(new HttpClient(handler)),
+            CreateTestConfiguration(enabled: true),
+            new ExternalSystemMappingService(context),
+            memoryCache,
+            NullLogger<WibbiHepService>.Instance);
+        var connection = new IntegrationConnectionContext(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            IntegrationProviders.Wibbi,
+            "{\"baseUrl\":\"https://v4.api.wibbi.com\",\"entity\":\"entity\",\"clinicLicenseId\":\"clinic\"}",
+            string.Empty);
+
+        var exception = await Assert.ThrowsAsync<WibbiAuthenticationException>(
+            () => service.SearchExercisesAsync(connection, "knee", "en-US"));
+
+        Assert.Equal(429, exception.UpstreamStatusCode);
+        Assert.Equal(TimeSpan.FromSeconds(23), exception.RetryAfter);
+    }
+
+    [Fact]
     public async Task HepService_AssignProgram_IsDisabledForClinicianWorkflow()
     {
         // Arrange
@@ -559,6 +751,101 @@ public class IntegrationServicesTests
     }
 
     [Fact]
+    public async Task HepService_GetTracking_ResolvesLegacyIdsAndCarriesParentActivityDate()
+    {
+        var config = CreateTestConfiguration(enabled: true);
+        var trackingBody = string.Empty;
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            if (request.RequestUri!.AbsoluteUri.EndsWith("/api/v4/authentication/login", StringComparison.Ordinal))
+            {
+                return StubHttpMessageHandler.JsonResponse("""
+                {
+                  "token": "wibbi-api-token",
+                  "expires": "2030-01-01T00:00:00+00:00"
+                }
+                """);
+            }
+
+            if (request.RequestUri.Query.Contains("action=GetClient", StringComparison.Ordinal))
+            {
+                Assert.Contains("client_id=ptdoc-client", request.RequestUri.Query, StringComparison.Ordinal);
+                return StubHttpMessageHandler.JsonResponse("""
+                { "client": { "client_id": "ptdoc-client", "idClient": 42 } }
+                """);
+            }
+
+            if (request.RequestUri.AbsolutePath.EndsWith("/api/v4/program/getPatientPrograms", StringComparison.Ordinal))
+            {
+                var body = await request.Content!.ReadAsStringAsync(cancellationToken);
+                Assert.Contains("\"patientid\":42", body, StringComparison.Ordinal);
+                return StubHttpMessageHandler.JsonResponse("""
+                {
+                  "programs": [
+                    { "program_id": "another-program", "legacyId": 300 },
+                    { "program_id": "ptdoc-program", "legacyId": 314 }
+                  ]
+                }
+                """);
+            }
+
+            if (request.RequestUri.AbsolutePath.EndsWith("/api/v4/TrackingProgram/GetPatientProgramData", StringComparison.Ordinal))
+            {
+                trackingBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+                return StubHttpMessageHandler.JsonResponse("""
+                {
+                  "days": [
+                    {
+                      "activityDate": "2026-07-14T00:00:00Z",
+                      "entityId": "program-entity",
+                      "trackables": [
+                        { "code": "Completion", "value": 1 }
+                      ],
+                      "exercises": [
+                        {
+                          "legacyExerciseId": 2304,
+                          "entityId": "exercise-entity",
+                          "trackables": [
+                            { "code": "PainLevel", "value": 4 }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+                """);
+            }
+
+            throw new InvalidOperationException($"Unexpected request: {request.RequestUri}");
+        });
+        var httpClientFactory = new MockHttpClientFactory(new HttpClient(handler));
+        await using var context = CreateInMemoryContext();
+        var mappingService = new ExternalSystemMappingService(context);
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var service = new WibbiHepService(
+            httpClientFactory,
+            config,
+            mappingService,
+            memoryCache,
+            NullLogger<WibbiHepService>.Instance);
+        var connection = new IntegrationConnectionContext(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            IntegrationProviders.Wibbi,
+            "{\"baseUrl\":\"https://v4.api.wibbi.com\",\"entity\":\"entity\",\"clinicLicenseId\":\"clinic\",\"allowedLaunchHosts\":[\"hep.wibbi.com\"]}",
+            string.Empty);
+
+        var values = await service.GetTrackingAsync(connection, "ptdoc-client", "ptdoc-program");
+
+        Assert.Contains("\"legacyPatientId\":42", trackingBody, StringComparison.Ordinal);
+        Assert.Contains("\"legacyProgramId\":314", trackingBody, StringComparison.Ordinal);
+        Assert.Equal(2, values.Count);
+        Assert.Contains(values, value => value.Code == "Completion" &&
+            value.ActivityAtUtc == new DateTime(2026, 7, 14, 0, 0, 0, DateTimeKind.Utc));
+        Assert.Contains(values, value => value.Code == "PainLevel" && value.ExerciseId == "2304");
+    }
+
+    [Fact]
     public async Task HepService_GetPatientProgram_ReturnsBrokeredLaunchUrl()
     {
         // Arrange
@@ -582,7 +869,7 @@ public class IntegrationServicesTests
                 """);
             }
 
-            if (request.RequestUri.AbsoluteUri.Contains("action=GetClientLink", StringComparison.Ordinal))
+            if (request.RequestUri.AbsoluteUri.Contains("/api/v4/emr/getClientLink", StringComparison.Ordinal))
             {
                 launchCalls++;
                 authSchemes.Add(request.Headers.Authorization?.Scheme);
@@ -764,7 +1051,7 @@ public class IntegrationServicesTests
     }
 
     [Fact]
-    public async Task HepService_GetPatientProgram_AllowsCredentialBearingLaunchUrls_WhenExplicitlyEnabled()
+    public async Task HepService_GetPatientProgram_RejectsLegacyCredentialRedirectOverride()
     {
         var patientId = Guid.NewGuid();
         var config = new ConfigurationBuilder()
@@ -802,10 +1089,10 @@ public class IntegrationServicesTests
         using var memoryCache = new MemoryCache(new MemoryCacheOptions());
         var service = new WibbiHepService(httpClientFactory, config, mappingService, memoryCache, NullLogger<WibbiHepService>.Instance);
 
-        var result = await service.GetPatientProgramAsync(patientId);
+        var exception = await Assert.ThrowsAsync<WibbiUnsafeLaunchUrlException>(() => service.GetPatientProgramAsync(patientId));
 
-        Assert.True(result.Success, result.ErrorMessage);
-        Assert.Equal("https://hep.wibbi.com?do=patient&action=new_load&username=example&password=example", result.PatientPortalUrl);
+        Assert.Contains("username", exception.BlockedParameters);
+        Assert.Contains("password", exception.BlockedParameters);
     }
 }
 

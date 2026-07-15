@@ -148,8 +148,9 @@ public class AuthorizationCoverageTests
             "GET /api/v1/intake/access/patient/{patientId:guid}/latest",
             "PUT /api/v1/intake/access/{id:guid}",
             "POST /api/v1/intake/access/{id:guid}/submit",
-            // HEP patient launch callback — token is encoded in the URL path, not the auth header
-            "GET /api/v1/integrations/hep/patient-launch/{launchToken}",
+            // Provider callbacks and one-time launch broker validate opaque route tokens in-handler.
+            "GET /api/v1/integrations/hep/launch/{launchToken}",
+            "POST /api/v1/integrations/webhooks/humblefax/{connectionToken}",
         };
 
         Assert.Equal(expectedAnonymous, actualAnonymous);
@@ -318,11 +319,37 @@ public class AuthorizationCoverageTests
         // ── Integrations (Integrations/IntegrationEndpoints.cs) ───────────────
         new("GET",  "/api/v1/integrations/payment/configuration",                 AuthorizationPolicies.SchedulingAccess),
         new("POST", "/api/v1/integrations/payment/process",                         AuthorizationPolicies.ClinicalStaff),
-        new("POST", "/api/v1/integrations/fax/send",                                AuthorizationPolicies.ClinicalStaff),
+        new("POST", "/api/v1/integrations/fax/send",                                AuthorizationPolicies.FaxSend),
+        new("POST", "/api/v1/integrations/fax/transmissions",                       AuthorizationPolicies.FaxSend),
+        new("GET",  "/api/v1/integrations/fax/transmissions",                       AuthorizationPolicies.FaxRead),
+        new("GET",  "/api/v1/integrations/fax/transmissions/{id:guid}",             AuthorizationPolicies.FaxRead),
+        new("POST", "/api/v1/integrations/fax/transmissions/{id:guid}/resend",      AuthorizationPolicies.FaxSend),
+        new("GET",  "/api/v1/integrations/fax/inbox",                               AuthorizationPolicies.FaxRead),
+        new("GET",  "/api/v1/integrations/fax/inbox/{id:guid}",                     AuthorizationPolicies.FaxRead),
+        new("GET",  "/api/v1/integrations/fax/inbox/{id:guid}/content",             AuthorizationPolicies.FaxRead),
+        new("POST", "/api/v1/integrations/fax/inbox/{id:guid}/assign",              AuthorizationPolicies.FaxTriage),
+        new("POST", "/api/v1/integrations/fax/inbox/{id:guid}/reassign",            AuthorizationPolicies.FaxTriage),
         new("POST", "/api/v1/integrations/hep/assign",                              AuthorizationPolicies.ClinicalStaff),
         new("GET",  "/api/v1/integrations/hep/patient-launch",                      AuthorizationPolicies.PatientHepAccess),
-        // Launch callback uses a URL-embedded token; AllowAnonymous is intentional.
-        new("GET",  "/api/v1/integrations/hep/patient-launch/{launchToken}",        null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/integrations/hep/patient-launch-ticket",               AuthorizationPolicies.PatientHepAccess),
+        new("GET",  "/api/v1/integrations/hep/patient-programs",                    AuthorizationPolicies.PatientHepAccess),
+        new("GET",  "/api/v1/integrations/hep/catalog/exercises",                   AuthorizationPolicies.HepAuthor),
+        new("GET",  "/api/v1/integrations/hep/patients/{patientId:guid}/programs", AuthorizationPolicies.HepRead),
+        new("POST", "/api/v1/integrations/hep/patients/{patientId:guid}/programs", AuthorizationPolicies.HepAuthor),
+        new("PUT",  "/api/v1/integrations/hep/programs/{programId:guid}",           AuthorizationPolicies.HepAuthor),
+        new("POST", "/api/v1/integrations/hep/programs/{programId:guid}/publish",  AuthorizationPolicies.HepAuthor),
+        new("GET",  "/api/v1/integrations/hep/programs/{programId:guid}/tracking", AuthorizationPolicies.HepRead),
+        new("POST", "/api/v1/integrations/hep/programs/{programId:guid}/clinician-launch", AuthorizationPolicies.HepAuthor),
+        new("POST", "/api/v1/integrations/hep/programs/{programId:guid}/flowsheet-launch", AuthorizationPolicies.HepAuthor),
+        new("GET",  "/api/v1/integrations/connections",                              AuthorizationPolicies.HepAdmin),
+        new("PUT",  "/api/v1/integrations/connections/{provider}/{clinicId:guid}", AuthorizationPolicies.HepAdmin),
+        new("POST", "/api/v1/integrations/connections/{provider}/{clinicId:guid}/verify", AuthorizationPolicies.HepAdmin),
+        new("POST", "/api/v1/integrations/connections/{provider}/{clinicId:guid}/rotate", AuthorizationPolicies.FaxAdmin),
+        new("GET",  "/api/v1/integrations/connections/{provider}/{clinicId:guid}/health", AuthorizationPolicies.HepAdmin),
+        new("GET",  "/api/v1/integrations/operations/dead-letters",                    AuthorizationPolicies.HepAdmin),
+        new("POST", "/api/v1/integrations/operations/dead-letters/{jobId:guid}/replay", AuthorizationPolicies.HepAdmin),
+        new("GET",  "/api/v1/integrations/hep/launch/{launchToken}",                null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/integrations/webhooks/humblefax/{connectionToken}",   null, IsIntentionallyAnonymous: true),
         new("POST", "/api/v1/integrations/mappings/{patientId:guid}",               AuthorizationPolicies.ClinicalStaff),
         new("GET",  "/api/v1/integrations/mappings/patient/{patientId:guid}",       AuthorizationPolicies.ClinicalStaff),
     ];

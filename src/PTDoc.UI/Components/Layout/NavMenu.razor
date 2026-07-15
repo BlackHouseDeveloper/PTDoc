@@ -50,6 +50,17 @@
                     </Authorized>
                 </AuthorizeView>
 
+                <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.PatientHepAccess">
+                    <Authorized>
+                        <NavLink class="ptdoc-nav-item" href="my-hep" @onclick="HandleNavigate">
+                            <div class="ptdoc-nav-content">
+                                <img src="_content/PTDoc.UI/images/nav-progress.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                                <span class="ptdoc-nav-text">My Exercise Program</span>
+                            </div>
+                        </NavLink>
+                    </Authorized>
+                </AuthorizeView>
+
                 <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.IntakeRead">
                     <Authorized>
                         <NavLink class="ptdoc-nav-item" href="intake" @onclick="HandleNavigate">
@@ -101,6 +112,17 @@
                             <div class="ptdoc-nav-content">
                                 <img src="_content/PTDoc.UI/images/nav-export.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
                                 <span class="ptdoc-nav-text">Export Center</span>
+                            </div>
+                        </NavLink>
+                    </Authorized>
+                </AuthorizeView>
+
+                <AuthorizeView Policy="@PTDoc.Application.Services.AuthorizationPolicies.FaxRead">
+                    <Authorized>
+                        <NavLink class="ptdoc-nav-item" href="fax-center" @onclick="HandleNavigate">
+                            <div class="ptdoc-nav-content">
+                                <img src="_content/PTDoc.UI/images/nav-export.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />
+                                <span class="ptdoc-nav-text">Fax Center</span>
                             </div>
                         </NavLink>
                     </Authorized>

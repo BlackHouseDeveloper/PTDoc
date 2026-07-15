@@ -7,11 +7,13 @@
 
 @using System.Globalization
 @using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Routing
 @using Microsoft.JSInterop
 @using PTDoc.Application.AI
 @using PTDoc.Application.Compliance
+@using PTDoc.Application.Integrations
 @using PTDoc.Application.Notes.Workspace
 @using PTDoc.Application.ReferenceData
 @using PTDoc.Application.Services
@@ -30,9 +32,11 @@
 @inject ILogger<NoteWorkspacePage> Logger
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IAuthorizationService AuthorizationService
 @inject INoteWorkspaceService NoteWorkspaceService
 @inject IIntakeReferenceDataCatalogService IntakeReferenceData
 @inject IPatientService PatientService
+@inject IIntegrationClientService Integrations
 @inject IAiClinicalGenerationService AiService
 @inject DraftAutosaveService DraftAutosaveService
 @inject IToastService ToastService
@@ -256,6 +260,47 @@ else
                 }
             </section>
         }
+
+        <AuthorizeView Policy="@AuthorizationPolicies.HepRead">
+            <Authorized>
+                <section class="note-workspace__hep-summary" aria-labelledby="note-hep-summary-title">
+                    <div>
+                        <h2 id="note-hep-summary-title">Home Exercise Program</h2>
+                        @if (!string.IsNullOrWhiteSpace(_hepSummaryUnavailable))
+                        {
+                            <p>@_hepSummaryUnavailable PTDoc note editing remains available.</p>
+                        }
+                        else if (_hepPrograms.Count == 0)
+                        {
+                            <p>No Wibbi-backed HEP has been created for this patient. @GetLinkedHepItems().Count note item(s) are marked for HEP review.</p>
+                        }
+                        else
+                        {
+                            var currentHep = _hepPrograms.OrderByDescending(item => item.UpdatedAtUtc).First();
+                            <p>
+                                @(currentHep.CurrentRevision?.Title ?? "Home Exercise Program") · @currentHep.Status ·
+                                @(currentHep.CurrentRevision?.Exercises.Count ?? 0) prescribed exercise(s)
+                            </p>
+                            <p>
+                                @_hepTracking.Count provider observation(s) cached.
+                                @if (_hepTracking.Count > 0)
+                                {
+                                    <span> Latest patient entry: @(_hepTracking.Max(item => item.ActivityAtUtc).ToLocalTime().ToString("g")).</span>
+                                }
+                            </p>
+                        }
+                    </div>
+                    <div class="note-workspace__hep-actions">
+                        <a class="btn btn--secondary" href="@($"/patient/{Uri.EscapeDataString(PatientId)}/hep")">Open HEP and FlowSheet</a>
+                        <button type="button" class="btn btn--secondary" @onclick="LoadHepSummaryAsync">Refresh tracking</button>
+                        @if (CanPersistDraft && _hepTracking.Count > 0)
+                        {
+                            <button type="button" class="btn btn--secondary" @onclick="CopyHepTrackingSnapshotAsync">Copy timestamped summary into draft</button>
+                        }
+                    </div>
+                </section>
+            </Authorized>
+        </AuthorizeView>
 
         @if (IsDryNeedlingNote)
         {
@@ -640,6 +685,10 @@ else
     private string? _lastAutosaveToastMessage;
     private bool _hasSaveConflict;
     private bool _showSaveConflict;
+    private IReadOnlyList<HepProgramResponse> _hepPrograms = [];
+    private IReadOnlyList<HepTrackingObservationResponse> _hepTracking = [];
+    private string? _hepSummaryUnavailable;
+    private bool _canReadHep;
     private static readonly TimeSpan MinimumVisibleSavingStateDuration = TimeSpan.FromMilliseconds(350);
 
     private bool IsDailyTreatment => string.Equals(_note.NoteType, "Daily Treatment Note", StringComparison.OrdinalIgnoreCase);
@@ -661,6 +710,7 @@ else
     private bool IsAdminUser => _user.IsInRole(Roles.Admin);
     private bool IsOwnerUser => _user.IsInRole(Roles.Owner);
     private bool IsBillingUser => _user.IsInRole(Roles.Billing);
+    private bool CanReadHep => _canReadHep;
 
     private string DisplayPatientName => string.IsNullOrWhiteSpace(_note.PatientName) ? "Unknown Patient" : _note.PatientName;
 
@@ -812,6 +862,10 @@ else
         {
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             _user = authState.User;
+            _canReadHep = (await AuthorizationService.AuthorizeAsync(
+                _user,
+                resource: null,
+                policyName: AuthorizationPolicies.HepRead)).Succeeded;
 
             var routeNoteId = ResolveRouteNoteId(NoteId);
             _currentNoteId = routeNoteId ?? Guid.Empty;
@@ -848,6 +902,11 @@ else
                         }
                     }
                 }
+            }
+
+            if (CanReadHep)
+            {
+                await LoadHepSummaryAsync();
             }
 
             ApplyWorkspaceNotice();
@@ -897,7 +956,53 @@ else
         _showSaveConflict = false;
         _hasAppliedEvaluationSeed = false;
         _hasAttemptedEvaluationSeed = false;
+        _hepPrograms = [];
+        _hepTracking = [];
+        _hepSummaryUnavailable = null;
         _attemptedCarryForwardSeedNoteTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task LoadHepSummaryAsync()
+    {
+        if (!_patientGuid.HasValue || !CanReadHep)
+        {
+            return;
+        }
+        try
+        {
+            _hepPrograms = await Integrations.GetHepProgramsAsync(_patientGuid.Value);
+            var current = _hepPrograms
+                .Where(item => item.Status is HepProgramStatus.Synced or HepProgramStatus.Conflict)
+                .OrderByDescending(item => item.UpdatedAtUtc)
+                .FirstOrDefault();
+            _hepTracking = current is null
+                ? []
+                : await Integrations.GetHepTrackingAsync(current.Id);
+            _hepSummaryUnavailable = null;
+        }
+        catch (Exception)
+        {
+            _hepPrograms = [];
+            _hepTracking = [];
+            _hepSummaryUnavailable = "The HEP summary is temporarily unavailable.";
+        }
+    }
+
+    private async Task CopyHepTrackingSnapshotAsync()
+    {
+        if (!CanPersistDraft || _hepTracking.Count == 0)
+        {
+            return;
+        }
+        var reviewedAt = DateTime.UtcNow;
+        var latestActivity = _hepTracking.Max(item => item.ActivityAtUtc);
+        var codes = _hepTracking.Select(item => item.Code).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+        var snapshot = $"Wibbi tracking reviewed {reviewedAt:yyyy-MM-dd HH:mm} UTC: {_hepTracking.Count} provider-reported observation(s) across {codes} tracking field(s); latest patient activity {latestActivity:yyyy-MM-dd HH:mm} UTC. Provider-derived tracking requires clinician interpretation.";
+        _note.Plan.HomeExerciseProgramNotes = string.IsNullOrWhiteSpace(_note.Plan.HomeExerciseProgramNotes)
+            ? snapshot
+            : $"{_note.Plan.HomeExerciseProgramNotes.Trim()}\n{snapshot}";
+        await HandlePlanChanged(_note.Plan);
+        ToastService.ShowSuccess("A timestamped HEP tracking snapshot was copied into this draft.");
     }
 
     private string ResolveInitialNoteType()

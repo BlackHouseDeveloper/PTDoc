@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Bunit;
+using Bunit.TestDoubles;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
@@ -8,6 +9,7 @@ using Moq;
 using PTDoc.Application.AI;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
+using PTDoc.Application.Integrations;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Outcomes;
 using PTDoc.Application.ReferenceData;
@@ -29,6 +31,20 @@ public sealed class NoteWorkspacePageTests : TestContext
         Services.AddLogging();
         Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
         Services.AddSingleton<IToastService, ToastService>();
+
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("test-user");
+        authorization.SetRoles(Roles.PT);
+        authorization.SetPolicies(AuthorizationPolicies.HepRead);
+
+        var integrationClient = new Mock<IIntegrationClientService>(MockBehavior.Strict);
+        integrationClient
+            .Setup(service => service.GetHepProgramsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<HepProgramResponse>());
+        integrationClient
+            .Setup(service => service.GetHepTrackingAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<HepTrackingObservationResponse>());
+        Services.AddSingleton(integrationClient.Object);
     }
 
     [Fact]

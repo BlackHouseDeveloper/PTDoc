@@ -29,6 +29,10 @@
                     <NotificationPreferencesEditor />
                 </section>
             }
+            else if (activeSection == "integrations")
+            {
+                <IntegrationSettingsPanel />
+            }
             else
             {
                 <DeferredSettingsSection
@@ -53,6 +57,7 @@
         "documentation" => "Documentation and Compliance",
         "billing" => "Billing and Coding",
         "ai-outcomes" => "AI & Outcome Measures",
+        "integrations" => "Clinical Integrations",
         _ => "Approvals"
     };
 

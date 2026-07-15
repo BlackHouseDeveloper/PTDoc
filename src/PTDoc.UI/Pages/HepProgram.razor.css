@@ -1,0 +1,212 @@
+.hep-page {
+    min-height: 100%;
+    background: var(--background);
+    color: var(--foreground);
+}
+
+.hep-page__content {
+    display: grid;
+    gap: var(--spacing-5);
+    max-width: 72rem;
+    margin: 0 auto;
+    padding: var(--spacing-6);
+}
+
+.hep-page__header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: var(--spacing-4);
+}
+
+.hep-page__header h1,
+.hep-card h2,
+.hep-program h3 {
+    margin: 0 0 var(--spacing-2);
+    color: var(--secondary);
+}
+
+.hep-page__header p,
+.hep-program p {
+    margin: 0;
+    color: var(--muted-foreground);
+}
+
+.hep-back {
+    padding: 0 0 var(--spacing-2);
+    border: 0;
+    background: transparent;
+    color: var(--primary);
+}
+
+.hep-card {
+    padding: var(--spacing-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    box-shadow: var(--shadow-sm);
+}
+
+.hep-fields {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: var(--spacing-4);
+    margin: var(--spacing-4) 0;
+}
+
+.hep-fields label,
+.hep-search label {
+    display: grid;
+    gap: var(--spacing-2);
+    font-weight: var(--font-weight-medium);
+}
+
+.hep-fields input,
+.hep-fields textarea,
+.hep-search input {
+    min-height: var(--touch-target-desktop);
+    padding: var(--spacing-2) var(--spacing-3);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-md);
+    background: var(--surface-input);
+    color: var(--text-primary);
+}
+
+.hep-fields__wide {
+    grid-column: 1 / -1;
+}
+
+.hep-fields--compact {
+    grid-template-columns: repeat(4, 1fr);
+}
+
+.hep-fields .hep-check {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+.hep-fields .hep-check input {
+    width: auto;
+    min-height: auto;
+}
+
+.hep-search {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    gap: var(--spacing-3);
+}
+
+.hep-catalog {
+    margin: var(--spacing-3) 0;
+    padding: 0;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    list-style: none;
+}
+
+.hep-catalog li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-3);
+    padding: var(--spacing-3);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.hep-catalog small {
+    display: block;
+    color: var(--muted-foreground);
+}
+
+.hep-prescription-list,
+.hep-program-list {
+    display: grid;
+    gap: var(--spacing-3);
+    margin: var(--spacing-4) 0;
+}
+
+.hep-exercise,
+.hep-program {
+    padding: var(--spacing-4);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+}
+
+.hep-exercise header,
+.hep-program {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-4);
+}
+
+.hep-exercise header button {
+    border: 0;
+    background: transparent;
+    color: var(--destructive);
+}
+
+.hep-actions {
+    display: flex;
+    align-items: center;
+    justify-content: end;
+    gap: var(--spacing-2);
+    flex-wrap: wrap;
+}
+
+.hep-tracking {
+    display: grid;
+    gap: var(--spacing-2);
+}
+
+.hep-tracking div {
+    display: grid;
+    grid-template-columns: 12rem 1fr 1fr;
+    gap: var(--spacing-3);
+    padding: var(--spacing-2) 0;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.hep-alert {
+    padding: var(--spacing-3);
+    border: 1px solid rgba(var(--destructive-rgb), .25);
+    border-radius: var(--radius-md);
+    background: rgba(var(--destructive-rgb), .08);
+    color: var(--destructive);
+}
+
+.hep-conflict-message {
+    max-width: 42rem;
+    margin-top: var(--spacing-2) !important;
+    color: var(--destructive) !important;
+}
+
+@media (max-width: 48rem) {
+    .hep-page__content {
+        padding: var(--spacing-4);
+    }
+
+    .hep-page__header,
+    .hep-program {
+        display: grid;
+    }
+
+    .hep-fields,
+    .hep-fields--compact,
+    .hep-search {
+        grid-template-columns: 1fr;
+    }
+
+    .hep-fields__wide {
+        grid-column: auto;
+    }
+
+    .hep-tracking div {
+        grid-template-columns: 1fr;
+    }
+
+    .hep-actions {
+        justify-content: start;
+    }
+}
