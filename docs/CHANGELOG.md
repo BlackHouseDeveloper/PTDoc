@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Inbound fax triage guidance** — Updated the missing-patient validation message to match the selection-based assignment workflow. Reason: staff should receive an actionable instruction that reflects the visible control.
 - **HEP patient context recovery** — Handled failures while loading the HEP patient header without interrupting page rendering. Reason: transient patient API failures should leave the HEP workflow recoverable rather than terminate the interactive component.
 - **Patient-scoped fax history and stylesheet maintainability** — Kept patient-history Fax Center views outbox-only, and reformatted the Fax Center and HEP stylesheets into the repository’s standard multi-line style. Reason: chart-scoped history must not load unrelated inbound faxes, and integration UI styles need readable, reviewable diffs.
+- **Fax filtering and integration-settings stylesheet readability** — Limited Fax Center status choices to the active tab and cleared obsolete selections on tab changes; reformatted the integration settings stylesheet. Reason: filters must only offer meaningful values for the displayed data set, and settings styles need maintainable review diffs.
 
 ### Changed - agent guidance captures audit-remediation and beta seed settings
 

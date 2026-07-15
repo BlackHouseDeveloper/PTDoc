@@ -122,11 +122,7 @@
                 <span>Status</span>
                 <select @bind="historyStatus">
                     <option value="">All statuses</option>
-                    @foreach (var status in Enum.GetNames<FaxTransmissionStatus>())
-                    {
-                        <option value="@status">@status</option>
-                    }
-                    @foreach (var status in Enum.GetNames<InboundFaxStatus>())
+                    @foreach (var status in AvailableStatuses)
                     {
                         <option value="@status">@status</option>
                     }
@@ -281,6 +277,10 @@
          fax.ToNumber.Contains(historyQuery, StringComparison.OrdinalIgnoreCase) ||
          fax.SenderName?.Contains(historyQuery, StringComparison.OrdinalIgnoreCase) == true));
 
+    private IEnumerable<string> AvailableStatuses => activeTab == "inbox"
+        ? Enum.GetNames<InboundFaxStatus>()
+        : Enum.GetNames<FaxTransmissionStatus>();
+
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
     private async Task LoadAsync()
@@ -426,8 +426,17 @@
     }
 
     private void BeginAssignment(Guid id) { assigningFaxId = id; activeTab = "inbox"; }
-    private void ShowOutbox() => activeTab = "outbox";
-    private void ShowInbox() => activeTab = "inbox";
+    private void ShowOutbox()
+    {
+        activeTab = "outbox";
+        historyStatus = string.Empty;
+    }
+
+    private void ShowInbox()
+    {
+        activeTab = "inbox";
+        historyStatus = string.Empty;
+    }
     private void CancelAssignment() { assigningFaxId = null; assignmentPatientIdText = string.Empty; assignmentPatientQuery = string.Empty; assignmentPatientResults = []; }
 
     private static bool TryParseSource(string value, out string sourceType, out Guid sourceId)
