@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **HEP patient context recovery** — Handled failures while loading the HEP patient header without interrupting page rendering. Reason: transient patient API failures should leave the HEP workflow recoverable rather than terminate the interactive component.
 - **Patient-scoped fax history and stylesheet maintainability** — Kept patient-history Fax Center views outbox-only, and reformatted the Fax Center and HEP stylesheets into the repository’s standard multi-line style. Reason: chart-scoped history must not load unrelated inbound faxes, and integration UI styles need readable, reviewable diffs.
 - **Fax filtering and integration-settings stylesheet readability** — Limited Fax Center status choices to the active tab and cleared obsolete selections on tab changes; reformatted the integration settings stylesheet. Reason: filters must only offer meaningful values for the displayed data set, and settings styles need maintainable review diffs.
+- **Inbound fax triage state reset** — Cleared assignment patient, type, and reason values when beginning or cancelling a fax assignment. Reason: data entered for one fax must not carry into another chart-association decision.
 
 ### Changed - agent guidance captures audit-remediation and beta seed settings
 

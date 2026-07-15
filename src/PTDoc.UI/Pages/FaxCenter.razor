@@ -425,7 +425,12 @@
         }
     }
 
-    private void BeginAssignment(Guid id) { assigningFaxId = id; activeTab = "inbox"; }
+    private void BeginAssignment(Guid id)
+    {
+        assigningFaxId = id;
+        activeTab = "inbox";
+        ResetAssignmentFields();
+    }
     private void ShowOutbox()
     {
         activeTab = "outbox";
@@ -437,7 +442,20 @@
         activeTab = "inbox";
         historyStatus = string.Empty;
     }
-    private void CancelAssignment() { assigningFaxId = null; assignmentPatientIdText = string.Empty; assignmentPatientQuery = string.Empty; assignmentPatientResults = []; }
+    private void CancelAssignment()
+    {
+        assigningFaxId = null;
+        ResetAssignmentFields();
+    }
+
+    private void ResetAssignmentFields()
+    {
+        assignmentPatientIdText = string.Empty;
+        assignmentPatientQuery = string.Empty;
+        assignmentPatientResults = [];
+        assignmentDocumentType = "Fax";
+        assignmentReason = "Reviewed and matched to the patient chart.";
+    }
 
     private static bool TryParseSource(string value, out string sourceType, out Guid sourceId)
     {
