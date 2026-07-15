@@ -70,8 +70,9 @@ suite required for release readiness. See [Release Gate CI (Sprint T)](#release-
 Runs on manual dispatch only. Builds and tests the repository, publishes the Blazor
 Interactive Server frontend and API as separate .NET 8 artifacts, then deploys them
 to the beta Azure App Services `ptdoc-web-prod` and `ptdoc-api-plan` using GitHub
-publish-profile secrets. See `docs/deployment/BETA_DEPLOYMENT.md` for required
-Azure app settings, Cloudflare domains, and smoke checks.
+environment-scoped OIDC secrets and short-lived Azure tokens. See
+`docs/deployment/BETA_DEPLOYMENT.md` for required OIDC/RBAC configuration, Azure app
+settings, Cloudflare domains, and smoke checks.
 
 Legacy workflows `phase8-validation.yml` and `update-docs-on-merge.yml` have been retired. Current CI uses the workflows above plus reusable gate logic under `.github/workflows/_dotnet-category-gate.yml`.
 

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Beta deployment OIDC authentication guidance
+
+- **Beta deployment workflow and runbook** — Upgraded Azure Login to its native Node 24 action, corrected CI documentation that still described publish-profile deployment, and documented the exact GitHub environment subject, Azure identity values, resource-group-scoped Website Contributor assignment, validation commands, and `No subscriptions found` recovery path. Reason: the first OIDC-based Beta deployment emitted a Node 20 deprecation notice and then failed because the configured identity could not access the configured Azure subscription.
+
 ### Added - production Humble Fax and Wibbi clinical integrations
 
 - **Integration foundation** — Added clinic-scoped provider connections and global query filters, independent capability flags, secret references, external identity mappings, durable outbox leasing/retries/dead letters with expired-lease recovery and provider `Retry-After` support, guarded Owner/Admin replay, checkpoints, conflicts, private blob-backed documents, Redis-capable one-time launch tickets, PHI-safe auditing, notifications, SQLite/SQL Server/PostgreSQL migrations, and the logging-abstractions dependency level required by Azure Blob Storage. Reason: provider outages and process restarts must not lose, duplicate, or cross clinic integration work, and support staff need safe recovery without direct database changes.

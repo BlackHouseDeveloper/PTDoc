@@ -136,7 +136,37 @@ AZURE_SUBSCRIPTION_ID
 PTDOC_BETA_SEED_PIN
 ```
 
-The first three values identify the beta-environment Azure OIDC deployment identity. Grant that identity only the App Service deploy and slot-swap permissions needed for `ptdoc-api-plan` and `ptdoc-web-prod`; do not restore publish-profile credentials. `PTDOC_BETA_SEED_PIN` is masked by GitHub and is used only for the post-API-swap seeded-role login smoke check.
+The first three values identify the beta-environment Azure OIDC deployment identity. `AZURE_CLIENT_ID` must be the application (client) ID of the federated identity, `AZURE_TENANT_ID` must be that identity's directory tenant, and `AZURE_SUBSCRIPTION_ID` must be the subscription containing `PTDoc-prod`. The federated credential must trust this exact GitHub environment subject:
+
+```text
+repo:BlackHouseDeveloper/PTDoc:environment:beta
+```
+
+Grant the identity the built-in `Website Contributor` role at the `PTDoc-prod` resource-group scope. The workflow must read the App Service plans and app configuration, deploy both apps and their staging slots, and swap slots; app-only deployment access without plan-read access is insufficient. If the resource group later contains unrelated Web resources, replace the resource-group assignment with `Website Contributor` on both target apps plus `Reader` on their backing App Service plans. Do not grant subscription-wide Contributor access and do not restore publish-profile credentials.
+
+An Azure administrator can validate the identity and assignment before dispatching the workflow. Use the real IDs without committing or pasting them into issue text:
+
+```bash
+az account show --subscription "<AZURE_SUBSCRIPTION_ID>" --query '{id:id,tenantId:tenantId,state:state}'
+az ad sp show --id "<AZURE_CLIENT_ID>" --query '{appId:appId,objectId:id}'
+az role assignment list \
+  --assignee "<AZURE_CLIENT_ID>" \
+  --all \
+  --include-inherited \
+  --query "[?roleDefinitionName=='Website Contributor'].{role:roleDefinitionName,scope:scope}"
+```
+
+If the assignment is absent, an Azure administrator can add the resource-group-scoped role with the service principal's object ID:
+
+```bash
+az role assignment create \
+  --assignee-object-id "<SERVICE_PRINCIPAL_OBJECT_ID>" \
+  --assignee-principal-type ServicePrincipal \
+  --role "Website Contributor" \
+  --scope "/subscriptions/<AZURE_SUBSCRIPTION_ID>/resourceGroups/PTDoc-prod"
+```
+
+After confirming the Azure values, store the client, tenant, and subscription IDs as secrets on the GitHub `beta` environment, wait for Azure RBAC propagation, and rerun `Deploy Beta`. `No subscriptions found` from `azure/login` means the configured identity cannot see the configured subscription: recheck the three IDs and the role assignment. Do not set `allow-no-subscriptions: true`; every subsequent validation, deployment, and slot-swap command requires subscription-backed Azure Resource Manager access. `PTDOC_BETA_SEED_PIN` is masked by GitHub and is used only for the post-API-swap seeded-role login smoke check.
 
 Deployment order and rollback contract:
 
