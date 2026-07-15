@@ -108,7 +108,10 @@
 
         <div class="integration-tabs" role="tablist" aria-label="Fax views">
             <button type="button" role="tab" class="@(activeTab == "outbox" ? "is-active" : null)" aria-selected="@(activeTab == "outbox" ? "true" : "false")" @onclick="ShowOutbox">Outbox</button>
-            <button type="button" role="tab" class="@(activeTab == "inbox" ? "is-active" : null)" aria-selected="@(activeTab == "inbox" ? "true" : "false")" @onclick="ShowInbox">Inbox</button>
+            @if (!PatientId.HasValue)
+            {
+                <button type="button" role="tab" class="@(activeTab == "inbox" ? "is-active" : null)" aria-selected="@(activeTab == "inbox" ? "true" : "false")" @onclick="ShowInbox">Inbox</button>
+            }
         </div>
         <div class="integration-filters" aria-label="Fax history filters">
             <label>
@@ -287,6 +290,14 @@
         try
         {
             var outbox = Integrations.GetFaxTransmissionsAsync(PatientId);
+            if (PatientId.HasValue)
+            {
+                transmissions = await outbox;
+                inboundFaxes = [];
+                activeTab = "outbox";
+                return;
+            }
+
             var inbox = Integrations.GetInboundFaxesAsync();
             await Task.WhenAll(outbox, inbox);
             transmissions = await outbox;

@@ -1,28 +1,199 @@
-.integration-page { min-height: 100%; background: var(--background); color: var(--foreground); }
-.integration-page__content { max-width: 78rem; margin: 0 auto; padding: var(--spacing-6); display: grid; gap: var(--spacing-5); }
-.integration-page__header { display: flex; justify-content: space-between; align-items: start; gap: var(--spacing-4); }
-.integration-page__header h1, .integration-card h2 { margin: 0 0 var(--spacing-2); color: var(--secondary); }
-.integration-page__header p { margin: 0; color: var(--muted-foreground); }
-.integration-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: var(--spacing-5); }
-.integration-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacing-4); margin: var(--spacing-4) 0; }
-.integration-form-grid label { display: grid; gap: var(--spacing-2); font-weight: var(--font-weight-medium); }
-.integration-form-grid input, .integration-form-grid select, .integration-form-grid textarea { width: 100%; min-height: var(--touch-target-desktop); border: 1px solid var(--border-input); border-radius: var(--radius-md); background: var(--surface-input); color: var(--text-primary); padding: var(--spacing-2) var(--spacing-3); }
-.integration-form-grid__wide { grid-column: 1 / -1; }
-.integration-field-action { display: flex; align-items: end; }
-.integration-check { display: flex; align-items: center; gap: var(--spacing-2); margin-bottom: var(--spacing-4); }
-.integration-tabs { display: flex; gap: var(--spacing-2); border-bottom: 1px solid var(--border); }
-.integration-tabs button { border: 0; background: transparent; color: var(--muted-foreground); padding: var(--spacing-3) var(--spacing-4); font-weight: var(--font-weight-semibold); }
-.integration-tabs button.is-active { color: var(--primary); border-bottom: 2px solid var(--primary); }
-.integration-filters { display: grid; grid-template-columns: minmax(0, 2fr) minmax(10rem, 1fr); gap: var(--spacing-3); }
-.integration-filters label { display: grid; gap: var(--spacing-2); color: var(--text-secondary); font-size: var(--text-sm); font-weight: var(--font-weight-medium); }
-.integration-filters input, .integration-filters select { min-height: var(--touch-target-desktop); border: 1px solid var(--border-input); border-radius: var(--radius-md); background: var(--surface-input); color: var(--text-primary); padding: var(--spacing-2) var(--spacing-3); }
-.integration-table-wrap { overflow-x: auto; }
-.integration-table { width: 100%; border-collapse: collapse; }
-.integration-table th, .integration-table td { padding: var(--spacing-3); border-bottom: 1px solid var(--border-subtle); text-align: left; vertical-align: top; }
-.integration-table th { color: var(--muted-foreground); font-size: var(--text-sm); }
-.integration-status { display: inline-flex; padding: var(--spacing-1) var(--spacing-2); border-radius: var(--radius-xl); background: var(--accent); color: var(--accent-foreground); font-size: var(--text-sm); }
-.integration-alert { border-radius: var(--radius-md); padding: var(--spacing-3) var(--spacing-4); }
-.integration-alert--error { color: var(--destructive); background: rgba(var(--destructive-rgb), .08); border: 1px solid rgba(var(--destructive-rgb), .25); }
-.integration-actions { display: flex; gap: var(--spacing-3); }
-.integration-link-button { appearance: none; border: 0; padding: 0; background: transparent; color: var(--primary); cursor: pointer; font: inherit; text-decoration: underline; }
-@media (max-width: 48rem) { .integration-page__content { padding: var(--spacing-4); } .integration-page__header { display: grid; } .integration-form-grid, .integration-filters { grid-template-columns: 1fr; } .integration-form-grid__wide { grid-column: auto; } }
+.integration-page {
+    min-height: 100%;
+    background: var(--background);
+    color: var(--foreground);
+}
+
+.integration-page__content {
+    display: grid;
+    gap: var(--spacing-5);
+    max-width: 78rem;
+    margin: 0 auto;
+    padding: var(--spacing-6);
+}
+
+.integration-page__header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: var(--spacing-4);
+}
+
+.integration-page__header h1,
+.integration-card h2 {
+    margin: 0 0 var(--spacing-2);
+    color: var(--secondary);
+}
+
+.integration-page__header p {
+    margin: 0;
+    color: var(--muted-foreground);
+}
+
+.integration-card {
+    padding: var(--spacing-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+    box-shadow: var(--shadow-sm);
+}
+
+.integration-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-4);
+    margin: var(--spacing-4) 0;
+}
+
+.integration-form-grid label {
+    display: grid;
+    gap: var(--spacing-2);
+    font-weight: var(--font-weight-medium);
+}
+
+.integration-form-grid input,
+.integration-form-grid select,
+.integration-form-grid textarea {
+    width: 100%;
+    min-height: var(--touch-target-desktop);
+    padding: var(--spacing-2) var(--spacing-3);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-md);
+    background: var(--surface-input);
+    color: var(--text-primary);
+}
+
+.integration-form-grid__wide {
+    grid-column: 1 / -1;
+}
+
+.integration-field-action {
+    display: flex;
+    align-items: end;
+}
+
+.integration-check {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    margin-bottom: var(--spacing-4);
+}
+
+.integration-tabs {
+    display: flex;
+    gap: var(--spacing-2);
+    border-bottom: 1px solid var(--border);
+}
+
+.integration-tabs button {
+    padding: var(--spacing-3) var(--spacing-4);
+    border: 0;
+    background: transparent;
+    color: var(--muted-foreground);
+    font-weight: var(--font-weight-semibold);
+}
+
+.integration-tabs button.is-active {
+    border-bottom: 2px solid var(--primary);
+    color: var(--primary);
+}
+
+.integration-filters {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(10rem, 1fr);
+    gap: var(--spacing-3);
+}
+
+.integration-filters label {
+    display: grid;
+    gap: var(--spacing-2);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+}
+
+.integration-filters input,
+.integration-filters select {
+    min-height: var(--touch-target-desktop);
+    padding: var(--spacing-2) var(--spacing-3);
+    border: 1px solid var(--border-input);
+    border-radius: var(--radius-md);
+    background: var(--surface-input);
+    color: var(--text-primary);
+}
+
+.integration-table-wrap {
+    overflow-x: auto;
+}
+
+.integration-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.integration-table th,
+.integration-table td {
+    padding: var(--spacing-3);
+    border-bottom: 1px solid var(--border-subtle);
+    text-align: left;
+    vertical-align: top;
+}
+
+.integration-table th {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+}
+
+.integration-status {
+    display: inline-flex;
+    padding: var(--spacing-1) var(--spacing-2);
+    border-radius: var(--radius-xl);
+    background: var(--accent);
+    color: var(--accent-foreground);
+    font-size: var(--text-sm);
+}
+
+.integration-alert {
+    padding: var(--spacing-3) var(--spacing-4);
+    border-radius: var(--radius-md);
+}
+
+.integration-alert--error {
+    border: 1px solid rgba(var(--destructive-rgb), .25);
+    background: rgba(var(--destructive-rgb), .08);
+    color: var(--destructive);
+}
+
+.integration-actions {
+    display: flex;
+    gap: var(--spacing-3);
+}
+
+.integration-link-button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--primary);
+    cursor: pointer;
+    font: inherit;
+    text-decoration: underline;
+}
+
+@media (max-width: 48rem) {
+    .integration-page__content {
+        padding: var(--spacing-4);
+    }
+
+    .integration-page__header {
+        display: grid;
+    }
+
+    .integration-form-grid,
+    .integration-filters {
+        grid-template-columns: 1fr;
+    }
+
+    .integration-form-grid__wide {
+        grid-column: auto;
+    }
+}
