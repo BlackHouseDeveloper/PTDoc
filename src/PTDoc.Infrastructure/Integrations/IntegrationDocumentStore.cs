@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Security.Cryptography;
 using System.Runtime.InteropServices;
 using Azure.Storage.Blobs;
@@ -269,9 +270,22 @@ public sealed class IntegrationDocumentStore : IIntegrationDocumentStore
             {
                 Track(segment.Array!, segment.Offset, read);
             }
+            else if (read > 0)
+            {
+                var rented = ArrayPool<byte>.Shared.Rent(read);
+                try
+                {
+                    buffer[..read].CopyTo(rented.AsMemory(0, read));
+                    Track(rented, 0, read);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(rented, clearArray: true);
+                }
+            }
             else
             {
-                Track(buffer[..read].ToArray(), 0, read);
+                Track(Array.Empty<byte>(), 0, 0);
             }
             return read;
         }

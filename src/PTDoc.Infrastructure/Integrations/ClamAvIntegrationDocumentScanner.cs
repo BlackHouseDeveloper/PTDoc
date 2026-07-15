@@ -14,7 +14,7 @@ namespace PTDoc.Infrastructure.Integrations;
 public sealed class ClamAvIntegrationDocumentScanner : IIntegrationDocumentScanner
 {
     private static readonly byte[] PdfSignature = "%PDF-"u8.ToArray();
-    private static readonly byte[] InStreamCommand = "zINSTREAM\0"u8.ToArray();
+    private static readonly byte[] InStreamCommand = "INSTREAM\0"u8.ToArray();
     private readonly IntegrationDocumentScannerOptions _options;
     private readonly bool _allowSignatureOnly;
 

@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Document-store containment and HEP search freshness** — Made the local document-store root comparison platform-aware and cleared HEP catalog results below the minimum query length. Reason: safe-path validation must be correct on Windows and Unix, and clinicians must not see stale exercise results after shortening a query.
 - **Integration form length validation** — Matched fax-triage and HEP editor input limits to their persisted field limits. Reason: clinicians receive immediate input boundaries instead of avoidable oversized-submission errors.
 - **Patient-safe HEP errors and streaming document hashes** — Replaced patient-visible provider exceptions with a generic launch error and compute document hashes during upload. Reason: patient UI must not expose integration details, and storage writes should not require a second blob download.
+- **Scanner protocol and integration test fidelity** — Use ClamAV's raw `INSTREAM` protocol, pool fallback document-hash buffers, and run HEP workspace coverage as a PT user. Reason: scanner input must match its protocol, large documents should not create avoidable allocations, and authorization tests must reflect runtime roles.
 
 ### Changed - agent guidance captures audit-remediation and beta seed settings
 

@@ -34,6 +34,7 @@ public sealed class NoteWorkspacePageTests : TestContext
 
         var authorization = this.AddTestAuthorization();
         authorization.SetAuthorized("test-user");
+        authorization.SetRoles(Roles.PT);
         authorization.SetPolicies(AuthorizationPolicies.HepRead);
 
         var integrationClient = new Mock<IIntegrationClientService>(MockBehavior.Strict);
