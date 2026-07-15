@@ -215,8 +215,8 @@
                             }
                         </select>
                     </label>
-                    <label><span>Document type</span><input @bind="assignmentDocumentType" /></label>
-                    <label class="integration-form-grid__wide"><span>Reason</span><input @bind="assignmentReason" /></label>
+                    <label><span>Document type</span><input @bind="assignmentDocumentType" maxlength="80" /></label>
+                    <label class="integration-form-grid__wide"><span>Reason</span><input @bind="assignmentReason" maxlength="1000" /></label>
                 </div>
                 <div class="integration-actions">
                     <button type="button" class="btn btn--primary" @onclick="AssignFaxAsync">Attach to chart</button>

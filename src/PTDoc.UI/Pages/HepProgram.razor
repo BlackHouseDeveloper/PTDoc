@@ -34,7 +34,7 @@
                         <label><span>Program title</span><input @bind="programTitle" maxlength="255" /></label>
                         <label><span>Start date</span><InputDate @bind-Value="startDate" /></label>
                         <label><span>End date</span><InputDate @bind-Value="endDate" /></label>
-                        <label class="hep-fields__wide"><span>Therapist notes</span><textarea @bind="therapistNotes" rows="2"></textarea></label>
+                        <label class="hep-fields__wide"><span>Therapist notes</span><textarea @bind="therapistNotes" rows="2" maxlength="4000"></textarea></label>
                     </div>
 
                     <div class="hep-search">
@@ -63,17 +63,17 @@
                                 <article class="hep-exercise">
                                     <header><strong>@exercise.Title</strong><button type="button" @onclick="() => RemoveExercise(exercise)">Remove</button></header>
                                     <div class="hep-fields hep-fields--compact">
-                                        <label><span>Sets</span><input @bind="exercise.Sets" /></label>
-                                        <label><span>Repetitions</span><input @bind="exercise.Repetitions" /></label>
-                                        <label><span>Frequency</span><input @bind="exercise.Frequency" /></label>
-                                        <label><span>Hold</span><input @bind="exercise.Hold" /></label>
-                                        <label><span>Weight / resistance</span><input @bind="exercise.Weight" /></label>
-                                        <label><span>Duration</span><input @bind="exercise.Duration" /></label>
-                                        <label><span>Tempo</span><input @bind="exercise.Tempo" /></label>
-                                        <label><span>Rest</span><input @bind="exercise.Rest" /></label>
-                                        <label><span>Level</span><input @bind="exercise.Level" /></label>
-                                        <label><span>Other</span><input @bind="exercise.Other" /></label>
-                                        <label class="hep-fields__wide"><span>Instructions</span><input @bind="exercise.DescriptionOverride" /></label>
+                                        <label><span>Sets</span><input @bind="exercise.Sets" maxlength="100" /></label>
+                                        <label><span>Repetitions</span><input @bind="exercise.Repetitions" maxlength="100" /></label>
+                                        <label><span>Frequency</span><input @bind="exercise.Frequency" maxlength="200" /></label>
+                                        <label><span>Hold</span><input @bind="exercise.Hold" maxlength="100" /></label>
+                                        <label><span>Weight / resistance</span><input @bind="exercise.Weight" maxlength="100" /></label>
+                                        <label><span>Duration</span><input @bind="exercise.Duration" maxlength="100" /></label>
+                                        <label><span>Tempo</span><input @bind="exercise.Tempo" maxlength="100" /></label>
+                                        <label><span>Rest</span><input @bind="exercise.Rest" maxlength="100" /></label>
+                                        <label><span>Level</span><input @bind="exercise.Level" maxlength="100" /></label>
+                                        <label><span>Other</span><input @bind="exercise.Other" maxlength="1000" /></label>
+                                        <label class="hep-fields__wide"><span>Instructions</span><input @bind="exercise.DescriptionOverride" maxlength="4000" /></label>
                                         <label class="hep-check"><input type="checkbox" @bind="exercise.IsHomeExercise" /> Home exercise</label>
                                         <label class="hep-check"><input type="checkbox" @bind="exercise.Mirror" /> Mirror</label>
                                         <label class="hep-check"><input type="checkbox" @bind="exercise.Flip" /> Flip</label>

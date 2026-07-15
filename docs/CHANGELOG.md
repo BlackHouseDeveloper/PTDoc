@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fax filtering and integration-settings stylesheet readability** — Limited Fax Center status choices to the active tab and cleared obsolete selections on tab changes; reformatted the integration settings stylesheet. Reason: filters must only offer meaningful values for the displayed data set, and settings styles need maintainable review diffs.
 - **Inbound fax triage state reset** — Cleared assignment patient, type, and reason values when beginning or cancelling a fax assignment. Reason: data entered for one fax must not carry into another chart-association decision.
 - **Document-store containment and HEP search freshness** — Made the local document-store root comparison platform-aware and cleared HEP catalog results below the minimum query length. Reason: safe-path validation must be correct on Windows and Unix, and clinicians must not see stale exercise results after shortening a query.
+- **Integration form length validation** — Matched fax-triage and HEP editor input limits to their persisted field limits. Reason: clinicians receive immediate input boundaries instead of avoidable oversized-submission errors.
 
 ### Changed - agent guidance captures audit-remediation and beta seed settings
 
