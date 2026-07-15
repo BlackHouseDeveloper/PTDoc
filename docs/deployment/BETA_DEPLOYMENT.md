@@ -150,6 +150,7 @@ An Azure administrator can validate the identity and assignment before dispatchi
 az account show --subscription "<AZURE_SUBSCRIPTION_ID>" --query '{id:id,tenantId:tenantId,state:state}'
 az ad sp show --id "<AZURE_CLIENT_ID>" --query '{appId:appId,objectId:id}'
 az role assignment list \
+  --subscription "<AZURE_SUBSCRIPTION_ID>" \
   --assignee-object-id "<SERVICE_PRINCIPAL_OBJECT_ID>" \
   --all \
   --include-inherited \
