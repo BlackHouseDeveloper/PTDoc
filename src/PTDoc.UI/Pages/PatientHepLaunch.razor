@@ -86,9 +86,9 @@
             var launch = await Integrations.CreatePatientLaunchAsync();
             Navigation.NavigateTo(launch.LaunchUrl, forceLoad: true);
         }
-        catch (Exception exception)
+        catch
         {
-            Toasts.ShowError(exception.Message);
+            Toasts.ShowError("Unable to open your exercise program right now. Please try again later or contact your care team.");
             isOpening = false;
         }
     }

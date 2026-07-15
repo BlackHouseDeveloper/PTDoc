@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Microsoft.Extensions.Hosting;
@@ -59,7 +60,8 @@ public sealed class IntegrationDocumentStore : IIntegrationDocumentStore
             var blob = _container.GetBlobClient(storageKey);
             try
             {
-                await using var limited = new LimitedReadStream(content, _maxFileBytes);
+                using var hashing = new HashingReadStream(content);
+                await using var limited = new LimitedReadStream(hashing, _maxFileBytes);
                 await blob.UploadAsync(
                     limited,
                     new BlobUploadOptions
@@ -74,8 +76,7 @@ public sealed class IntegrationDocumentStore : IIntegrationDocumentStore
                     cancellationToken);
 
                 var properties = await blob.GetPropertiesAsync(cancellationToken: cancellationToken);
-                await using var hashStream = (await blob.DownloadStreamingAsync(cancellationToken: cancellationToken)).Value.Content;
-                var hash = await ComputeHashAsync(hashStream, cancellationToken);
+                var hash = hashing.GetHash();
                 return new StoredIntegrationDocument(storageKey, safeFileName, contentType, properties.Value.ContentLength, hash);
             }
             catch
@@ -91,14 +92,20 @@ public sealed class IntegrationDocumentStore : IIntegrationDocumentStore
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         try
         {
-            await using var destination = new FileStream(
-                fullPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                81920,
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
-            await CopyWithLimitAsync(content, destination, _maxFileBytes, cancellationToken);
+            using var hashing = new HashingReadStream(content);
+            await using (var destination = new FileStream(
+                             fullPath,
+                             FileMode.CreateNew,
+                             FileAccess.Write,
+                             FileShare.None,
+                             81920,
+                             FileOptions.Asynchronous | FileOptions.SequentialScan))
+            {
+                await CopyWithLimitAsync(hashing, destination, _maxFileBytes, cancellationToken);
+            }
+
+            var info = new FileInfo(fullPath);
+            return new StoredIntegrationDocument(storageKey, safeFileName, contentType, info.Length, hashing.GetHash());
         }
         catch
         {
@@ -109,10 +116,6 @@ public sealed class IntegrationDocumentStore : IIntegrationDocumentStore
             throw;
         }
 
-        var info = new FileInfo(fullPath);
-        await using var localHashStream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true);
-        var localHash = await ComputeHashAsync(localHashStream, cancellationToken);
-        return new StoredIntegrationDocument(storageKey, safeFileName, contentType, info.Length, localHash);
     }
 
     public async Task<Stream> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default)
@@ -146,13 +149,6 @@ public sealed class IntegrationDocumentStore : IIntegrationDocumentStore
         {
             File.Delete(fullPath);
         }
-    }
-
-    private static async Task<string> ComputeHashAsync(Stream stream, CancellationToken cancellationToken)
-    {
-        using var sha = SHA256.Create();
-        var hash = await sha.ComputeHashAsync(stream, cancellationToken);
-        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
     private static async Task CopyWithLimitAsync(Stream source, Stream destination, long maxBytes, CancellationToken cancellationToken)
@@ -245,6 +241,76 @@ public sealed class IntegrationDocumentStore : IIntegrationDocumentStore
                 throw new InvalidOperationException("Integration document exceeds the configured size limit.");
             }
             return count;
+        }
+    }
+
+    private sealed class HashingReadStream(Stream inner) : Stream
+    {
+        private readonly IncrementalHash _hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        private bool _completed;
+
+        public override bool CanRead => inner.CanRead;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() => inner.Flush();
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            var read = inner.Read(buffer, offset, count);
+            Track(buffer, offset, read);
+            return read;
+        }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            var read = await inner.ReadAsync(buffer, cancellationToken);
+            if (MemoryMarshal.TryGetArray((ReadOnlyMemory<byte>)buffer, out ArraySegment<byte> segment))
+            {
+                Track(segment.Array!, segment.Offset, read);
+            }
+            else
+            {
+                Track(buffer[..read].ToArray(), 0, read);
+            }
+            return read;
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _hash.Dispose();
+            }
+        }
+
+        public string GetHash()
+        {
+            if (!_completed)
+            {
+                throw new InvalidOperationException("Integration document hash was requested before upload completed.");
+            }
+
+            return Convert.ToHexString(_hash.GetHashAndReset()).ToLowerInvariant();
+        }
+
+        private void Track(byte[] buffer, int offset, int count)
+        {
+            if (count == 0)
+            {
+                _completed = true;
+                return;
+            }
+
+            if (_completed)
+            {
+                throw new InvalidOperationException("Integration document stream was read after completion.");
+            }
+
+            _hash.AppendData(buffer, offset, count);
         }
     }
 }

@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Inbound fax triage state reset** — Cleared assignment patient, type, and reason values when beginning or cancelling a fax assignment. Reason: data entered for one fax must not carry into another chart-association decision.
 - **Document-store containment and HEP search freshness** — Made the local document-store root comparison platform-aware and cleared HEP catalog results below the minimum query length. Reason: safe-path validation must be correct on Windows and Unix, and clinicians must not see stale exercise results after shortening a query.
 - **Integration form length validation** — Matched fax-triage and HEP editor input limits to their persisted field limits. Reason: clinicians receive immediate input boundaries instead of avoidable oversized-submission errors.
+- **Patient-safe HEP errors and streaming document hashes** — Replaced patient-visible provider exceptions with a generic launch error and compute document hashes during upload. Reason: patient UI must not expose integration details, and storage writes should not require a second blob download.
 
 ### Changed - agent guidance captures audit-remediation and beta seed settings
 
