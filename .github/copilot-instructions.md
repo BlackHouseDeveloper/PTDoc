@@ -16,6 +16,7 @@
 7. **Update the changelog** - if the session changes repository contents, update `docs/CHANGELOG.md` before handing off. If no entry is appropriate, say so explicitly.
 8. **Commit only after verification** - never create a git commit unless the user has confirmed the relevant build and tests passed, or the user gives explicit permission to commit without that confirmation.
 9. **PR summaries must use the template** - when creating or revising a pull request summary/description, read `.github/pull_request_template.md` first and structure the output according to that template's headings and intent.
+10. **PR feedback must be verified and attended** - for every pull-request review pass, retrieve current thread-aware feedback, verify each comment against the branch, and implement every verified actionable item. Report invalid, outdated, duplicate, or ambiguous comments with supporting rationale; do not reply to comments or resolve threads unless the user explicitly authorizes that GitHub write action.
 
 **Build/Test Execution Policy (Session Preference):**
 - Do **not** run `dotnet build`, `dotnet test`, or other build/verification commands automatically.
