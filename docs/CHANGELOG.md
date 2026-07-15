@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Integration form length validation** — Matched fax-triage and HEP editor input limits to their persisted field limits. Reason: clinicians receive immediate input boundaries instead of avoidable oversized-submission errors.
 - **Patient-safe HEP errors and streaming document hashes** — Replaced patient-visible provider exceptions with a generic launch error and compute document hashes during upload. Reason: patient UI must not expose integration details, and storage writes should not require a second blob download.
 - **Scanner protocol and integration test fidelity** — Use ClamAV's raw `INSTREAM` protocol, pool fallback document-hash buffers, and run HEP workspace coverage as a PT user. Reason: scanner input must match its protocol, large documents should not create avoidable allocations, and authorization tests must reflect runtime roles.
+- **Integration boundary validation** — Validate launch-ticket tokens and secret-reference scope inside infrastructure, and evaluate HEP access through the shared authorization policy. Reason: internal integration services must not trust caller input, and UI behavior must remain aligned with server authorization rules.
 
 ### Changed - agent guidance captures audit-remediation and beta seed settings
 

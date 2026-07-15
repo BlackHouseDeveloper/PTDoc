@@ -7,6 +7,7 @@
 
 @using System.Globalization
 @using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Routing
 @using Microsoft.JSInterop
@@ -31,6 +32,7 @@
 @inject ILogger<NoteWorkspacePage> Logger
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IAuthorizationService AuthorizationService
 @inject INoteWorkspaceService NoteWorkspaceService
 @inject IIntakeReferenceDataCatalogService IntakeReferenceData
 @inject IPatientService PatientService
@@ -686,6 +688,7 @@ else
     private IReadOnlyList<HepProgramResponse> _hepPrograms = [];
     private IReadOnlyList<HepTrackingObservationResponse> _hepTracking = [];
     private string? _hepSummaryUnavailable;
+    private bool _canReadHep;
     private static readonly TimeSpan MinimumVisibleSavingStateDuration = TimeSpan.FromMilliseconds(350);
 
     private bool IsDailyTreatment => string.Equals(_note.NoteType, "Daily Treatment Note", StringComparison.OrdinalIgnoreCase);
@@ -707,7 +710,7 @@ else
     private bool IsAdminUser => _user.IsInRole(Roles.Admin);
     private bool IsOwnerUser => _user.IsInRole(Roles.Owner);
     private bool IsBillingUser => _user.IsInRole(Roles.Billing);
-    private bool CanReadHep => IsPtUser || IsPtaUser || IsAdminUser || IsOwnerUser;
+    private bool CanReadHep => _canReadHep;
 
     private string DisplayPatientName => string.IsNullOrWhiteSpace(_note.PatientName) ? "Unknown Patient" : _note.PatientName;
 
@@ -859,6 +862,10 @@ else
         {
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             _user = authState.User;
+            _canReadHep = (await AuthorizationService.AuthorizeAsync(
+                _user,
+                resource: null,
+                policyName: AuthorizationPolicies.HepRead)).Succeeded;
 
             var routeNoteId = ResolveRouteNoteId(NoteId);
             _currentNoteId = routeNoteId ?? Guid.Empty;

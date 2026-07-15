@@ -10,20 +10,24 @@ namespace PTDoc.Infrastructure.Integrations;
 public sealed class ConfigurationIntegrationSecretResolver(IConfiguration configuration)
     : IIntegrationSecretResolver
 {
+    private const string ConnectionReferencePrefix = "Integrations:Connections:";
+
     public Task<IntegrationSecretBundle> ResolveAsync(
         string secretReference,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (string.IsNullOrWhiteSpace(secretReference) ||
-            secretReference.Length > 500 ||
-            secretReference.Any(char.IsControl))
+        var normalizedReference = secretReference?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedReference) ||
+            normalizedReference.Length > 500 ||
+            normalizedReference.Any(char.IsControl) ||
+            !normalizedReference.StartsWith(ConnectionReferencePrefix, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException("Integration secret reference is invalid.");
         }
 
-        var username = configuration[$"{secretReference}:Username"];
-        var password = configuration[$"{secretReference}:Password"];
+        var username = configuration[$"{normalizedReference}:Username"];
+        var password = configuration[$"{normalizedReference}:Password"];
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
         {
             throw new InvalidOperationException("Integration credentials are not configured.");

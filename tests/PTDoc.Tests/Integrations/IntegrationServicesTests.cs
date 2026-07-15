@@ -74,6 +74,24 @@ public class IntegrationServicesTests
     }
 
     [Fact]
+    public async Task ConfigurationSecretResolver_RejectsReferencesOutsideIntegrationConnections()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Jwt:SigningKey:Username"] = "must-not-be-read",
+                ["Jwt:SigningKey:Password"] = "must-not-be-read"
+            })
+            .Build();
+        var resolver = new ConfigurationIntegrationSecretResolver(configuration);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            resolver.ResolveAsync("Jwt:SigningKey"));
+
+        Assert.Equal("Integration secret reference is invalid.", exception.Message);
+    }
+
+    [Fact]
     public async Task ExternalSystemMapping_GetOrCreate_CreatesNewMapping()
     {
         // Arrange

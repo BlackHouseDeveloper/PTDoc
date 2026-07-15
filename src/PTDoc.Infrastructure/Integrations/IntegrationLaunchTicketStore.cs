@@ -97,6 +97,15 @@ public sealed class IntegrationLaunchTicketStore : IIntegrationLaunchTicketStore
         }
     }
 
-    private static string BuildKey(string token) => $"{KeyPrefix}{token}";
+    private static string BuildKey(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token) || token.Length != 48 || token.Any(value => !Uri.IsHexDigit(value)))
+        {
+            throw new InvalidOperationException("Integration launch token is invalid.");
+        }
+
+        return $"{KeyPrefix}{token.ToLowerInvariant()}";
+    }
+
     private sealed record MemoryTicket(string ProviderLaunchUrl, DateTimeOffset ExpiresAtUtc);
 }
