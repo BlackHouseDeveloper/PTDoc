@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - cost-neutral Beta deployment on Basic App Service plans
+
+- **Direct API-first Beta deployment** — Removed the staging-slot tier checks, slot deploys, swaps, and slot-specific seed validation from `Deploy Beta`; the workflow now validates and deploys the live API first, verifies health and seeded access, and only then validates and deploys Web. Updated CI and deployment guidance with the direct-deploy recovery contract and the historical API Web App resource name. Reason: Azure OIDC succeeded, but the existing API App Service runs on a Basic plan and the slot-based workflow required a paid tier upgrade solely to deploy Beta.
+
 ### Changed - pull-request review discipline
 
 - **Agent and Copilot instructions** — Require every pull-request review pass to retrieve thread-aware feedback, verify it against the branch, implement verified actionable comments, and report non-actionable feedback with rationale. GitHub replies and thread resolution remain explicit user-authorized actions. Reason: review feedback must produce evidence-based fixes without silently accepting invalid suggestions or changing remote review state.

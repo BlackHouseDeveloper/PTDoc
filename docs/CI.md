@@ -69,8 +69,11 @@ suite required for release readiness. See [Release Gate CI (Sprint T)](#release-
 ### `deploy-beta.yml` – Manual Beta Deployment
 Runs on manual dispatch only. Builds and tests the repository, publishes the Blazor
 Interactive Server frontend and API as separate .NET 8 artifacts, then deploys them
-to the beta Azure App Services `ptdoc-web-prod` and `ptdoc-api-plan` using GitHub
-environment-scoped OIDC secrets and short-lived Azure tokens. See
+API-first directly to the live beta Azure App Services `ptdoc-api-plan` and
+`ptdoc-web-prod` using GitHub environment-scoped OIDC secrets and short-lived Azure
+tokens. The workflow supports the existing Basic plans and validates API health and
+seeded access before deploying Web; direct deployment does not provide slot-swap
+rollback. See
 `docs/deployment/BETA_DEPLOYMENT.md` for required OIDC/RBAC configuration, Azure app
 settings, Cloudflare domains, and smoke checks.
 
