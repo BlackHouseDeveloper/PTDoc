@@ -130,6 +130,18 @@ PTDOC_UI_QA_PTA_PIN=<out-of-band-pin>
 
 `PTDOC_UI_QA_EVALUATION_DRAFT_PATH` must identify a reversible PT-role Evaluation draft. The test writes a synthetic marker and restores the original value; do not point it at a signed note or real clinical content.
 
+Run the hosted beta E2E gate for the repeatable preflight, role-boundary, UX, route-refresh, and persistence coverage:
+
+```bash
+cd tests/PTDoc.Web.UiQa
+PTDOC_WEB_BASE_URL=https://ptdoc.bhdevsites.com \
+PTDOC_UI_QA_PIN=<current-out-of-band-beta-pin> \
+PTDOC_UI_QA_EVALUATION_DRAFT_PATH=/patient/<patient-id>/note/<note-id> \
+npm run test:beta-e2e
+```
+
+Only supply `PTDOC_UI_QA_EVALUATION_DRAFT_PATH` after the beta owner approves a reversible PT-role Evaluation draft. Without it, the mutation-and-cleanup persistence check is intentionally skipped while the non-mutating hosted-beta checks still run.
+
 ## Known Issues And Limitations
 
 Treat these as documented beta limitations unless they block a core workflow in the pass/fail gate.

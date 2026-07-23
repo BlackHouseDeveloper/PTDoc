@@ -167,6 +167,17 @@ PTDOC_UI_QA_PIN=<current-out-of-band-beta-pin> \
 npm run test:responsive
 ```
 
+Run the focused hosted-beta E2E gate for the repeatable health, seeded-role login, route/refresh, role-boundary, UX, and persistence checks:
+
+```bash
+cd tests/PTDoc.Web.UiQa
+PTDOC_WEB_BASE_URL=https://ptdoc.bhdevsites.com \
+PTDOC_UI_QA_PIN=<current-out-of-band-beta-pin> \
+npm run test:beta-e2e
+```
+
+The gate has no record-creation or communication side effects. To include its server-persistence check, explicitly provide `PTDOC_UI_QA_EVALUATION_DRAFT_PATH` for an approved reversible PT Evaluation draft; the suite verifies a synthetic marker after refresh and restores the original value in cleanup.
+
 Optional browser QA inputs:
 
 - `PTDOC_UI_QA_PT_USERNAME` and `PTDOC_UI_QA_PT_PIN` for PT-role flows.

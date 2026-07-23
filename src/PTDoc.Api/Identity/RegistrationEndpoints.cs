@@ -43,7 +43,8 @@ public static class RegistrationEndpoints
         {
             Status = result.Status.ToString(),
             UserId = result.UserId,
-            Error = result.Error
+            Error = result.Error,
+            ValidationErrors = result.ValidationErrors
         };
 
         return result.Status switch

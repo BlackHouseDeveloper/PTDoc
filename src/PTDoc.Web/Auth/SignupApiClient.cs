@@ -52,7 +52,7 @@ public sealed class SignupApiClient
             status = response.IsSuccessStatusCode ? RegistrationStatus.PendingApproval : RegistrationStatus.ServerError;
         }
 
-        return new RegistrationResult(status, payload.UserId, payload.Error);
+        return new RegistrationResult(status, payload.UserId, payload.Error, payload.ValidationErrors);
     }
 
     public async Task<IReadOnlyList<ClinicSummary>> GetClinicsAsync(CancellationToken cancellationToken = default)
@@ -92,5 +92,7 @@ public sealed class SignupApiClient
         public required string Status { get; init; }
         public Guid? UserId { get; init; }
         public string? Error { get; init; }
+
+        public IReadOnlyDictionary<string, string[]>? ValidationErrors { get; init; }
     }
 }

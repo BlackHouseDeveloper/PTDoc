@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - self-service registration reliability and accessibility
+
+- **Registration form binding and recovery** — Changed Sign Up text and PIN inputs to synchronize on every input event, centralized PIN/role/license validation in the form model, retained fields after failed submissions, returned API field-level validation errors to the matching controls, and added an accessible validation summary plus first-invalid-field focus/scroll recovery. Added UI, API-client, API integration, signup-load console-capture, and storage-state-independent regression coverage. Reason: hosted beta visually displayed completed registration fields while Blazor validated them as empty, preventing approved synthetic-account onboarding.
+
+### Added - known testing blockers and environment limitations
+
+- **`docs/TEST_MATRIX.md`** — Added a dedicated blocker section that separates environment, access, fixture, dependency, tooling, and uncertain-contract limitations from confirmed navigation defects. It records affected routes, observable evidence, testing impact, next steps, and classification without treating unavailable configuration or unsafe side effects as product bugs. Reason: QA coverage reporting must distinguish untested conditions from verified application failures.
+
+### Added - functional application test matrix
+
+- **`docs/TEST_MATRIX.md`** — Added an independent-scenario functional test inventory across authentication, dashboards, patient management, scheduling, intake, notes, documentation, integrations, reports, settings, administrative endpoints, responsive behavior, and role boundaries. Each scenario identifies its route, action, observable result, safe fixture requirement, screenshot recommendation, and evidence status. Reason: manual QA and future automation need a route- and role-complete starting matrix without invented fixtures or unverified behavior.
+
+### Changed - agent guidance captures hosted beta E2E QA overrides
+
+- **`AGENTS.md`** — Added the documented hosted-beta Playwright command for `npm run test:beta-e2e`, plus the supported Admin/Patient fixture overrides, optional hosted-beta API-origin override, and the shared reversible Evaluation-draft note path used by the browser QA harness. Reason: keep agent instructions aligned with the current QA workflows without requiring rediscovery from the Playwright project.
+
+### Added - hosted beta E2E quality gate
+
+- **Hosted beta Playwright E2E gate** — Added a dedicated `npm run test:beta-e2e` suite for the deployed beta site. It checks Web/API health, the seeded Admin/PT/PTA/Patient login UX, patient-directory/chart navigation and refresh, route-backed tabs and browser history, patient role boundaries, keyboard theme persistence, and an explicitly approved Evaluation-draft persistence marker that is restored after reload. Reason: beta readiness needs one repeatable hosted-environment gate that emphasizes durable clinical data and observable UX without creating unapproved records or sending communications.
+
 ### Fixed - cost-neutral Beta deployment on Basic App Service plans
 
 - **Direct API-first Beta deployment** — Removed the staging-slot tier checks, slot deploys, swaps, and slot-specific seed validation from `Deploy Beta`; the workflow now validates and deploys the live API first, verifies health and seeded access, and only then validates and deploys Web. Updated CI and deployment guidance with the direct-deploy recovery contract and the historical API Web App resource name. Reason: Azure OIDC succeeded, but the existing API App Service runs on a Basic plan and the slot-based workflow required a paid tier upgrade solely to deploy Beta.

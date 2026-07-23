@@ -26,6 +26,8 @@ public sealed class SelfServiceRegisterResponse
     public Guid? UserId { get; init; }
 
     public string? Error { get; init; }
+
+    public IReadOnlyDictionary<string, string[]>? ValidationErrors { get; init; }
 }
 
 public sealed class ClinicListItem
