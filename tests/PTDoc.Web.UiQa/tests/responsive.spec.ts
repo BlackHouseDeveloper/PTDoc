@@ -41,6 +41,11 @@ if (noteWorkspacePath) {
 test.describe('PTDoc responsive UI QA', () => {
   test('mobile signup keeps populated text fields bound and focuses the first invalid field without creating an account', async ({ page }) => {
     attachConsoleCapture(page);
+    await page.addInitScript(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+    await page.context().clearCookies();
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/signup');
     await page.waitForLoadState('domcontentloaded');
