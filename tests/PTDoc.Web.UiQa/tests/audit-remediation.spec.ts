@@ -87,8 +87,11 @@ test.describe('PTDoc audit remediation QA', () => {
 
       const menuToggle = page.locator('button.menu-toggle');
       await expect(menuToggle).toBeVisible();
-      if (await menuToggle.getAttribute('aria-expanded') === 'true') {
+      const expectedInitialState = viewport.width < 1200 ? 'false' : 'true';
+      await expect(menuToggle).toHaveAttribute('aria-expanded', expectedInitialState);
+      if (expectedInitialState === 'true') {
         await menuToggle.click();
+        await expect(menuToggle).toHaveAttribute('aria-expanded', 'false');
       }
 
       await expect(menuToggle).toHaveAttribute('aria-label', 'Open menu');
@@ -158,7 +161,8 @@ test.describe('PTDoc audit remediation QA', () => {
     await page.goto(patientChartPath);
     await page.waitForLoadState('domcontentloaded');
 
-    await expect(page.getByTestId('patient-primary-action')).toHaveAttribute('href', /\/patient\/[^?]+\?action=new-note$/);
+    const startNewNote = page.getByRole('link', { name: 'Start New Note', exact: true });
+    await expect(startNewNote).toHaveAttribute('href', /\/patient\/[^?]+\?action=new-note$/);
 
     for (const tabName of ['Notes', 'Documents', 'Communications']) {
       const tab = page.getByTestId(`patient-profile-tab-${tabName.toLowerCase()}`);
@@ -175,7 +179,7 @@ test.describe('PTDoc audit remediation QA', () => {
     const insurance = page.getByTestId('patient-profile-tab-insurance-authorization');
     await expect(insurance).toHaveAttribute('href', /\/patient\/[^/]+\/info$/);
 
-    const newNoteHref = await page.getByTestId('patient-primary-action').getAttribute('href');
+    const newNoteHref = await startNewNote.getAttribute('href');
     expect(newNoteHref).not.toBeNull();
     await page.goto(newNoteHref!);
     await page.waitForLoadState('domcontentloaded');
