@@ -151,6 +151,58 @@ public sealed class LoginRegistrationTests : TestContext
         });
     }
 
+    [Fact]
+    public void SignUp_EditingAFieldClearsItsServerValidationError()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var clinicId = Guid.NewGuid();
+        var userService = CreateUserService(clinicId);
+        userService
+            .Setup(service => service.RegisterAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<string>(),
+                It.IsAny<Guid?>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RegistrationResult(
+                RegistrationStatus.ValidationFailed,
+                null,
+                "Registration data is incomplete.",
+                new Dictionary<string, string[]>
+                {
+                    ["Email"] = ["A valid email address is required."]
+                }));
+
+        RegisterServices(userService.Object);
+        var cut = RenderComponent<LoginPage>();
+
+        cut.FindAll("button.auth-tab")[1].Click();
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("form[data-testid='signup-form']")));
+        cut.Find("#fullName").Input("Casey Tester");
+        cut.Find("#dateOfBirth").Input("1990-01-01");
+        cut.Find("#email").Input("casey.tester@example.com");
+        cut.Find("#roleKey").Change("Owner");
+        cut.Find("#clinicId").Change(clinicId.ToString());
+        cut.Find("#pinSignup").Input("1234");
+        cut.Find("#confirmPinSignup").Input("1234");
+        cut.Find("form[data-testid='signup-form']").Submit();
+
+        cut.WaitForAssertion(() =>
+            Assert.Contains("A valid email address is required.", cut.Find("#email-validation").TextContent, StringComparison.Ordinal));
+
+        cut.Find("#email").Input("corrected@example.com");
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("false", cut.Find("#email").GetAttribute("aria-invalid"));
+            Assert.Empty(cut.FindAll("#email-validation"));
+        });
+    }
+
     private void RegisterServices(IUserService userService)
     {
         Services.AddSingleton(userService);

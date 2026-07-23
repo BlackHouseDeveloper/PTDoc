@@ -271,7 +271,8 @@
                  aria-invalid="@(HasSignUpFieldError(nameof(signUpModel.FullName)) ? "true" : "false")"
                  aria-describedby="@BuildSignUpAriaDescribedBy(nameof(signUpModel.FullName), "fullName-help", "fullName-validation")"
                  @bind="signUpModel.FullName"
-                 @bind:event="oninput" />
+                 @bind:event="oninput"
+                 @bind:after="() => OnSignUpTextFieldChanged(nameof(signUpModel.FullName))" />
           <p id="fullName-help" class="auth-field-hint">Enter your full legal name (first and last name) exactly as it appears on your professional license.</p>
           <ValidationMessage For="@(() => signUpModel.FullName)" id="fullName-validation" class="auth-validation" role="alert" />
         </div>
@@ -312,7 +313,8 @@
                  aria-invalid="@(HasSignUpFieldError(nameof(signUpModel.Email)) ? "true" : "false")"
                  aria-describedby="@BuildSignUpAriaDescribedBy(nameof(signUpModel.Email), null, "email-validation")"
                  @bind="signUpModel.Email"
-                 @bind:event="oninput" />
+                 @bind:event="oninput"
+                 @bind:after="() => OnSignUpTextFieldChanged(nameof(signUpModel.Email))" />
           <ValidationMessage For="@(() => signUpModel.Email)" id="email-validation" class="auth-validation" role="alert" />
         </div>
 
@@ -374,7 +376,8 @@
                  aria-invalid="@(HasSignUpFieldError(nameof(signUpModel.Pin)) ? "true" : "false")"
                  aria-describedby="@BuildSignUpAriaDescribedBy(nameof(signUpModel.Pin), null, "pinSignup-validation")"
                  @bind="signUpModel.Pin"
-                 @bind:event="oninput" />
+                 @bind:event="oninput"
+                 @bind:after="() => OnSignUpTextFieldChanged(nameof(signUpModel.Pin))" />
           <ValidationMessage For="@(() => signUpModel.Pin)" id="pinSignup-validation" class="auth-validation" role="alert" />
         </div>
 
@@ -395,7 +398,8 @@
                  aria-invalid="@(HasSignUpFieldError(nameof(signUpModel.ConfirmPin)) ? "true" : "false")"
                  aria-describedby="@BuildSignUpAriaDescribedBy(nameof(signUpModel.ConfirmPin), null, "confirmPinSignup-validation")"
                  @bind="signUpModel.ConfirmPin"
-                 @bind:event="oninput" />
+                 @bind:event="oninput"
+                 @bind:after="() => OnSignUpTextFieldChanged(nameof(signUpModel.ConfirmPin))" />
           <ValidationMessage For="@(() => signUpModel.ConfirmPin)" id="confirmPinSignup-validation" class="auth-validation" role="alert" />
         </div>
 
@@ -415,7 +419,8 @@
                    aria-invalid="@(HasSignUpFieldError(nameof(signUpModel.LicenseNumber)) ? "true" : "false")"
                    aria-describedby="@BuildSignUpAriaDescribedBy(nameof(signUpModel.LicenseNumber), "licenseNumber-help", "licenseNumber-validation")"
                    @bind="signUpModel.LicenseNumber"
-                   @bind:event="oninput" />
+                   @bind:event="oninput"
+                   @bind:after="() => OnSignUpTextFieldChanged(nameof(signUpModel.LicenseNumber))" />
             <p id="licenseNumber-help" class="auth-field-hint">Enter your PT/PTA license number exactly as shown on your license.</p>
             <ValidationMessage For="@(() => signUpModel.LicenseNumber)" id="licenseNumber-validation" class="auth-validation" role="alert" />
           </div>

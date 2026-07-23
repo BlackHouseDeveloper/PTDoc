@@ -505,6 +505,12 @@ public abstract class LoginBase : ComponentBase, IDisposable
         return Task.CompletedTask;
     }
 
+    protected Task OnSignUpTextFieldChanged(string fieldName)
+    {
+        signUpEditContext.NotifyFieldChanged(new FieldIdentifier(signUpModel, fieldName));
+        return Task.CompletedTask;
+    }
+
     protected Task OnForgotPasswordChannelChangedAfterBind()
     {
         forgotPasswordModel.Contact = string.Empty;

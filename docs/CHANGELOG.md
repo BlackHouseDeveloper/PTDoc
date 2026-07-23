@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+All notable changes to PTDoc will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
 
 ### Fixed - self-service registration reliability and accessibility
 
@@ -14,10 +19,6 @@
 
 - **`docs/TEST_MATRIX.md`** — Added an independent-scenario functional test inventory across authentication, dashboards, patient management, scheduling, intake, notes, documentation, integrations, reports, settings, administrative endpoints, responsive behavior, and role boundaries. Each scenario identifies its route, action, observable result, safe fixture requirement, screenshot recommendation, and evidence status. Reason: manual QA and future automation need a route- and role-complete starting matrix without invented fixtures or unverified behavior.
 
-### Added - source-verified application route map
-
-- **`docs/ROUTE_MAP.md`** — Added a browser-facing route inventory covering public/authentication pages, authenticated workflows, role and policy access, page relationships, redirects, query-backed child states, and endpoint-only routes. It explicitly identifies configuration-dependent routes, unverified deployment behavior, and current dashboard/reports authorization mismatches. Reason: navigation, QA, and product work need one evidence-based reference rather than inferred URLs or role dashboards.
-
 ### Changed - agent guidance captures hosted beta E2E QA overrides
 
 - **`AGENTS.md`** — Added the documented hosted-beta Playwright command for `npm run test:beta-e2e`, plus the supported Admin/Patient fixture overrides, optional hosted-beta API-origin override, and the shared reversible Evaluation-draft note path used by the browser QA harness. Reason: keep agent instructions aligned with the current QA workflows without requiring rediscovery from the Playwright project.
@@ -25,13 +26,6 @@
 ### Added - hosted beta E2E quality gate
 
 - **Hosted beta Playwright E2E gate** — Added a dedicated `npm run test:beta-e2e` suite for the deployed beta site. It checks Web/API health, the seeded Admin/PT/PTA/Patient login UX, patient-directory/chart navigation and refresh, route-backed tabs and browser history, patient role boundaries, keyboard theme persistence, and an explicitly approved Evaluation-draft persistence marker that is restored after reload. Reason: beta readiness needs one repeatable hosted-environment gate that emphasizes durable clinical data and observable UX without creating unapproved records or sending communications.
-
-All notable changes to PTDoc will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
 
 ### Fixed - cost-neutral Beta deployment on Basic App Service plans
 

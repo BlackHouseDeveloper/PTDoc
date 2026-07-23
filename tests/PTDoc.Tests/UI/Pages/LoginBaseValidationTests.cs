@@ -128,11 +128,11 @@ public sealed class LoginBaseValidationTests
         var repoRoot = FindRepoRoot();
         var loginMarkup = File.ReadAllText(Path.Combine(repoRoot, "src/PTDoc.UI/Pages/Login.razor"));
 
-        AssertImmediateInputBinding(loginMarkup, "fullName", "fullName-validation");
-        AssertImmediateInputBinding(loginMarkup, "email", "email-validation");
-        AssertImmediateInputBinding(loginMarkup, "pinSignup", "pinSignup-validation");
-        AssertImmediateInputBinding(loginMarkup, "confirmPinSignup", "confirmPinSignup-validation");
-        AssertImmediateInputBinding(loginMarkup, "licenseNumber", "licenseNumber-validation");
+        AssertImmediateInputBinding(loginMarkup, "fullName", "FullName", "fullName-validation");
+        AssertImmediateInputBinding(loginMarkup, "email", "Email", "email-validation");
+        AssertImmediateInputBinding(loginMarkup, "pinSignup", "Pin", "pinSignup-validation");
+        AssertImmediateInputBinding(loginMarkup, "confirmPinSignup", "ConfirmPin", "confirmPinSignup-validation");
+        AssertImmediateInputBinding(loginMarkup, "licenseNumber", "LicenseNumber", "licenseNumber-validation");
         Assert.Contains("OnInvalidSubmit=\"HandleInvalidSignUpSubmit\"", loginMarkup, StringComparison.Ordinal);
         Assert.Contains("data-testid=\"signup-validation-summary\"", loginMarkup, StringComparison.Ordinal);
     }
@@ -169,16 +169,24 @@ public sealed class LoginBaseValidationTests
         Assert.Contains(expectedHelpText, markup, StringComparison.Ordinal);
     }
 
-    private static void AssertImmediateInputBinding(string markup, string fieldId, string validationId)
+    private static void AssertImmediateInputBinding(
+        string markup,
+        string fieldId,
+        string modelFieldName,
+        string validationId)
     {
         var field = Regex.Match(
             markup,
-            $"<input\\s+id=\\\"{Regex.Escape(fieldId)}\\\"(?<attributes>[^>]*)>",
+            $"<input\\s+id=\\\"{Regex.Escape(fieldId)}\\\"(?<attributes>[\\s\\S]*?)/>",
             RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
         Assert.True(field.Success, $"Expected input '{fieldId}' to be present.");
         var attributes = field.Groups["attributes"].Value;
         Assert.Contains("@bind:event=\"oninput\"", attributes, StringComparison.Ordinal);
+        Assert.Contains(
+            $"@bind:after=\"() => OnSignUpTextFieldChanged(nameof(signUpModel.{modelFieldName}))\"",
+            attributes,
+            StringComparison.Ordinal);
         Assert.Contains(validationId, attributes, StringComparison.Ordinal);
     }
 
