@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed - self-service registration reliability and accessibility
+
+- **Registration form binding and recovery** — Changed Sign Up text and PIN inputs to synchronize on every input event, centralized PIN/role/license validation in the form model, retained fields after failed submissions, returned API field-level validation errors to the matching controls, and added an accessible validation summary plus first-invalid-field focus/scroll recovery. Added UI, API-client, and API integration regression coverage. Reason: hosted beta visually displayed completed registration fields while Blazor validated them as empty, preventing approved synthetic-account onboarding.
+
 All notable changes to PTDoc will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

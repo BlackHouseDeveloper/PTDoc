@@ -236,8 +236,25 @@
       }
       else
       {
-      <EditForm FormName="SignUpForm" Model="signUpModel" OnValidSubmit="HandleSignUp" class="auth-form" aria-busy="@isLoading">
+      <EditForm @key="signUpFormKey"
+                id="signup-form"
+                FormName="SignUpForm"
+                EditContext="signUpEditContext"
+                OnValidSubmit="HandleSignUp"
+                OnInvalidSubmit="HandleInvalidSignUpSubmit"
+                class="auth-form"
+                aria-busy="@isLoading"
+                novalidate
+                data-testid="signup-form">
         <DataAnnotationsValidator />
+
+        @if (HasSignUpValidationErrors)
+        {
+          <div class="auth-alert" role="alert" data-testid="signup-validation-summary">
+            <span class="auth-alert-title">Please correct the highlighted fields</span>
+            <span>Review the messages below and submit again.</span>
+          </div>
+        }
 
         <div class="auth-field">
           <label for="fullName">
@@ -245,14 +262,18 @@
             <span class="auth-required" aria-label="required">*</span>
             <span class="auth-info-icon auth-icon-info" aria-hidden="true"></span>
           </label>
-          <InputText id="fullName"
-                     class="auth-input"
+          <input id="fullName"
+                 name="fullName"
+                 type="text"
+                 class="@BuildSignUpInputClass(nameof(signUpModel.FullName))"
                      placeholder="e.g., Sarah Johnson"
                      autocomplete="name"
-                     aria-describedby="fullName-help"
-                     @bind-Value="signUpModel.FullName" />
+                 aria-invalid="@(HasSignUpFieldError(nameof(signUpModel.FullName)) ? "true" : "false")"
+                 aria-describedby="@BuildSignUpAriaDescribedBy(nameof(signUpModel.FullName), "fullName-help", "fullName-validation")"
+                 @bind="signUpModel.FullName"
+                 @bind:event="oninput" />
           <p id="fullName-help" class="auth-field-hint">Enter your full legal name (first and last name) exactly as it appears on your professional license.</p>
-          <ValidationMessage For="@(() => signUpModel.FullName)" class="auth-validation" />
+          <ValidationMessage For="@(() => signUpModel.FullName)" id="fullName-validation" class="auth-validation" role="alert" />
         </div>
 
         <div class="auth-field">
@@ -263,14 +284,15 @@
           </label>
           <input id="dateOfBirth"
                  type="date"
-                 class="auth-input"
+                 class="@BuildSignUpInputClass(nameof(signUpModel.DateOfBirth))"
                  value="@DateOfBirthInputValue"
                  autocomplete="bday"
-                 aria-describedby="dateOfBirth-help"
+                 aria-invalid="@(HasSignUpFieldError(nameof(signUpModel.DateOfBirth)) ? "true" : "false")"
+                 aria-describedby="@BuildSignUpAriaDescribedBy(nameof(signUpModel.DateOfBirth), "dateOfBirth-help", "dateOfBirth-validation")"
                  @oninput="OnDateOfBirthChanged"
                  @onchange="OnDateOfBirthChanged" />
           <p id="dateOfBirth-help" class="auth-field-hint">You must be at least 18 years old to create an account. Use YYYY-MM-DD or pick a date from the calendar.</p>
-          <ValidationMessage For="@(() => signUpModel.DateOfBirth)" class="auth-validation" />
+          <ValidationMessage For="@(() => signUpModel.DateOfBirth)" id="dateOfBirth-validation" class="auth-validation" role="alert" />
         </div>
 
         <div class="auth-field">
@@ -278,13 +300,20 @@
             Professional Email Address
             <span class="auth-required" aria-label="required">*</span>
           </label>
-          <InputText id="email"
-                     type="email"
-                     class="auth-input"
+          <input id="email"
+                 name="email"
+                 type="email"
+                 class="@BuildSignUpInputClass(nameof(signUpModel.Email))"
                      placeholder="email@example.com"
                      autocomplete="email"
-                     @bind-Value="signUpModel.Email" />
-          <ValidationMessage For="@(() => signUpModel.Email)" class="auth-validation" />
+                 autocapitalize="none"
+                 autocorrect="off"
+                 spellcheck="false"
+                 aria-invalid="@(HasSignUpFieldError(nameof(signUpModel.Email)) ? "true" : "false")"
+                 aria-describedby="@BuildSignUpAriaDescribedBy(nameof(signUpModel.Email), null, "email-validation")"
+                 @bind="signUpModel.Email"
+                 @bind:event="oninput" />
+          <ValidationMessage For="@(() => signUpModel.Email)" id="email-validation" class="auth-validation" role="alert" />
         </div>
 
         <div class="auth-field">
@@ -294,8 +323,9 @@
             <span class="auth-info-icon auth-icon-info" aria-hidden="true"></span>
           </label>
           <InputSelect id="roleKey"
-                       class="auth-input auth-select"
-                       aria-describedby="roleKey-help"
+                       class="@BuildSignUpSelectClass(nameof(signUpModel.RoleKey))"
+                       aria-invalid="@(HasSignUpFieldError(nameof(signUpModel.RoleKey)) ? "true" : "false")"
+                       aria-describedby="@BuildSignUpAriaDescribedBy(nameof(signUpModel.RoleKey), "roleKey-help", "roleKey-validation")"
                        @bind-Value="signUpModel.RoleKey"
                        @bind-Value:after="OnRoleChangedAfterBind">
             <option value="">Select role</option>
@@ -305,7 +335,7 @@
             }
           </InputSelect>
           <p id="roleKey-help" class="auth-field-hint">Select your role for clinic onboarding.</p>
-          <ValidationMessage For="@(() => signUpModel.RoleKey)" class="auth-validation" />
+          <ValidationMessage For="@(() => signUpModel.RoleKey)" id="roleKey-validation" class="auth-validation" role="alert" />
         </div>
 
         <div class="auth-field">
@@ -314,7 +344,9 @@
             <span class="auth-required" aria-label="required">*</span>
           </label>
           <InputSelect id="clinicId"
-                       class="auth-input auth-select"
+                       class="@BuildSignUpSelectClass(nameof(signUpModel.ClinicId))"
+                       aria-invalid="@(HasSignUpFieldError(nameof(signUpModel.ClinicId)) ? "true" : "false")"
+                       aria-describedby="@BuildSignUpAriaDescribedBy(nameof(signUpModel.ClinicId), null, "clinicId-validation")"
                        @bind-Value="signUpModel.ClinicId">
             <option value="">Select clinic</option>
             @foreach (var clinic in clinics)
@@ -322,7 +354,7 @@
               <option value="@clinic.Id">@clinic.Name</option>
             }
           </InputSelect>
-          <ValidationMessage For="@(() => signUpModel.ClinicId)" class="auth-validation" />
+          <ValidationMessage For="@(() => signUpModel.ClinicId)" id="clinicId-validation" class="auth-validation" role="alert" />
         </div>
 
         <div class="auth-field">
@@ -330,14 +362,20 @@
             4-Digit PIN
             <span class="auth-required" aria-label="required">*</span>
           </label>
-          <InputText id="pinSignup"
-                     type="password"
-                     class="auth-input"
+          <input id="pinSignup"
+                 name="pin"
+                 type="password"
+                 class="@BuildSignUpInputClass(nameof(signUpModel.Pin))"
                      placeholder="Enter 4-digit PIN"
                      maxlength="4"
                      autocomplete="new-password"
-                     @bind-Value="signUpModel.Pin" />
-          <ValidationMessage For="@(() => signUpModel.Pin)" class="auth-validation" />
+                 inputmode="numeric"
+                 pattern="[0-9]{4}"
+                 aria-invalid="@(HasSignUpFieldError(nameof(signUpModel.Pin)) ? "true" : "false")"
+                 aria-describedby="@BuildSignUpAriaDescribedBy(nameof(signUpModel.Pin), null, "pinSignup-validation")"
+                 @bind="signUpModel.Pin"
+                 @bind:event="oninput" />
+          <ValidationMessage For="@(() => signUpModel.Pin)" id="pinSignup-validation" class="auth-validation" role="alert" />
         </div>
 
         <div class="auth-field">
@@ -345,14 +383,20 @@
             Confirm PIN
             <span class="auth-required" aria-label="required">*</span>
           </label>
-          <InputText id="confirmPinSignup"
-                     type="password"
-                     class="auth-input"
+          <input id="confirmPinSignup"
+                 name="confirmPin"
+                 type="password"
+                 class="@BuildSignUpInputClass(nameof(signUpModel.ConfirmPin))"
                      placeholder="Confirm 4-digit PIN"
                      maxlength="4"
                      autocomplete="new-password"
-                     @bind-Value="signUpModel.ConfirmPin" />
-          <ValidationMessage For="@(() => signUpModel.ConfirmPin)" class="auth-validation" />
+                 inputmode="numeric"
+                 pattern="[0-9]{4}"
+                 aria-invalid="@(HasSignUpFieldError(nameof(signUpModel.ConfirmPin)) ? "true" : "false")"
+                 aria-describedby="@BuildSignUpAriaDescribedBy(nameof(signUpModel.ConfirmPin), null, "confirmPinSignup-validation")"
+                 @bind="signUpModel.ConfirmPin"
+                 @bind:event="oninput" />
+          <ValidationMessage For="@(() => signUpModel.ConfirmPin)" id="confirmPinSignup-validation" class="auth-validation" role="alert" />
         </div>
 
         @if (isPtaFieldsActive)
@@ -363,13 +407,17 @@
               <span class="auth-required" aria-label="required">*</span>
               <span class="auth-info-icon auth-icon-info" aria-hidden="true"></span>
             </label>
-            <InputText id="licenseNumber"
-                       class="auth-input"
+            <input id="licenseNumber"
+                   name="licenseNumber"
+                   type="text"
+                   class="@BuildSignUpInputClass(nameof(signUpModel.LicenseNumber))"
                        placeholder="e.g., PT123456 or PTA-2024-001234"
-                       aria-describedby="licenseNumber-help"
-                       @bind-Value="signUpModel.LicenseNumber" />
+                   aria-invalid="@(HasSignUpFieldError(nameof(signUpModel.LicenseNumber)) ? "true" : "false")"
+                   aria-describedby="@BuildSignUpAriaDescribedBy(nameof(signUpModel.LicenseNumber), "licenseNumber-help", "licenseNumber-validation")"
+                   @bind="signUpModel.LicenseNumber"
+                   @bind:event="oninput" />
             <p id="licenseNumber-help" class="auth-field-hint">Enter your PT/PTA license number exactly as shown on your license.</p>
-            <ValidationMessage For="@(() => signUpModel.LicenseNumber)" class="auth-validation" />
+            <ValidationMessage For="@(() => signUpModel.LicenseNumber)" id="licenseNumber-validation" class="auth-validation" role="alert" />
           </div>
 
           <div class="auth-field">
@@ -379,8 +427,9 @@
               <span class="auth-info-icon auth-icon-info" aria-hidden="true"></span>
             </label>
             <InputSelect id="licenseState"
-                         class="auth-input auth-select"
-                         aria-describedby="licenseState-help"
+                         class="@BuildSignUpSelectClass(nameof(signUpModel.LicenseState))"
+                         aria-invalid="@(HasSignUpFieldError(nameof(signUpModel.LicenseState)) ? "true" : "false")"
+                         aria-describedby="@BuildSignUpAriaDescribedBy(nameof(signUpModel.LicenseState), "licenseState-help", "licenseState-validation")"
                          @bind-Value="signUpModel.LicenseState">
               <option value="">Select state</option>
               @foreach (var state in UsStates)
@@ -389,7 +438,7 @@
               }
             </InputSelect>
             <p id="licenseState-help" class="auth-field-hint">Select the U.S. state where your PT/PTA license was issued.</p>
-            <ValidationMessage For="@(() => signUpModel.LicenseState)" class="auth-validation" />
+            <ValidationMessage For="@(() => signUpModel.LicenseState)" id="licenseState-validation" class="auth-validation" role="alert" />
           </div>
         }
 

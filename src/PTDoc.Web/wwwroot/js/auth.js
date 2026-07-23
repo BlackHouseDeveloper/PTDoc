@@ -42,5 +42,24 @@ window.ptdocAuth = {
     if (usernameInput) {
       usernameInput.focus();
     }
+  },
+
+  focusFirstInvalid: (formId) => {
+    const form = document.getElementById(formId);
+    if (!form) {
+      return;
+    }
+
+    const firstInvalid = form.querySelector('[aria-invalid="true"]');
+    if (!(firstInvalid instanceof HTMLElement)) {
+      return;
+    }
+
+    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    firstInvalid.scrollIntoView({
+      block: 'center',
+      behavior: prefersReducedMotion ? 'auto' : 'smooth'
+    });
+    firstInvalid.focus({ preventScroll: true });
   }
 };

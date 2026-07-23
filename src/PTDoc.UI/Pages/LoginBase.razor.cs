@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Routing;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
@@ -24,7 +25,9 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected string returnUrl = "/";
     protected AuthMode authMode = AuthMode.Login;
     protected readonly LoginModel loginModel = new();
-    protected readonly SignUpModel signUpModel = new();
+    protected SignUpModel signUpModel = new();
+    protected EditContext signUpEditContext = default!;
+    private ValidationMessageStore signUpServerValidationMessages = default!;
     protected readonly ForgotPasswordModel forgotPasswordModel = new();
     protected List<ClinicSummary> clinics = new();
     protected List<RoleSummary> roles = new();
@@ -39,6 +42,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected bool isDarkTheme;
     protected readonly Dictionary<string, string> loginFieldErrors = new(StringComparer.Ordinal);
     protected int forgotPasswordFormKey;
+    protected int signUpFormKey;
     protected bool supportsExternalIdentityLogin => UserService.SupportsExternalIdentityLogin;
     protected string AuthPageTitle => authMode switch
     {
@@ -70,6 +74,24 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected const string PendingApprovalMessage =
         "Your account has been created and is waiting for administrator approval.";
     private bool _pendingLoginFieldReset;
+    private bool _pendingSignUpFocus;
+    private static readonly string[] SignUpValidationFieldNames =
+    [
+        nameof(SignUpModel.FullName),
+        nameof(SignUpModel.DateOfBirth),
+        nameof(SignUpModel.Email),
+        nameof(SignUpModel.RoleKey),
+        nameof(SignUpModel.ClinicId),
+        nameof(SignUpModel.Pin),
+        nameof(SignUpModel.ConfirmPin),
+        nameof(SignUpModel.LicenseNumber),
+        nameof(SignUpModel.LicenseState)
+    ];
+
+    protected LoginBase()
+    {
+        InitializeSignUpEditContext();
+    }
 
     protected enum AuthMode
     {
@@ -121,6 +143,12 @@ public abstract class LoginBase : ComponentBase, IDisposable
         {
             _pendingLoginFieldReset = false;
             await ResetLoginFieldsAsync();
+        }
+
+        if (_pendingSignUpFocus)
+        {
+            _pendingSignUpFocus = false;
+            await FocusFirstInvalidSignUpFieldAsync();
         }
     }
 
@@ -332,46 +360,20 @@ public abstract class LoginBase : ComponentBase, IDisposable
         isSubmitting = true;
         errorMessage = null;
         showPendingConfirmation = false;
+        ClearSignUpServerValidationMessages();
         StateHasChanged();
 
         try
         {
-            if (signUpModel.ClinicId is null || signUpModel.ClinicId == Guid.Empty)
-            {
-                errorMessage = "Please select a clinic.";
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(signUpModel.RoleKey))
-            {
-                errorMessage = "Please select a role.";
-                return;
-            }
-
-            if (signUpModel.Pin != signUpModel.ConfirmPin)
-            {
-                errorMessage = "PIN and confirmation PIN do not match.";
-                return;
-            }
-
-            if (isPtaFieldsActive &&
-                (string.IsNullOrWhiteSpace(signUpModel.LicenseNumber)
-                || string.IsNullOrWhiteSpace(signUpModel.LicenseState)))
-            {
-                errorMessage = "License number and state are required for PT/PTA roles.";
-                return;
-            }
-
-            // Call the RegisterAsync method
             var result = await UserService.RegisterAsync(
-                signUpModel.FullName,
-                signUpModel.Email,
+                signUpModel.FullName.Trim(),
+                signUpModel.Email.Trim(),
                 signUpModel.DateOfBirth!.Value,
-                signUpModel.RoleKey,
+                signUpModel.RoleKey.Trim(),
                 signUpModel.ClinicId,
                 signUpModel.Pin,
-                signUpModel.LicenseNumber,
-                signUpModel.LicenseState);
+                signUpModel.LicenseNumber.Trim(),
+                signUpModel.LicenseState.Trim());
 
             if (result.IsPending || result.Succeeded)
             {
@@ -385,6 +387,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
             }
             else
             {
+                ApplySignUpServerValidation(result);
                 errorMessage = result.Status switch
                 {
                     RegistrationStatus.EmailAlreadyExists => "An account with that email already exists.",
@@ -396,6 +399,11 @@ public abstract class LoginBase : ComponentBase, IDisposable
                     RegistrationStatus.Succeeded => "Your account was created successfully. Return to Login to continue.",
                     _ => result.Error ?? "Unable to create account. Please check your information and try again."
                 };
+
+                if (HasSignUpValidationErrors)
+                {
+                    _pendingSignUpFocus = true;
+                }
             }
         }
         catch (Exception ex)
@@ -513,6 +521,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
         if (string.IsNullOrWhiteSpace(rawValue))
         {
             signUpModel.DateOfBirth = null;
+            signUpEditContext.NotifyFieldChanged(new FieldIdentifier(signUpModel, nameof(signUpModel.DateOfBirth)));
             return;
         }
 
@@ -521,10 +530,46 @@ public abstract class LoginBase : ComponentBase, IDisposable
             || DateTime.TryParse(rawValue, CultureInfo.InvariantCulture, DateTimeStyles.None, out exactDate))
         {
             signUpModel.DateOfBirth = exactDate.Date;
+            signUpEditContext.NotifyFieldChanged(new FieldIdentifier(signUpModel, nameof(signUpModel.DateOfBirth)));
             return;
         }
 
         signUpModel.DateOfBirth = null;
+        signUpEditContext.NotifyFieldChanged(new FieldIdentifier(signUpModel, nameof(signUpModel.DateOfBirth)));
+    }
+
+    protected Task HandleInvalidSignUpSubmit(EditContext _)
+    {
+        errorMessage = null;
+        _pendingSignUpFocus = true;
+        return Task.CompletedTask;
+    }
+
+    protected bool HasSignUpFieldError(string fieldName) =>
+        signUpEditContext.GetValidationMessages(new FieldIdentifier(signUpModel, fieldName)).Any();
+
+    protected bool HasSignUpValidationErrors => SignUpValidationFieldNames.Any(HasSignUpFieldError);
+
+    protected string BuildSignUpInputClass(string fieldName) =>
+        HasSignUpFieldError(fieldName) ? "auth-input auth-input--invalid" : "auth-input";
+
+    protected string BuildSignUpSelectClass(string fieldName) =>
+        $"{BuildSignUpInputClass(fieldName)} auth-select";
+
+    protected string? BuildSignUpAriaDescribedBy(string fieldName, string? helpId, string validationId)
+    {
+        var ids = new List<string>();
+        if (!string.IsNullOrWhiteSpace(helpId))
+        {
+            ids.Add(helpId);
+        }
+
+        if (HasSignUpFieldError(fieldName))
+        {
+            ids.Add(validationId);
+        }
+
+        return ids.Count == 0 ? null : string.Join(' ', ids);
     }
 
     private void ApplyAuthStateFromUri(string uri)
@@ -644,16 +689,92 @@ public abstract class LoginBase : ComponentBase, IDisposable
 
     private void ResetSignUpModel()
     {
-        signUpModel.FullName = string.Empty;
-        signUpModel.DateOfBirth = null;
-        signUpModel.Email = string.Empty;
-        signUpModel.RoleKey = string.Empty;
-        signUpModel.ClinicId = null;
-        signUpModel.Pin = string.Empty;
-        signUpModel.ConfirmPin = string.Empty;
-        signUpModel.LicenseNumber = string.Empty;
-        signUpModel.LicenseState = string.Empty;
+        signUpModel = new SignUpModel();
+        InitializeSignUpEditContext();
+        signUpFormKey++;
         isPtaFieldsActive = false;
+    }
+
+    private void InitializeSignUpEditContext()
+    {
+        if (signUpEditContext is not null)
+        {
+            signUpEditContext.OnFieldChanged -= ClearSignUpServerValidationForField;
+        }
+
+        signUpEditContext = new EditContext(signUpModel);
+        signUpServerValidationMessages = new ValidationMessageStore(signUpEditContext);
+        signUpEditContext.OnFieldChanged += ClearSignUpServerValidationForField;
+    }
+
+    private void ClearSignUpServerValidationForField(object? sender, FieldChangedEventArgs args)
+    {
+        signUpServerValidationMessages.Clear(args.FieldIdentifier);
+        signUpEditContext.NotifyValidationStateChanged();
+    }
+
+    private void ClearSignUpServerValidationMessages()
+    {
+        signUpServerValidationMessages.Clear();
+        signUpEditContext.NotifyValidationStateChanged();
+    }
+
+    private void ApplySignUpServerValidation(RegistrationResult result)
+    {
+        ClearSignUpServerValidationMessages();
+
+        var validationErrors = result.ValidationErrors;
+        if (validationErrors is null || validationErrors.Count == 0)
+        {
+            validationErrors = result.Status switch
+            {
+                RegistrationStatus.EmailAlreadyExists => new Dictionary<string, string[]>
+                {
+                    [nameof(signUpModel.Email)] = ["An account with that email already exists."]
+                },
+                RegistrationStatus.InvalidPin => new Dictionary<string, string[]>
+                {
+                    [nameof(signUpModel.Pin)] = ["PIN must be exactly 4 digits."]
+                },
+                RegistrationStatus.ClinicNotFound => new Dictionary<string, string[]>
+                {
+                    [nameof(signUpModel.ClinicId)] = ["Selected clinic is invalid."]
+                },
+                _ => null
+            };
+        }
+
+        if (validationErrors is null)
+        {
+            return;
+        }
+
+        foreach (var (fieldName, messages) in validationErrors)
+        {
+            var field = new FieldIdentifier(signUpModel, fieldName);
+            foreach (var message in messages.Where(static message => !string.IsNullOrWhiteSpace(message)))
+            {
+                signUpServerValidationMessages.Add(field, message);
+            }
+        }
+
+        signUpEditContext.NotifyValidationStateChanged();
+    }
+
+    private async Task FocusFirstInvalidSignUpFieldAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("ptdocAuth.focusFirstInvalid", "signup-form");
+        }
+        catch (JSDisconnectedException)
+        {
+            // The browser is navigating or the circuit was disconnected during validation.
+        }
+        catch (JSException ex)
+        {
+            Logger.LogDebug(ex, "Sign-up validation focus helper is unavailable.");
+        }
     }
 
     private void ResetForgotPasswordModel()
@@ -693,7 +814,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
         public string Pin { get; set; } = string.Empty;
     }
 
-    protected sealed class SignUpModel
+    protected sealed class SignUpModel : IValidatableObject
     {
         [Required(ErrorMessage = "Full name is required")]
         [StringLength(100, MinimumLength = 2, ErrorMessage = "Full name must be between 2 and 100 characters")]
@@ -725,6 +846,44 @@ public abstract class LoginBase : ComponentBase, IDisposable
         public string LicenseNumber { get; set; } = string.Empty;
 
         public string LicenseState { get; set; } = string.Empty;
+
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            if (ClinicId == Guid.Empty)
+            {
+                yield return new ValidationResult("Clinic is required.", [nameof(ClinicId)]);
+            }
+
+            if (!string.IsNullOrWhiteSpace(Pin)
+                && !string.IsNullOrWhiteSpace(ConfirmPin)
+                && !string.Equals(Pin, ConfirmPin, StringComparison.Ordinal))
+            {
+                yield return new ValidationResult(
+                    "PIN and confirmation PIN do not match.",
+                    [nameof(ConfirmPin)]);
+            }
+
+            var requiresLicense = string.Equals(RoleKey, "PT", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(RoleKey, "PTA", StringComparison.OrdinalIgnoreCase);
+            if (!requiresLicense)
+            {
+                yield break;
+            }
+
+            if (string.IsNullOrWhiteSpace(LicenseNumber))
+            {
+                yield return new ValidationResult(
+                    "License number is required for PT/PTA roles.",
+                    [nameof(LicenseNumber)]);
+            }
+
+            if (string.IsNullOrWhiteSpace(LicenseState))
+            {
+                yield return new ValidationResult(
+                    "License state is required for PT/PTA roles.",
+                    [nameof(LicenseState)]);
+            }
+        }
     }
 
     protected sealed class ForgotPasswordModel : IValidatableObject
@@ -794,5 +953,6 @@ public abstract class LoginBase : ComponentBase, IDisposable
     {
         Navigation.LocationChanged -= OnLocationChanged;
         ThemeService.OnThemeChanged -= OnThemeChanged;
+        signUpEditContext.OnFieldChanged -= ClearSignUpServerValidationForField;
     }
 }
