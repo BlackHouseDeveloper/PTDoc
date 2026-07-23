@@ -109,17 +109,32 @@ public sealed class LoginBaseValidationTests
         var repoRoot = FindRepoRoot();
         var loginMarkup = File.ReadAllText(Path.Combine(repoRoot, "src/PTDoc.UI/Pages/Login.razor"));
 
-        AssertFieldHelp(loginMarkup, "fullName", "fullName-help", "Enter your full legal name");
-        AssertFieldHelp(loginMarkup, "dateOfBirth", "dateOfBirth-help", "You must be at least 18 years old");
-        AssertFieldHelp(loginMarkup, "roleKey", "roleKey-help", "Select your role for clinic onboarding");
-        AssertFieldHelp(loginMarkup, "licenseNumber", "licenseNumber-help", "Enter your PT/PTA license number");
-        AssertFieldHelp(loginMarkup, "licenseState", "licenseState-help", "Select the U.S. state");
+        AssertFieldHelp(loginMarkup, "fullName", "FullName", "fullName-help", "Enter your full legal name");
+        AssertFieldHelp(loginMarkup, "dateOfBirth", "DateOfBirth", "dateOfBirth-help", "You must be at least 18 years old");
+        AssertFieldHelp(loginMarkup, "roleKey", "RoleKey", "roleKey-help", "Select your role for clinic onboarding");
+        AssertFieldHelp(loginMarkup, "licenseNumber", "LicenseNumber", "licenseNumber-help", "Enter your PT/PTA license number");
+        AssertFieldHelp(loginMarkup, "licenseState", "LicenseState", "licenseState-help", "Select the U.S. state");
 
         Assert.DoesNotContain("title=\"Enter your full legal name", loginMarkup, StringComparison.Ordinal);
         Assert.DoesNotContain("title=\"You must be at least 18", loginMarkup, StringComparison.Ordinal);
         Assert.DoesNotContain("title=\"Select your role", loginMarkup, StringComparison.Ordinal);
         Assert.DoesNotContain("title=\"Enter your PT/PTA license", loginMarkup, StringComparison.Ordinal);
         Assert.DoesNotContain("title=\"Select the U.S. state", loginMarkup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SignUpTextFields_UseImmediateInputBindingAndAccessibleValidationReferences()
+    {
+        var repoRoot = FindRepoRoot();
+        var loginMarkup = File.ReadAllText(Path.Combine(repoRoot, "src/PTDoc.UI/Pages/Login.razor"));
+
+        AssertImmediateInputBinding(loginMarkup, "fullName", "fullName-validation");
+        AssertImmediateInputBinding(loginMarkup, "email", "email-validation");
+        AssertImmediateInputBinding(loginMarkup, "pinSignup", "pinSignup-validation");
+        AssertImmediateInputBinding(loginMarkup, "confirmPinSignup", "confirmPinSignup-validation");
+        AssertImmediateInputBinding(loginMarkup, "licenseNumber", "licenseNumber-validation");
+        Assert.Contains("OnInvalidSubmit=\"HandleInvalidSignUpSubmit\"", loginMarkup, StringComparison.Ordinal);
+        Assert.Contains("data-testid=\"signup-validation-summary\"", loginMarkup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -141,13 +156,30 @@ public sealed class LoginBaseValidationTests
     private static void AssertFieldHelp(
         string markup,
         string fieldId,
+        string modelFieldName,
         string helpId,
         string expectedHelpText)
     {
         Assert.Contains($"id=\"{fieldId}\"", markup, StringComparison.Ordinal);
-        Assert.Contains($"aria-describedby=\"{helpId}\"", markup, StringComparison.Ordinal);
+        Assert.Contains(
+            $"BuildSignUpAriaDescribedBy(nameof(signUpModel.{modelFieldName}), \"{helpId}\"",
+            markup,
+            StringComparison.Ordinal);
         Assert.Contains($"id=\"{helpId}\"", markup, StringComparison.Ordinal);
         Assert.Contains(expectedHelpText, markup, StringComparison.Ordinal);
+    }
+
+    private static void AssertImmediateInputBinding(string markup, string fieldId, string validationId)
+    {
+        var field = Regex.Match(
+            markup,
+            $"<input\\s+id=\\\"{Regex.Escape(fieldId)}\\\"(?<attributes>[^>]*)>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        Assert.True(field.Success, $"Expected input '{fieldId}' to be present.");
+        var attributes = field.Groups["attributes"].Value;
+        Assert.Contains("@bind:event=\"oninput\"", attributes, StringComparison.Ordinal);
+        Assert.Contains(validationId, attributes, StringComparison.Ordinal);
     }
 
     private static string FindRepoRoot()

@@ -39,6 +39,39 @@ if (noteWorkspacePath) {
 }
 
 test.describe('PTDoc responsive UI QA', () => {
+  test('mobile signup keeps populated text fields bound and focuses the first invalid field without creating an account', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/signup');
+    await page.waitForLoadState('domcontentloaded');
+
+    const form = page.getByTestId('signup-form');
+    await expect(form).toBeVisible();
+    await expect(page.locator('#roleKey option')).not.toHaveCount(1);
+    await expect(page.locator('#clinicId option')).not.toHaveCount(1);
+
+    await page.locator('#fullName').fill('Responsive Signup Tester');
+    await page.locator('#dateOfBirth').fill('1990-01-01');
+    await page.locator('#email').fill('not-an-email');
+    await page.locator('#roleKey').selectOption('PT');
+    await expect(page.locator('#licenseNumber')).toBeVisible();
+    await page.locator('#clinicId').selectOption({ index: 1 });
+    await page.locator('#pinSignup').fill('1234');
+    await page.locator('#confirmPinSignup').fill('1234');
+    await page.locator('#licenseNumber').fill('PT-1001');
+    await page.locator('#licenseState').selectOption('MA');
+
+    await form.getByRole('button', { name: 'Create Account' }).click();
+
+    await expect(page.getByTestId('signup-validation-summary')).toBeVisible();
+    await expect(page.locator('#email')).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.locator('#fullName')).toHaveAttribute('aria-invalid', 'false');
+    await expect(page.locator('#pinSignup')).toHaveAttribute('aria-invalid', 'false');
+    await expect(page.locator('#confirmPinSignup')).toHaveAttribute('aria-invalid', 'false');
+    await expect(page.locator('#email')).toBeFocused();
+    await expectNoFrameworkOverlay(page);
+    await expectNoRelevantConsoleErrors(page);
+  });
+
   for (const viewport of responsiveViewports) {
     for (const route of routeCases) {
       test(`${route.name} is usable at ${viewport.name} in light mode`, async ({ page }) => {
