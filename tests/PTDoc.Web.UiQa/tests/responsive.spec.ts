@@ -1,5 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
-import { authenticateIfNeeded, expectNoRelevantConsoleErrors } from './helpers/auth';
+import { attachConsoleCapture, authenticateIfNeeded, expectNoRelevantConsoleErrors } from './helpers/auth';
 
 type ViewportCase = {
   name: string;
@@ -40,6 +40,7 @@ if (noteWorkspacePath) {
 
 test.describe('PTDoc responsive UI QA', () => {
   test('mobile signup keeps populated text fields bound and focuses the first invalid field without creating an account', async ({ page }) => {
+    attachConsoleCapture(page);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/signup');
     await page.waitForLoadState('domcontentloaded');

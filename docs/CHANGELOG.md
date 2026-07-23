@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed - self-service registration reliability and accessibility
 
-- **Registration form binding and recovery** — Changed Sign Up text and PIN inputs to synchronize on every input event, centralized PIN/role/license validation in the form model, retained fields after failed submissions, returned API field-level validation errors to the matching controls, and added an accessible validation summary plus first-invalid-field focus/scroll recovery. Added UI, API-client, and API integration regression coverage. Reason: hosted beta visually displayed completed registration fields while Blazor validated them as empty, preventing approved synthetic-account onboarding.
+- **Registration form binding and recovery** — Changed Sign Up text and PIN inputs to synchronize on every input event, centralized PIN/role/license validation in the form model, retained fields after failed submissions, returned API field-level validation errors to the matching controls, and added an accessible validation summary plus first-invalid-field focus/scroll recovery. Added UI, API-client, API integration, and signup-load console-capture regression coverage. Reason: hosted beta visually displayed completed registration fields while Blazor validated them as empty, preventing approved synthetic-account onboarding.
 
 ### Added - known testing blockers and environment limitations
 
