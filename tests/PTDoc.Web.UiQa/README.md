@@ -23,6 +23,22 @@ npm run test:responsive
 
 `PTDOC_WEB_BASE_URL` defaults to `http://localhost:5145`.
 
+## Hosted Beta E2E Gate
+
+Run the deployed-beta gate only against the hosted beta site:
+
+```bash
+PTDOC_WEB_BASE_URL=https://ptdoc.bhdevsites.com \
+PTDOC_UI_QA_PIN=<current-out-of-band-beta-pin> \
+npm run test:beta-e2e
+```
+
+The gate verifies the Web/API health endpoints, seeded Admin/PT/PTA/Patient login UX, patient search and chart refresh behavior, route-backed chart tabs and browser history, patient role boundaries, keyboard-operated theme persistence, and—when explicitly supplied—a reversible Evaluation-draft save/reload/cleanup flow.
+
+Use `PTDOC_UI_QA_ADMIN_USERNAME`, `PTDOC_UI_QA_PT_USERNAME`, `PTDOC_UI_QA_PTA_USERNAME`, and `PTDOC_UI_QA_PATIENT_USERNAME` only when the seeded beta usernames differ from the documented defaults. Role-specific PIN overrides are also supported. Set `PTDOC_UI_QA_EVALUATION_DRAFT_PATH=/patient/<patient-id>/note/<note-id>` only for an approved reversible PT Evaluation draft; without it, the one intentionally mutating persistence check is skipped. `PTDOC_UI_QA_PATIENT_CHART_PATH` can target a different safe seeded chart, and `PTDOC_UI_QA_API_BASE_URL` can override the API health origin.
+
+The suite never creates records or sends communications. Its only server mutation is the approved Evaluation-draft marker, which it verifies and restores before completing. Do not place PINs, storage state, or patient identifiers in tracked files or reports.
+
 ## Patient Document Upload QA
 
 Run the focused patient document upload check with:

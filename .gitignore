@@ -548,3 +548,4 @@ src/PTDoc.Api/PTDoc.db
 docs/audits/evidence/
 docs/audits/*.log
 /docs/audits
+/audit-evidence

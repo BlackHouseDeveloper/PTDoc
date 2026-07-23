@@ -6,6 +6,26 @@
 
 - **Registration form binding and recovery** — Changed Sign Up text and PIN inputs to synchronize on every input event, centralized PIN/role/license validation in the form model, retained fields after failed submissions, returned API field-level validation errors to the matching controls, and added an accessible validation summary plus first-invalid-field focus/scroll recovery. Added UI, API-client, and API integration regression coverage. Reason: hosted beta visually displayed completed registration fields while Blazor validated them as empty, preventing approved synthetic-account onboarding.
 
+### Added - known testing blockers and environment limitations
+
+- **`docs/TEST_MATRIX.md`** — Added a dedicated blocker section that separates environment, access, fixture, dependency, tooling, and uncertain-contract limitations from confirmed navigation defects. It records affected routes, observable evidence, testing impact, next steps, and classification without treating unavailable configuration or unsafe side effects as product bugs. Reason: QA coverage reporting must distinguish untested conditions from verified application failures.
+
+### Added - functional application test matrix
+
+- **`docs/TEST_MATRIX.md`** — Added an independent-scenario functional test inventory across authentication, dashboards, patient management, scheduling, intake, notes, documentation, integrations, reports, settings, administrative endpoints, responsive behavior, and role boundaries. Each scenario identifies its route, action, observable result, safe fixture requirement, screenshot recommendation, and evidence status. Reason: manual QA and future automation need a route- and role-complete starting matrix without invented fixtures or unverified behavior.
+
+### Added - source-verified application route map
+
+- **`docs/ROUTE_MAP.md`** — Added a browser-facing route inventory covering public/authentication pages, authenticated workflows, role and policy access, page relationships, redirects, query-backed child states, and endpoint-only routes. It explicitly identifies configuration-dependent routes, unverified deployment behavior, and current dashboard/reports authorization mismatches. Reason: navigation, QA, and product work need one evidence-based reference rather than inferred URLs or role dashboards.
+
+### Changed - agent guidance captures hosted beta E2E QA overrides
+
+- **`AGENTS.md`** — Added the documented hosted-beta Playwright command for `npm run test:beta-e2e`, plus the supported Admin/Patient fixture overrides, optional hosted-beta API-origin override, and the shared reversible Evaluation-draft note path used by the browser QA harness. Reason: keep agent instructions aligned with the current QA workflows without requiring rediscovery from the Playwright project.
+
+### Added - hosted beta E2E quality gate
+
+- **Hosted beta Playwright E2E gate** — Added a dedicated `npm run test:beta-e2e` suite for the deployed beta site. It checks Web/API health, the seeded Admin/PT/PTA/Patient login UX, patient-directory/chart navigation and refresh, route-backed tabs and browser history, patient role boundaries, keyboard theme persistence, and an explicitly approved Evaluation-draft persistence marker that is restored after reload. Reason: beta readiness needs one repeatable hosted-environment gate that emphasizes durable clinical data and observable UX without creating unapproved records or sending communications.
+
 All notable changes to PTDoc will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
