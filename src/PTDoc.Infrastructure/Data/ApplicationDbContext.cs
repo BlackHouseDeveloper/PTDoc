@@ -146,6 +146,15 @@ public class ApplicationDbContext : DbContext
 
             entity.Property(e => e.Notes).HasMaxLength(1000);
             entity.Property(e => e.CancellationReason).HasMaxLength(500);
+
+            // SQL Server's optimized OUTPUT-based DML is incompatible with the
+            // TR_Appointments_PreventOverlap AFTER trigger. Keep the trigger as
+            // the database-level scheduling guard and use trigger-compatible DML
+            // for this table only.
+            if (Database.IsSqlServer())
+            {
+                entity.ToTable(table => table.UseSqlOutputClause(false));
+            }
         });
 
         // Configure ClinicalNote

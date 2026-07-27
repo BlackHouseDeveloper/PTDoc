@@ -18,7 +18,7 @@ public sealed class RuntimeDiagnosticsIntegrationTests
             ["PTDOC_IMAGE_TAG"] = "ptdoc-api:release-42",
             ["PTDOC_DEVELOPER_MODE"] = "true",
             ["FeatureFlags__EnableAiGeneration"] = "true",
-            ["AzureOpenAIEndpoint"] = "https://ptdoc-ai.cognitiveservices.azure.com/openai/deployments/ptdoc-gpt-4o-mini/chat/completions?api-version=2025-01-01-preview",
+            ["AzureOpenAIEndpoint"] = "https://ptdoc-ai.cognitiveservices.azure.com",
             ["AzureOpenAIKey"] = "integration-test-azure-key",
             ["AzureOpenAIDeployment"] = "ptdoc-gpt-4o-mini",
             ["AzureOpenAIApiVersion"] = "2025-01-01-preview"
@@ -53,7 +53,7 @@ public sealed class RuntimeDiagnosticsIntegrationTests
             Assert.True(aiRuntime.GetProperty("developerDiagnosticsEnabled").GetBoolean());
             Assert.Equal("EagerAtStartup", aiRuntime.GetProperty("startupValidationMode").GetString());
             Assert.Equal(
-                "https://ptdoc-ai.cognitiveservices.azure.com/openai/deployments/ptdoc-gpt-4o-mini/chat/completions",
+                "https://ptdoc-ai.cognitiveservices.azure.com",
                 aiRuntime.GetProperty("effectiveAzureOpenAiEndpoint").GetString());
             Assert.Equal("ptdoc-gpt-4o-mini", aiRuntime.GetProperty("effectiveAzureOpenAiDeployment").GetString());
             Assert.Equal("2025-01-01-preview", aiRuntime.GetProperty("effectiveAzureOpenAiApiVersion").GetString());

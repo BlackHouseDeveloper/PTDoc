@@ -108,7 +108,9 @@ public static class DiagnosticsEndpoints
             var missingAzureSettings = AzureRuntimeConfigurationValidator
                 .GetMissingAzureOpenAiConfigurationKeys(configuration)
                 .ToArray();
-            var requiresAuthenticatedProbe = aiFeatureEnabled && missingAzureSettings.Length == 0;
+            var azureConfigurationComplete = AzureRuntimeConfigurationValidator
+                .HasCompleteAzureOpenAiConfiguration(configuration);
+            var requiresAuthenticatedProbe = aiFeatureEnabled && azureConfigurationComplete;
 
             return Results.Ok(new
             {
@@ -136,10 +138,10 @@ public static class DiagnosticsEndpoints
                     effectiveAzureOpenAiApiVersion = ResolveAzureOpenAiApiVersion(configuration),
                     configurationState = !aiFeatureEnabled
                         ? "NotRequired"
-                        : missingAzureSettings.Length == 0
+                        : azureConfigurationComplete
                             ? "Complete"
                             : "Incomplete",
-                    azureOpenAiConfigurationComplete = missingAzureSettings.Length == 0,
+                    azureOpenAiConfigurationComplete = azureConfigurationComplete,
                     missingAzureOpenAiSettings = missingAzureSettings,
                     requiresAuthenticatedSavedNoteAiProbe = requiresAuthenticatedProbe,
                     runtimeHealthGate = requiresAuthenticatedProbe
@@ -149,8 +151,8 @@ public static class DiagnosticsEndpoints
                             : "ConfigurationIncomplete",
                     runtimeHealthExplanation = !aiFeatureEnabled
                         ? "AI generation is disabled at runtime, so authenticated AI probing is not applicable until the feature flag is enabled."
-                        : missingAzureSettings.Length > 0
-                            ? "AI generation is enabled but the required Azure OpenAI configuration is incomplete."
+                        : !azureConfigurationComplete
+                            ? "AI generation is enabled but the required Azure OpenAI configuration is incomplete or invalid."
                             : "Health checks only prove process and database readiness. Azure OpenAI is exercised on the first authenticated saved-note AI request."
                 },
                 communicationRuntime = new

@@ -88,6 +88,11 @@ AzureOpenAIDeployment=<deployment name>
 AzureOpenAIApiVersion=<API version>
 ```
 
+`AzureOpenAIEndpoint` must be the base HTTPS Azure resource URL only. Do not set
+the full `/openai/deployments/.../chat/completions?...` request URL; AI-enabled
+non-development startup rejects endpoints containing a path, query string,
+fragment, or embedded credentials.
+
 Do not commit real connection strings, signing keys, publish profiles, ACS credentials, Azure OpenAI keys, or Entra client secrets.
 
 The workflow deploys directly to the live Beta apps, so configure these settings on the primary App Service resources. No staging-slot settings are required.

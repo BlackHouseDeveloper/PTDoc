@@ -922,6 +922,9 @@ Recommended low-cost baseline:
 `AzureOpenAIApiVersion` is also optional; when unset, PTDoc falls back to `2024-06-01`.
 
 Set these values on **`PTDoc.Api`**. PTDoc builds the Azure chat-completions path itself, so `AzureOpenAIEndpoint` must stay the base resource URL only, not the full `/openai/deployments/.../chat/completions?...` request URL.
+When AI generation is enabled outside Development, startup rejects endpoints
+that are not absolute HTTPS base URLs or that include a path, query string,
+fragment, or embedded credentials.
 
 ### Runtime Diagnostics Endpoint
 

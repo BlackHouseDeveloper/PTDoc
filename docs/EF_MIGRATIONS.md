@@ -171,6 +171,16 @@ Migrations are **not applied automatically in production** by default
 `Development`).  Apply them explicitly during your deployment process using the
 EF Core CLI commands below.
 
+### Trigger-backed Appointments table
+
+SQL Server migration `20260330234500_PreventAppointmentOverbooking` creates
+`TR_Appointments_PreventOverlap`. The shared EF model conditionally disables
+SQL Server `OUTPUT` DML for `Appointments` so inserts and updates remain
+compatible with that trigger. Migration
+`20260723010000_DisableAppointmentSqlOutputClause` records the model annotation
+and intentionally emits no table or trigger DDL. Do not remove or disable the
+overlap trigger when applying or rolling back application releases.
+
 ### Environment Variables — Runtime API
 
 These variables are read by the API at startup:

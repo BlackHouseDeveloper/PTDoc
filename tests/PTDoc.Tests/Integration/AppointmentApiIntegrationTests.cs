@@ -80,6 +80,91 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
     }
 
     [Fact]
+    public async Task UpdateAppointment_PersistsTypeNotesAndSchedule()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinician = await db.Users.SingleAsync(user => user.Username == "integration-pt");
+        var seeded = SeedAppointmentCase(
+            db,
+            clinician.Id,
+            $"UPDATE-{Guid.NewGuid():N}",
+            "Appointment",
+            new DateTime(2026, 7, 24, 14, 0, 0, DateTimeKind.Utc),
+            AppointmentStatus.Scheduled);
+        await db.SaveChangesAsync();
+
+        var updatedLocalStart = new DateTime(2026, 7, 24, 15, 30, 0, DateTimeKind.Local);
+        using var client = _factory.CreateClientWithRole(Roles.FrontDesk);
+        using var response = await client.PutAsJsonAsync(
+            $"/api/v1/appointments/{seeded.AppointmentId:D}",
+            new UpdateAppointmentRequest
+            {
+                PatientId = seeded.PatientId,
+                ClinicianId = clinician.Id,
+                AppointmentType = "Initial Evaluation",
+                AppointmentDate = updatedLocalStart.Date,
+                AppointmentTime = updatedLocalStart.TimeOfDay,
+                DurationMinutes = 60,
+                Notes = "Updated appointment notes"
+            });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<AppointmentListItemResponse>();
+        Assert.NotNull(payload);
+        Assert.Equal("Initial Evaluation", payload!.AppointmentType);
+        Assert.Equal("Updated appointment notes", payload.Notes);
+        Assert.Equal(updatedLocalStart.ToUniversalTime(), payload.StartTimeUtc);
+        Assert.Equal(updatedLocalStart.ToUniversalTime().AddMinutes(60), payload.EndTimeUtc);
+
+        db.ChangeTracker.Clear();
+        var persisted = await db.Appointments.SingleAsync(appointment => appointment.Id == seeded.AppointmentId);
+        Assert.Equal(AppointmentType.InitialEvaluation, persisted.AppointmentType);
+        Assert.Equal("Updated appointment notes", persisted.Notes);
+        Assert.Equal(updatedLocalStart.ToUniversalTime(), persisted.StartTimeUtc);
+        Assert.Equal(updatedLocalStart.ToUniversalTime().AddMinutes(60), persisted.EndTimeUtc);
+    }
+
+    [Fact]
+    public async Task CheckInAppointment_PersistsStatus_AndIsIdempotent()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinician = await db.Users.SingleAsync(user => user.Username == "integration-pt");
+        var seeded = SeedAppointmentCase(
+            db,
+            clinician.Id,
+            $"CHECKIN-{Guid.NewGuid():N}",
+            "Appointment",
+            new DateTime(2026, 7, 24, 16, 0, 0, DateTimeKind.Utc),
+            AppointmentStatus.Scheduled);
+        await db.SaveChangesAsync();
+
+        using var client = _factory.CreateClientWithRole(Roles.FrontDesk);
+        using var firstResponse = await client.PostAsync(
+            $"/api/v1/appointments/{seeded.AppointmentId:D}/check-in",
+            content: null);
+        using var secondResponse = await client.PostAsync(
+            $"/api/v1/appointments/{seeded.AppointmentId:D}/check-in",
+            content: null);
+
+        Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
+
+        var firstPayload = await firstResponse.Content.ReadFromJsonAsync<AppointmentListItemResponse>();
+        var secondPayload = await secondResponse.Content.ReadFromJsonAsync<AppointmentListItemResponse>();
+        Assert.Equal("Checked In", firstPayload?.AppointmentStatus);
+        Assert.Equal("Checked In", secondPayload?.AppointmentStatus);
+
+        db.ChangeTracker.Clear();
+        var persistedStatus = await db.Appointments
+            .Where(appointment => appointment.Id == seeded.AppointmentId)
+            .Select(appointment => appointment.Status)
+            .SingleAsync();
+        Assert.Equal(AppointmentStatus.CheckedIn, persistedStatus);
+    }
+
+    [Fact]
     public async Task CheckInAppointment_WithCopayDue_RequiresPaymentBeforeStatusChange()
     {
         using var factory = CreatePaymentConfiguredFactory(new FixedPaymentService(new PaymentResult { Success = true }));

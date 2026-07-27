@@ -141,4 +141,51 @@ public class AzureRuntimeConfigurationValidatorTests
 
         AzureRuntimeConfigurationValidator.ValidateAzureOpenAiConfiguration(configuration);
     }
+
+    [Theory]
+    [InlineData("not-a-uri")]
+    [InlineData("http://example.openai.azure.com/")]
+    [InlineData("https://example.openai.azure.com/openai/deployments/ptdoc/chat/completions")]
+    [InlineData("https://example.openai.azure.com/?api-version=2025-01-01-preview")]
+    [InlineData("https://example.openai.azure.com/#fragment")]
+    [InlineData("https://user@example.openai.azure.com/")]
+    public void ValidateAzureOpenAiConfiguration_Throws_WhenEndpointIsNotBaseHttpsResourceUrl(string endpoint)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["FeatureFlags:EnableAiGeneration"] = "true",
+                ["AzureOpenAIEndpoint"] = endpoint,
+                ["AzureOpenAIKey"] = "secret",
+                ["AzureOpenAIDeployment"] = "gpt-4o"
+            })
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            AzureRuntimeConfigurationValidator.ValidateAzureOpenAiConfiguration(configuration));
+
+        Assert.Contains(AzureOpenAiOptions.EndpointKey, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("base resource URL", exception.Message, StringComparison.Ordinal);
+        Assert.False(AzureRuntimeConfigurationValidator.HasCompleteAzureOpenAiConfiguration(configuration));
+    }
+
+    [Theory]
+    [InlineData("https://example.openai.azure.com")]
+    [InlineData("https://example.openai.azure.com/")]
+    [InlineData("https://example.cognitiveservices.azure.com")]
+    public void ValidateAzureOpenAiConfiguration_AcceptsBaseHttpsResourceUrl(string endpoint)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["FeatureFlags:EnableAiGeneration"] = "true",
+                ["AzureOpenAIEndpoint"] = endpoint,
+                ["AzureOpenAIKey"] = "secret",
+                ["AzureOpenAIDeployment"] = "gpt-4o"
+            })
+            .Build();
+
+        AzureRuntimeConfigurationValidator.ValidateAzureOpenAiConfiguration(configuration);
+        Assert.True(AzureRuntimeConfigurationValidator.HasCompleteAzureOpenAiConfiguration(configuration));
+    }
 }
