@@ -19,8 +19,6 @@ env:
   AZURE_RESOURCE_GROUP: PTDoc-prod
   WEB_APP_NAME: ptdoc-web-prod
   API_APP_NAME: ptdoc-api-plan
-  PTDOC_SOURCE_SHA: ${{ github.sha }}
-  PTDOC_RELEASE_ID: beta-${{ github.run_number }}-${{ github.run_attempt }}
 
 jobs:
   build-test-publish:
@@ -98,6 +96,9 @@ jobs:
     needs: [build-test-publish, deploy-api]
     runs-on: ubuntu-latest
     environment: beta
+    env:
+      PTDOC_SOURCE_SHA: ${{ github.sha }}
+      PTDOC_RELEASE_ID: beta-${{ github.run_number }}-${{ github.run_attempt }}
 
     steps:
     - name: Download Web artifact
@@ -169,6 +170,9 @@ jobs:
     needs: build-test-publish
     runs-on: ubuntu-latest
     environment: beta
+    env:
+      PTDOC_SOURCE_SHA: ${{ github.sha }}
+      PTDOC_RELEASE_ID: beta-${{ github.run_number }}-${{ github.run_attempt }}
 
     steps:
     - name: Download API artifact
