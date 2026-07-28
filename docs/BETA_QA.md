@@ -41,9 +41,11 @@ Seeded beta patient fixtures:
 - Confirm `https://ptdoc.bhdevsites.com/health/live` and `https://ptdoc.bhdevsites.com/health/ready` are healthy.
 - Confirm `https://api-ptdoc.bhdevsites.com/health/live` returns healthy for basic availability.
 - Confirm `https://api-ptdoc.bhdevsites.com/health/ready` returns healthy once before account validation; do not use readiness as a frequent polling probe.
+- As `january.beta`, confirm API `/diagnostics/runtime` reports the exact source SHA and release ID from the `Deploy Beta` run before testing interactions.
 - Sign in with `january.beta`, `dani.beta`, `pta.beta`, and `patient.beta`.
 - Confirm no beta browser network calls use `localhost`, `127.0.0.1`, `devtunnels.ms`, or temporary `azurewebsites.net` URLs.
 - Confirm Blazor navigation remains connected after login, page changes, and refreshes.
+- Confirm `_blazor/negotiate` offers WebSockets and that an established Blazor WebSocket remains connected while exercising menu, Notes Due, note entry, Add Patient, Send Intake, and discharge actions.
 - Navigate continuously for 15 minutes and confirm there is no HTTP `503`, blank application state, or unexpected SignalR failure.
 - Confirm the deployment logs contain exactly one acceptable Beta seed outcome and no new `Production Breakpoint Instrumentation Method` errors after two controlled restarts.
 

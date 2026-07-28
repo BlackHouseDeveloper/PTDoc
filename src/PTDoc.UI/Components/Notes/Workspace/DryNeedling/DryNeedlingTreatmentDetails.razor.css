@@ -43,6 +43,19 @@
     min-height: calc(var(--spacing-10) * 2);
 }
 
+::deep .dry-treatment__field select:disabled {
+    color: var(--disabled-foreground);
+    background: var(--disabled-background);
+    border-color: var(--disabled-border);
+    opacity: 1;
+}
+
+::deep .dry-treatment__field-help {
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    line-height: var(--line-height-normal);
+}
+
 ::deep .dry-treatment__section-title {
     margin: 0;
     font-size: var(--text-sm);

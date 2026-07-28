@@ -1,4 +1,5 @@
 @namespace PTDoc.UI.Components.Notes.Workspace.DryNeedling
+@using PTDoc.Application.Notes.Workspace
 @using PTDoc.UI.Components.Notes.Models
 
 <section class="dry-note" data-testid="dry-needling-note-view" aria-label="Dry needling note">
@@ -70,9 +71,9 @@
         return HandleChanged();
     }
 
-    private Task HandleBillingDesignationChanged(string value)
+    private Task HandleBillingDesignationChanged(string _)
     {
-        Vm.BillingDesignation = string.IsNullOrWhiteSpace(value) ? "Billable" : value;
+        Vm.BillingDesignation = DryNeedlingBillingPolicy.NonBillableDesignation;
         return HandleChanged();
     }
 

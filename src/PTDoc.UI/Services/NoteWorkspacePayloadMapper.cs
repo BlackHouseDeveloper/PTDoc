@@ -32,6 +32,8 @@ public sealed class NoteWorkspacePayloadMapper
 
     public NoteWorkspacePayload MapToUiPayload(NoteWorkspaceV2Payload payload)
     {
+        payload = ClonePayload(payload) ?? payload;
+        DryNeedlingBillingPolicy.Enforce(payload);
         var dailyTreatment = payload.DailyTreatment ?? new WorkspaceDailyTreatmentV2();
         var discharge = payload.Discharge ?? new WorkspaceDischargeV2();
         var progressQuestionnaire = payload.ProgressQuestionnaire ?? new WorkspaceProgressNoteQuestionnaireV2();
@@ -583,6 +585,7 @@ public sealed class NoteWorkspacePayloadMapper
             }
             : null;
 
+        DryNeedlingBillingPolicy.Enforce(preservedPayload);
         return preservedPayload;
     }
 
@@ -1471,10 +1474,8 @@ public sealed class NoteWorkspacePayloadMapper
             || !string.Equals(normalizedMode, DischargeDocumentationOptions.StandardBillableMode, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string NormalizeBillingDesignation(string? value) =>
-        string.Equals(value?.Trim(), "Non-billable", StringComparison.OrdinalIgnoreCase)
-            ? "Non-billable"
-            : "Billable";
+    private static string NormalizeBillingDesignation(string? _) =>
+        DryNeedlingBillingPolicy.NonBillableDesignation;
 
     private static string? TrimToNull(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

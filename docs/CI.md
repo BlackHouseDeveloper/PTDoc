@@ -99,8 +99,9 @@ For each provider, the tests assert that:
 
 1. **Migration application** – SQLite applies migrations through `MigrateAsync()`. SQL Server and PostgreSQL first validate the provider-specific `dotnet ef database update` path in CI, then the smoke test verifies the already-migrated schema without applying migrations a second time.
 2. **Schema queryability** – Core sets such as `Clinics`, `Patients`, `Users`, `IntakeForms`, `ClinicalNotes`, `ObjectiveMetrics`, and `RuleOverrides` can all be queried without schema errors.
-3. **Data persistence** – A clinic/patient/user/intake/note/objective-metric/override graph can be inserted and retrieved successfully.
-4. **Provider portability** – The same smoke assertions execute against SQLite, SQL Server, and PostgreSQL using the provider selected by `DB_PROVIDER`.
+3. **Data persistence** – A clinic/patient/user/appointment/intake/note/objective-metric/override graph can be inserted and retrieved successfully, including an appointment update that exercises provider-specific write SQL.
+4. **SQL Server appointment trigger compatibility** – The SQL Server run confirms `TR_Appointments_PreventOverlap` exists, allows a valid appointment update, and still rejects an overlapping appointment with SQL error 51000.
+5. **Provider portability** – The same non-trigger smoke assertions execute against SQLite, SQL Server, and PostgreSQL using the provider selected by `DB_PROVIDER`.
 
 ### CI Failure Conditions
 

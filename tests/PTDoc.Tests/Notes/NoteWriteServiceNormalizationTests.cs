@@ -84,6 +84,66 @@ public sealed class NoteWriteServiceNormalizationTests
         Assert.Equal(CptSource, Assert.Single(payload!.Plan.SelectedCptCodes).ModifierSource);
     }
 
+    [Fact]
+    public void NormalizeContentJson_DryNeedlingWorkspace_RemovesBillableCptFields()
+    {
+        var contentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            DryNeedling = new WorkspaceDryNeedlingV2
+            {
+                BillingDesignation = "Billable",
+                Location = "Hip",
+                NeedlingType = "Deep dry needling"
+            },
+            Objective = new WorkspaceObjectiveV2
+            {
+                ExerciseRows =
+                [
+                    new ExerciseRowV2
+                    {
+                        CptCode = "97110",
+                        CptDescription = "Therapeutic exercise"
+                    }
+                ]
+            },
+            Plan = new WorkspacePlanV2
+            {
+                SelectedCptCodes =
+                [
+                    new PlannedCptCodeV2
+                    {
+                        Code = "97140",
+                        Description = "Manual therapy",
+                        Units = 1
+                    }
+                ],
+                GeneralInterventions =
+                [
+                    new GeneralInterventionEntryV2
+                    {
+                        Name = "Manual therapy",
+                        CptCode = "97140",
+                        CptDescription = "Manual therapy"
+                    }
+                ]
+            }
+        }, JsonOptions);
+
+        var normalizedJson = NoteWriteService.NormalizeContentJson(
+            NoteType.Daily,
+            isReEvaluation: false,
+            new DateTime(2026, 7, 27),
+            contentJson);
+        var payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(normalizedJson, JsonOptions);
+
+        Assert.NotNull(payload?.DryNeedling);
+        Assert.Equal(DryNeedlingBillingPolicy.NonBillableDesignation, payload!.DryNeedling!.BillingDesignation);
+        Assert.Empty(payload.Plan.SelectedCptCodes);
+        Assert.Null(payload.Objective.ExerciseRows.Single().CptCode);
+        Assert.Null(payload.Plan.GeneralInterventions.Single().CptCode);
+    }
+
     [Theory]
     [InlineData("limitations by body part.md")]
     [InlineData("docs/clinicrefdata/limitations by body part.md")]

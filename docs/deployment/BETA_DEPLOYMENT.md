@@ -49,6 +49,10 @@ ReverseProxy__Clusters__apiCluster__Destinations__api__Address=https://api-ptdoc
 EntraExternalId__ClientSecret=<from secret store>
 ```
 
+`Deploy Beta` stamps `PTDOC_SOURCE_SHA` and `PTDOC_RELEASE_ID` on this app from
+the dispatched repository revision. Do not maintain separate manual values for
+these two settings.
+
 Set these app settings on the API App Service:
 
 ```text
@@ -78,6 +82,11 @@ BackgroundJobs__SyncRetry__MinRetryDelay=00:05:00
 BackgroundJobs__SessionCleanup__Interval=00:30:00
 ```
 
+`Deploy Beta` also stamps the same `PTDOC_SOURCE_SHA` and `PTDOC_RELEASE_ID` on
+the API app. Its post-deployment gate signs in with the seeded Admin account and
+requires `/diagnostics/runtime` to report the exact dispatched SHA and release
+ID before the Web deployment may proceed.
+
 AI generation is disabled by default in Beta to control Azure OpenAI spend. If AI generation is deliberately enabled for beta, keep the rate-limit settings above and also set the existing Azure OpenAI settings:
 
 ```text
@@ -87,6 +96,11 @@ AzureOpenAIKey=<Azure OpenAI key>
 AzureOpenAIDeployment=<deployment name>
 AzureOpenAIApiVersion=<API version>
 ```
+
+`AzureOpenAIEndpoint` must be the base HTTPS Azure resource URL only. Do not set
+the full `/openai/deployments/.../chat/completions?...` request URL; AI-enabled
+non-development startup rejects endpoints containing a path, query string,
+fragment, or embedded credentials.
 
 Do not commit real connection strings, signing keys, publish profiles, ACS credentials, Azure OpenAI keys, or Entra client secrets.
 
@@ -175,7 +189,7 @@ Deployment order and recovery contract:
 
 1. Apply database migrations out-of-band.
 2. Validate the live API App Service settings, then deploy the API artifact directly.
-3. Verify API `/health/live`, `/health/ready`, and all four seeded-role logins. Do not deploy Web after an API failure.
+3. Verify API `/health/live`, `/health/ready`, all four seeded-role logins, and authenticated `/diagnostics/runtime` source/release parity. Do not deploy Web after an API failure or metadata mismatch.
 4. Validate the live Web App Service settings, then deploy the Web artifact directly.
 5. Verify Web `/health/live`, `/health/ready`, static assets, and SignalR WebSocket negotiation.
 
@@ -200,6 +214,7 @@ dotnet publish src/PTDoc.Api/PTDoc.Api.csproj -c Release -o ./publish/api
 - Confirm `http://api-ptdoc.bhdevsites.com/health` redirects to HTTPS.
 - Confirm frontend API calls use `https://api-ptdoc.bhdevsites.com`.
 - Confirm the API App Service is still single-instance before relying on startup seeding.
+- Confirm authenticated API `/diagnostics/runtime` reports the repository SHA and release ID shown by the `Deploy Beta` run.
 - Confirm `Database__AutoMigrate=false`, `BetaAccess__AllowStartupSeed=true`, `BetaAccess__SeedLockTimeoutSeconds=15`, and `BetaAccess__SeedPin` are configured on the live Beta API App Service.
 - Confirm AI generation remains disabled unless a beta pass explicitly needs it, and if enabled, confirm `Ai__RateLimits__PermitLimit=10` and `Ai__RateLimits__WindowMinutes=60`. The legacy key `Ai__RateLimits__RequestsPerHour` is still accepted for existing environments, but new settings should use `PermitLimit`.
 - Confirm `https://api-ptdoc.bhdevsites.com/health/ready` is healthy before validating seeded access.

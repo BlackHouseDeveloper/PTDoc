@@ -82,7 +82,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasIndex("ClinicalId", "StartTimeUtc");
 
-                    b.ToTable("Appointments");
+                    b.ToTable("Appointments", t =>
+                        {
+                            t.UseSqlOutputClause(false);
+                        });
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.AppointmentPaymentTransaction", b =>

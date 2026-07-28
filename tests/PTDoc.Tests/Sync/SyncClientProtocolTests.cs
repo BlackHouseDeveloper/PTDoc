@@ -170,6 +170,72 @@ public class SyncClientProtocolTests
     }
 
     [Fact]
+    public async Task GetClientDeltaAsync_DryNeedlingNote_OmitsDerivedCptCharges()
+    {
+        var context = CreateInMemoryContext();
+        var watermark = DateTime.UtcNow.AddMinutes(-5);
+        var patient = new Patient
+        {
+            FirstName = "Dry",
+            LastName = "Needling",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.Patients.Add(patient);
+
+        var contentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            DryNeedling = new WorkspaceDryNeedlingV2
+            {
+                BillingDesignation = "Billable",
+                Location = "Hip",
+                NeedlingType = "Deep dry needling"
+            },
+            Plan = new WorkspacePlanV2
+            {
+                SelectedCptCodes =
+                [
+                    new PlannedCptCodeV2
+                    {
+                        Code = "97140",
+                        Description = "Manual therapy",
+                        Units = 1
+                    }
+                ]
+            }
+        });
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = contentJson,
+            CptCodesJson = """[{"code":"97140","units":1}]""",
+            LastModifiedUtc = watermark.AddMinutes(1)
+        };
+        context.ClinicalNotes.Add(note);
+        await context.SaveChangesAsync();
+
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
+
+        var result = await syncEngine.GetClientDeltaAsync(watermark, new[] { "ClinicalNote" });
+
+        var item = Assert.Single(result.Items);
+        using var itemDocument = JsonDocument.Parse(item.DataJson);
+        Assert.Equal("[]", itemDocument.RootElement.GetProperty("CptCodesJson").GetString());
+        using var normalizedContent = JsonDocument.Parse(
+            itemDocument.RootElement.GetProperty("ContentJson").GetString()!);
+        Assert.Equal(
+            DryNeedlingBillingPolicy.NonBillableDesignation,
+            normalizedContent.RootElement.GetProperty("dryNeedling").GetProperty("billingDesignation").GetString());
+        Assert.Empty(normalizedContent.RootElement.GetProperty("plan").GetProperty("selectedCptCodes").EnumerateArray());
+    }
+
+    [Fact]
     public async Task GetClientDeltaAsync_ReturnsObjectiveMetrics_WhenParentNoteModifiedAfterWatermark()
     {
         // Arrange
@@ -391,6 +457,87 @@ public class SyncClientProtocolTests
         Assert.Equal("Offline", savedPatient!.FirstName);
         Assert.Equal("Patient", savedPatient.LastName);
         Assert.Equal("MRN-001", savedPatient.MedicalRecordNumber);
+    }
+
+    [Fact]
+    public async Task ReceiveClientPushAsync_DryNeedlingNote_CannotPersistBillableCptData()
+    {
+        var context = CreateInMemoryContext();
+        var patient = new Patient
+        {
+            FirstName = "Offline",
+            LastName = "DryNeedling",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.Patients.Add(patient);
+        await context.SaveChangesAsync();
+
+        var contentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            DryNeedling = new WorkspaceDryNeedlingV2
+            {
+                BillingDesignation = "Billable",
+                Location = "Shoulder",
+                NeedlingType = "Deep dry needling"
+            },
+            Plan = new WorkspacePlanV2
+            {
+                SelectedCptCodes =
+                [
+                    new PlannedCptCodeV2
+                    {
+                        Code = "97140",
+                        Description = "Manual therapy",
+                        Units = 1
+                    }
+                ]
+            }
+        });
+        var noteId = Guid.NewGuid();
+        var request = new ClientSyncPushRequest
+        {
+            Items =
+            [
+                new ClientSyncPushItem
+                {
+                    EntityType = "ClinicalNote",
+                    ServerId = noteId,
+                    LocalId = 22,
+                    OperationId = Guid.NewGuid(),
+                    Operation = "Create",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        patientId = patient.Id,
+                        noteType = NoteType.Daily,
+                        dateOfService = DateTime.UtcNow,
+                        contentJson,
+                        cptCodesJson = """[{"code":"97140","units":1}]"""
+                    }),
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            ]
+        };
+        var syncEngine = new SyncEngine(
+            context,
+            NullLogger<SyncEngine>.Instance,
+            signatureService: CreateSignatureService(context));
+
+        var response = await syncEngine.ReceiveClientPushAsync(request);
+
+        Assert.Equal(1, response.AcceptedCount);
+        var savedNote = await context.ClinicalNotes.AsNoTracking().SingleAsync(note => note.Id == noteId);
+        Assert.Equal("[]", savedNote.CptCodesJson);
+        Assert.Equal(0, savedNote.TotalTreatmentMinutes);
+        var savedPayload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(
+            savedNote.ContentJson,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        Assert.NotNull(savedPayload?.DryNeedling);
+        Assert.Equal(
+            DryNeedlingBillingPolicy.NonBillableDesignation,
+            savedPayload!.DryNeedling!.BillingDesignation);
+        Assert.Empty(savedPayload.Plan.SelectedCptCodes);
     }
 
     [Fact]

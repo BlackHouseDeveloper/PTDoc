@@ -493,7 +493,7 @@ public class PdfIntegrationTests : IAsyncDisposable
                 DryNeedling = new WorkspaceDryNeedlingV2
                 {
                     DateOfTreatment = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc),
-                    BillingDesignation = "Non-billable",
+                    BillingDesignation = "Billable",
                     Location = "Gluteal region",
                     NeedlingType = "Deep dry needling",
                     PainBefore = 6,
@@ -517,6 +517,7 @@ public class PdfIntegrationTests : IAsyncDisposable
                     FollowUpInstructions = "Monitor soreness for 24 hours"
                 }
             }),
+            CptCodesJson = """[{"code":"97140","units":1,"minutes":15}]""",
             PatientFirstName = "Dry",
             PatientLastName = "Needling",
             PatientMedicalRecordNumber = "MRN-301",

@@ -531,6 +531,34 @@ public class AiServiceTests
             entry => entry.Message.Contains("Return concise, professional draft text only.", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task GenerateAssessment_WhenAzureDeploymentIsNotFound_LogsSanitized404Details()
+    {
+        var handler = new AzureDeploymentNotFoundHttpMessageHandler();
+        var logger = new TestLogger<OpenAiService>();
+        var configuration = BuildAzureConfiguration();
+        var aiService = CreateAzureBackedService(configuration, handler, logger);
+
+        var result = await aiService.GenerateAssessmentAsync(new AiAssessmentRequest
+        {
+            NoteId = Guid.NewGuid(),
+            ChiefComplaint = "Neck pain"
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("AI generation failed. Please try again or contact support.", result.ErrorMessage);
+        Assert.Contains(
+            logger.Entries,
+            entry => entry.LogLevel == LogLevel.Warning
+                && entry.Message.Contains("Azure OpenAI request failed with status 404", StringComparison.Ordinal)
+                && entry.Message.Contains("ptdoc-gpt-4o-mini", StringComparison.Ordinal)
+                && entry.Message.Contains("DeploymentNotFound", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            logger.Entries,
+            entry => entry.Message.Contains("Return concise, professional draft text only.", StringComparison.Ordinal)
+                || entry.Message.Contains("test-key", StringComparison.Ordinal));
+    }
+
     private static IConfiguration BuildAzureConfiguration(params (string Key, string Value)[] extraSettings)
     {
         var settings = new Dictionary<string, string?>
@@ -605,6 +633,24 @@ public class AiServiceTests
                   "error": {
                     "code": "rate_limit_exceeded",
                     "message": "Rate limit exceeded.\nRetry later."
+                  }
+                }
+                """)
+            });
+        }
+    }
+
+    private sealed class AzureDeploymentNotFoundHttpMessageHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotFound)
+            {
+                Content = new StringContent("""
+                {
+                  "error": {
+                    "code": "DeploymentNotFound",
+                    "message": "The configured deployment does not exist."
                   }
                 }
                 """)

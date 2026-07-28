@@ -1,6 +1,8 @@
 using System;
+using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Services;
@@ -131,6 +133,30 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
         context.Users.Add(user);
         await context.SaveChangesAsync();
 
+        var appointment = new Appointment
+        {
+            PatientId = patient.Id,
+            ClinicalId = user.Id,
+            ClinicId = clinic.Id,
+            StartTimeUtc = new DateTime(2026, 7, 23, 13, 0, 0, DateTimeKind.Utc),
+            EndTimeUtc = new DateTime(2026, 7, 23, 13, 45, 0, DateTimeKind.Utc),
+            AppointmentType = AppointmentType.InitialEvaluation,
+            Status = AppointmentStatus.Scheduled,
+            Notes = "Provider smoke appointment",
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = user.Id,
+            SyncState = SyncState.Pending
+        };
+        context.Appointments.Add(appointment);
+        await context.SaveChangesAsync();
+
+        appointment.AppointmentType = AppointmentType.FollowUp;
+        appointment.StartTimeUtc = appointment.StartTimeUtc.AddMinutes(15);
+        appointment.EndTimeUtc = appointment.EndTimeUtc.AddMinutes(15);
+        appointment.Status = AppointmentStatus.CheckedIn;
+        appointment.Notes = "Provider smoke appointment updated";
+        await context.SaveChangesAsync();
+
         var intake = new IntakeForm
         {
             PatientId = patient.Id,
@@ -182,6 +208,7 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
         context.ChangeTracker.Clear();
 
         var savedPatient = await context.Patients.AsNoTracking().SingleAsync(p => p.Id == patient.Id);
+        var savedAppointment = await context.Appointments.AsNoTracking().SingleAsync(a => a.Id == appointment.Id);
         var savedIntake = await context.IntakeForms.AsNoTracking().SingleAsync(f => f.Id == intake.Id);
         var savedNote = await context.ClinicalNotes
             .AsNoTracking()
@@ -190,9 +217,67 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
         var savedOverride = await context.RuleOverrides.AsNoTracking().SingleAsync(row => row.NoteId == note.Id);
 
         Assert.Equal("Provider", savedPatient.FirstName);
+        Assert.Equal(AppointmentType.FollowUp, savedAppointment.AppointmentType);
+        Assert.Equal(AppointmentStatus.CheckedIn, savedAppointment.Status);
+        Assert.Equal("Provider smoke appointment updated", savedAppointment.Notes);
         Assert.Equal("{\"status\":\"created\"}", savedIntake.ResponseJson);
         Assert.Single(savedNote.ObjectiveMetrics);
         Assert.Equal(note.Id, savedOverride.NoteId);
+
+        if (context.Database.IsSqlServer())
+        {
+            await AssertSqlServerAppointmentTriggerAsync(context, clinic.Id, patient.Id, user.Id, appointment);
+        }
+    }
+
+    private static async Task AssertSqlServerAppointmentTriggerAsync(
+        ApplicationDbContext context,
+        Guid clinicId,
+        Guid patientId,
+        Guid clinicianId,
+        Appointment existingAppointment)
+    {
+        var connection = context.Database.GetDbConnection();
+        var shouldCloseConnection = connection.State != ConnectionState.Open;
+        if (shouldCloseConnection)
+        {
+            await connection.OpenAsync();
+        }
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText =
+                "SELECT CASE WHEN OBJECT_ID(N'[dbo].[TR_Appointments_PreventOverlap]', N'TR') IS NULL THEN 0 ELSE 1 END";
+            var triggerExists = Convert.ToInt32(await command.ExecuteScalarAsync());
+            Assert.Equal(1, triggerExists);
+        }
+        finally
+        {
+            if (shouldCloseConnection)
+            {
+                await connection.CloseAsync();
+            }
+        }
+
+        context.Appointments.Add(new Appointment
+        {
+            PatientId = patientId,
+            ClinicalId = clinicianId,
+            ClinicId = clinicId,
+            StartTimeUtc = existingAppointment.StartTimeUtc.AddMinutes(10),
+            EndTimeUtc = existingAppointment.EndTimeUtc.AddMinutes(10),
+            AppointmentType = AppointmentType.FollowUp,
+            Status = AppointmentStatus.Scheduled,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = clinicianId,
+            SyncState = SyncState.Pending
+        });
+
+        var exception = await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+        var sqlException = Assert.IsType<SqlException>(exception.GetBaseException());
+        Assert.Equal(51000, sqlException.Number);
+        Assert.Contains("APPOINTMENT_OVERBOOKING", sqlException.Message, StringComparison.Ordinal);
     }
 
     private static async Task AssertSchemaQueryableAsync(ApplicationDbContext context)

@@ -8,7 +8,7 @@ const focusableSelector = [
     '[tabindex]:not([tabindex="-1"])'
 ].join(',');
 
-function createFocusTrap(modalElement, onDispose) {
+function createFocusTrap(modalElement, onDispose, autoFocus = true) {
     if (!modalElement) return null;
 
     const getFocusableElements = () => Array.from(modalElement.querySelectorAll(focusableSelector))
@@ -56,8 +56,9 @@ function createFocusTrap(modalElement, onDispose) {
 
     document.addEventListener('keydown', trapHandler, true);
 
-    // Focus first element
-    setTimeout(focusInitialElement, 50);
+    if (autoFocus) {
+        setTimeout(focusInitialElement, 50);
+    }
 
     return {
         handler: trapHandler,
@@ -130,12 +131,12 @@ export class ModalHelper {
     }
 
     // Register ESC key handler for a modal
-    registerEscapeHandler(modalId, dotNetRef) {
+    registerEscapeHandler(modalId, dotNetRef, autoFocus = true) {
         if (this.escapeHandlers.has(modalId)) {
             return;
         }
 
-        this.activateModalAccessibility(modalId);
+        this.activateModalAccessibility(modalId, autoFocus);
 
         const handler = (e) => {
             if (e.key === 'Escape' || e.key === 'Esc') {
@@ -160,12 +161,12 @@ export class ModalHelper {
         this.deactivateModalAccessibility(modalId);
     }
 
-    activateModalAccessibility(modalId) {
+    activateModalAccessibility(modalId, autoFocus = true) {
         const modalElement = this.findActiveModalElement(modalId);
         if (!modalElement) return;
 
         this.previousFocusByModal.set(modalId, document.activeElement);
-        this.setupFocusTrap(modalId, modalElement);
+        this.setupFocusTrap(modalId, modalElement, autoFocus);
         this.hideBackgroundSiblings(modalId, modalElement);
     }
 
@@ -196,8 +197,11 @@ export class ModalHelper {
     }
 
     // Focus trap - keep focus within modal
-    setupFocusTrap(modalId, modalElement) {
-        const trap = createFocusTrap(modalElement, () => this.focusTrapHandlers.delete(modalId));
+    setupFocusTrap(modalId, modalElement, autoFocus = true) {
+        const trap = createFocusTrap(
+            modalElement,
+            () => this.focusTrapHandlers.delete(modalId),
+            autoFocus);
         if (trap) {
             this.focusTrapHandlers.set(modalId, trap.handler);
         }
@@ -279,8 +283,8 @@ export function unlockBodyScroll() {
     getModalHelper().unlockBodyScroll();
 }
 
-export function registerEscapeHandler(modalId, dotNetRef) {
-    getModalHelper().registerEscapeHandler(modalId, dotNetRef);
+export function registerEscapeHandler(modalId, dotNetRef, autoFocus = true) {
+    getModalHelper().registerEscapeHandler(modalId, dotNetRef, autoFocus);
 }
 
 export function unregisterEscapeHandler(modalId) {

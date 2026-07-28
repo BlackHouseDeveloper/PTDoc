@@ -41,7 +41,19 @@ public sealed class NoteWriteService(
             throw new ArgumentException("TotalMinutes must be zero or greater.", nameof(request.TotalMinutes));
         }
 
-        var cptEntries = TryDeserializeCptCodes(request.CptCodesJson);
+        var normalizedContentJson = NormalizeContentJson(
+            request.NoteType,
+            request.IsReEvaluation,
+            request.DateOfService,
+            request.ContentJson);
+        var isDryNeedling = IsDryNeedlingContent(
+            request.NoteType,
+            request.IsReEvaluation,
+            request.DateOfService,
+            normalizedContentJson);
+        var effectiveCptCodesJson = isDryNeedling ? "[]" : request.CptCodesJson;
+        var effectiveTotalMinutes = isDryNeedling ? 0 : request.TotalMinutes;
+        var cptEntries = TryDeserializeCptCodes(effectiveCptCodesJson);
         if (cptEntries is null)
         {
             throw new ArgumentException("CptCodesJson is not valid JSON.", nameof(request.CptCodesJson));
@@ -52,7 +64,7 @@ public sealed class NoteWriteService(
             PatientId = request.PatientId,
             NoteType = request.NoteType,
             DateOfService = request.DateOfService,
-            TotalTimedMinutes = request.TotalMinutes,
+            TotalTimedMinutes = effectiveTotalMinutes,
             CptEntries = cptEntries
         }, ct);
 
@@ -93,15 +105,11 @@ public sealed class NoteWriteService(
             AppointmentId = request.AppointmentId,
             NoteType = request.NoteType,
             IsReEvaluation = request.IsReEvaluation,
-            ContentJson = NormalizeContentJson(
-                request.NoteType,
-                request.IsReEvaluation,
-                request.DateOfService,
-                request.ContentJson),
+            ContentJson = normalizedContentJson,
             DateOfService = request.DateOfService,
-            CptCodesJson = string.IsNullOrWhiteSpace(request.CptCodesJson) ? "[]" : request.CptCodesJson,
+            CptCodesJson = string.IsNullOrWhiteSpace(effectiveCptCodesJson) ? "[]" : effectiveCptCodesJson,
             TherapistNpi = request.TherapistNpi?.Trim(),
-            TotalTreatmentMinutes = ResolveTotalTreatmentMinutes(request.TotalMinutes, cptEntries),
+            TotalTreatmentMinutes = ResolveTotalTreatmentMinutes(effectiveTotalMinutes, cptEntries),
             NoteStatus = NoteStatus.Draft,
             ClinicId = clinicId,
             CreatedUtc = now,
@@ -174,7 +182,23 @@ public sealed class NoteWriteService(
             throw new ArgumentException("TotalMinutes must be zero or greater.", nameof(request.TotalMinutes));
         }
 
-        var effectiveCptCodesJson = request.CptCodesJson ?? note.CptCodesJson;
+        var effectiveDateOfService = request.DateOfService ?? note.DateOfService;
+        var normalizedContentJson = NormalizeContentJson(
+            note.NoteType,
+            note.IsReEvaluation,
+            effectiveDateOfService,
+            request.ContentJson ?? note.ContentJson);
+        var isDryNeedling = IsDryNeedlingContent(
+            note.NoteType,
+            note.IsReEvaluation,
+            effectiveDateOfService,
+            normalizedContentJson);
+        var effectiveCptCodesJson = isDryNeedling
+            ? "[]"
+            : request.CptCodesJson ?? note.CptCodesJson;
+        var effectiveTotalMinutes = isDryNeedling
+            ? 0
+            : request.TotalMinutes ?? note.TotalTreatmentMinutes;
         var cptEntries = TryDeserializeCptCodes(effectiveCptCodesJson);
         if (cptEntries is null)
         {
@@ -186,8 +210,8 @@ public sealed class NoteWriteService(
             PatientId = note.PatientId,
             ExistingNoteId = note.Id,
             NoteType = note.NoteType,
-            DateOfService = request.DateOfService ?? note.DateOfService,
-            TotalTimedMinutes = request.TotalMinutes ?? note.TotalTreatmentMinutes,
+            DateOfService = effectiveDateOfService,
+            TotalTimedMinutes = effectiveTotalMinutes,
             CptEntries = cptEntries
         }, ct);
 
@@ -218,36 +242,27 @@ public sealed class NoteWriteService(
             return response;
         }
 
-        if (request.ContentJson is not null)
-        {
-            note.ContentJson = NormalizeContentJson(
-                note.NoteType,
-                note.IsReEvaluation,
-                request.DateOfService ?? note.DateOfService,
-                request.ContentJson);
-        }
-        else
-        {
-            note.ContentJson = NormalizeContentJson(
-                note.NoteType,
-                note.IsReEvaluation,
-                request.DateOfService ?? note.DateOfService,
-                note.ContentJson);
-        }
+        note.ContentJson = normalizedContentJson;
 
         if (request.DateOfService is not null)
         {
             note.DateOfService = request.DateOfService.Value;
         }
 
-        if (request.CptCodesJson is not null)
+        if (isDryNeedling)
+        {
+            note.CptCodesJson = "[]";
+        }
+        else if (request.CptCodesJson is not null)
         {
             note.CptCodesJson = request.CptCodesJson;
         }
 
-        note.TotalTreatmentMinutes = request.TotalMinutes.HasValue || request.CptCodesJson is not null
-            ? ResolveTotalTreatmentMinutes(request.TotalMinutes, cptEntries)
-            : note.TotalTreatmentMinutes;
+        note.TotalTreatmentMinutes = isDryNeedling
+            ? 0
+            : request.TotalMinutes.HasValue || request.CptCodesJson is not null
+                ? ResolveTotalTreatmentMinutes(request.TotalMinutes, cptEntries)
+                : note.TotalTreatmentMinutes;
 
         var userId = identityContext.GetCurrentUserId();
         note.LastModifiedUtc = DateTime.UtcNow;
@@ -316,6 +331,7 @@ public sealed class NoteWriteService(
 
         if (TryMigrateLegacyContentJson(contentJson, noteType, isReEvaluation, dateOfService, out var migratedPayload))
         {
+            DryNeedlingBillingPolicy.Enforce(migratedPayload);
             return SerializeWorkspacePayload(migratedPayload);
         }
 
@@ -353,7 +369,10 @@ public sealed class NoteWriteService(
             }
 
             deserialized.NoteType = noteType;
+            deserialized.Plan ??= new WorkspacePlanV2();
+            deserialized.Plan.ComputedPlanOfCare ??= new ComputedPlanOfCareV2();
             deserialized.Plan.ComputedPlanOfCare.StartDate ??= dateOfService.Date;
+            DryNeedlingBillingPolicy.Enforce(deserialized);
             payload = deserialized;
             return true;
         }
@@ -361,6 +380,25 @@ public sealed class NoteWriteService(
         {
             return false;
         }
+    }
+
+    public static bool IsDryNeedlingContent(
+        NoteType noteType,
+        bool isReEvaluation,
+        DateTime dateOfService,
+        string? contentJson)
+    {
+        var normalizedContentJson = NormalizeContentJson(
+            noteType,
+            isReEvaluation,
+            dateOfService,
+            contentJson);
+        return TryDeserializeWorkspacePayload(
+            normalizedContentJson,
+            noteType,
+            dateOfService,
+            out var payload)
+            && payload.DryNeedling is not null;
     }
 
     private static bool TryMigrateLegacyContentJson(

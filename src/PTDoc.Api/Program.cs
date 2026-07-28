@@ -313,6 +313,7 @@ builder.Services.AddSingleton(sp =>
 // Register Phase 7 services: Security & Observability
 builder.Services.AddScoped<IDbKeyProvider, EnvironmentDbKeyProvider>();
 builder.Services.AddSingleton<ITelemetrySink, ConsoleTelemetrySink>();
+builder.Services.AddSingleton<DatabaseConnectionTelemetryInterceptor>();
 builder.Services.AddScoped<IClinicalDocumentHierarchyBuilder>(sp =>
     new ClinicalDocumentHierarchyBuilder(sp.GetRequiredService<IIntakeReferenceDataCatalogService>()));
 builder.Services.AddScoped<IPdfRenderer, QuestPdfRenderer>();
@@ -361,7 +362,10 @@ if (string.Equals(dbProvider, "SqlServer", StringComparison.OrdinalIgnoreCase))
             });
 
         var identityContext = serviceProvider.GetRequiredService<IIdentityContextAccessor>();
-        options.AddInterceptors(new SyncMetadataInterceptor(identityContext));
+        var connectionTelemetry = serviceProvider.GetRequiredService<DatabaseConnectionTelemetryInterceptor>();
+        options.AddInterceptors(
+            new SyncMetadataInterceptor(identityContext),
+            connectionTelemetry);
 
         if (builder.Environment.IsDevelopment())
         {

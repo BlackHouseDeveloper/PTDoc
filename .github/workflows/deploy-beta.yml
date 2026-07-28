@@ -19,6 +19,8 @@ env:
   AZURE_RESOURCE_GROUP: PTDoc-prod
   WEB_APP_NAME: ptdoc-web-prod
   API_APP_NAME: ptdoc-api-plan
+  PTDOC_SOURCE_SHA: ${{ github.sha }}
+  PTDOC_RELEASE_ID: beta-${{ github.run_number }}-${{ github.run_attempt }}
 
 jobs:
   build-test-publish:
@@ -127,6 +129,22 @@ jobs:
         test "$(jq -r '.remoteDebuggingEnabled' <<< "$config")" = false
         test "$(jq -r '.healthCheckPath' <<< "$config")" = /health/live
 
+    - name: Stamp Web release metadata
+      run: |
+        az webapp config appsettings set \
+          --resource-group "$AZURE_RESOURCE_GROUP" \
+          --name "$WEB_APP_NAME" \
+          --settings \
+            PTDOC_SOURCE_SHA="$PTDOC_SOURCE_SHA" \
+            PTDOC_RELEASE_ID="$PTDOC_RELEASE_ID" \
+          --output none
+        settings="$(az webapp config appsettings list \
+          --resource-group "$AZURE_RESOURCE_GROUP" \
+          --name "$WEB_APP_NAME" \
+          --output json)"
+        test "$(jq -r '.[] | select(.name == "PTDOC_SOURCE_SHA") | .value' <<< "$settings")" = "$PTDOC_SOURCE_SHA"
+        test "$(jq -r '.[] | select(.name == "PTDOC_RELEASE_ID") | .value' <<< "$settings")" = "$PTDOC_RELEASE_ID"
+
     - name: Deploy Web directly to Beta
       uses: azure/webapps-deploy@v3
       with:
@@ -182,6 +200,22 @@ jobs:
         test "$(jq -r '.remoteDebuggingEnabled' <<< "$config")" = false
         test "$(jq -r '.healthCheckPath' <<< "$config")" = /health/live
 
+    - name: Stamp API release metadata
+      run: |
+        az webapp config appsettings set \
+          --resource-group "$AZURE_RESOURCE_GROUP" \
+          --name "$API_APP_NAME" \
+          --settings \
+            PTDOC_SOURCE_SHA="$PTDOC_SOURCE_SHA" \
+            PTDOC_RELEASE_ID="$PTDOC_RELEASE_ID" \
+          --output none
+        settings="$(az webapp config appsettings list \
+          --resource-group "$AZURE_RESOURCE_GROUP" \
+          --name "$API_APP_NAME" \
+          --output json)"
+        test "$(jq -r '.[] | select(.name == "PTDOC_SOURCE_SHA") | .value' <<< "$settings")" = "$PTDOC_SOURCE_SHA"
+        test "$(jq -r '.[] | select(.name == "PTDOC_RELEASE_ID") | .value' <<< "$settings")" = "$PTDOC_RELEASE_ID"
+
     - name: Deploy API directly to Beta
       uses: azure/webapps-deploy@v3
       with:
@@ -197,10 +231,17 @@ jobs:
         curl --fail --silent --show-error --retry 6 --retry-delay 5 \
           "https://api-ptdoc.bhdevsites.com/health/ready"
         for username in january.beta dani.beta pta.beta patient.beta; do
-          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+          login_response="$(curl --fail --silent --show-error \
             --header 'Content-Type: application/json' \
             --data "{\"username\":\"${username}\",\"pin\":\"${PTDOC_BETA_SEED_PIN}\"}" \
             'https://api-ptdoc.bhdevsites.com/api/v1/auth/pin-login')"
-          test "$status" = "200"
           echo "Seeded beta login smoke passed for ${username}."
+          if [ "$username" = "january.beta" ]; then
+            admin_token="$(jq -er '.token' <<< "$login_response")"
+          fi
         done
+        runtime="$(curl --fail --silent --show-error \
+          --header "Authorization: Bearer ${admin_token}" \
+          'https://api-ptdoc.bhdevsites.com/diagnostics/runtime')"
+        test "$(jq -r '.release.sourceSha' <<< "$runtime")" = "$PTDOC_SOURCE_SHA"
+        test "$(jq -r '.release.releaseId' <<< "$runtime")" = "$PTDOC_RELEASE_ID"

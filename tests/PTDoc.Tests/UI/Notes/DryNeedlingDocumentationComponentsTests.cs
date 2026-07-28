@@ -10,7 +10,7 @@ namespace PTDoc.Tests.UI.Notes;
 public sealed class DryNeedlingDocumentationComponentsTests : TestContext
 {
     [Fact]
-    public void DryNeedlingNoteView_CapturesBillingDesignation()
+    public void DryNeedlingNoteView_DisplaysFixedNonBillableDesignation()
     {
         var vm = new DryNeedlingVm
         {
@@ -24,13 +24,13 @@ public sealed class DryNeedlingDocumentationComponentsTests : TestContext
             .Add(component => component.VmChanged, EventCallback.Factory.Create<DryNeedlingVm>(this, updated => vm = updated))
             .Add(component => component.IsReadOnly, false));
 
-        cut.Find("#dry-billing-designation").Change("Non-billable");
+        var billingDesignation = cut.Find("#dry-billing-designation");
 
-        cut.WaitForAssertion(() =>
-        {
-            Assert.Equal("Non-billable", vm.BillingDesignation);
-            Assert.Contains("Billing Designation", cut.Markup, StringComparison.Ordinal);
-        });
+        Assert.True(billingDesignation.HasAttribute("disabled"));
+        Assert.Equal("Non-billable", billingDesignation.GetAttribute("value"));
+        Assert.Single(billingDesignation.QuerySelectorAll("option"));
+        Assert.DoesNotContain("Billable</option>", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("always non-billable", cut.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public sealed class DryNeedlingDocumentationComponentsTests : TestContext
         cut.WaitForAssertion(() =>
         {
             Assert.True(changed);
-            Assert.Equal("Billable", billingDesignation);
+            Assert.Equal("Non-billable", billingDesignation);
             Assert.Equal(string.Empty, cut.Instance.BillingDesignation);
         });
     }

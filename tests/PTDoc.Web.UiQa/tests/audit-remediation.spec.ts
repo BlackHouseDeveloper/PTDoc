@@ -151,6 +151,53 @@ test.describe('PTDoc audit remediation QA', () => {
     await expect(page).toHaveURL(/\/patients\?action=add$/);
     await expect(page.getByRole('heading', { name: 'Add New Patient' })).toBeVisible();
     await expect(page.locator('#firstName')).toBeVisible();
+
+    await page.locator('#firstName').fill('Focus');
+    await page.locator('#lastName').focus();
+    await page.waitForTimeout(100);
+    await expect(page.locator('#lastName')).toBeFocused();
+    await expectNoRelevantConsoleErrors(page);
+  });
+
+  test('dark-mode disabled Send Intake action retains WCAG AA contrast', async ({ page }) => {
+    await authenticateIfNeeded(page);
+    await page.goto('/patients');
+    await page.waitForLoadState('domcontentloaded');
+    await setTheme(page, 'dark');
+
+    await page.getByRole('button', { name: 'Send Intake', exact: true }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'Send Intake Form' });
+    await expect(dialog).toBeVisible();
+    const disabledSend = dialog.getByRole('button', { name: 'Send Invite', exact: true });
+    await expect(disabledSend).toBeDisabled();
+
+    const contrast = await disabledSend.evaluate(element => {
+      const style = window.getComputedStyle(element);
+      const luminance = (cssColor: string) => {
+        const channels = cssColor.match(/[\d.]+/g)?.slice(0, 3).map(Number) ?? [];
+        const linear = channels.map(channel => {
+          const normalized = channel / 255;
+          return normalized <= 0.04045
+            ? normalized / 12.92
+            : Math.pow((normalized + 0.055) / 1.055, 2.4);
+        });
+        return (0.2126 * linear[0]) + (0.7152 * linear[1]) + (0.0722 * linear[2]);
+      };
+      const ratio = (first: string, second: string) => {
+        const firstLuminance = luminance(first);
+        const secondLuminance = luminance(second);
+        return (Math.max(firstLuminance, secondLuminance) + 0.05)
+          / (Math.min(firstLuminance, secondLuminance) + 0.05);
+      };
+
+      return {
+        text: ratio(style.color, style.backgroundColor),
+        boundary: ratio(style.borderTopColor, style.backgroundColor),
+      };
+    });
+
+    expect(contrast.text).toBeGreaterThanOrEqual(4.5);
+    expect(contrast.boundary).toBeGreaterThanOrEqual(3);
     await expectNoRelevantConsoleErrors(page);
   });
 
@@ -160,6 +207,12 @@ test.describe('PTDoc audit remediation QA', () => {
     await loginThroughForm(page, ptUsername, ptPin!);
     await page.goto(patientChartPath);
     await page.waitForLoadState('domcontentloaded');
+
+    const patientContext = page.getByTestId('patient-context-header');
+    await expect(patientContext).toBeVisible();
+    await expect(patientContext).toHaveCSS('position', 'sticky');
+    await expect(patientContext).toContainText(/DOB:/);
+    await expect(patientContext).not.toContainText(/MRN|Email|Phone/i);
 
     const startNewNote = page.getByRole('link', { name: 'Start New Note', exact: true });
     await expect(startNewNote).toHaveAttribute('href', /\/patient\/[^?]+\?action=new-note$/);
@@ -428,4 +481,24 @@ async function loginThroughForm(page: Page, username: string, pin: string) {
   await page.locator('form[data-testid="login-form"] button[type="submit"]').click();
   await page.waitForLoadState('domcontentloaded');
   await expect(page.locator('#username')).toHaveCount(0);
+}
+
+async function setTheme(page: Page, theme: 'light' | 'dark') {
+  await page.evaluate(value => {
+    localStorage.setItem('ptdoc-theme', value);
+    if (window.ptdocTheme?.setTheme) {
+      window.ptdocTheme.setTheme(value);
+      return;
+    }
+
+    document.documentElement.classList.toggle('dark', value === 'dark');
+  }, theme);
+}
+
+declare global {
+  interface Window {
+    ptdocTheme?: {
+      setTheme: (theme: 'light' | 'dark') => void;
+    };
+  }
 }

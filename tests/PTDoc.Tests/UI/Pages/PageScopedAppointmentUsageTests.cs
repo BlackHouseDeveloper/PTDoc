@@ -1,3 +1,4 @@
+using System.Globalization;
 using Bunit;
 using Bunit.TestDoubles;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,6 +20,7 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
     {
         var today = DateTime.UtcNow.Date;
         var patientId = Guid.NewGuid();
+        var patientDateOfBirth = new DateTime(1980, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
         var noteService = new Mock<INoteService>(MockBehavior.Strict);
         var appointmentService = new Mock<IAppointmentService>(MockBehavior.Strict);
@@ -32,7 +34,7 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
                 Id = patientId,
                 FirstName = "Alex",
                 LastName = "Patient",
-                DateOfBirth = new DateTime(1980, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                DateOfBirth = patientDateOfBirth,
                 Email = "alex@example.com"
             });
 
@@ -69,6 +71,14 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
                 It.IsAny<DateTime>(),
                 It.IsAny<CancellationToken>()),
                 Times.Once);
+
+            var patientContext = cut.Find("[data-testid='patient-context-header']");
+            Assert.Contains("Alex Patient", patientContext.TextContent, StringComparison.Ordinal);
+            Assert.Contains(
+                $"DOB: {patientDateOfBirth.ToString("M/d/yyyy", CultureInfo.CurrentCulture)}",
+                patientContext.TextContent,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("alex@example.com", patientContext.TextContent, StringComparison.Ordinal);
         });
 
         appointmentService.Verify(service => service.GetOverviewAsync(It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);

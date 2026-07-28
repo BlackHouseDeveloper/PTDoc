@@ -40,6 +40,32 @@ public sealed class EvaluationInterventionsSectionTests : TestContext
     }
 
     [Fact]
+    public void EvaluationCptOptions_Exclude97140OnlyFromQuickPicks()
+    {
+        var cut = RenderComponent<EvaluationInterventionsSection>(parameters => parameters
+            .Add(component => component.Objective, new ObjectiveVm
+            {
+                ExerciseRows = [new ExerciseRowEntry()]
+            })
+            .Add(component => component.Plan, new PlanVm
+            {
+                GeneralInterventions = [new GeneralInterventionEntry()]
+            })
+            .Add(component => component.IsReadOnly, false));
+
+        var quickPickText = string.Join(
+            " ",
+            cut.FindAll("[data-testid='evaluation-cpt-quick-pick']")
+                .Select(tile => tile.TextContent));
+        var exerciseOptions = cut.Find("[data-testid='evaluation-exercise-cpt']").TextContent;
+        var interventionOptions = cut.Find("[data-testid='evaluation-intervention-cpt']").TextContent;
+
+        Assert.DoesNotContain("97140", quickPickText, StringComparison.Ordinal);
+        Assert.Contains("97140", exerciseOptions, StringComparison.Ordinal);
+        Assert.Contains("97140", interventionOptions, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EditableIconButtons_ExposeDescriptiveAccessibleLabels()
     {
         var objective = new ObjectiveVm
