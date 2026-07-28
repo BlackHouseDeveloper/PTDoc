@@ -108,6 +108,9 @@ public static class DiagnosticsEndpoints
             var missingAzureSettings = AzureRuntimeConfigurationValidator
                 .GetMissingAzureOpenAiConfigurationKeys(configuration)
                 .ToArray();
+            var invalidAzureSettings = AzureRuntimeConfigurationValidator
+                .GetInvalidAzureOpenAiConfigurationErrors(configuration)
+                .ToArray();
             var azureConfigurationComplete = AzureRuntimeConfigurationValidator
                 .HasCompleteAzureOpenAiConfiguration(configuration);
             var requiresAuthenticatedProbe = aiFeatureEnabled && azureConfigurationComplete;
@@ -143,6 +146,7 @@ public static class DiagnosticsEndpoints
                             : "Incomplete",
                     azureOpenAiConfigurationComplete = azureConfigurationComplete,
                     missingAzureOpenAiSettings = missingAzureSettings,
+                    invalidAzureOpenAiConfigurationErrors = invalidAzureSettings,
                     requiresAuthenticatedSavedNoteAiProbe = requiresAuthenticatedProbe,
                     runtimeHealthGate = requiresAuthenticatedProbe
                         ? "AuthenticatedSavedNoteAiRequestRequired"

@@ -60,6 +60,7 @@ public sealed class RuntimeDiagnosticsIntegrationTests
             Assert.Equal("Complete", aiRuntime.GetProperty("configurationState").GetString());
             Assert.True(aiRuntime.GetProperty("azureOpenAiConfigurationComplete").GetBoolean());
             Assert.Equal(0, aiRuntime.GetProperty("missingAzureOpenAiSettings").GetArrayLength());
+            Assert.Equal(0, aiRuntime.GetProperty("invalidAzureOpenAiConfigurationErrors").GetArrayLength());
             Assert.True(aiRuntime.GetProperty("requiresAuthenticatedSavedNoteAiProbe").GetBoolean());
             Assert.Equal("AuthenticatedSavedNoteAiRequestRequired", aiRuntime.GetProperty("runtimeHealthGate").GetString());
             Assert.DoesNotContain("integration-test-azure-key", rawPayload, StringComparison.Ordinal);
@@ -102,6 +103,42 @@ public sealed class RuntimeDiagnosticsIntegrationTests
             Assert.Equal("NotRequired", aiRuntime.GetProperty("configurationState").GetString());
             Assert.False(aiRuntime.GetProperty("requiresAuthenticatedSavedNoteAiProbe").GetBoolean());
             Assert.Equal("DisabledByFeatureFlag", aiRuntime.GetProperty("runtimeHealthGate").GetString());
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task RuntimeDiagnostics_ReportsInvalidAzureEndpointErrors_WhenConfigurationIsNotRequired()
+    {
+        using var env = new EnvironmentVariableScope(new Dictionary<string, string?>
+        {
+            ["PTDOC_DEVELOPER_MODE"] = "false",
+            ["FeatureFlags__EnableAiGeneration"] = "false",
+            ["AzureOpenAIEndpoint"] = "https://test.openai.azure.com/openai/deployments/ptdoc"
+        });
+
+        var factory = new PtDocApiFactory();
+        try
+        {
+            await factory.InitializeAsync();
+            using var client = factory.CreateClientWithRole(Roles.Admin);
+
+            using var response = await client.GetAsync("/diagnostics/runtime");
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var aiRuntime = payload.RootElement.GetProperty("aiRuntime");
+
+            Assert.False(aiRuntime.GetProperty("featureEnabled").GetBoolean());
+            Assert.False(aiRuntime.GetProperty("azureOpenAiConfigurationComplete").GetBoolean());
+            Assert.Equal(0, aiRuntime.GetProperty("missingAzureOpenAiSettings").GetArrayLength());
+            var invalidErrors = aiRuntime.GetProperty("invalidAzureOpenAiConfigurationErrors");
+            Assert.Equal(1, invalidErrors.GetArrayLength());
+            Assert.Contains("base resource URL", invalidErrors[0].GetString() ?? string.Empty, StringComparison.Ordinal);
         }
         finally
         {
