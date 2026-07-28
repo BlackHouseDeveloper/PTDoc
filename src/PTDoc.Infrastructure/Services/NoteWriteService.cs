@@ -326,7 +326,6 @@ public sealed class NoteWriteService(
 
         if (TryDeserializeWorkspacePayload(contentJson, noteType, dateOfService, out var workspacePayload))
         {
-            DryNeedlingBillingPolicy.Enforce(workspacePayload);
             return SerializeWorkspacePayload(workspacePayload);
         }
 
