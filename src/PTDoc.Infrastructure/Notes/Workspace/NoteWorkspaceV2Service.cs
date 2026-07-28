@@ -200,6 +200,7 @@ public sealed class NoteWorkspaceV2Service(
         payload.NoteType = request.NoteType;
         payload.Plan ??= new WorkspacePlanV2();
         payload.DailyTreatment ??= new WorkspaceDailyTreatmentV2();
+        DryNeedlingBillingPolicy.Enforce(payload);
         NormalizeCptModifierSources(payload.Plan.SelectedCptCodes);
 
         var scheduledVisits = await db.Appointments
@@ -365,7 +366,9 @@ public sealed class NoteWorkspaceV2Service(
         note.DateOfService = request.DateOfService.Date;
         note.ContentJson = JsonSerializer.Serialize(payload, SerializerOptions);
         note.CptCodesJson = JsonSerializer.Serialize(cptEntries, SerializerOptions);
-        note.TotalTreatmentMinutes = ResolveTotalTreatmentMinutes(cptEntries);
+        note.TotalTreatmentMinutes = payload.DryNeedling is not null
+            ? 0
+            : ResolveTotalTreatmentMinutes(cptEntries);
         note.LastModifiedUtc = now;
         note.ModifiedByUserId = currentUserId;
         note.SyncState = SyncState.Pending;
@@ -981,6 +984,10 @@ public sealed class NoteWorkspaceV2Service(
     {
         var deserialization = await DeserializePayloadAsync(note, cancellationToken);
         var payload = deserialization.Payload;
+        var dryNeedlingNormalized = DryNeedlingBillingPolicy.Enforce(payload);
+        var hasPersistedDryNeedlingBilling = payload.DryNeedling is not null
+            && (note.TotalTreatmentMinutes.GetValueOrDefault() != 0
+                || !string.Equals(note.CptCodesJson?.Trim(), "[]", StringComparison.Ordinal));
         payload.DailyTreatment ??= new WorkspaceDailyTreatmentV2();
         var previousMetrics = await GetPreviousMetricMapAsync(note, cancellationToken);
 
@@ -1088,9 +1095,15 @@ public sealed class NoteWorkspaceV2Service(
             payload.Plan.PlanOfCareNarrative = BuildPlanOfCareNarrative(payload.Plan);
         }
 
-        if (deserialization.CanBackfill && ShouldBackfillCanonicalWorkspacePayload(note))
+        if ((deserialization.CanBackfill || dryNeedlingNormalized || hasPersistedDryNeedlingBilling)
+            && ShouldBackfillCanonicalWorkspacePayload(note))
         {
             note.ContentJson = JsonSerializer.Serialize(payload, SerializerOptions);
+            if (dryNeedlingNormalized || hasPersistedDryNeedlingBilling)
+            {
+                note.CptCodesJson = "[]";
+                note.TotalTreatmentMinutes = 0;
+            }
             await db.SaveChangesAsync(cancellationToken);
         }
 

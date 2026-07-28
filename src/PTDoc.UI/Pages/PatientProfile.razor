@@ -6,6 +6,7 @@
 @using Microsoft.AspNetCore.Components.Routing
 @using PTDoc.Application.Services
 @using PTDoc.Application.DTOs
+@using PTDoc.UI.Components.Notes
 @using PTDoc.UI.Components.Patients.Profile.Models
 @inject IPatientService PatientService
 @inject INoteService NoteService
@@ -41,6 +42,8 @@
             }
             else
             {
+                <PatientContextHeader PatientName="@patient.DisplayName" PatientDob="@patient.DateOfBirth" />
+
                 <PatientDemographicsCardEditable Patient="@patient" OnPatientUpdated="ReloadProfileAsync" />
 
                 <PatientPrimaryActionButton

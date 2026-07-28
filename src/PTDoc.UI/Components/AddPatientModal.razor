@@ -349,7 +349,9 @@
                 shouldCleanupPartialActivation = true;
                 
                 // Register ESC key handler
-                await modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, dotNetRef);
+                // Add Patient owns initial focus so delayed JS autofocus cannot steal
+                // focus after the user advances to another field.
+                await modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, dotNetRef, false);
                 
                 // Focus first input
                 await firstInputRef.FocusAsync();

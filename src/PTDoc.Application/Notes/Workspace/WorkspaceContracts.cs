@@ -101,13 +101,68 @@ public sealed class WorkspaceDischargeV2
 public sealed class WorkspaceDryNeedlingV2
 {
     public DateTime? DateOfTreatment { get; set; }
-    public string BillingDesignation { get; set; } = "Billable";
+    public string BillingDesignation { get; set; } = DryNeedlingBillingPolicy.NonBillableDesignation;
     public string Location { get; set; } = string.Empty;
     public string NeedlingType { get; set; } = string.Empty;
     public int? PainBefore { get; set; }
     public int? PainAfter { get; set; }
     public string ResponseDescription { get; set; } = string.Empty;
     public string AdditionalNotes { get; set; } = string.Empty;
+}
+
+public static class DryNeedlingBillingPolicy
+{
+    public const string NonBillableDesignation = "Non-billable";
+
+    public static bool Enforce(NoteWorkspaceV2Payload payload)
+    {
+        if (payload.DryNeedling is null)
+        {
+            return false;
+        }
+
+        var changed = !string.Equals(
+            payload.DryNeedling.BillingDesignation,
+            NonBillableDesignation,
+            StringComparison.Ordinal);
+
+        payload.DryNeedling.BillingDesignation = NonBillableDesignation;
+        payload.Plan ??= new WorkspacePlanV2();
+        payload.Objective ??= new WorkspaceObjectiveV2();
+        payload.Plan.SelectedCptCodes ??= [];
+        payload.Plan.GeneralInterventions ??= [];
+        payload.Objective.ExerciseRows ??= [];
+
+        if (payload.Plan.SelectedCptCodes.Count > 0)
+        {
+            payload.Plan.SelectedCptCodes.Clear();
+            changed = true;
+        }
+
+        foreach (var intervention in payload.Plan.GeneralInterventions)
+        {
+            if (!string.IsNullOrWhiteSpace(intervention.CptCode)
+                || !string.IsNullOrWhiteSpace(intervention.CptDescription))
+            {
+                intervention.CptCode = null;
+                intervention.CptDescription = null;
+                changed = true;
+            }
+        }
+
+        foreach (var row in payload.Objective.ExerciseRows)
+        {
+            if (!string.IsNullOrWhiteSpace(row.CptCode)
+                || !string.IsNullOrWhiteSpace(row.CptDescription))
+            {
+                row.CptCode = null;
+                row.CptDescription = null;
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
 }
 
 public enum WorkspaceSeedKind

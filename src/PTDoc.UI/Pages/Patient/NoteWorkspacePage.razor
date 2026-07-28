@@ -302,10 +302,10 @@ else
             </Authorized>
         </AuthorizeView>
 
+        <PatientContextHeader PatientName="@DisplayPatientName" PatientDob="@_note.PatientDob" />
+
         @if (IsDryNeedlingNote)
         {
-            <PatientContextHeader PatientName="@DisplayPatientName" PatientDob="@_note.PatientDob" />
-
             <DryNeedlingNoteView IsReadOnly="@IsWorkspaceReadOnly"
                                  DisableSave="@DisableSaveAction"
                                  DisableSubmit="@DisableSubmitAction"
@@ -322,8 +322,6 @@ else
         {
             @if (!IsReviewSection)
             {
-                <PatientContextHeader PatientName="@DisplayPatientName" PatientDob="@_note.PatientDob" />
-
                 <NoteTypeContainer NoteType="@_note.NoteType"
                                    NoteTypeChanged="HandleNoteTypeChanged"
                                    NoteTypes="@AvailableNoteTypes"

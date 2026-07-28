@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - agent guidance captures beta parity and runtime checks
+
+- **`AGENTS.md`** — Added the simple local API `curl /health` smoke command, documented that `Deploy Beta` stamps and verifies `PTDOC_SOURCE_SHA` and `PTDOC_RELEASE_ID` through authenticated runtime diagnostics before Web deployment, and tightened the Azure OpenAI endpoint rule to require a base HTTPS resource URL with no path/query/fragment or embedded credentials. Reason: keep agent instructions aligned with the current operational diagnostics and beta deployment workflow.
+
+### Fixed - verified beta defect remediation
+
+- **Clinical workflow corrections** — Made Dry Needling non-billable across the shared workspace contract, fixed UI, mapper, persistence validation, offline synchronization, note summaries, legacy billing fields, and PDF/export derivation; malicious CPT selections and linked intervention codes are now removed before draft persistence, while signed clinical artifacts remain unchanged. Removed CPT 97140 from Evaluation quick-pick tiles only while retaining it in authoritative search and intervention selectors. Reason: verified beta testing found an incorrect billable Dry Needling path and an Evaluation shortcut that promoted 97140 outside the approved workflow.
+- **Accessibility and patient context** — Replaced opacity-only disabled action states with contrast-safe light/dark tokens, strengthened semantic badge contrast, kept the Add Patient focus trap from stealing focus after field navigation, and made the existing name-and-DOB patient context sticky across patient profiles and every note section including Review. Added component and Chromium regression coverage for the approved WCAG thresholds, delayed focus window, sticky semantics, and limited patient identity content. Reason: verified testing found unreadable dark-mode controls, interrupted patient entry, and lost patient identity during long clinical workflows.
+- **Beta source/runtime parity** — Stamped both Beta App Services with the dispatched source SHA and release ID, required authenticated API runtime diagnostics to match before Web deployment, documented the WebSocket interaction gate, and retained the existing API-first deployment order. Reason: six verified hosted-beta no-op reports conflict with handlers already present in current source and require exact artifact/circuit parity before speculative component changes.
+- **RBAC traceability** — Added explicit regression coverage that PT, PTA, and Admin satisfy `PatientWrite` while existing denial coverage remains in place for non-writer roles. Reason: DEV-003 is policy-conformant behavior under the authoritative role matrix and must not be “fixed” by removing PTA access.
+
 ### Fixed - self-service registration reliability and accessibility
 
 - **Registration form binding and recovery** — Changed Sign Up text and PIN inputs to synchronize on every input event, centralized PIN/role/license validation in the form model, retained fields after failed submissions, returned API field-level validation errors to the matching controls, and added an accessible validation summary plus first-invalid-field focus/scroll recovery. Added UI, API-client, API integration, signup-load console-capture, and storage-state-independent regression coverage. Reason: hosted beta visually displayed completed registration fields while Blazor validated them as empty, preventing approved synthetic-account onboarding.

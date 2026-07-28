@@ -197,27 +197,48 @@ public static class NoteEndpoints
                     (string.IsNullOrWhiteSpace(itemId) || s.ItemId == itemId)));
         }
 
-        var notes = await query
+        var noteRows = await query
             .OrderByDescending(n => n.DateOfService)
             .ThenByDescending(n => n.LastModifiedUtc)
             .ThenBy(n => n.Id)
             .Skip(normalizedSkip)
             .Take(normalizedTake)
-            .Select(n => new NoteListItemApiResponse
+            .Select(n => new
             {
-                Id = n.Id,
-                PatientId = n.PatientId,
-                PatientName = n.Patient != null
-                    ? n.Patient.FirstName + " " + n.Patient.LastName
-                    : string.Empty,
-                NoteType = n.NoteType.ToString(),
-                IsSigned = n.NoteStatus == NoteStatus.Signed,
-                NoteStatus = n.NoteStatus,
-                DateOfService = n.DateOfService,
-                LastModifiedUtc = n.LastModifiedUtc,
-                CptCodesJson = n.CptCodesJson
+                n.ContentJson,
+                n.IsReEvaluation,
+                WorkspaceNoteType = n.NoteType,
+                Note = new NoteListItemApiResponse
+                {
+                    Id = n.Id,
+                    PatientId = n.PatientId,
+                    PatientName = n.Patient != null
+                        ? n.Patient.FirstName + " " + n.Patient.LastName
+                        : string.Empty,
+                    NoteType = n.NoteType.ToString(),
+                    IsSigned = n.NoteStatus == NoteStatus.Signed,
+                    NoteStatus = n.NoteStatus,
+                    DateOfService = n.DateOfService,
+                    LastModifiedUtc = n.LastModifiedUtc,
+                    CptCodesJson = n.CptCodesJson
+                }
             })
             .ToListAsync(cancellationToken);
+        var notes = noteRows
+            .Select(row =>
+            {
+                if (NoteWriteService.IsDryNeedlingContent(
+                        row.WorkspaceNoteType,
+                        row.IsReEvaluation,
+                        row.Note.DateOfService,
+                        row.ContentJson))
+                {
+                    row.Note.CptCodesJson = "[]";
+                }
+
+                return row.Note;
+            })
+            .ToList();
 
         return Results.Ok(notes);
     }
@@ -1367,44 +1388,54 @@ public static class NoteEndpoints
 
     // ─── Mapping helpers ──────────────────────────────────────────────────────
 
-    private static NoteResponse ToResponse(ClinicalNote n) => new()
+    private static NoteResponse ToResponse(ClinicalNote n)
     {
-        Id = n.Id,
-        PatientId = n.PatientId,
-        AppointmentId = n.AppointmentId,
-        ParentNoteId = n.ParentNoteId,
-        IsAddendum = n.IsAddendum,
-        NoteType = n.NoteType,
-        IsReEvaluation = n.IsReEvaluation,
-        NoteStatus = n.NoteStatus,
-        ContentJson = NoteWriteService.NormalizeContentJson(
+        var normalizedContentJson = NoteWriteService.NormalizeContentJson(
             n.NoteType,
             n.IsReEvaluation,
             n.DateOfService,
-            n.ContentJson),
-        DateOfService = n.DateOfService,
-        CreatedUtc = n.CreatedUtc,
-        SignatureHash = n.SignatureHash,
-        SignedUtc = n.SignedUtc,
-        SignedByUserId = n.SignedByUserId,
-        CptCodesJson = n.CptCodesJson,
-        TherapistNpi = n.TherapistNpi,
-        TotalTreatmentMinutes = n.TotalTreatmentMinutes,
-        ClinicId = n.ClinicId,
-        LastModifiedUtc = n.LastModifiedUtc,
-        ObjectiveMetrics = n.ObjectiveMetrics.Select(m => new ObjectiveMetricResponse
+            n.ContentJson);
+        var isDryNeedling = NoteWriteService.IsDryNeedlingContent(
+            n.NoteType,
+            n.IsReEvaluation,
+            n.DateOfService,
+            normalizedContentJson);
+
+        return new NoteResponse
         {
-            Id = m.Id,
-            NoteId = m.NoteId,
-            BodyPart = m.BodyPart,
-            MetricType = m.MetricType,
-            Value = m.Value,
-            Side = m.Side,
-            Unit = m.Unit,
-            IsWNL = m.IsWNL,
-            LastModifiedUtc = m.LastModifiedUtc
-        }).ToList()
-    };
+            Id = n.Id,
+            PatientId = n.PatientId,
+            AppointmentId = n.AppointmentId,
+            ParentNoteId = n.ParentNoteId,
+            IsAddendum = n.IsAddendum,
+            NoteType = n.NoteType,
+            IsReEvaluation = n.IsReEvaluation,
+            NoteStatus = n.NoteStatus,
+            ContentJson = normalizedContentJson,
+            DateOfService = n.DateOfService,
+            CreatedUtc = n.CreatedUtc,
+            SignatureHash = n.SignatureHash,
+            SignedUtc = n.SignedUtc,
+            SignedByUserId = n.SignedByUserId,
+            CptCodesJson = isDryNeedling ? "[]" : n.CptCodesJson,
+            TherapistNpi = n.TherapistNpi,
+            TotalTreatmentMinutes = isDryNeedling ? 0 : n.TotalTreatmentMinutes,
+            ClinicId = n.ClinicId,
+            LastModifiedUtc = n.LastModifiedUtc,
+            ObjectiveMetrics = n.ObjectiveMetrics.Select(m => new ObjectiveMetricResponse
+            {
+                Id = m.Id,
+                NoteId = m.NoteId,
+                BodyPart = m.BodyPart,
+                MetricType = m.MetricType,
+                Value = m.Value,
+                Side = m.Side,
+                Unit = m.Unit,
+                IsWNL = m.IsWNL,
+                LastModifiedUtc = m.LastModifiedUtc
+            }).ToList()
+        };
+    }
 
     private static NoteAddendumResponse MapLinkedAddendum(ClinicalNote note)
     {

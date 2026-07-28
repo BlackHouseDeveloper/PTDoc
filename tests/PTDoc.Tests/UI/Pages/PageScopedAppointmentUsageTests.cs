@@ -69,6 +69,11 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
                 It.IsAny<DateTime>(),
                 It.IsAny<CancellationToken>()),
                 Times.Once);
+
+            var patientContext = cut.Find("[data-testid='patient-context-header']");
+            Assert.Contains("Alex Patient", patientContext.TextContent, StringComparison.Ordinal);
+            Assert.Contains("DOB: 1/1/1980", patientContext.TextContent, StringComparison.Ordinal);
+            Assert.DoesNotContain("alex@example.com", patientContext.TextContent, StringComparison.Ordinal);
         });
 
         appointmentService.Verify(service => service.GetOverviewAsync(It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);

@@ -78,7 +78,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
   - `AzureOpenAIDeployment=ptdoc-gpt-4o-mini`
   - `AzureOpenAIApiVersion=2025-01-01-preview`
   - `Ai__MaxOutputTokens=400`
-- Use the base Azure resource endpoint only; do not pass the full chat-completions URL.
+- Use the base HTTPS Azure resource endpoint only; do not pass the full chat-completions URL, embedded credentials, or an endpoint with any path, query string, or fragment.
 - After startup, verify AI config through authenticated `GET /diagnostics/runtime`, then run one authenticated saved-note AI action. Health endpoints alone do not confirm Azure generation works end to end.
 
 ## Browser QA Commands
@@ -112,6 +112,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - The shared beta PIN is managed outside the repo as `BetaAccess__SeedPin`; get it from the beta environment owner and never commit or paste it into issue text, screenshots, or chat logs.
 - `BetaAccess__AllowStartupSeed=true` is Beta-only and assumes the API App Service remains a controlled single-instance deployment; if scale-out is enabled, disable startup seeding first or verify the SQL lock-protected seed path after deployment.
 - `BetaAccess__SeedLockTimeoutSeconds=15` bounds how long Beta startup seeding waits for the SQL Server application lock before reporting `SkippedLockContention`.
+- `Deploy Beta` stamps `PTDOC_SOURCE_SHA` and `PTDOC_RELEASE_ID` onto both App Services and blocks Web deployment until authenticated API `GET /diagnostics/runtime` matches the dispatched source/release values.
 - Use the manual GitHub Actions workflows `Deploy Beta` for Azure beta deploys and `UI Responsive QA` for browser evidence outside the normal PR gate.
 - Beta restart order: apply EF Core migrations out-of-band, confirm `/health/ready`, restart the API with `ASPNETCORE_ENVIRONMENT=Beta`, then verify the logs show the seed completed or deliberately skipped.
 - Beta AI generation is disabled by default for cost control; if a beta pass deliberately enables it, use `Ai__RateLimits__PermitLimit` plus `Ai__RateLimits__WindowMinutes` for the committed rate-limit settings.
@@ -165,6 +166,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 
 ## Operational Diagnostics
 
+- Simple health check: `curl http://localhost:5170/health`
 - Liveness check: `curl http://localhost:5170/health/live`
 - Readiness check: `curl http://localhost:5170/health/ready`
 - Authenticated DB diagnostics: `curl -H "Authorization: Bearer <token>" http://localhost:5170/diagnostics/db`

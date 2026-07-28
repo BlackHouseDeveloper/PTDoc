@@ -1310,7 +1310,7 @@ public class SyncEngine : ISyncEngine
                         n.CreatedUtc,
                         n.ParentNoteId,
                         n.IsAddendum,
-                        n.CptCodesJson,
+                        CptCodesJson = CanonicalizeClinicalNoteCptCodesJson(n),
                         n.LastModifiedUtc
                     }, jsonOptions),
                     LastModifiedUtc = n.LastModifiedUtc
@@ -1532,7 +1532,7 @@ public class SyncEngine : ISyncEngine
                     note.NoteType,
                     note.NoteStatus,
                     ContentJson = CanonicalizeClinicalNoteContentJson(note),
-                    note.CptCodesJson,
+                    CptCodesJson = CanonicalizeClinicalNoteCptCodesJson(note),
                     note.DateOfService,
                     note.SignatureHash,
                     note.SignedUtc,
@@ -1577,6 +1577,15 @@ public class SyncEngine : ISyncEngine
             note.IsReEvaluation,
             note.DateOfService,
             note.ContentJson);
+
+    private static string CanonicalizeClinicalNoteCptCodesJson(ClinicalNote note)
+        => NoteWriteService.IsDryNeedlingContent(
+            note.NoteType,
+            note.IsReEvaluation,
+            note.DateOfService,
+            note.ContentJson)
+            ? "[]"
+            : note.CptCodesJson;
 
     private static ConflictType? DetectConflict(ClientSyncPushItem item, ServerSyncSnapshot snapshot)
     {
@@ -2148,6 +2157,16 @@ public class SyncEngine : ISyncEngine
                 var contentJson = TryGetString(root, "contentJson")
                     ?? TryGetString(root, "ContentJson")
                     ?? "{}";
+                var normalizedContentJson = NoteWriteService.NormalizeContentJson(
+                    noteType,
+                    isReEvaluation,
+                    dateOfService,
+                    contentJson);
+                var isDryNeedling = NoteWriteService.IsDryNeedlingContent(
+                    noteType,
+                    isReEvaluation,
+                    dateOfService,
+                    normalizedContentJson);
                 var note = new ClinicalNote
                 {
                     Id = serverId,
@@ -2158,12 +2177,11 @@ public class SyncEngine : ISyncEngine
                     CreatedUtc = createdUtc,
                     ParentNoteId = parentNoteId,
                     IsAddendum = isAddendum,
-                    ContentJson = NoteWriteService.NormalizeContentJson(
-                        noteType,
-                        isReEvaluation,
-                        dateOfService,
-                        contentJson),
-                    CptCodesJson = TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? "[]",
+                    ContentJson = normalizedContentJson,
+                    CptCodesJson = isDryNeedling
+                        ? "[]"
+                        : TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? "[]",
+                    TotalTreatmentMinutes = isDryNeedling ? 0 : null,
                     DateOfService = dateOfService,
                     // SignatureHash, SignedUtc, SignedByUserId intentionally NOT set from client push
                     LastModifiedUtc = item.LastModifiedUtc,
@@ -2186,17 +2204,29 @@ public class SyncEngine : ISyncEngine
                     var updatedContentJson = TryGetString(root, "contentJson")
                         ?? TryGetString(root, "ContentJson")
                         ?? existing.ContentJson;
+                    var normalizedContentJson = NoteWriteService.NormalizeContentJson(
+                        existing.NoteType,
+                        updatedIsReEvaluation,
+                        updatedDateOfService,
+                        updatedContentJson);
+                    var isDryNeedling = NoteWriteService.IsDryNeedlingContent(
+                        existing.NoteType,
+                        updatedIsReEvaluation,
+                        updatedDateOfService,
+                        normalizedContentJson);
 
                     existing.CreatedUtc = TryGetDateTime(root, "createdUtc") ?? TryGetDateTime(root, "CreatedUtc") ?? existing.CreatedUtc;
                     existing.ParentNoteId = TryGetGuid(root, "parentNoteId") ?? TryGetGuid(root, "ParentNoteId") ?? existing.ParentNoteId;
                     existing.IsAddendum = TryGetBool(root, "isAddendum") ?? TryGetBool(root, "IsAddendum") ?? existing.IsAddendum;
                     existing.IsReEvaluation = updatedIsReEvaluation;
-                    existing.ContentJson = NoteWriteService.NormalizeContentJson(
-                        existing.NoteType,
-                        updatedIsReEvaluation,
-                        updatedDateOfService,
-                        updatedContentJson);
-                    existing.CptCodesJson = TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? existing.CptCodesJson;
+                    existing.ContentJson = normalizedContentJson;
+                    existing.CptCodesJson = isDryNeedling
+                        ? "[]"
+                        : TryGetString(root, "cptCodesJson") ?? TryGetString(root, "CptCodesJson") ?? existing.CptCodesJson;
+                    if (isDryNeedling)
+                    {
+                        existing.TotalTreatmentMinutes = 0;
+                    }
                     existing.DateOfService = updatedDateOfService;
                     existing.LastModifiedUtc = item.LastModifiedUtc;
                     existing.ModifiedByUserId = actingUserId;

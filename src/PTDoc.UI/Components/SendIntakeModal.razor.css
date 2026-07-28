@@ -357,6 +357,19 @@
     outline-offset: 2px;
 }
 
+.btn-cancel:disabled,
+.btn-info:disabled,
+.modal-close:disabled {
+    color: var(--disabled-foreground);
+    background: var(--disabled-background);
+    border: 1px solid var(--disabled-border);
+    cursor: not-allowed;
+    filter: none;
+    opacity: 1;
+    transform: none;
+    box-shadow: none;
+}
+
 .btn-icon {
     flex-shrink: 0;
     width: 16px;

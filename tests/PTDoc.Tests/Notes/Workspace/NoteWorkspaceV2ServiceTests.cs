@@ -259,6 +259,90 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAsync_DryNeedlingPayload_CannotPersistBillableCptData()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Dry",
+            LastName = "Needling",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+
+        var saved = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            DateOfService = new DateTime(2026, 7, 27),
+            NoteType = NoteType.Daily,
+            Payload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Daily,
+                DryNeedling = new WorkspaceDryNeedlingV2
+                {
+                    BillingDesignation = "Billable",
+                    DateOfTreatment = new DateTime(2026, 7, 27),
+                    Location = "Hip",
+                    NeedlingType = "Deep dry needling"
+                },
+                Objective = new WorkspaceObjectiveV2
+                {
+                    ExerciseRows =
+                    [
+                        new ExerciseRowV2
+                        {
+                            SuggestedExercise = "Hip mobility",
+                            CptCode = "97110",
+                            CptDescription = "Therapeutic exercise",
+                            TimeMinutes = 15
+                        }
+                    ]
+                },
+                Plan = new WorkspacePlanV2
+                {
+                    SelectedCptCodes =
+                    [
+                        new PlannedCptCodeV2
+                        {
+                            Code = "97140",
+                            Description = "Manual therapy",
+                            Units = 1,
+                            Minutes = 15
+                        }
+                    ],
+                    GeneralInterventions =
+                    [
+                        new GeneralInterventionEntryV2
+                        {
+                            Name = "Manual therapy",
+                            CptCode = "97140",
+                            CptDescription = "Manual therapy",
+                            TimeMinutes = 15
+                        }
+                    ]
+                }
+            }
+        });
+
+        Assert.True(saved.IsValid);
+        Assert.NotNull(saved.Workspace);
+        Assert.Equal(DryNeedlingBillingPolicy.NonBillableDesignation, saved.Workspace!.Payload.DryNeedling!.BillingDesignation);
+        Assert.Empty(saved.Workspace.Payload.Plan.SelectedCptCodes);
+        Assert.Null(saved.Workspace.Payload.Objective.ExerciseRows.Single().CptCode);
+        Assert.Null(saved.Workspace.Payload.Plan.GeneralInterventions.Single().CptCode);
+
+        var stored = await _context.ClinicalNotes
+            .AsNoTracking()
+            .SingleAsync(note => note.Id == saved.Workspace.NoteId);
+        Assert.Equal("[]", stored.CptCodesJson);
+        Assert.Equal(0, stored.TotalTreatmentMinutes);
+        Assert.DoesNotContain("97140", stored.ContentJson, StringComparison.Ordinal);
+        Assert.Contains("\"billingDesignation\":\"Non-billable\"", stored.ContentJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AdditionalFunctionalLimitations_RoundTripsThroughUiMapperDatabaseAndReload()
     {
         var patient = new Patient
@@ -1536,6 +1620,74 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             .AsNoTracking()
             .FirstAsync(existing => existing.Id == note.Id);
         Assert.Equal(legacyContent, stored.ContentJson);
+    }
+
+    [Fact]
+    public async Task LoadAsync_SignedDryNeedlingNote_NormalizesDerivedViewWithoutRewritingArtifact()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Signed",
+            LastName = "DryNeedling",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+        var signedPayload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            DryNeedling = new WorkspaceDryNeedlingV2
+            {
+                BillingDesignation = "Billable",
+                Location = "Hip",
+                NeedlingType = "Deep dry needling"
+            },
+            Plan = new WorkspacePlanV2
+            {
+                SelectedCptCodes =
+                [
+                    new PlannedCptCodeV2
+                    {
+                        Code = "97140",
+                        Description = "Manual therapy",
+                        Units = 1
+                    }
+                ]
+            }
+        };
+        var signedContent = JsonSerializer.Serialize(signedPayload);
+        const string signedCptCodes = """[{"code":"97140","units":1}]""";
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            NoteStatus = NoteStatus.Signed,
+            SignatureHash = "signed-dry-needling-hash",
+            SignedUtc = new DateTime(2026, 7, 27, 12, 0, 0, DateTimeKind.Utc),
+            DateOfService = new DateTime(2026, 7, 27),
+            ContentJson = signedContent,
+            CptCodesJson = signedCptCodes,
+            TotalTreatmentMinutes = 15,
+            CreatedUtc = DateTime.UtcNow,
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        _context.Patients.Add(patient);
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        var loaded = await _service.LoadAsync(patient.Id, note.Id);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(DryNeedlingBillingPolicy.NonBillableDesignation, loaded!.Payload.DryNeedling!.BillingDesignation);
+        Assert.Empty(loaded.Payload.Plan.SelectedCptCodes);
+
+        var stored = await _context.ClinicalNotes
+            .AsNoTracking()
+            .SingleAsync(existing => existing.Id == note.Id);
+        Assert.Equal(signedContent, stored.ContentJson);
+        Assert.Equal(signedCptCodes, stored.CptCodesJson);
+        Assert.Equal(15, stored.TotalTreatmentMinutes);
     }
 
     [Fact]

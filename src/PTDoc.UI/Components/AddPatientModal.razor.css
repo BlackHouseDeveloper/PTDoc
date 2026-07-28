@@ -306,8 +306,11 @@
 .btn-secondary:disabled,
 .btn-primary:disabled,
 .modal-close:disabled {
+    color: var(--disabled-foreground);
+    background: var(--disabled-background);
+    border-color: var(--disabled-border);
     cursor: not-allowed;
-    opacity: 0.6;
+    opacity: 1;
     transform: none;
     box-shadow: none;
 }

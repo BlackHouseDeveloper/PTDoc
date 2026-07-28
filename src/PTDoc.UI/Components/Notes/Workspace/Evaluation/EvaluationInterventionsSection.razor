@@ -67,7 +67,7 @@
 
         <p class="pt-card__field-label">Quick-pick CPT shortcuts</p>
         <div class="pt-card__cpt-grid">
-            @foreach (var quickPick in QuickPickCptCodes)
+            @foreach (var quickPick in EvaluationQuickPickCptCodes)
             {
                 var alreadySelected = Plan.SelectedCptCodes.Any(c => CodesMatch(c.Code, quickPick.Code));
                 <button type="button"
@@ -261,7 +261,7 @@
                                 <span class="pt-card__field-label">CPT for this intervention</span>
                                 <select class="pt-card__select" value="@NormalizeCode(row.CptCode)" disabled="@IsReadOnly" @onchange="e => UpdateExerciseCptAsync(row, e.Value?.ToString())" data-testid="evaluation-exercise-cpt">
                                     <option value="">Select CPT</option>
-                                    @foreach (var option in QuickPickCptCodes)
+                                    @foreach (var option in EvaluationCptOptions)
                                     {
                                         <option value="@option.Code" selected="@CodesMatch(row.CptCode, option.Code)">@option.Code - @option.ShortName</option>
                                     }
@@ -357,7 +357,7 @@
                                 <span class="pt-card__field-label">CPT for this intervention</span>
                                 <select class="pt-card__select" value="@NormalizeCode(intervention.CptCode)" disabled="@IsReadOnly" @onchange="e => UpdateInterventionCptAsync(intervention, e.Value?.ToString())" data-testid="evaluation-intervention-cpt">
                                     <option value="">Select CPT</option>
-                                    @foreach (var option in QuickPickCptCodes)
+                                    @foreach (var option in EvaluationCptOptions)
                                     {
                                         <option value="@option.Code" selected="@CodesMatch(intervention.CptCode, option.Code)">@option.Code - @option.ShortName</option>
                                     }
@@ -444,7 +444,7 @@
 
     private record QuickPickCptCode(string Code, string ShortName, int DefaultUnits);
 
-    private static readonly QuickPickCptCode[] QuickPickCptCodes =
+    private static readonly QuickPickCptCode[] EvaluationCptOptions =
     [
         new("97140", "Manual Therapy", 2),
         new("97110", "Exercise", 2),
@@ -453,6 +453,11 @@
         new("97116", "Gait Training", 2),
         new("97535", "Self-care/ADL Training", 2),
     ];
+
+    private static readonly QuickPickCptCode[] EvaluationQuickPickCptCodes =
+        EvaluationCptOptions
+            .Where(option => !string.Equals(option.Code, "97140", StringComparison.Ordinal))
+            .ToArray();
 
     private static readonly string[] AssistanceLevelOptions =
     [
@@ -705,7 +710,7 @@
 
     private async Task UpdateExerciseCptAsync(ExerciseRowEntry row, string? code)
     {
-        var option = QuickPickCptCodes.FirstOrDefault(item => CodesMatch(item.Code, code));
+        var option = EvaluationCptOptions.FirstOrDefault(item => CodesMatch(item.Code, code));
         row.CptCode = option?.Code;
         row.CptDescription = option?.ShortName;
         if (option is not null && !Plan.SelectedCptCodes.Any(entry => CodesMatch(entry.Code, option.Code)))
@@ -719,7 +724,7 @@
 
     private async Task UpdateInterventionCptAsync(GeneralInterventionEntry intervention, string? code)
     {
-        var option = QuickPickCptCodes.FirstOrDefault(item => CodesMatch(item.Code, code));
+        var option = EvaluationCptOptions.FirstOrDefault(item => CodesMatch(item.Code, code));
         intervention.CptCode = option?.Code;
         intervention.CptDescription = option?.ShortName;
         if (option is not null && !Plan.SelectedCptCodes.Any(entry => CodesMatch(entry.Code, option.Code)))

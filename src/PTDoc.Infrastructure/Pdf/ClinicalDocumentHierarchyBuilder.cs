@@ -231,7 +231,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             BuildHeaderSection(noteData, "Physical Therapy Dry Needling Note"),
             Section("Dry Needling Treatment", ClinicalDocumentSourceKind.Note,
                 Field("Date Of Treatment", FormatDate(FirstNonNull(dryNeedling?.DateOfTreatment, noteData.DateOfService))),
-                Field("Billing Designation", NormalizeBillingDesignation(dryNeedling?.BillingDesignation)),
+                Field("Billing Designation", DryNeedlingBillingPolicy.NonBillableDesignation),
                 Field("Location", dryNeedling?.Location),
                 Field("Needling Type", dryNeedling?.NeedlingType),
                 Field("Pain Before", FormatPainScore(dryNeedling?.PainBefore)),
@@ -1510,8 +1510,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             return false;
         }
 
-        if (context.WorkspacePayload?.DryNeedling is { } dryNeedling
-            && string.Equals(NormalizeBillingDesignation(dryNeedling.BillingDesignation), "Non-billable", StringComparison.OrdinalIgnoreCase))
+        if (context.WorkspacePayload?.DryNeedling is not null)
         {
             return false;
         }
@@ -1556,11 +1555,6 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         plan is not null
         && (plan.IsNonBillableDischarge
             || !string.Equals(GetDischargeDocumentationMode(plan), "Standard billable discharge", StringComparison.OrdinalIgnoreCase));
-
-    private static string NormalizeBillingDesignation(string? value) =>
-        string.Equals(value?.Trim(), "Non-billable", StringComparison.OrdinalIgnoreCase)
-            ? "Non-billable"
-            : "Billable";
 
     private static string FormatPainScore(int? value)
         => value.HasValue ? $"{value.Value}/10" : string.Empty;
@@ -1731,7 +1725,9 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                     && workspacePayload is null
                     ? TryDeserialize<DischargeContent>(noteData.ContentJson)
                     : null,
-                CptCodes = ParseCptCodes(noteData.CptCodesJson),
+                CptCodes = workspacePayload?.DryNeedling is null
+                    ? ParseCptCodes(noteData.CptCodesJson)
+                    : [],
                 PatientDiagnoses = ParseDiagnoses(noteData.PatientDiagnosisCodesJson)
             };
         }

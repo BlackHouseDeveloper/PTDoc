@@ -249,6 +249,15 @@ public class RbacRoleMatrixTests : IAsyncDisposable
 
     // ─── PatientWrite policy role matrix ─────────────────────────────────────
 
+    [Theory]
+    [InlineData(Roles.PT)]
+    [InlineData(Roles.PTA)]
+    [InlineData(Roles.Admin)]
+    public async Task PatientWrite_DocumentedWriterRoles_AreAuthorized(string role)
+    {
+        Assert.True(await EvaluatePolicyAsync(AuthorizationPolicies.PatientWrite, role));
+    }
+
     [Fact]
     public async Task PatientWrite_Aide_IsNotAuthorized()
     {

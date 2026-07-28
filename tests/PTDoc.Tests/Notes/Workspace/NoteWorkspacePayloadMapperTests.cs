@@ -1023,13 +1023,25 @@ public sealed class NoteWorkspacePayloadMapperTests
             DryNeedling = new DryNeedlingVm
             {
                 DateOfTreatment = new DateTime(2026, 4, 16),
-                BillingDesignation = "Non-billable",
+                BillingDesignation = "Billable",
                 Location = "Gluteal region",
                 NeedlingType = "Deep dry needling",
                 PainBefore = 7,
                 PainAfter = 3,
                 ResponseDescription = "Reduced pain after treatment",
                 AdditionalNotes = "No adverse response"
+            },
+            Plan = new PlanVm
+            {
+                SelectedCptCodes =
+                [
+                    new CptCodeEntry
+                    {
+                        Code = "97140",
+                        Description = "Manual therapy",
+                        Units = 1
+                    }
+                ]
             }
         };
 
@@ -1042,6 +1054,7 @@ public sealed class NoteWorkspacePayloadMapperTests
         Assert.Equal(7, result.DryNeedling.PainBefore);
         Assert.Equal(3, result.DryNeedling.PainAfter);
         Assert.Equal("Reduced pain after treatment", result.DryNeedling.ResponseDescription);
+        Assert.Empty(result.Plan.SelectedCptCodes);
     }
 
     [Fact]
@@ -1053,13 +1066,25 @@ public sealed class NoteWorkspacePayloadMapperTests
             DryNeedling = new WorkspaceDryNeedlingV2
             {
                 DateOfTreatment = new DateTime(2026, 4, 16),
-                BillingDesignation = "Non-billable",
+                BillingDesignation = "Billable",
                 Location = "Gluteal region",
                 NeedlingType = "Deep dry needling",
                 PainBefore = 7,
                 PainAfter = 3,
                 ResponseDescription = "Reduced pain after treatment",
                 AdditionalNotes = "No adverse response"
+            },
+            Plan = new WorkspacePlanV2
+            {
+                SelectedCptCodes =
+                [
+                    new PlannedCptCodeV2
+                    {
+                        Code = "97140",
+                        Description = "Manual therapy",
+                        Units = 1
+                    }
+                ]
             }
         };
 
@@ -1073,6 +1098,7 @@ public sealed class NoteWorkspacePayloadMapperTests
         Assert.Equal(3, result.DryNeedling.PainAfter);
         Assert.Equal("Reduced pain after treatment", result.DryNeedling.ResponseDescription);
         Assert.Equal("No adverse response", result.DryNeedling.AdditionalNotes);
+        Assert.Empty(result.Plan.SelectedCptCodes);
     }
 
     [Fact]
