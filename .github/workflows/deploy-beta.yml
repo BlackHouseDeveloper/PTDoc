@@ -244,7 +244,7 @@ jobs:
             admin_token="$(jq -er '.token' <<< "$login_response")"
           fi
         done
-        runtime="$(curl --fail --silent --show-error \
+        runtime="$(curl --fail --silent --show-error --retry 6 --retry-delay 5 \
           --header "Authorization: Bearer ${admin_token}" \
           'https://api-ptdoc.bhdevsites.com/diagnostics/runtime')"
         test "$(jq -r '.release.sourceSha' <<< "$runtime")" = "$PTDOC_SOURCE_SHA"

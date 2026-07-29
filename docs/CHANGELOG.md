@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Beta runtime metadata verification resilience
+
+- **`Deploy Beta` runtime probe** — Added the same bounded retry behavior used by the API health gates to the authenticated `/diagnostics/runtime` release-metadata check. Reason: a successful API deployment, readiness check, database/migration check, and seeded-account login can be followed by a brief App Service `503` routing transition; the deployment gate must still require matching source SHA and release ID once the endpoint is available.
+
 ### Changed - agent guidance captures beta parity and runtime checks
 
 - **`AGENTS.md`** — Added the simple local API `curl /health` smoke command, documented that `Deploy Beta` stamps and verifies `PTDOC_SOURCE_SHA` and `PTDOC_RELEASE_ID` through authenticated runtime diagnostics before Web deployment, and tightened the Azure OpenAI endpoint rule to require a base HTTPS resource URL with no path/query/fragment or embedded credentials. Reason: keep agent instructions aligned with the current operational diagnostics and beta deployment workflow.
