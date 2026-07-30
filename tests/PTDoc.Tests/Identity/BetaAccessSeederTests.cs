@@ -234,6 +234,35 @@ public sealed class BetaAccessSeederTests
     }
 
     [Fact]
+    public async Task SeedBetaAccessDataAsync_CreatesIdempotentBrowserRegressionFixtures()
+    {
+        await using var context = CreateInMemoryContext();
+
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
+
+        var paginationNotes = await context.ClinicalNotes
+            .Where(note => note.ClinicId == DatabaseSeeder.BetaClinicId
+                && note.ContentJson.Contains("beta-qa-notes-pagination"))
+            .ToListAsync();
+        Assert.Equal(51, paginationNotes.Count);
+        Assert.All(paginationNotes, note =>
+        {
+            Assert.Equal(NoteStatus.Signed, note.NoteStatus);
+            Assert.NotNull(note.SignatureHash);
+            Assert.NotNull(note.SignedUtc);
+        });
+
+        var editablePainAssessmentIntakes = await context.IntakeForms
+            .Where(form => form.ClinicId == DatabaseSeeder.BetaClinicId
+                && !form.IsLocked
+                && form.ResponseJson.Contains("beta-qa-intake-pain-assessment"))
+            .ToListAsync();
+        Assert.Equal(4, editablePainAssessmentIntakes.Count);
+        Assert.All(editablePainAssessmentIntakes, form => Assert.Null(form.SubmittedAt));
+    }
+
+    [Fact]
     public async Task SeedBetaAccessDataAsync_DoesNotMoveFixtureMrnFromAnotherClinic()
     {
         await using var context = CreateInMemoryContext();
