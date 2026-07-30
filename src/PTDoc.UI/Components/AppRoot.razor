@@ -13,8 +13,8 @@
 
 <div class="ptdoc-app-root"
      data-testid="ptdoc-app-root"
-     data-interactive="@_isInteractive.ToString().ToLowerInvariant()"
-     aria-busy="@(!_isInteractive).ToString().ToLowerInvariant()"
+     data-interactive="@(_isInteractive.ToString().ToLowerInvariant())"
+     aria-busy="@((!_isInteractive).ToString().ToLowerInvariant())"
      inert="@(_isInteractive ? null : "inert")">
     <CascadingAuthenticationState>
         <Routes />
