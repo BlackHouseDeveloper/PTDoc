@@ -1,7 +1,11 @@
 import { expect, test } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { authenticateIfNeeded, expectNoRelevantConsoleErrors } from './helpers/auth';
+import {
+  authenticateIfNeeded,
+  expectNoRelevantConsoleErrors,
+  waitForAppInteractive
+} from './helpers/auth';
 
 const patientChartPath = process.env.PTDOC_UI_QA_PATIENT_CHART_PATH
   ?? '/patient/f9c2cb68-4ab4-4f57-a1db-73ed8e2da789';
@@ -38,6 +42,7 @@ test.describe('PTDoc patient document upload QA', () => {
 
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
+    await waitForAppInteractive(page);
     await openDocumentsTab(page);
 
     await expectUploadedDocument(page, fileName, marker);
@@ -49,13 +54,18 @@ test.describe('PTDoc patient document upload QA', () => {
 async function gotoPatientChart(page: import('@playwright/test').Page) {
   await page.goto(patientChartPath);
   await page.waitForLoadState('domcontentloaded');
+  await waitForAppInteractive(page);
   await expect(page.getByRole('heading', { name: 'Patient Information' })).toBeVisible();
 }
 
 async function openDocumentsTab(page: import('@playwright/test').Page) {
   await page.getByRole('link', { name: 'Documents' }).click();
-  await expect(page.getByRole('region', { name: 'Patient documents' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Patient Documents' })).toBeVisible();
+  await expect(page.getByTestId('patient-profile-panel-documents')).toBeVisible();
+  await waitForAppInteractive(page);
+
+  const documentsWorkflow = page.getByTestId('patient-documents-panel');
+  await expect(documentsWorkflow).toBeVisible();
+  await expect(documentsWorkflow.getByRole('heading', { name: 'Patient Documents' })).toBeVisible();
 }
 
 async function expectNoDocumentStorageErrors(page: import('@playwright/test').Page) {

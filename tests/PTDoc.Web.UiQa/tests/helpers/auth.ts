@@ -4,6 +4,7 @@ export async function authenticateIfNeeded(page: Page) {
   attachConsoleCapture(page);
   await page.goto('/');
   await page.waitForLoadState('domcontentloaded');
+  await waitForAppInteractive(page);
 
   const usernameInput = page.locator('#username, input[name="username"], input[autocomplete="username"]').first();
   const needsLogin = await usernameInput.isVisible().catch(() => false);
@@ -34,11 +35,41 @@ export async function authenticateIfNeeded(page: Page) {
   await normalizeAuthCookiesForLocalHttp(page, loginResponse.headersArray());
   await page.goto('/');
   await page.waitForLoadState('domcontentloaded');
+  await waitForAppInteractive(page);
 
   const loginStillVisible = await usernameInput.isVisible().catch(() => false);
   if (loginStillVisible) {
     const authAlert = await page.locator('.auth-alert').textContent().catch(() => null);
     throw new Error(`Login did not establish a Web session. ${authAlert?.trim() || 'No auth error message was rendered.'}`);
+  }
+}
+
+export async function waitForAppInteractive(page: Page) {
+  const appRoot = page.getByTestId('ptdoc-app-root');
+
+  try {
+    await expect(appRoot).toHaveAttribute('data-interactive', 'true', { timeout: 15_000 });
+    await expect(appRoot).toHaveAttribute('aria-busy', 'false');
+    await expect.poll(() => appRoot.getAttribute('inert')).toBeNull();
+    await expect(page.getByTestId('ptdoc-app-connecting')).toHaveCount(0);
+
+    const frameworkErrorVisible = await page.locator('#blazor-error-ui').isVisible().catch(() => false);
+    const reconnectVisible = await page.locator('#components-reconnect-modal').isVisible().catch(() => false);
+    if (frameworkErrorVisible || reconnectVisible) {
+      throw new Error('A Blazor framework or reconnect error UI is visible.');
+    }
+  } catch (error) {
+    const frameworkErrorVisible = await page.locator('#blazor-error-ui').isVisible().catch(() => false);
+    const reconnectVisible = await page.locator('#components-reconnect-modal').isVisible().catch(() => false);
+    const reconnectText = reconnectVisible
+      ? await page.locator('#components-reconnect-modal').innerText().catch(() => 'Connection interrupted')
+      : null;
+
+    throw new Error(
+      `PTDoc did not become interactive at ${page.url()}. ` +
+      `Framework error visible: ${frameworkErrorVisible}. ` +
+      `Reconnect dialog: ${reconnectText?.replace(/\s+/g, ' ').trim() ?? 'not visible'}. ` +
+      `Original error: ${(error as Error).message}`);
   }
 }
 

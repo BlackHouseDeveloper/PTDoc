@@ -1,6 +1,37 @@
 @namespace PTDoc.UI.Components
 @rendermode InteractiveServer
 
-<CascadingAuthenticationState>
-    <Routes />
-</CascadingAuthenticationState>
+@if (!_isInteractive)
+{
+    <div class="ptdoc-app-connection-status"
+         data-testid="ptdoc-app-connecting"
+         role="status"
+         aria-live="polite">
+        Connecting to PTDoc&hellip;
+    </div>
+}
+
+<div class="ptdoc-app-root"
+     data-testid="ptdoc-app-root"
+     data-interactive="@_isInteractive.ToString().ToLowerInvariant()"
+     aria-busy="@(!_isInteractive).ToString().ToLowerInvariant()"
+     inert="@(_isInteractive ? null : "inert")">
+    <CascadingAuthenticationState>
+        <Routes />
+    </CascadingAuthenticationState>
+</div>
+
+@code {
+    private bool _isInteractive;
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _isInteractive)
+        {
+            return Task.CompletedTask;
+        }
+
+        _isInteractive = true;
+        return InvokeAsync(StateHasChanged);
+    }
+}

@@ -1,5 +1,10 @@
 import { Browser, expect, Page, test } from '@playwright/test';
-import { attachConsoleCapture, authenticateIfNeeded, expectNoRelevantConsoleErrors } from './helpers/auth';
+import {
+  attachConsoleCapture,
+  authenticateIfNeeded,
+  expectNoRelevantConsoleErrors,
+  waitForAppInteractive
+} from './helpers/auth';
 
 const webBaseUrl = process.env.PTDOC_WEB_BASE_URL ?? 'http://localhost:5145';
 const intakePath = process.env.PTDOC_UI_QA_INTAKE_PATH;
@@ -11,30 +16,25 @@ const ptUsername = process.env.PTDOC_UI_QA_PT_USERNAME ?? 'amorgan';
 const ptPin = process.env.PTDOC_UI_QA_PT_PIN ?? process.env.PTDOC_UI_QA_PIN;
 const ptaUsername = process.env.PTDOC_UI_QA_PTA_USERNAME;
 const ptaPin = process.env.PTDOC_UI_QA_PTA_PIN ?? process.env.PTDOC_UI_QA_PIN;
+const requireFullFixtures = process.env.PTDOC_UI_QA_REQUIRE_FULL_FIXTURES === 'true';
 
 test.describe('PTDoc audit remediation QA', () => {
-  test.describe.configure({ mode: 'serial' });
-
   test('public policy pages render anonymously', async ({ page }) => {
     await page.context().clearCookies();
 
-    await page.goto('/sms-consent');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/sms-consent');
     await expect(page.getByRole('heading', { name: /PTDoc SMS Consent and Text Messaging Terms/i })).toBeVisible();
 
-    await page.goto('/privacy');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/privacy');
     await expect(page.getByRole('heading', { name: /PTDoc Privacy Policy/i })).toBeVisible();
 
-    await page.goto('/terms');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/terms');
     await expect(page.getByRole('heading', { name: /PTDoc Terms and Conditions/i })).toBeVisible();
   });
 
   test('login validation and protected dashboard route behave consistently', async ({ page, browser }) => {
     await page.context().clearCookies();
-    await page.goto('/login');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/login');
 
     const loginSubmit = page.locator('form[data-testid="login-form"] button[type="submit"]');
     await loginSubmit.click();
@@ -49,12 +49,10 @@ test.describe('PTDoc audit remediation QA', () => {
     await expectProtectedRoutesRequireLogin(browser, ['/dashboard', '/appointments', '/notes', '/audit-missing-route']);
 
     await authenticateIfNeeded(page);
-    await page.goto('/dashboard');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/dashboard');
     await expect(page.locator('body')).toContainText(/Dashboard/i);
 
-    await page.goto('/logout');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/logout');
     await expect(page.locator('#username')).toBeVisible();
     for (const route of ['/dashboard', '/appointments', '/notes', '/audit-missing-route']) {
       await gotoProtectedRouteExpectingLogin(page, route);
@@ -65,11 +63,11 @@ test.describe('PTDoc audit remediation QA', () => {
 
   test('dashboard notes-due card opens the actionable appointments queue', async ({ page }) => {
     await authenticateIfNeeded(page);
-    await page.goto('/');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/');
 
     await page.getByRole('button', { name: 'Open appointments needing notes today' }).click();
     await expect(page).toHaveURL(/\/appointments\?needsNote=true&dateRange=today$/);
+    await waitForAppInteractive(page);
     await expect(page.locator('body')).toContainText(/Appointments/i);
     await expectNoRelevantConsoleErrors(page);
   });
@@ -82,8 +80,7 @@ test.describe('PTDoc audit remediation QA', () => {
       { width: 390, height: 844 },
     ]) {
       await page.setViewportSize(viewport);
-      await page.goto('/dashboard');
-      await page.waitForLoadState('domcontentloaded');
+      await gotoInteractive(page, '/dashboard');
 
       const menuToggle = page.locator('button.menu-toggle');
       await expect(menuToggle).toBeVisible();
@@ -109,13 +106,11 @@ test.describe('PTDoc audit remediation QA', () => {
 
   test('appointments week view defaults to clinician grouping and can switch to day grouping', async ({ page }) => {
     await authenticateIfNeeded(page);
-    await page.goto('/appointments');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/appointments');
 
     const weekView = page.getByRole('link', { name: 'Week View' });
     await expect(weekView).toHaveAttribute('href', '/appointments?dateRange=week');
-    await page.goto('/appointments?dateRange=week');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/appointments?dateRange=week');
 
     await expect(page.locator('.week-grouping-control')).toBeVisible();
     await expect(page.locator('[data-testid="appointments-week-clinician-selector"]')).toBeVisible();
@@ -139,14 +134,12 @@ test.describe('PTDoc audit remediation QA', () => {
 
   test('patients add action opens modal without relying on hydrated click only', async ({ page }) => {
     await authenticateIfNeeded(page);
-    await page.goto('/patients');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/patients');
     await expect(page.locator('.patient-card-action').first()).toContainText('Open chart');
 
     const addPatient = page.getByRole('link', { name: /^Add Patient$/ });
     await expect(addPatient).toHaveAttribute('href', '/patients?action=add');
-    await page.goto('/patients?action=add');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/patients?action=add');
 
     await expect(page).toHaveURL(/\/patients\?action=add$/);
     await expect(page.getByRole('heading', { name: 'Add New Patient' })).toBeVisible();
@@ -161,8 +154,7 @@ test.describe('PTDoc audit remediation QA', () => {
 
   test('dark-mode disabled Send Intake action retains WCAG AA contrast', async ({ page }) => {
     await authenticateIfNeeded(page);
-    await page.goto('/patients');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/patients');
     await setTheme(page, 'dark');
 
     await page.getByRole('button', { name: 'Send Intake', exact: true }).first().click();
@@ -202,11 +194,12 @@ test.describe('PTDoc audit remediation QA', () => {
   });
 
   test('patient chart tabs and PT start-new-note entry are route-backed', async ({ page }) => {
-    test.skip(!ptPin, 'Set PTDOC_UI_QA_PIN or PTDOC_UI_QA_PT_PIN to verify PT note-entry coverage.');
+    requireFixture(
+      Boolean(ptPin),
+      'Set PTDOC_UI_QA_PIN or PTDOC_UI_QA_PT_PIN to verify PT note-entry coverage.');
 
     await loginThroughForm(page, ptUsername, ptPin!);
-    await page.goto(patientChartPath);
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, patientChartPath);
 
     const patientContext = page.getByTestId('patient-context-header');
     await expect(patientContext).toBeVisible();
@@ -223,8 +216,7 @@ test.describe('PTDoc audit remediation QA', () => {
       expect(href).not.toBeNull();
       expect(href!).toMatch(new RegExp(`\\/patient\\/[^?]+\\?tab=${tabName.toLowerCase()}$`));
 
-      await page.goto(href!);
-      await page.waitForLoadState('domcontentloaded');
+      await gotoInteractive(page, href!);
       await expect(page.getByTestId(`patient-profile-panel-${tabName.toLowerCase()}`)).toBeVisible();
       await expect(page).toHaveURL(new RegExp(`\\/patient\\/[^?]+\\?tab=${tabName.toLowerCase()}$`));
     }
@@ -234,22 +226,21 @@ test.describe('PTDoc audit remediation QA', () => {
 
     const newNoteHref = await startNewNote.getAttribute('href');
     expect(newNoteHref).not.toBeNull();
-    await page.goto(newNoteHref!);
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, newNoteHref!);
     await expect(page.getByTestId('patient-note-type-chooser')).toBeVisible();
     await page.getByRole('button', { name: 'Evaluation Note' }).click();
     await expect(page).toHaveURL(/\/patient\/[^/]+\/new-note\?noteType=Evaluation%20Note$/);
+    await waitForAppInteractive(page);
     await expectNoRelevantConsoleErrors(page);
   });
 
   test('notes list exposes bounded pagination when more results are available', async ({ page }) => {
     await authenticateIfNeeded(page);
-    await page.goto('/notes');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/notes');
 
     const loadMore = page.locator('.notes-recent-load-more');
     if (await loadMore.count() === 0) {
-      test.skip(true, 'Seed data does not have more than one page of notes.');
+      requireFixture(false, 'Seed data does not have more than one page of notes.');
     }
 
     const initialCards = await page.locator('.note-card').count();
@@ -259,43 +250,44 @@ test.describe('PTDoc audit remediation QA', () => {
   });
 
   test('PT Continue Draft and PTA View/PDF Tools actions route to the expected workspace boundary', async ({ page }) => {
-    test.skip(!ptPin || !ptaUsername || !ptaPin, 'Set PT and PTA audit-remediation credentials.');
+    requireFixture(
+      Boolean(ptPin && ptaUsername && ptaPin),
+      'Set PT and PTA audit-remediation credentials.');
 
     await loginThroughForm(page, ptUsername, ptPin!);
-    await page.goto('/notes?status=Draft');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/notes?status=Draft');
     const continueDraft = page.getByRole('button', { name: /^Continue Draft / }).first();
     if (await continueDraft.count() === 0) {
-      test.skip(true, 'The PT fixture has no editable draft note.');
+      requireFixture(false, 'The PT fixture has no editable draft note.');
     }
     await continueDraft.click();
     await expect(page).toHaveURL(/\/patient\/[^/]+\/note\/[^?]+$/);
+    await waitForAppInteractive(page);
 
     await loginThroughForm(page, ptaUsername!, ptaPin!);
-    await page.goto('/notes');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/notes');
     const view = page.getByRole('button', { name: /^View / }).first();
     if (await view.count() === 0) {
-      test.skip(true, 'The PTA fixture has no view-only note boundary.');
+      requireFixture(false, 'The PTA fixture has no view-only note boundary.');
     }
     await view.click();
     await expect(page).toHaveURL(/\/patient\/[^/]+\/note\/[^?]+$/);
+    await waitForAppInteractive(page);
 
-    await page.goto('/notes');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/notes');
     const pdfTools = page.getByRole('button', { name: /^Open PDF tools for / }).first();
     await expect(pdfTools).toBeEnabled();
     await pdfTools.click();
     await expect(page).toHaveURL(/\/patient\/[^/]+\/note\/[^?]+\?section=review$/);
+    await waitForAppInteractive(page);
     await expectNoRelevantConsoleErrors(page);
   });
 
   test('intake pain severity validation and body-map keyboard selection are reachable', async ({ page }) => {
-    test.skip(!intakePath, 'Set PTDOC_UI_QA_INTAKE_PATH to a safe editable intake route.');
+    requireFixture(Boolean(intakePath), 'Set PTDOC_UI_QA_INTAKE_PATH to a safe editable intake route.');
 
     await authenticateIfNeeded(page);
-    await page.goto(intakePath!);
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, intakePath!);
 
     await advanceToPainDetailsIfPossible(page);
 
@@ -324,11 +316,12 @@ test.describe('PTDoc audit remediation QA', () => {
   });
 
   test('writable note workspace saves draft intervention/CPT/HEP edits when a PT fixture is supplied', async ({ page }) => {
-    test.skip(!writableNoteWorkspacePath, 'Set PTDOC_UI_QA_WRITABLE_NOTE_WORKSPACE_PATH to a safe draft note route for a PT-role session.');
+    requireFixture(
+      Boolean(writableNoteWorkspacePath),
+      'Set PTDOC_UI_QA_WRITABLE_NOTE_WORKSPACE_PATH to a safe draft note route for a PT-role session.');
 
     await authenticateIfNeeded(page);
-    await page.goto(writableNoteWorkspacePath!);
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, writableNoteWorkspacePath!);
     await expect(page.locator('[data-testid="note-workspace-page"]')).toBeVisible();
 
     await page.getByRole('tab', { name: /Plan|Interventions/i }).first().click();
@@ -352,51 +345,66 @@ test.describe('PTDoc audit remediation QA', () => {
     await page.getByRole('button', { name: /Save Draft/i }).click();
     await expect(page.getByText(/saved|draft saved/i)).toBeVisible();
     await page.reload();
-    await page.waitForLoadState('domcontentloaded');
+    await waitForAppInteractive(page);
     await expect(page.locator('[data-testid="note-workspace-page"]')).toBeVisible();
     await expectNoRelevantConsoleErrors(page);
   });
 
   test('evaluation draft saves an exact functional limitation value and cleanup survives a second reload', async ({ page }) => {
-    test.skip(
-      !evaluationDraftPath || !ptPin,
+    requireFixture(
+      Boolean(evaluationDraftPath && ptPin),
       'Set PTDOC_UI_QA_EVALUATION_DRAFT_PATH and PTDOC_UI_QA_PIN (or PTDOC_UI_QA_PT_PIN).');
 
     await loginThroughForm(page, ptUsername, ptPin!);
-    await page.goto(evaluationDraftPath!);
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, evaluationDraftPath!);
 
     const field = page.locator('#additional-functional-limitations');
     await expect(field).toBeVisible();
     const originalValue = await field.inputValue();
     const exactValue = `Beta persistence ${Date.now()} | stairs, 2 flights; carry 18 lb.`;
+    let mutationAttempted = false;
 
-    await field.fill(exactValue);
-    await page.getByRole('button', { name: /Save Draft/i }).click();
-    await expect(page.getByText(/saved|draft saved/i)).toBeVisible();
-    await page.reload();
-    await expect(field).toHaveValue(exactValue);
+    try {
+      await waitForAppInteractive(page);
+      await field.fill(exactValue);
+      await expect(field).toHaveValue(exactValue);
+      mutationAttempted = true;
+      await page.getByRole('button', { name: /Save Draft/i }).click();
+      await expect(page.getByText(/saved|draft saved/i)).toBeVisible();
+      await waitForAppInteractive(page);
+      await expect(field).toHaveValue(exactValue);
+      await page.reload();
+      await waitForAppInteractive(page);
+      await expect(field).toHaveValue(exactValue);
+    } finally {
+      if (mutationAttempted) {
+        await gotoInteractive(page, evaluationDraftPath!);
+        await expect(field).toBeVisible();
+        await field.fill(originalValue);
+        await expect(field).toHaveValue(originalValue);
+        await waitForAppInteractive(page);
+        await page.getByRole('button', { name: /Save Draft/i }).click();
+        await expect(page.getByText(/saved|draft saved/i)).toBeVisible();
+        await waitForAppInteractive(page);
+        await page.reload();
+        await waitForAppInteractive(page);
+        await expect(field).toHaveValue(originalValue);
+      }
+    }
 
-    await field.fill(originalValue);
-    await page.getByRole('button', { name: /Save Draft/i }).click();
-    await expect(page.getByText(/saved|draft saved/i)).toBeVisible();
-    await page.reload();
-    await expect(field).toHaveValue(originalValue);
     await expectNoRelevantConsoleErrors(page);
   });
 
   test('two evaluation sessions retain the local draft and offer an explicit stale-write choice', async ({ page, context }) => {
-    test.skip(
-      !evaluationDraftPath || !ptPin,
+    requireFixture(
+      Boolean(evaluationDraftPath && ptPin),
       'Set PTDOC_UI_QA_EVALUATION_DRAFT_PATH and PTDOC_UI_QA_PIN (or PTDOC_UI_QA_PT_PIN).');
 
     await loginThroughForm(page, ptUsername, ptPin!);
     const secondPage = await context.newPage();
     attachConsoleCapture(secondPage);
-    await page.goto(evaluationDraftPath!);
-    await secondPage.goto(evaluationDraftPath!);
-    await page.waitForLoadState('domcontentloaded');
-    await secondPage.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, evaluationDraftPath!);
+    await gotoInteractive(secondPage, evaluationDraftPath!);
 
     const firstField = page.locator('#additional-functional-limitations');
     const secondField = secondPage.locator('#additional-functional-limitations');
@@ -419,10 +427,12 @@ test.describe('PTDoc audit remediation QA', () => {
     await expect(secondField).toHaveValue(firstValue);
 
     await page.reload();
+    await waitForAppInteractive(page);
     await firstField.fill(originalValue);
     await page.getByRole('button', { name: /Save Draft/i }).click();
     await expect(page.getByText(/saved|draft saved/i)).toBeVisible();
     await page.reload();
+    await waitForAppInteractive(page);
     await expect(firstField).toHaveValue(originalValue);
 
     await secondPage.close();
@@ -456,6 +466,7 @@ async function gotoProtectedRouteExpectingLogin(page: Page, route: string) {
     }
   }
 
+  await waitForAppInteractive(page);
   await expect(page.locator('#username')).toBeVisible();
 }
 
@@ -474,13 +485,31 @@ async function expectProtectedRoutesRequireLogin(browser: Browser, routes: strin
 async function loginThroughForm(page: Page, username: string, pin: string) {
   attachConsoleCapture(page);
   await page.context().clearCookies();
-  await page.goto('/login');
-  await page.waitForLoadState('domcontentloaded');
+  await gotoInteractive(page, '/login');
   await page.locator('#username').fill(username);
   await page.locator('#pin').fill(pin);
   await page.locator('form[data-testid="login-form"] button[type="submit"]').click();
   await page.waitForLoadState('domcontentloaded');
   await expect(page.locator('#username')).toHaveCount(0);
+  await waitForAppInteractive(page);
+}
+
+async function gotoInteractive(page: Page, path: string) {
+  await page.goto(path);
+  await page.waitForLoadState('domcontentloaded');
+  await waitForAppInteractive(page);
+}
+
+function requireFixture(condition: boolean, message: string) {
+  if (condition) {
+    return;
+  }
+
+  if (requireFullFixtures) {
+    throw new Error(`Full-fixture precondition failed: ${message}`);
+  }
+
+  test.skip(true, message);
 }
 
 async function setTheme(page: Page, theme: 'light' | 'dark') {

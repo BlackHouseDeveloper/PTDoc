@@ -79,6 +79,8 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
         {
             Assert.Equal("page", cut.Find("[data-testid='patient-profile-tab-documents']").GetAttribute("aria-current"));
             Assert.Equal("Patient documents", cut.Find("[data-testid='patient-profile-panel-documents']").GetAttribute("aria-label"));
+            Assert.Single(cut.FindAll("[aria-label='Patient documents']"));
+            Assert.Null(cut.Find("[data-testid='patient-documents-panel']").GetAttribute("aria-label"));
             Assert.Contains("Patient Documents", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Insurance card", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Upload document", cut.Markup, StringComparison.Ordinal);

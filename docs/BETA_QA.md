@@ -144,6 +144,18 @@ npm run test:beta-e2e
 
 Only supply `PTDOC_UI_QA_EVALUATION_DRAFT_PATH` after the beta owner approves a reversible PT-role Evaluation draft. Without it, the mutation-and-cleanup persistence check is intentionally skipped while the non-mutating hosted-beta checks still run.
 
+For the no-skip 51-test regression gate, copy `tests/PTDoc.Web.UiQa/.env.example` to the ignored `.env`, replace every placeholder with an approved disposable Beta fixture, and keep `PTDOC_UI_QA_REQUIRE_FULL_FIXTURES=true`. Load the file and run the complete suite twice:
+
+```bash
+cd tests/PTDoc.Web.UiQa
+set -a
+source .env
+set +a
+npm test -- --headed --workers=1
+```
+
+Strict full-fixture mode lists all missing credential/path variables before browser startup and turns runtime fixture gaps into failures instead of skips. Each accepted run must report `51 passed`, `0 failed`, `0 skipped`, and no tests that did not run. Keep the ignored `.env` local; never put PINs, storage state, invitation tokens, disposable patient IDs, or note IDs in tracked files.
+
 ## Known Issues And Limitations
 
 Treat these as documented beta limitations unless they block a core workflow in the pass/fail gate.
