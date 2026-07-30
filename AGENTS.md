@@ -86,6 +86,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - Install the separate Playwright browser QA project: `cd tests/PTDoc.Web.UiQa && npm install && npm run install:browsers`
 - Run the responsive browser suite against local Web/API hosts: `PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> npm run test:responsive`
 - Run the hosted beta E2E gate against the deployed beta site: `cd tests/PTDoc.Web.UiQa && PTDOC_WEB_BASE_URL=https://ptdoc.bhdevsites.com PTDOC_UI_QA_PIN=<current-out-of-band-beta-pin> npm run test:beta-e2e`
+- Run the no-skip 51-test hosted-beta gate after loading the ignored fixture environment: `cd tests/PTDoc.Web.UiQa && set -a && source .env && set +a && npm test -- --headed --workers=1`; keep `PTDOC_UI_QA_REQUIRE_FULL_FIXTURES=true` in `.env` so missing fixture inputs fail before browser startup.
 - Run the focused patient-document upload browser check: `PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> npm run test:patient-documents`
 - Run the focused audit-remediation browser checks: `PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> npm run test:audit-remediation`
 - Enable the viewport diagnostics overlay during a local Web run: `PTDOC_DEVELOPER_MODE=true dotnet run --project src/PTDoc.Web --urls http://localhost:5145`
@@ -136,6 +137,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - `PTDOC_WEB_BASE_URL`: overrides the Playwright browser QA base URL and defaults to `http://localhost:5145`.
 - `PTDOC_UI_QA_USERNAME` and `PTDOC_UI_QA_PIN`: credentials used by the browser QA suite when a route requires sign-in.
 - `PTDOC_UI_QA_STORAGE_STATE`: Playwright storage-state file used instead of credentials for browser QA.
+- `PTDOC_UI_QA_REQUIRE_FULL_FIXTURES`: when `true`, requires the complete hosted-beta credential/path fixture set and turns runtime fixture gaps into failures instead of skips.
 - `PTDOC_UI_QA_PATIENT_CHART_PATH`: optional patient-chart route used by the focused patient-document upload Playwright check.
 - `PTDOC_UI_QA_ADMIN_USERNAME` and `PTDOC_UI_QA_ADMIN_PIN`: optional hosted-beta Admin-role overrides used by `tests/PTDoc.Web.UiQa` when the seeded beta fixtures differ from the documented defaults.
 - `PTDOC_UI_QA_PT_USERNAME` and `PTDOC_UI_QA_PT_PIN`: optional PT-role credentials used by the audit-remediation Playwright coverage for Start New Note flows.

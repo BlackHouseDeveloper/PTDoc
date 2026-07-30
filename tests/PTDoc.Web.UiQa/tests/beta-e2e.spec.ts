@@ -1,5 +1,5 @@
 import { expect, Page, test } from '@playwright/test';
-import { attachConsoleCapture, expectNoRelevantConsoleErrors } from './helpers/auth';
+import { attachConsoleCapture, expectNoRelevantConsoleErrors, waitForAppInteractive } from './helpers/auth';
 
 const webBaseUrl = process.env.PTDOC_WEB_BASE_URL ?? 'https://ptdoc.bhdevsites.com';
 const apiBaseUrl = process.env.PTDOC_UI_QA_API_BASE_URL ?? getDefaultApiBaseUrl(webBaseUrl);
@@ -35,8 +35,7 @@ test.describe('PTDoc hosted beta E2E gate', () => {
     expect(readyResponse.ok()).toBeTruthy();
 
     attachConsoleCapture(page);
-    await page.goto('/login');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/login');
     await expect(page.locator('form[data-testid="login-form"]')).toBeVisible();
     await expect(page.locator('link[rel="stylesheet"]')).not.toHaveCount(0);
     await expectNoDevelopmentOrigins(page);
@@ -56,8 +55,7 @@ test.describe('PTDoc hosted beta E2E gate', () => {
   test('admin patient search and chart navigation remain usable after refresh at the beta floor viewport', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await loginAs(page, roles.admin, rolePins.admin);
-    await page.goto('/patients');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/patients');
 
     const search = page.getByRole('textbox', { name: 'Search by name, MRN, or email' });
     await search.fill('BETA-PT-001');
@@ -67,10 +65,11 @@ test.describe('PTDoc hosted beta E2E gate', () => {
 
     await patientCard.click();
     await expect(page).toHaveURL(/\/patient\/[0-9a-f-]+$/i);
+    await waitForAppInteractive(page);
     await expect(page.getByRole('heading', { name: 'Patient Information' })).toBeVisible();
 
     await page.reload();
-    await page.waitForLoadState('domcontentloaded');
+    await waitForAppInteractive(page);
     await expect(page.getByRole('heading', { name: 'Patient Information' })).toBeVisible();
     await expectNoDevelopmentOrigins(page);
     await expectNoRelevantConsoleErrors(page);
@@ -79,8 +78,7 @@ test.describe('PTDoc hosted beta E2E gate', () => {
   test('PT chart tabs are route-backed, usable with browser history, and retain their active panel after refresh', async ({ page }) => {
     await loginAs(page, roles.pt, rolePins.pt);
     const chartPath = patientChartPath ?? await findSeededPatientChartPath(page);
-    await page.goto(chartPath);
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, chartPath);
 
     const notesTab = page.getByTestId('patient-profile-tab-notes');
     const documentsTab = page.getByTestId('patient-profile-tab-documents');
@@ -89,13 +87,16 @@ test.describe('PTDoc hosted beta E2E gate', () => {
 
     await notesTab.click();
     await expect(page.getByTestId('patient-profile-panel-notes')).toBeVisible();
+    await waitForAppInteractive(page);
     await documentsTab.click();
     await expect(page.getByTestId('patient-profile-panel-documents')).toBeVisible();
+    await waitForAppInteractive(page);
     await page.goBack();
+    await waitForAppInteractive(page);
     await expect(page.getByTestId('patient-profile-panel-notes')).toBeVisible();
 
     await page.reload();
-    await page.waitForLoadState('domcontentloaded');
+    await waitForAppInteractive(page);
     await expect(page.getByTestId('patient-profile-panel-notes')).toBeVisible();
     await expectNoDevelopmentOrigins(page);
     await expectNoRelevantConsoleErrors(page);
@@ -108,16 +109,14 @@ test.describe('PTDoc hosted beta E2E gate', () => {
     await expect(page.getByRole('link', { name: 'Notes' })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Settings' })).toHaveCount(0);
 
-    await page.goto('/patients');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/patients');
     await expect(page.getByTestId('patients-card-section')).toHaveCount(0);
     await expectNoRelevantConsoleErrors(page);
   });
 
   test('theme toggle is keyboard-operable and its preference persists through refresh', async ({ page }) => {
     await loginAs(page, roles.admin, rolePins.admin);
-    await page.goto('/dashboard');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, '/dashboard');
 
     const originalTheme = await page.evaluate(() => localStorage.getItem('ptdoc-theme'));
     try {
@@ -128,7 +127,7 @@ test.describe('PTDoc hosted beta E2E gate', () => {
       await expect.poll(() => page.evaluate(() => localStorage.getItem('ptdoc-theme'))).toBe(expectedTheme);
 
       await page.reload();
-      await page.waitForLoadState('domcontentloaded');
+      await waitForAppInteractive(page);
       await expect.poll(() => page.evaluate(() => localStorage.getItem('ptdoc-theme'))).toBe(expectedTheme);
     } finally {
       await restoreTheme(page, originalTheme);
@@ -143,8 +142,7 @@ test.describe('PTDoc hosted beta E2E gate', () => {
       'Set PTDOC_UI_QA_EVALUATION_DRAFT_PATH to an approved reversible PT Evaluation draft before mutating beta data.');
 
     await loginAs(page, roles.pt, rolePins.pt);
-    await page.goto(evaluationDraftPath!);
-    await page.waitForLoadState('domcontentloaded');
+    await gotoInteractive(page, evaluationDraftPath!);
 
     const field = page.locator('#additional-functional-limitations');
     await expect(field).toBeVisible();
@@ -153,19 +151,27 @@ test.describe('PTDoc hosted beta E2E gate', () => {
     let mutationAttempted = false;
 
     try {
+      await waitForAppInteractive(page);
       await field.fill(marker);
+      await expect(field).toHaveValue(marker);
       mutationAttempted = true;
       await saveAndExpectConfirmation(page);
+      await waitForAppInteractive(page);
+      await expect(field).toHaveValue(marker);
       await page.reload();
+      await waitForAppInteractive(page);
       await expect(field).toHaveValue(marker);
     } finally {
       if (mutationAttempted) {
-        await page.goto(evaluationDraftPath!);
-        await page.waitForLoadState('domcontentloaded');
+        await gotoInteractive(page, evaluationDraftPath!);
         await expect(field).toBeVisible();
         await field.fill(originalValue);
+        await expect(field).toHaveValue(originalValue);
+        await waitForAppInteractive(page);
         await saveAndExpectConfirmation(page);
+        await waitForAppInteractive(page);
         await page.reload();
+        await waitForAppInteractive(page);
         await expect(field).toHaveValue(originalValue);
       }
     }
@@ -181,17 +187,16 @@ async function loginAs(page: Page, username: string, pin: string | undefined) {
 
   attachConsoleCapture(page);
   await page.context().clearCookies();
-  await page.goto('/login');
-  await page.waitForLoadState('domcontentloaded');
+  await gotoInteractive(page, '/login');
   await page.locator('#username').fill(username);
   await page.locator('#pin').fill(pin);
   await page.locator('form[data-testid="login-form"] button[type="submit"]').click();
   await expect(page.locator('#username')).toHaveCount(0);
+  await waitForAppInteractive(page);
 }
 
 async function findSeededPatientChartPath(page: Page) {
-  await page.goto('/patients');
-  await page.waitForLoadState('domcontentloaded');
+  await gotoInteractive(page, '/patients');
   const search = page.getByRole('textbox', { name: 'Search by name, MRN, or email' });
   await search.fill('BETA-PT-001');
   const patientCard = page.getByTestId(/patient-card-/).filter({ hasText: /Avery Adams|BETA-PT-001/i });
@@ -200,6 +205,12 @@ async function findSeededPatientChartPath(page: Page) {
   const patientId = testId?.replace(/^patient-card-/, '');
   expect(patientId).toMatch(/^[0-9a-f-]+$/i);
   return `/patient/${patientId}`;
+}
+
+async function gotoInteractive(page: Page, path: string) {
+  await page.goto(path);
+  await page.waitForLoadState('domcontentloaded');
+  await waitForAppInteractive(page);
 }
 
 async function saveAndExpectConfirmation(page: Page) {

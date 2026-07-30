@@ -1,5 +1,10 @@
 import { expect, Page, test } from '@playwright/test';
-import { attachConsoleCapture, authenticateIfNeeded, expectNoRelevantConsoleErrors } from './helpers/auth';
+import {
+  attachConsoleCapture,
+  authenticateIfNeeded,
+  expectNoRelevantConsoleErrors,
+  waitForAppInteractive
+} from './helpers/auth';
 
 type ViewportCase = {
   name: string;
@@ -49,6 +54,7 @@ test.describe('PTDoc responsive UI QA', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/signup');
     await page.waitForLoadState('domcontentloaded');
+    await waitForAppInteractive(page);
 
     const form = page.getByTestId('signup-form');
     await expect(form).toBeVisible();
@@ -138,11 +144,13 @@ test.describe('PTDoc responsive UI QA', () => {
 
     await page.goto('/?ptdocViewportDiagnostics=1');
     await page.waitForLoadState('domcontentloaded');
+    await waitForAppInteractive(page);
     await expectPageReady(page, /Dashboard/i);
     await expect(page.locator('[data-viewport-diagnostics-overlay]')).toBeVisible();
 
     await page.goto('/?ptdocViewportDiagnostics=0');
     await page.waitForLoadState('domcontentloaded');
+    await waitForAppInteractive(page);
     await expect(page.locator('body')).toContainText(/Dashboard/i);
     await expect(page.locator('[data-viewport-diagnostics-overlay]')).toHaveCount(0);
     await expectNoRelevantConsoleErrors(page);
@@ -185,6 +193,7 @@ async function gotoAppRoute(page: Page, path: string) {
   const separator = path.includes('?') ? '&' : '?';
   await page.goto(`${path}${separator}ptdocViewportDiagnostics=1`);
   await page.waitForLoadState('domcontentloaded');
+  await waitForAppInteractive(page);
 }
 
 async function setTheme(page: Page, theme: 'light' | 'dark') {

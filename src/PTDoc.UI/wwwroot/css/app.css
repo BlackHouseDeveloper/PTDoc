@@ -26,6 +26,26 @@ body {
     text-rendering: optimizeLegibility;
 }
 
+.ptdoc-app-root {
+    min-height: 100vh;
+}
+
+.ptdoc-app-connection-status {
+    position: fixed;
+    top: var(--spacing-3);
+    left: 50%;
+    z-index: var(--z-loading);
+    transform: translateX(-50%);
+    padding: var(--spacing-2) var(--spacing-4);
+    color: var(--card-foreground);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-md);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+}
+
 a,
 .btn-link {
     color: var(--primary);

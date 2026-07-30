@@ -39,6 +39,24 @@ Use `PTDOC_UI_QA_ADMIN_USERNAME`, `PTDOC_UI_QA_PT_USERNAME`, `PTDOC_UI_QA_PTA_US
 
 The suite never creates records or sends communications. Its only server mutation is the approved Evaluation-draft marker, which it verifies and restores before completing. Do not place PINs, storage state, or patient identifiers in tracked files or reports.
 
+## Strict Full-Fixture Run
+
+Use strict mode when the acceptance target is the complete 51-test hosted-Beta run with no optional scenarios omitted. Copy `.env.example` to the ignored `.env`, replace every placeholder with an approved disposable fixture, then load it before running Playwright:
+
+```bash
+cd tests/PTDoc.Web.UiQa
+cp .env.example .env
+# Edit .env without committing credentials, storage state, or fixture identifiers.
+set -a
+source .env
+set +a
+npm test -- --headed --workers=1
+```
+
+`PTDOC_UI_QA_REQUIRE_FULL_FIXTURES=true` validates the complete credential/path contract while Playwright loads its configuration. Missing environment variables are reported together before any browser test starts. Runtime fixture gaps—such as no pagination boundary, no editable PT draft, or no PTA view boundary—fail as explicit precondition errors in strict mode. Without the flag, focused/local runs retain their optional-fixture skips.
+
+Retries are disabled and the project is fixed at one worker. Run the same command twice after deploying the application change; acceptance is `51 passed`, `0 failed`, `0 skipped`, and no tests left unexecuted on both runs.
+
 ## Patient Document Upload QA
 
 Run the focused patient document upload check with:
