@@ -357,7 +357,16 @@ public static class DatabaseSeeder
         var changed = false;
         var paginationNotes = await context.ClinicalNotes
             .Where(note => note.ClinicId == clinicId && note.ContentJson.Contains(BetaQaNotesPaginationMarker))
+            .OrderBy(note => note.CreatedUtc)
+            .ThenBy(note => note.Id)
             .ToListAsync();
+
+        if (paginationNotes.Count > BetaQaNotesPaginationCount)
+        {
+            context.ClinicalNotes.RemoveRange(paginationNotes.Skip(BetaQaNotesPaginationCount));
+            paginationNotes = paginationNotes.Take(BetaQaNotesPaginationCount).ToList();
+            changed = true;
+        }
 
         for (var index = paginationNotes.Count; index < BetaQaNotesPaginationCount; index++)
         {
@@ -405,11 +414,6 @@ public static class DatabaseSeeder
                 .OrderByDescending(form => form.LastModifiedUtc)
                 .FirstOrDefaultAsync();
 
-            if (intake is not null)
-            {
-                continue;
-            }
-
             var draft = new IntakeResponseDraft
             {
                 PatientId = patient.Id,
@@ -427,21 +431,69 @@ public static class DatabaseSeeder
                 IsSubmitted = false,
                 IsLocked = false
             };
+            var accessToken = ComputeSeedTokenHash($"{BetaQaIntakePainAssessmentMarker}:{patient.Id:D}");
+            var responseJson = IntakeDraftPersistence.SerializePersistenceJson(draft);
+            var consents = BuildSeedConsentsJson(draft);
 
-            context.IntakeForms.Add(new IntakeForm
+            if (intake is null)
             {
-                PatientId = patient.Id,
-                TemplateVersion = SeedTemplateVersion,
-                AccessToken = ComputeSeedTokenHash($"{BetaQaIntakePainAssessmentMarker}:{patient.Id:D}"),
-                ResponseJson = IntakeDraftPersistence.SerializePersistenceJson(draft),
-                PainMapData = "{}",
-                Consents = BuildSeedConsentsJson(draft),
-                IsLocked = false,
-                ClinicId = clinicId,
-                LastModifiedUtc = now,
-                ModifiedByUserId = seedActorId,
-                SyncState = SyncState.Pending
-            });
+                intake = new IntakeForm
+                {
+                    PatientId = patient.Id,
+                    TemplateVersion = SeedTemplateVersion,
+                    AccessToken = accessToken,
+                    ResponseJson = responseJson,
+                    PainMapData = "{}",
+                    Consents = consents,
+                    IsLocked = false,
+                    ClinicId = clinicId,
+                    LastModifiedUtc = now,
+                    ModifiedByUserId = seedActorId,
+                    SyncState = SyncState.Pending
+                };
+                context.IntakeForms.Add(intake);
+                changed = true;
+                continue;
+            }
+
+            var isCurrent = intake.PatientId == patient.Id
+                && intake.TemplateVersion == SeedTemplateVersion
+                && intake.AccessToken == accessToken
+                && intake.InviteToken is null
+                && intake.ExpiresAt is null
+                && intake.ResponseJson == responseJson
+                && intake.StructuredDataJson is null
+                && intake.PainMapData == "{}"
+                && intake.Consents == consents
+                && !intake.IsLocked
+                && intake.SubmittedAt is null
+                && intake.ReviewedAtUtc is null
+                && intake.ReviewedByUserId is null
+                && intake.ClinicId == clinicId
+                && intake.ModifiedByUserId == seedActorId
+                && intake.SyncState == SyncState.Pending;
+            if (isCurrent)
+            {
+                continue;
+            }
+
+            intake.PatientId = patient.Id;
+            intake.TemplateVersion = SeedTemplateVersion;
+            intake.AccessToken = accessToken;
+            intake.InviteToken = null;
+            intake.ExpiresAt = null;
+            intake.ResponseJson = responseJson;
+            intake.StructuredDataJson = null;
+            intake.PainMapData = "{}";
+            intake.Consents = consents;
+            intake.IsLocked = false;
+            intake.SubmittedAt = null;
+            intake.ReviewedAtUtc = null;
+            intake.ReviewedByUserId = null;
+            intake.ClinicId = clinicId;
+            intake.LastModifiedUtc = now;
+            intake.ModifiedByUserId = seedActorId;
+            intake.SyncState = SyncState.Pending;
             changed = true;
         }
 
