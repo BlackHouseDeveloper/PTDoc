@@ -234,6 +234,64 @@ public sealed class BetaAccessSeederTests
     }
 
     [Fact]
+    public async Task SeedBetaAccessDataAsync_CreatesIdempotentBrowserRegressionFixtures()
+    {
+        await using var context = CreateInMemoryContext();
+
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
+
+        var paginationNote = await context.ClinicalNotes
+            .FirstAsync(note => note.ClinicId == DatabaseSeeder.BetaClinicId
+                && note.ContentJson.Contains("beta-qa-notes-pagination"));
+        context.ClinicalNotes.Add(new ClinicalNote
+        {
+            PatientId = paginationNote.PatientId,
+            ClinicId = DatabaseSeeder.BetaClinicId,
+            ContentJson = "beta-qa-notes-pagination surplus fixture"
+        });
+
+        var editableIntake = await context.IntakeForms
+            .FirstAsync(form => form.ClinicId == DatabaseSeeder.BetaClinicId
+                && form.ResponseJson.Contains("beta-qa-intake-pain-assessment"));
+        editableIntake.IsLocked = true;
+        editableIntake.SubmittedAt = DateTime.UtcNow;
+        editableIntake.ResponseJson = "{}";
+        editableIntake.PainMapData = "{\"unexpected\":true}";
+        await context.SaveChangesAsync();
+
+        var restored = await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
+        var alreadyCurrent = await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
+        Assert.Equal(BetaAccessSeedStatus.Completed, restored.Status);
+        Assert.Equal(BetaAccessSeedStatus.AlreadyCurrent, alreadyCurrent.Status);
+
+        var paginationNotes = await context.ClinicalNotes
+            .Where(note => note.ClinicId == DatabaseSeeder.BetaClinicId
+                && note.ContentJson.Contains("beta-qa-notes-pagination"))
+            .ToListAsync();
+        Assert.Equal(51, paginationNotes.Count);
+        Assert.All(paginationNotes, note =>
+        {
+            Assert.Equal(NoteStatus.Signed, note.NoteStatus);
+            Assert.NotNull(note.SignatureHash);
+            Assert.NotNull(note.SignedUtc);
+        });
+
+        var editablePainAssessmentIntakes = await context.IntakeForms
+            .Where(form => form.ClinicId == DatabaseSeeder.BetaClinicId
+                && !form.IsLocked
+                && form.ResponseJson.Contains("beta-qa-intake-pain-assessment"))
+            .ToListAsync();
+        Assert.Equal(4, editablePainAssessmentIntakes.Count);
+        Assert.All(editablePainAssessmentIntakes, form =>
+        {
+            Assert.False(form.IsLocked);
+            Assert.Null(form.SubmittedAt);
+            Assert.Equal("{}", form.PainMapData);
+            Assert.Contains("beta-qa-intake-pain-assessment", form.ResponseJson);
+        });
+    }
+
+    [Fact]
     public async Task SeedBetaAccessDataAsync_DoesNotMoveFixtureMrnFromAnotherClinic()
     {
         await using var context = CreateInMemoryContext();

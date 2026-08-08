@@ -56,6 +56,9 @@ public static class DatabaseSeeder
     private const string IntakeStructuredSchemaVersion = "2026-03-30";
     private const string SqlServerProviderName = "Microsoft.EntityFrameworkCore.SqlServer";
     private const string BetaSeedLockResource = "PTDoc:BetaAccessSeed";
+    private const string BetaQaNotesPaginationMarker = "beta-qa-notes-pagination";
+    private const string BetaQaIntakePainAssessmentMarker = "beta-qa-intake-pain-assessment";
+    private const int BetaQaNotesPaginationCount = 51;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -322,8 +325,189 @@ public static class DatabaseSeeder
             .FirstOrDefaultAsync()
             ?? IIdentityContextAccessor.SystemUserId;
         var patientFixtureResult = await EnsureBetaPatientFixturesAsync(context, clinic.Id, seedActorId, now);
+        var qaFixturesChanged = await EnsureBetaQaFixturesAsync(context, clinic.Id, seedActorId, logger, now);
 
-        return clinicChanged || usersChanged || patientFixtureResult.Changed;
+        return clinicChanged || usersChanged || patientFixtureResult.Changed || qaFixturesChanged;
+    }
+
+    /// <summary>
+    /// Ensures the Beta-only browser regression fixture states that cannot be reliably created
+    /// through normal user workflows: Notes pagination and an editable body-map intake draft.
+    /// The records are synthetic and scoped exclusively to the Beta clinic.
+    /// </summary>
+    private static async Task<bool> EnsureBetaQaFixturesAsync(
+        ApplicationDbContext context,
+        Guid clinicId,
+        Guid seedActorId,
+        ILogger logger,
+        DateTime now)
+    {
+        var patients = await context.Patients
+            .Where(patient => patient.ClinicId == clinicId
+                && patient.MedicalRecordNumber != null
+                && patient.MedicalRecordNumber.StartsWith("BETA-PT-"))
+            .OrderBy(patient => patient.MedicalRecordNumber)
+            .ToListAsync();
+
+        if (patients.Count == 0)
+        {
+            return false;
+        }
+
+        var changed = false;
+        var paginationNotes = await context.ClinicalNotes
+            .Where(note => note.ClinicId == clinicId && note.ContentJson.Contains(BetaQaNotesPaginationMarker))
+            .OrderBy(note => note.CreatedUtc)
+            .ThenBy(note => note.Id)
+            .ToListAsync();
+
+        if (paginationNotes.Count > BetaQaNotesPaginationCount)
+        {
+            context.ClinicalNotes.RemoveRange(paginationNotes.Skip(BetaQaNotesPaginationCount));
+            paginationNotes = paginationNotes.Take(BetaQaNotesPaginationCount).ToList();
+            changed = true;
+        }
+
+        for (var index = paginationNotes.Count; index < BetaQaNotesPaginationCount; index++)
+        {
+            var patient = patients[index % patients.Count];
+            var dateOfService = new DateTime(2025, 1, 1, 12, 0, 0, DateTimeKind.Utc).AddDays(index);
+            var contentJson = SerializeJson(new
+            {
+                fixture = BetaQaNotesPaginationMarker,
+                sequence = index + 1,
+                subjective = "Synthetic Beta browser-regression pagination fixture.",
+                objective = "No patient-care data."
+            });
+            var cptCodesJson = SerializeJson(new[]
+            {
+                new { Code = "97110", Description = "Therapeutic exercise", Units = 2 }
+            });
+
+            context.ClinicalNotes.Add(new ClinicalNote
+            {
+                PatientId = patient.Id,
+                NoteType = NoteType.Daily,
+                NoteStatus = NoteStatus.Signed,
+                TherapistNpi = BuildTherapistNpi(seedActorId),
+                TotalTreatmentMinutes = 30,
+                ContentJson = contentJson,
+                DateOfService = dateOfService,
+                CptCodesJson = cptCodesJson,
+                SignatureHash = ComputeSignatureHash(patient.Id, dateOfService, NoteType.Daily, contentJson, cptCodesJson),
+                SignedUtc = dateOfService.AddMinutes(30),
+                SignedByUserId = seedActorId,
+                ClinicId = clinicId,
+                LastModifiedUtc = dateOfService.AddMinutes(30),
+                ModifiedByUserId = seedActorId,
+                SyncState = SyncState.Pending
+            });
+            changed = true;
+        }
+
+        foreach (var patient in patients)
+        {
+            var intake = await context.IntakeForms
+                .Where(form => form.PatientId == patient.Id
+                    && form.ClinicId == clinicId
+                    && form.ResponseJson.Contains(BetaQaIntakePainAssessmentMarker))
+                .OrderByDescending(form => form.LastModifiedUtc)
+                .FirstOrDefaultAsync();
+
+            var draft = new IntakeResponseDraft
+            {
+                PatientId = patient.Id,
+                IntakeFlowVersion = 2,
+                CurrentStep = (int)IntakeStep.PainAssessment,
+                FullName = $"{patient.FirstName} {patient.LastName}",
+                DateOfBirth = patient.DateOfBirth,
+                EmailAddress = patient.Email,
+                PhoneNumber = patient.Phone,
+                AddressLine1 = patient.AddressLine1,
+                City = patient.City,
+                StateOrProvince = patient.State,
+                PostalCode = patient.ZipCode,
+                MedicalHistoryNotes = BetaQaIntakePainAssessmentMarker,
+                IsSubmitted = false,
+                IsLocked = false
+            };
+            var accessToken = ComputeSeedTokenHash($"{BetaQaIntakePainAssessmentMarker}:{patient.Id:D}");
+            var responseJson = IntakeDraftPersistence.SerializePersistenceJson(draft);
+            var consents = BuildSeedConsentsJson(draft);
+
+            if (intake is null)
+            {
+                intake = new IntakeForm
+                {
+                    PatientId = patient.Id,
+                    TemplateVersion = SeedTemplateVersion,
+                    AccessToken = accessToken,
+                    ResponseJson = responseJson,
+                    PainMapData = "{}",
+                    Consents = consents,
+                    IsLocked = false,
+                    ClinicId = clinicId,
+                    LastModifiedUtc = now,
+                    ModifiedByUserId = seedActorId,
+                    SyncState = SyncState.Pending
+                };
+                context.IntakeForms.Add(intake);
+                changed = true;
+                continue;
+            }
+
+            var isCurrent = intake.PatientId == patient.Id
+                && intake.TemplateVersion == SeedTemplateVersion
+                && intake.AccessToken == accessToken
+                && intake.InviteToken is null
+                && intake.ExpiresAt is null
+                && intake.ResponseJson == responseJson
+                && intake.StructuredDataJson is null
+                && intake.PainMapData == "{}"
+                && intake.Consents == consents
+                && !intake.IsLocked
+                && intake.SubmittedAt is null
+                && intake.ReviewedAtUtc is null
+                && intake.ReviewedByUserId is null
+                && intake.ClinicId == clinicId
+                && intake.ModifiedByUserId == seedActorId
+                && intake.SyncState == SyncState.Pending;
+            if (isCurrent)
+            {
+                continue;
+            }
+
+            intake.PatientId = patient.Id;
+            intake.TemplateVersion = SeedTemplateVersion;
+            intake.AccessToken = accessToken;
+            intake.InviteToken = null;
+            intake.ExpiresAt = null;
+            intake.ResponseJson = responseJson;
+            intake.StructuredDataJson = null;
+            intake.PainMapData = "{}";
+            intake.Consents = consents;
+            intake.IsLocked = false;
+            intake.SubmittedAt = null;
+            intake.ReviewedAtUtc = null;
+            intake.ReviewedByUserId = null;
+            intake.ClinicId = clinicId;
+            intake.LastModifiedUtc = now;
+            intake.ModifiedByUserId = seedActorId;
+            intake.SyncState = SyncState.Pending;
+            changed = true;
+        }
+
+        if (!changed)
+        {
+            return false;
+        }
+
+        await context.SaveChangesAsync();
+        logger.LogInformation(
+            "Ensured Beta browser QA fixtures. NotesPaginationTarget={NotesPaginationTarget}, IntakeDraftPatients={IntakeDraftPatients}.",
+            BetaQaNotesPaginationCount,
+            patients.Count);
+        return true;
     }
 
     public static LogLevel GetBetaAccessSeedLogLevel(BetaAccessSeedStatus status) => status switch

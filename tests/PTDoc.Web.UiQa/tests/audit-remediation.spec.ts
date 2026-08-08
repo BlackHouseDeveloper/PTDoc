@@ -317,10 +317,10 @@ test.describe('PTDoc audit remediation QA', () => {
 
   test('writable note workspace saves draft intervention/CPT/HEP edits when a PT fixture is supplied', async ({ page }) => {
     requireFixture(
-      Boolean(writableNoteWorkspacePath),
-      'Set PTDOC_UI_QA_WRITABLE_NOTE_WORKSPACE_PATH to a safe draft note route for a PT-role session.');
+      Boolean(writableNoteWorkspacePath && ptPin),
+      'Set PTDOC_UI_QA_WRITABLE_NOTE_WORKSPACE_PATH and PTDOC_UI_QA_PIN (or PTDOC_UI_QA_PT_PIN) for a PT-role draft session.');
 
-    await authenticateIfNeeded(page);
+    await loginThroughForm(page, ptUsername, ptPin!);
     await gotoInteractive(page, writableNoteWorkspacePath!);
     await expect(page.locator('[data-testid="note-workspace-page"]')).toBeVisible();
 
@@ -337,7 +337,7 @@ test.describe('PTDoc audit remediation QA', () => {
       }
     }
 
-    const hepCheckbox = page.getByLabel(/HEP|home exercise/i).first();
+    const hepCheckbox = page.getByRole('checkbox', { name: /HEP|home exercise/i }).first();
     if (await hepCheckbox.count() > 0) {
       await hepCheckbox.check({ force: true });
     }
@@ -441,8 +441,8 @@ test.describe('PTDoc audit remediation QA', () => {
 });
 
 async function advanceToPainDetailsIfPossible(page: Page) {
-  const painDetails = page.getByText('Pain Details', { exact: true });
-  if (await painDetails.isVisible().catch(() => false)) {
+  const bodyRegion = page.locator('.body-svg-selector__region').first();
+  if (await bodyRegion.isVisible().catch(() => false)) {
     return;
   }
 
@@ -450,11 +450,15 @@ async function advanceToPainDetailsIfPossible(page: Page) {
     const continueButton = page.getByTestId('continue-button');
     if (await continueButton.isVisible().catch(() => false)) {
       await continueButton.click();
-      if (await painDetails.isVisible().catch(() => false)) {
+      if (await bodyRegion.isVisible().catch(() => false)) {
         return;
       }
     }
   }
+
+  requireFixture(
+    false,
+    'The configured intake fixture cannot reach the editable body-map pain-details step.');
 }
 
 async function gotoProtectedRouteExpectingLogin(page: Page, route: string) {

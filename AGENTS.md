@@ -90,7 +90,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - Run the focused patient-document upload browser check: `PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> npm run test:patient-documents`
 - Run the focused audit-remediation browser checks: `PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> npm run test:audit-remediation`
 - Enable the viewport diagnostics overlay during a local Web run: `PTDOC_DEVELOPER_MODE=true dotnet run --project src/PTDoc.Web --urls http://localhost:5145`
-- Manual GitHub Actions browser run: use workflow `UI Responsive QA`; use `http://localhost:5145` to let the workflow boot local hosts, or point it at a deployed environment, with repo secrets `PTDOC_UI_QA_USERNAME` and `PTDOC_UI_QA_PIN`, plus optional repo variable `PTDOC_UI_QA_NOTE_WORKSPACE_PATH`.
+- Manual GitHub Actions browser run: use workflow `UI Responsive QA`; use `http://localhost:5145` to let the workflow boot local hosts, or point it at a deployed environment, with repo secrets `PTDOC_UI_QA_USERNAME` and `PTDOC_UI_QA_PIN`, plus optional repo variable `PTDOC_UI_QA_NOTE_WORKSPACE_PATH`. Set `upload_artifacts=true` to upload the Playwright report, traces, screenshots, and temporary app logs even when the run passes.
 - Optional authenticated-session alternative: set `PTDOC_UI_QA_STORAGE_STATE` to a Playwright storage-state JSON file instead of credentials.
 - Optional patient-chart override for the upload QA: set `PTDOC_UI_QA_PATIENT_CHART_PATH=/patient/<patient-id>` when a different seeded patient should be used.
 - Optional hosted-beta Admin and Patient overrides: set `PTDOC_UI_QA_ADMIN_USERNAME` and `PTDOC_UI_QA_ADMIN_PIN`, plus `PTDOC_UI_QA_PATIENT_USERNAME` and `PTDOC_UI_QA_PATIENT_PIN`, only when the seeded beta fixtures differ from the documented defaults.
@@ -122,6 +122,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 
 - `PFP_DB_PATH`: overrides the SQLite database path used by `PTDoc-Foundry.sh`.
 - `PTDoc_DB_PATH`: overrides the SQLite database path used by `src/PTDoc.Api`; use it when the API should target the same database file that `PTDoc-Foundry.sh --seed` created.
+- `PTDoc_DB_PATH` is also how the manual `UI Responsive QA` workflow isolates its `http://localhost:5145` local-target API run onto a temporary SQLite file.
 - `API_URL`: overrides the API URL used by `run-ptdoc.sh` and defaults to `http://localhost:5170`.
 - `SKIP_API`: if set, `run-ptdoc.sh` will not auto-start the API.
 - `SKIP_SECRET_SETUP`: if set, `run-ptdoc.sh` will not auto-run `setup-dev-secrets.sh` when API startup fails because signing keys are missing.
