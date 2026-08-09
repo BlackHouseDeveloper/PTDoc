@@ -22,6 +22,15 @@ public sealed class WorkspaceInterventionLibraryItemAsset
     public string Category { get; set; } = string.Empty;
     public string Region { get; set; } = string.Empty;
     public List<string> SearchAliases { get; set; } = new();
+    public WorkspaceExercisePrescriptionAsset? DefaultPrescription { get; set; }
+    public bool? IsSelectable { get; set; }
+}
+
+public sealed class WorkspaceExercisePrescriptionAsset
+{
+    public int? Sets { get; set; }
+    public int? Repetitions { get; set; }
+    public string? Frequency { get; set; }
 }
 
 public sealed class WorkspaceReferenceCatalogSharedAsset

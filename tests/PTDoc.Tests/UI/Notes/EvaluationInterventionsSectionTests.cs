@@ -113,7 +113,7 @@ public sealed class EvaluationInterventionsSectionTests : TestContext
     }
 
     [Fact]
-    public void TypedManualTechniques_RenderOnlyInDedicatedManualTechniqueCards()
+    public void TypedManualTechniques_AreExcludedFromTheLegacyGeneralInterventionEditor()
     {
         var plan = new PlanVm
         {
@@ -139,8 +139,8 @@ public sealed class EvaluationInterventionsSectionTests : TestContext
             .Add(component => component.Plan, plan)
             .Add(component => component.IsReadOnly, false));
 
-        var manualCard = Assert.Single(cut.FindAll("[data-testid='manual-technique-card']"));
-        Assert.Contains("Glenohumeral Joint Mobilization", manualCard.TextContent, StringComparison.Ordinal);
+        Assert.Empty(cut.FindAll("[data-testid='manual-technique-card']"));
+        Assert.Contains("1 technique", cut.Find("[data-testid='technique-count']").TextContent, StringComparison.Ordinal);
         var legacyEditor = Assert.Single(cut.FindAll("[data-testid='evaluation-general-intervention-row']"));
         Assert.Contains("Patient education", legacyEditor.TextContent, StringComparison.Ordinal);
         Assert.DoesNotContain("Glenohumeral Joint Mobilization", legacyEditor.TextContent, StringComparison.Ordinal);

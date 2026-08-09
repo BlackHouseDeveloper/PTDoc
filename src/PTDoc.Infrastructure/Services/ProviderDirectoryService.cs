@@ -274,7 +274,7 @@ public sealed class ProviderDirectoryService(
     {
         var dto = Map(entity);
         var matches = await FindPossibleDuplicatesAsync(entity, cancellationToken);
-        dto.PossibleDuplicates = matches.Select(e => new ProviderDuplicateCandidateDto { Id = e.Id, DisplayName = DisplayName(e), Npi = e.Npi, Reason = entity.Npi != null && e.Npi == entity.Npi ? "Exact NPI match" : "Matching name and contact details", Status=e.Status }).ToList();
+        dto.PossibleDuplicates = matches.Select(e => new ProviderDuplicateCandidateDto { Id = e.Id, DisplayName = DisplayName(e), Npi = e.Npi, Reason = entity.Npi != null && e.Npi == entity.Npi ? "Exact NPI match" : "Matching name and contact details", Status = e.Status }).ToList();
         return dto;
     }
     private async Task<List<ProviderDirectoryEntry>> FindPossibleDuplicatesAsync(ProviderDirectoryEntry entity, CancellationToken cancellationToken)
@@ -291,8 +291,8 @@ public sealed class ProviderDirectoryService(
     private static string? NormalizeComparable(string? value) => string.IsNullOrWhiteSpace(value)
         ? null
         : new string(value.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
-    private static ProviderDirectoryEntryDto Map(ProviderDirectoryEntry e) => new() { Id=e.Id, FirstName=e.FirstName, LastName=e.LastName, DisplayName=DisplayName(e), Credentials=e.Credentials, Npi=e.Npi, Specialty=e.Specialty, TaxonomyCode=e.TaxonomyCode, OrganizationName=e.OrganizationName, Phone=e.Phone, Fax=e.Fax, Email=e.Email, AddressLine1=e.AddressLine1, AddressLine2=e.AddressLine2, City=e.City, State=e.State, ZipCode=e.ZipCode, Status=e.Status, SubmissionSource=e.SubmissionSource, LastModifiedUtc=e.LastModifiedUtc };
-    private static PatientProviderRelationshipDto Map(PatientProviderRelationship r) => new() { Id=r.Id, PatientId=r.PatientId, ProviderId=r.ProviderDirectoryEntryId, Role=r.Role, IsPrimary=r.IsPrimary, EffectiveStartDate=r.EffectiveStartDate, EffectiveEndDate=r.EffectiveEndDate, IsArchived=r.IsArchived, LastModifiedUtc=r.LastModifiedUtc, Provider=r.Provider is null ? new() : Map(r.Provider) };
+    private static ProviderDirectoryEntryDto Map(ProviderDirectoryEntry e) => new() { Id = e.Id, FirstName = e.FirstName, LastName = e.LastName, DisplayName = DisplayName(e), Credentials = e.Credentials, Npi = e.Npi, Specialty = e.Specialty, TaxonomyCode = e.TaxonomyCode, OrganizationName = e.OrganizationName, Phone = e.Phone, Fax = e.Fax, Email = e.Email, AddressLine1 = e.AddressLine1, AddressLine2 = e.AddressLine2, City = e.City, State = e.State, ZipCode = e.ZipCode, Status = e.Status, SubmissionSource = e.SubmissionSource, LastModifiedUtc = e.LastModifiedUtc };
+    private static PatientProviderRelationshipDto Map(PatientProviderRelationship r) => new() { Id = r.Id, PatientId = r.PatientId, ProviderId = r.ProviderDirectoryEntryId, Role = r.Role, IsPrimary = r.IsPrimary, EffectiveStartDate = r.EffectiveStartDate, EffectiveEndDate = r.EffectiveEndDate, IsArchived = r.IsArchived, LastModifiedUtc = r.LastModifiedUtc, Provider = r.Provider is null ? new() : Map(r.Provider) };
     private static string DisplayName(ProviderDirectoryEntry e) => string.Join(" ", new[] { e.FirstName, e.LastName, e.Credentials }.Where(v => !string.IsNullOrWhiteSpace(v)));
-    private Task AuditAsync(string eventType, Guid id, Guid userId, bool success, CancellationToken ct) => auditService.LogRuleEvaluationAsync(new AuditEvent { EventType=eventType, EntityType="ProviderDirectoryEntry", EntityId=id, UserId=userId, Success=success, Metadata=new() { ["Status"] = success ? "Succeeded" : "Failed" } }, ct);
+    private Task AuditAsync(string eventType, Guid id, Guid userId, bool success, CancellationToken ct) => auditService.LogRuleEvaluationAsync(new AuditEvent { EventType = eventType, EntityType = "ProviderDirectoryEntry", EntityId = id, UserId = userId, Success = success, Metadata = new() { ["Status"] = success ? "Succeeded" : "Failed" } }, ct);
 }

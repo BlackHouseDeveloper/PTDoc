@@ -1510,11 +1510,11 @@ public static class AppointmentEndpoints
         AppointmentStatus status,
         int? clinicalVisitOrdinal,
         int attendedVisitCount) => status switch
-    {
-        AppointmentStatus.Scheduled or AppointmentStatus.Confirmed => clinicalVisitOrdinal ?? (attendedVisitCount + 1),
-        AppointmentStatus.CheckedIn or AppointmentStatus.InProgress or AppointmentStatus.Completed => clinicalVisitOrdinal ?? Math.Max(1, attendedVisitCount),
-        _ => null
-    };
+        {
+            AppointmentStatus.Scheduled or AppointmentStatus.Confirmed => clinicalVisitOrdinal ?? (attendedVisitCount + 1),
+            AppointmentStatus.CheckedIn or AppointmentStatus.InProgress or AppointmentStatus.Completed => clinicalVisitOrdinal ?? Math.Max(1, attendedVisitCount),
+            _ => null
+        };
 
     private static string MapAppointmentStatus(AppointmentStatus status) =>
         status switch

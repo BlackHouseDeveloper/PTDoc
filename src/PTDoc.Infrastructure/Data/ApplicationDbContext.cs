@@ -1348,6 +1348,15 @@ public class ApplicationDbContext : DbContext
     {
         var isPostgres = provider.Equals("Postgres", StringComparison.OrdinalIgnoreCase);
         var isSqlServer = provider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase);
+        var clinicEntityName = typeof(Clinic).FullName!;
+        var clinicalNoteEntityName = typeof(ClinicalNote).FullName!;
+        var patientEntityName = typeof(Patient).FullName!;
+        var providerEntityName = typeof(ProviderDirectoryEntry).FullName!;
+        var providerRelationshipEntityName = typeof(PatientProviderRelationship).FullName!;
+        var policyEntityName = typeof(PatientInsurancePolicy).FullName!;
+        var authorizationEntityName = typeof(PatientInsuranceAuthorization).FullName!;
+        var templateEntityName = typeof(NoteTemplate).FullName!;
+        var templateVersionEntityName = typeof(NoteTemplateVersion).FullName!;
         var npiFilter = isPostgres
             ? $"\"Npi\" IS NOT NULL AND \"IsArchived\" = FALSE AND \"Status\" = {(int)ProviderDirectoryStatus.Active}"
             : isSqlServer
@@ -1364,41 +1373,184 @@ public class ApplicationDbContext : DbContext
                 ? "[IsArchived] = 0"
                 : "IsArchived = 0";
 
-        modelBuilder.Entity<ProviderDirectoryEntry>(entity =>
+        modelBuilder.Entity(providerEntityName, entity =>
         {
-            entity.ToTable("ProviderDirectoryEntries"); entity.HasKey(e => e.Id);
-            entity.HasIndex(e => new { e.ClinicId, e.Status, e.LastName, e.FirstName });
-            entity.HasIndex(e => new { e.ClinicId, e.Npi }).IsUnique().HasFilter(npiFilter);
-            entity.Property(e => e.FirstName).HasMaxLength(100).IsRequired(); entity.Property(e => e.LastName).HasMaxLength(100).IsRequired();
-            entity.Property(e => e.Credentials).HasMaxLength(50); entity.Property(e => e.Npi).HasMaxLength(10); entity.Property(e => e.Specialty).HasMaxLength(150); entity.Property(e => e.TaxonomyCode).HasMaxLength(20); entity.Property(e => e.OrganizationName).HasMaxLength(200);
-            entity.Property(e => e.Phone).HasMaxLength(30); entity.Property(e => e.Fax).HasMaxLength(30); entity.Property(e => e.Email).HasMaxLength(255); entity.Property(e => e.AddressLine1).HasMaxLength(200); entity.Property(e => e.AddressLine2).HasMaxLength(200); entity.Property(e => e.City).HasMaxLength(100); entity.Property(e => e.State).HasMaxLength(100); entity.Property(e => e.ZipCode).HasMaxLength(20); entity.Property(e => e.ReviewReason).HasMaxLength(500); entity.Property(e => e.LastModifiedUtc).IsConcurrencyToken();
-            entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("ProviderDirectoryEntries");
+            entity.Property<Guid>(nameof(ProviderDirectoryEntry.Id)).ValueGeneratedOnAdd();
+            entity.Property<Guid?>(nameof(ProviderDirectoryEntry.ClinicId));
+            entity.Property<string>(nameof(ProviderDirectoryEntry.FirstName)).HasMaxLength(100).IsRequired();
+            entity.Property<string>(nameof(ProviderDirectoryEntry.LastName)).HasMaxLength(100).IsRequired();
+            entity.Property<string>(nameof(ProviderDirectoryEntry.Credentials)).HasMaxLength(50);
+            entity.Property<string>(nameof(ProviderDirectoryEntry.Npi)).HasMaxLength(10);
+            entity.Property<string>(nameof(ProviderDirectoryEntry.Specialty)).HasMaxLength(150);
+            entity.Property<string>(nameof(ProviderDirectoryEntry.TaxonomyCode)).HasMaxLength(20);
+            entity.Property<string>(nameof(ProviderDirectoryEntry.OrganizationName)).HasMaxLength(200);
+            entity.Property<string>(nameof(ProviderDirectoryEntry.Phone)).HasMaxLength(30);
+            entity.Property<string>(nameof(ProviderDirectoryEntry.Fax)).HasMaxLength(30);
+            entity.Property<string>(nameof(ProviderDirectoryEntry.Email)).HasMaxLength(255);
+            entity.Property<string>(nameof(ProviderDirectoryEntry.AddressLine1)).HasMaxLength(200);
+            entity.Property<string>(nameof(ProviderDirectoryEntry.AddressLine2)).HasMaxLength(200);
+            entity.Property<string>(nameof(ProviderDirectoryEntry.City)).HasMaxLength(100);
+            entity.Property<string>(nameof(ProviderDirectoryEntry.State)).HasMaxLength(100);
+            entity.Property<string>(nameof(ProviderDirectoryEntry.ZipCode)).HasMaxLength(20);
+            entity.Property<ProviderDirectoryStatus>(nameof(ProviderDirectoryEntry.Status));
+            entity.Property<ProviderSubmissionSource>(nameof(ProviderDirectoryEntry.SubmissionSource));
+            entity.Property<Guid?>(nameof(ProviderDirectoryEntry.SubmittedByUserId));
+            entity.Property<Guid?>(nameof(ProviderDirectoryEntry.ReviewedByUserId));
+            entity.Property<DateTime>(nameof(ProviderDirectoryEntry.SubmittedAtUtc));
+            entity.Property<DateTime?>(nameof(ProviderDirectoryEntry.ReviewedAtUtc));
+            entity.Property<string>(nameof(ProviderDirectoryEntry.ReviewReason)).HasMaxLength(500);
+            entity.Property<bool>(nameof(ProviderDirectoryEntry.IsArchived));
+            entity.Property<DateTime>(nameof(ProviderDirectoryEntry.LastModifiedUtc)).IsConcurrencyToken();
+            entity.Property<Guid>(nameof(ProviderDirectoryEntry.ModifiedByUserId));
+            entity.Property<SyncState>(nameof(ProviderDirectoryEntry.SyncState));
+            entity.HasKey(nameof(ProviderDirectoryEntry.Id));
+            entity.HasIndex(nameof(ProviderDirectoryEntry.ClinicId), nameof(ProviderDirectoryEntry.Status), nameof(ProviderDirectoryEntry.LastName), nameof(ProviderDirectoryEntry.FirstName));
+            entity.HasIndex(nameof(ProviderDirectoryEntry.ClinicId), nameof(ProviderDirectoryEntry.Npi)).IsUnique().HasFilter(npiFilter);
+            entity.HasOne(clinicEntityName, navigationName: null).WithMany().HasForeignKey(nameof(ProviderDirectoryEntry.ClinicId)).OnDelete(DeleteBehavior.Restrict);
         });
-        modelBuilder.Entity<PatientProviderRelationship>(entity =>
+
+        modelBuilder.Entity(providerRelationshipEntityName, entity =>
         {
-            entity.ToTable("PatientProviderRelationships"); entity.HasKey(e => e.Id); entity.HasIndex(e => new { e.PatientId, e.Role, e.IsArchived }); entity.HasIndex(e => new { e.ClinicId, e.ProviderDirectoryEntryId }); entity.Property(e => e.LastModifiedUtc).IsConcurrencyToken();
-            entity.HasOne(e => e.Patient).WithMany(e => e.ProviderRelationships).HasForeignKey(e => e.PatientId).OnDelete(DeleteBehavior.Cascade); entity.HasOne(e => e.Provider).WithMany(e => e.PatientRelationships).HasForeignKey(e => e.ProviderDirectoryEntryId).OnDelete(DeleteBehavior.Restrict); entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("PatientProviderRelationships");
+            entity.Property<Guid>(nameof(PatientProviderRelationship.Id)).ValueGeneratedOnAdd();
+            entity.Property<Guid>(nameof(PatientProviderRelationship.PatientId));
+            entity.Property<Guid>(nameof(PatientProviderRelationship.ProviderDirectoryEntryId));
+            entity.Property<Guid?>(nameof(PatientProviderRelationship.ClinicId));
+            entity.Property<PatientProviderRole>(nameof(PatientProviderRelationship.Role));
+            entity.Property<DateTime?>(nameof(PatientProviderRelationship.EffectiveStartDate));
+            entity.Property<DateTime?>(nameof(PatientProviderRelationship.EffectiveEndDate));
+            entity.Property<bool>(nameof(PatientProviderRelationship.IsPrimary));
+            entity.Property<bool>(nameof(PatientProviderRelationship.IsArchived));
+            entity.Property<DateTime>(nameof(PatientProviderRelationship.LastModifiedUtc)).IsConcurrencyToken();
+            entity.Property<Guid>(nameof(PatientProviderRelationship.ModifiedByUserId));
+            entity.Property<SyncState>(nameof(PatientProviderRelationship.SyncState));
+            entity.HasKey(nameof(PatientProviderRelationship.Id));
+            entity.HasIndex(nameof(PatientProviderRelationship.PatientId), nameof(PatientProviderRelationship.Role), nameof(PatientProviderRelationship.IsArchived));
+            entity.HasIndex(nameof(PatientProviderRelationship.ClinicId), nameof(PatientProviderRelationship.ProviderDirectoryEntryId));
+            entity.HasOne(patientEntityName, navigationName: null).WithMany().HasForeignKey(nameof(PatientProviderRelationship.PatientId)).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(providerEntityName, navigationName: null).WithMany().HasForeignKey(nameof(PatientProviderRelationship.ProviderDirectoryEntryId)).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(clinicEntityName, navigationName: null).WithMany().HasForeignKey(nameof(PatientProviderRelationship.ClinicId)).OnDelete(DeleteBehavior.Restrict);
         });
-        modelBuilder.Entity<PatientInsurancePolicy>(entity =>
+
+        modelBuilder.Entity(policyEntityName, entity =>
         {
-            entity.ToTable("PatientInsurancePolicies"); entity.HasKey(e => e.Id); entity.HasIndex(e => new { e.PatientId, e.CoveragePriority }).IsUnique().HasDatabaseName("UX_PatientInsurancePolicies_PatientId_CoveragePriority_Active").HasFilter(policyFilter); entity.HasIndex(e => new { e.ClinicId, e.PatientId });
-            entity.Property(e => e.CarrierKey).HasMaxLength(100); entity.Property(e => e.CarrierDisplayName).HasMaxLength(200); entity.Property(e => e.MemberOrPolicyNumber).HasMaxLength(100); entity.Property(e => e.GroupNumber).HasMaxLength(100); entity.Property(e => e.DeductibleAmount).HasPrecision(18,2); entity.Property(e => e.DeductibleMet).HasPrecision(18,2); entity.Property(e => e.OutOfPocketMaximum).HasPrecision(18,2); entity.Property(e => e.OutOfPocketMet).HasPrecision(18,2); entity.Property(e => e.CopayAmount).HasPrecision(18,2); entity.Property(e => e.CoinsurancePercent).HasPrecision(5,2); entity.Property(e => e.AdjusterName).HasMaxLength(150); entity.Property(e => e.AdjusterPhone).HasMaxLength(30); entity.Property(e => e.AdjusterEmail).HasMaxLength(255); entity.Property(e => e.AdjusterFax).HasMaxLength(30); entity.Property(e => e.LastModifiedUtc).IsConcurrencyToken();
-            entity.HasOne(e => e.Patient).WithMany(e => e.InsurancePolicies).HasForeignKey(e => e.PatientId).OnDelete(DeleteBehavior.Cascade); entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("PatientInsurancePolicies");
+            entity.Property<Guid>(nameof(PatientInsurancePolicy.Id)).ValueGeneratedOnAdd();
+            entity.Property<Guid>(nameof(PatientInsurancePolicy.PatientId));
+            entity.Property<Guid?>(nameof(PatientInsurancePolicy.ClinicId));
+            entity.Property<InsuranceCoveragePriority>(nameof(PatientInsurancePolicy.CoveragePriority));
+            entity.Property<string>(nameof(PatientInsurancePolicy.CarrierKey)).HasMaxLength(100);
+            entity.Property<string>(nameof(PatientInsurancePolicy.CarrierDisplayName)).HasMaxLength(200);
+            entity.Property<InsurancePayerType>(nameof(PatientInsurancePolicy.PayerType));
+            entity.Property<string>(nameof(PatientInsurancePolicy.MemberOrPolicyNumber)).HasMaxLength(100);
+            entity.Property<string>(nameof(PatientInsurancePolicy.GroupNumber)).HasMaxLength(100);
+            entity.Property<DateTime?>(nameof(PatientInsurancePolicy.EffectiveStartDate));
+            entity.Property<DateTime?>(nameof(PatientInsurancePolicy.EffectiveEndDate));
+            entity.Property<InsurancePlanYearType>(nameof(PatientInsurancePolicy.PlanYearType));
+            entity.Property<decimal?>(nameof(PatientInsurancePolicy.DeductibleAmount)).HasPrecision(18, 2);
+            entity.Property<decimal?>(nameof(PatientInsurancePolicy.DeductibleMet)).HasPrecision(18, 2);
+            entity.Property<decimal?>(nameof(PatientInsurancePolicy.OutOfPocketMaximum)).HasPrecision(18, 2);
+            entity.Property<decimal?>(nameof(PatientInsurancePolicy.OutOfPocketMet)).HasPrecision(18, 2);
+            entity.Property<decimal?>(nameof(PatientInsurancePolicy.CopayAmount)).HasPrecision(18, 2);
+            entity.Property<decimal?>(nameof(PatientInsurancePolicy.CoinsurancePercent)).HasPrecision(5, 2);
+            entity.Property<string>(nameof(PatientInsurancePolicy.AdjusterName)).HasMaxLength(150);
+            entity.Property<string>(nameof(PatientInsurancePolicy.AdjusterPhone)).HasMaxLength(30);
+            entity.Property<string>(nameof(PatientInsurancePolicy.AdjusterEmail)).HasMaxLength(255);
+            entity.Property<string>(nameof(PatientInsurancePolicy.AdjusterFax)).HasMaxLength(30);
+            entity.Property<InsurancePolicyStatus>(nameof(PatientInsurancePolicy.Status));
+            entity.Property<bool>(nameof(PatientInsurancePolicy.IsArchived));
+            entity.Property<DateTime>(nameof(PatientInsurancePolicy.LastModifiedUtc)).IsConcurrencyToken();
+            entity.Property<Guid>(nameof(PatientInsurancePolicy.ModifiedByUserId));
+            entity.Property<SyncState>(nameof(PatientInsurancePolicy.SyncState));
+            entity.HasKey(nameof(PatientInsurancePolicy.Id));
+            entity.HasIndex(nameof(PatientInsurancePolicy.PatientId), nameof(PatientInsurancePolicy.CoveragePriority)).IsUnique().HasDatabaseName("UX_PatientInsurancePolicies_PatientId_CoveragePriority_Active").HasFilter(policyFilter);
+            entity.HasIndex(nameof(PatientInsurancePolicy.ClinicId), nameof(PatientInsurancePolicy.PatientId));
+            entity.HasOne(patientEntityName, navigationName: null).WithMany().HasForeignKey(nameof(PatientInsurancePolicy.PatientId)).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(clinicEntityName, navigationName: null).WithMany().HasForeignKey(nameof(PatientInsurancePolicy.ClinicId)).OnDelete(DeleteBehavior.Restrict);
         });
-        modelBuilder.Entity<PatientInsuranceAuthorization>(entity =>
+
+        modelBuilder.Entity(authorizationEntityName, entity =>
         {
-            entity.ToTable("PatientInsuranceAuthorizations"); entity.HasKey(e => e.Id); entity.HasIndex(e => new { e.PatientInsurancePolicyId, e.IsArchived }); entity.HasIndex(e => new { e.ClinicId, e.PatientId }); entity.Property(e => e.ReferenceNumber).HasMaxLength(100); entity.Property(e => e.AuthorizedUnits).HasPrecision(18,2); entity.Property(e => e.UsedUnits).HasPrecision(18,2); entity.Property(e => e.Notes).HasMaxLength(2000); entity.Property(e => e.LastModifiedUtc).IsConcurrencyToken();
-            entity.HasOne(e => e.Policy).WithMany(e => e.Authorizations).HasForeignKey(e => e.PatientInsurancePolicyId).OnDelete(DeleteBehavior.Cascade); entity.HasOne(e => e.Patient).WithMany(e => e.InsuranceAuthorizations).HasForeignKey(e => e.PatientId).OnDelete(DeleteBehavior.Restrict); entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("PatientInsuranceAuthorizations");
+            entity.Property<Guid>(nameof(PatientInsuranceAuthorization.Id)).ValueGeneratedOnAdd();
+            entity.Property<Guid>(nameof(PatientInsuranceAuthorization.PatientInsurancePolicyId));
+            entity.Property<Guid>(nameof(PatientInsuranceAuthorization.PatientId));
+            entity.Property<Guid?>(nameof(PatientInsuranceAuthorization.ClinicId));
+            entity.Property<InsuranceAuthorizationType>(nameof(PatientInsuranceAuthorization.AuthorizationType));
+            entity.Property<string>(nameof(PatientInsuranceAuthorization.ReferenceNumber)).HasMaxLength(100);
+            entity.Property<InsuranceAuthorizationStatus>(nameof(PatientInsuranceAuthorization.Status));
+            entity.Property<DateTime?>(nameof(PatientInsuranceAuthorization.ReceivedDate));
+            entity.Property<DateTime?>(nameof(PatientInsuranceAuthorization.StartDate));
+            entity.Property<DateTime?>(nameof(PatientInsuranceAuthorization.EndDate));
+            entity.Property<decimal?>(nameof(PatientInsuranceAuthorization.AuthorizedUnits)).HasPrecision(18, 2);
+            entity.Property<decimal?>(nameof(PatientInsuranceAuthorization.UsedUnits)).HasPrecision(18, 2);
+            entity.Property<InsuranceVisitLimitPeriod>(nameof(PatientInsuranceAuthorization.VisitLimitPeriod));
+            entity.Property<DateTime?>(nameof(PatientInsuranceAuthorization.ReauthorizationDueDate));
+            entity.Property<int?>(nameof(PatientInsuranceAuthorization.VisitAlertThreshold));
+            entity.Property<string>(nameof(PatientInsuranceAuthorization.Notes)).HasMaxLength(2000);
+            entity.Property<bool>(nameof(PatientInsuranceAuthorization.IsArchived));
+            entity.Property<DateTime>(nameof(PatientInsuranceAuthorization.LastModifiedUtc)).IsConcurrencyToken();
+            entity.Property<Guid>(nameof(PatientInsuranceAuthorization.ModifiedByUserId));
+            entity.Property<SyncState>(nameof(PatientInsuranceAuthorization.SyncState));
+            entity.HasKey(nameof(PatientInsuranceAuthorization.Id));
+            entity.HasIndex(nameof(PatientInsuranceAuthorization.PatientInsurancePolicyId), nameof(PatientInsuranceAuthorization.IsArchived));
+            entity.HasIndex(nameof(PatientInsuranceAuthorization.ClinicId), nameof(PatientInsuranceAuthorization.PatientId));
+            entity.HasOne(policyEntityName, navigationName: null).WithMany().HasForeignKey(nameof(PatientInsuranceAuthorization.PatientInsurancePolicyId)).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(patientEntityName, navigationName: null).WithMany().HasForeignKey(nameof(PatientInsuranceAuthorization.PatientId)).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(clinicEntityName, navigationName: null).WithMany().HasForeignKey(nameof(PatientInsuranceAuthorization.ClinicId)).OnDelete(DeleteBehavior.Restrict);
         });
-        modelBuilder.Entity<NoteTemplate>(entity =>
+
+        modelBuilder.Entity(templateEntityName, entity =>
         {
-            entity.ToTable("NoteTemplates"); entity.HasKey(e => e.Id); entity.HasIndex(e => new { e.ClinicId, e.NoteType, e.Variant }).IsUnique().HasDatabaseName("UX_NoteTemplates_ClinicId_NoteType_Variant_Active").HasFilter(activeTemplateFilter); entity.Property(e => e.Name).HasMaxLength(150).IsRequired(); entity.Property(e => e.LastModifiedUtc).IsConcurrencyToken(); entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict); entity.HasOne(e => e.ActiveVersion).WithMany().HasForeignKey(e => e.ActiveVersionId).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("NoteTemplates");
+            entity.Property<Guid>(nameof(NoteTemplate.Id)).ValueGeneratedOnAdd();
+            entity.Property<Guid?>(nameof(NoteTemplate.ClinicId));
+            entity.Property<NoteType>(nameof(NoteTemplate.NoteType));
+            entity.Property<NoteTemplateVariant>(nameof(NoteTemplate.Variant));
+            entity.Property<string>(nameof(NoteTemplate.Name)).HasMaxLength(150).IsRequired();
+            entity.Property<Guid?>(nameof(NoteTemplate.ActiveVersionId));
+            entity.Property<bool>(nameof(NoteTemplate.IsArchived));
+            entity.Property<DateTime>(nameof(NoteTemplate.CreatedAtUtc));
+            entity.Property<DateTime>(nameof(NoteTemplate.LastModifiedUtc)).IsConcurrencyToken();
+            entity.Property<Guid>(nameof(NoteTemplate.CreatedByUserId));
+            entity.Property<Guid>(nameof(NoteTemplate.ModifiedByUserId));
+            entity.HasKey(nameof(NoteTemplate.Id));
+            entity.HasIndex(nameof(NoteTemplate.ClinicId), nameof(NoteTemplate.NoteType), nameof(NoteTemplate.Variant)).IsUnique().HasDatabaseName("UX_NoteTemplates_ClinicId_NoteType_Variant_Active").HasFilter(activeTemplateFilter);
+            entity.HasOne(clinicEntityName, navigationName: null).WithMany().HasForeignKey(nameof(NoteTemplate.ClinicId)).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(templateVersionEntityName, navigationName: null).WithMany().HasForeignKey(nameof(NoteTemplate.ActiveVersionId)).OnDelete(DeleteBehavior.Restrict);
         });
-        modelBuilder.Entity<NoteTemplateVersion>(entity =>
+
+        modelBuilder.Entity(templateVersionEntityName, entity =>
         {
-            entity.ToTable("NoteTemplateVersions"); entity.HasKey(e => e.Id); entity.HasIndex(e => new { e.NoteTemplateId, e.VersionNumber }).IsUnique(); entity.HasIndex(e => new { e.ClinicId, e.Status }); entity.Property(e => e.SchemaJson).IsRequired(); entity.Property(e => e.ReviewComment).HasMaxLength(1000); entity.Property(e => e.LastModifiedUtc).IsConcurrencyToken(); entity.HasOne(e => e.Template).WithMany(e => e.Versions).HasForeignKey(e => e.NoteTemplateId).OnDelete(DeleteBehavior.Cascade); entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("NoteTemplateVersions");
+            entity.Property<Guid>(nameof(NoteTemplateVersion.Id)).ValueGeneratedOnAdd();
+            entity.Property<Guid>(nameof(NoteTemplateVersion.NoteTemplateId));
+            entity.Property<Guid?>(nameof(NoteTemplateVersion.ClinicId));
+            entity.Property<int>(nameof(NoteTemplateVersion.VersionNumber));
+            entity.Property<NoteTemplateVersionStatus>(nameof(NoteTemplateVersion.Status));
+            entity.Property<string>(nameof(NoteTemplateVersion.SchemaJson)).IsRequired();
+            entity.Property<Guid>(nameof(NoteTemplateVersion.CreatedByUserId));
+            entity.Property<Guid?>(nameof(NoteTemplateVersion.SubmittedByUserId));
+            entity.Property<Guid?>(nameof(NoteTemplateVersion.ReviewedByUserId));
+            entity.Property<DateTime>(nameof(NoteTemplateVersion.CreatedAtUtc));
+            entity.Property<DateTime>(nameof(NoteTemplateVersion.LastModifiedUtc)).IsConcurrencyToken();
+            entity.Property<DateTime?>(nameof(NoteTemplateVersion.SubmittedAtUtc));
+            entity.Property<DateTime?>(nameof(NoteTemplateVersion.PublishedAtUtc));
+            entity.Property<DateTime?>(nameof(NoteTemplateVersion.RetiredAtUtc));
+            entity.Property<string>(nameof(NoteTemplateVersion.ReviewComment)).HasMaxLength(1000);
+            entity.HasKey(nameof(NoteTemplateVersion.Id));
+            entity.HasIndex(nameof(NoteTemplateVersion.NoteTemplateId), nameof(NoteTemplateVersion.VersionNumber)).IsUnique();
+            entity.HasIndex(nameof(NoteTemplateVersion.ClinicId), nameof(NoteTemplateVersion.Status));
+            entity.HasOne(templateEntityName, navigationName: null).WithMany().HasForeignKey(nameof(NoteTemplateVersion.NoteTemplateId)).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(clinicEntityName, navigationName: null).WithMany().HasForeignKey(nameof(NoteTemplateVersion.ClinicId)).OnDelete(DeleteBehavior.Restrict);
         });
-        modelBuilder.Entity<ClinicalNote>(entity => entity.HasOne(e => e.TemplateVersion).WithMany().HasForeignKey(e => e.TemplateVersionId).OnDelete(DeleteBehavior.Restrict));
+
+        modelBuilder.Entity(clinicalNoteEntityName, entity =>
+        {
+            entity.Property<Guid?>(nameof(ClinicalNote.TemplateVersionId));
+            entity.HasOne(templateVersionEntityName, navigationName: null).WithMany().HasForeignKey(nameof(ClinicalNote.TemplateVersionId)).OnDelete(DeleteBehavior.Restrict);
+        });
     }
 
     private void NormalizeTrackedUsers()

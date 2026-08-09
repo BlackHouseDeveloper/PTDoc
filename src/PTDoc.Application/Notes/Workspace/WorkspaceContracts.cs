@@ -619,6 +619,8 @@ public sealed class InterventionLibraryItem
     public string Category { get; set; } = string.Empty;
     public InterventionRegion Region { get; set; }
     public List<string> SearchAliases { get; set; } = new();
+    public ExercisePrescriptionV2? DefaultPrescription { get; set; }
+    public bool IsSelectable { get; set; } = true;
 }
 
 public sealed class CatalogCategory

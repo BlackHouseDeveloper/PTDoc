@@ -119,6 +119,27 @@ public sealed class InterventionLibrarySectionTests : TestContext
     }
 
     [Fact]
+    public void LibraryExercise_AddsClonedDocumentedPrescriptionDefaults()
+    {
+        var objective = new ObjectiveVm();
+        var cut = Render(objective, new PlanVm());
+
+        cut.Find("[data-testid='add-exercise']").Click();
+        cut.FindAll("[data-testid='exercise-library-result']")
+            .Single(result => result.TextContent.Contains("Pendulum Exercise", StringComparison.Ordinal))
+            .QuerySelector("button")!
+            .Click();
+
+        var exercise = Assert.Single(objective.ExerciseRows);
+        Assert.Equal("Pendulum Exercise", exercise.ActualExercisePerformed);
+        Assert.NotNull(exercise.Prescription);
+        Assert.Equal(3, exercise.Prescription.Sets);
+        Assert.Equal(10, exercise.Prescription.Repetitions);
+        Assert.Equal("3x/week", exercise.Prescription.Frequency);
+        Assert.Equal("test-v1", exercise.SourceCatalogVersion);
+    }
+
+    [Fact]
     public void ExerciseDialog_TabsSupportArrowKeyNavigationAndAssociatedPanels()
     {
         var cut = Render(new ObjectiveVm(), new PlanVm());
@@ -200,6 +221,7 @@ public sealed class InterventionLibrarySectionTests : TestContext
         Assert.Equal("Manual Work Technique", plan.GeneralInterventions[0].Category);
         Assert.Equal("1 technique", cut.Find("[data-testid='technique-count']").TextContent.Trim());
         Assert.Empty(cut.FindAll("[data-testid='technique-empty-state']"));
+        Assert.Empty(cut.FindAll("[data-testid='manual-technique-card']"));
         Assert.Equal(1, callbackCount);
     }
 
@@ -217,7 +239,7 @@ public sealed class InterventionLibrarySectionTests : TestContext
     }
 
     [Fact]
-    public void CustomTechniqueTab_ValidatesAndAddsCompleteTechnique()
+    public void CustomTechniqueTab_IsSelectableWithoutUndocumentedControls()
     {
         var plan = new PlanVm();
         var cut = Render(new ObjectiveVm(), plan);
@@ -225,61 +247,42 @@ public sealed class InterventionLibrarySectionTests : TestContext
         cut.Find("[data-testid='add-technique']").Click();
         cut.FindAll("[role='tab']").Single(tab => tab.TextContent.Trim() == "Custom Technique").Click();
 
-        cut.Find("[data-testid='custom-technique-panel'] button").Click();
         var panel = cut.Find("[data-testid='custom-technique-panel']");
-        Assert.Contains("Technique name is required.", panel.TextContent, StringComparison.Ordinal);
-        Assert.Contains("Body region is required.", panel.TextContent, StringComparison.Ordinal);
-
-        cut.Find("[data-testid='custom-technique-panel'] input[type='text']").Input("Posterior glide");
-        cut.Find("[data-testid='custom-technique-panel'] select").Change(InterventionRegion.Shoulder.ToString());
-        cut.Find("[data-testid='custom-technique-panel'] textarea").Input("Grade II");
-        cut.Find("[data-testid='custom-technique-panel'] button").Click();
-
-        var technique = Assert.Single(plan.GeneralInterventions);
-        Assert.Equal(InterventionKind.ManualTechnique, technique.Kind);
-        Assert.Equal(InterventionRegion.Shoulder, technique.InterventionRegion);
-        Assert.Equal("Grade II", technique.Notes);
-        Assert.False(technique.IsSourceBacked);
+        Assert.Equal(string.Empty, panel.TextContent.Trim());
+        Assert.Empty(panel.QuerySelectorAll("input, select, textarea, button"));
+        Assert.Empty(plan.GeneralInterventions);
     }
 
     [Fact]
-    public void ManualTechniqueCard_SupportsDeepDuplicateCollapseRemoveAndReadOnlyBehavior()
+    public void ReadOnlyState_HidesMutationActionsButKeepsExerciseContentAndCollapse()
     {
-        var plan = new PlanVm
+        var objective = new ObjectiveVm
         {
-            GeneralInterventions =
+            ExerciseRows =
             [
-                new GeneralInterventionEntry
+                new ExerciseRowEntry
                 {
-                    Kind = InterventionKind.ManualTechnique,
-                    Name = "Glenohumeral Joint Mobilization",
-                    Category = "Manual Work Technique",
+                    SuggestedExercise = "Pendulum Exercise",
+                    ActualExercisePerformed = "Pendulum Exercise",
+                    Category = "Range of Motion",
                     InterventionRegion = InterventionRegion.Shoulder,
-                    Notes = "Grade III",
-                    Response = "Improved mobility"
+                    Prescription = new ExercisePrescriptionEntry { Sets = 3, Repetitions = 10, Frequency = "3x/week" }
                 }
             ]
         };
-        var cut = Render(new ObjectiveVm(), plan);
-
-        Assert.Equal("Grade III", cut.Find("[data-testid='manual-technique-card'] textarea").GetAttribute("value"));
-        cut.Find("button[aria-label='Collapse Glenohumeral Joint Mobilization']").Click();
-        Assert.Empty(cut.FindAll(".technique-detail-grid"));
-        cut.Find("button[aria-label='Duplicate Glenohumeral Joint Mobilization']").Click();
-        Assert.Equal(2, plan.GeneralInterventions.Count);
-        Assert.Equal("Grade III", plan.GeneralInterventions[1].Notes);
-        Assert.Equal("Improved mobility", plan.GeneralInterventions[1].Response);
-        cut.FindAll("button[aria-label='Remove Glenohumeral Joint Mobilization']").First().Click();
-        Assert.Single(plan.GeneralInterventions);
-
         var readOnly = RenderComponent<InterventionLibrarySection>(parameters => parameters
-            .Add(component => component.Objective, new ObjectiveVm())
-            .Add(component => component.Plan, plan)
+            .Add(component => component.Objective, objective)
+            .Add(component => component.Plan, new PlanVm())
             .Add(component => component.IsReadOnly, true));
+
+        Assert.Contains("Pendulum Exercise", readOnly.Markup, StringComparison.Ordinal);
         Assert.Empty(readOnly.FindAll("[data-testid='add-technique']"));
+        Assert.Empty(readOnly.FindAll("[data-testid='add-exercise']"));
         Assert.Empty(readOnly.FindAll("button[aria-label^='Duplicate']"));
         Assert.Empty(readOnly.FindAll("button[aria-label^='Remove']"));
         Assert.All(readOnly.FindAll("textarea, input, select"), field => Assert.True(field.HasAttribute("disabled")));
+        readOnly.Find("button[aria-label='Collapse Pendulum Exercise']").Click();
+        Assert.Empty(readOnly.FindAll("[data-testid='exercise-prescription-fields']"));
     }
 
     private static InterventionLibraryCatalog CreateCatalog() => new()
@@ -292,8 +295,8 @@ public sealed class InterventionLibrarySectionTests : TestContext
         },
         Items =
         [
-            Exercise("exercise-pendulum", "Pendulum Exercise", "Range of Motion", InterventionRegion.Shoulder),
-            Exercise("exercise-scapular-retraction", "Scapular Retraction", "Strengthening", InterventionRegion.Shoulder, "scap"),
+            Exercise("exercise-pendulum", "Pendulum Exercise", "Range of Motion", InterventionRegion.Shoulder, new ExercisePrescriptionV2 { Sets = 3, Repetitions = 10, Frequency = "3x/week" }),
+            Exercise("exercise-scapular-retraction", "Scapular Retraction", "Strengthening", InterventionRegion.Shoulder, aliases: ["scap"]),
             Exercise("exercise-cervical-retraction", "Cervical Retraction", "Mobility", InterventionRegion.CervicalSpine),
             Exercise("exercise-heel-slide", "Heel Slide", "Range of Motion", InterventionRegion.Knee),
             Exercise("exercise-ankle-pump", "Ankle Pump", "Mobility", InterventionRegion.AnkleFoot),
@@ -308,14 +311,15 @@ public sealed class InterventionLibrarySectionTests : TestContext
         ]
     };
 
-    private static InterventionLibraryItem Exercise(string id, string name, string category, InterventionRegion region, params string[] aliases) => new()
+    private static InterventionLibraryItem Exercise(string id, string name, string category, InterventionRegion region, ExercisePrescriptionV2? defaultPrescription = null, params string[] aliases) => new()
     {
         Id = id,
         Kind = InterventionKind.Exercise,
         Name = name,
         Category = category,
         Region = region,
-        SearchAliases = aliases.ToList()
+        SearchAliases = aliases.ToList(),
+        DefaultPrescription = defaultPrescription
     };
 
     private static InterventionLibraryItem Technique(string id, string name, InterventionRegion region) => new()

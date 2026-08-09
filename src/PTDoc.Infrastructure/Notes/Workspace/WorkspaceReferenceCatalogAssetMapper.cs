@@ -50,7 +50,9 @@ internal static class WorkspaceReferenceCatalogAssetMapper
                     .Where(value => !string.IsNullOrWhiteSpace(value))
                     .Select(value => value.Trim())
                     .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList()
+                    .ToList(),
+                DefaultPrescription = MapDefaultPrescription(source.DefaultPrescription, id, kind),
+                IsSelectable = source.IsSelectable != false
             });
         }
 
@@ -59,6 +61,31 @@ internal static class WorkspaceReferenceCatalogAssetMapper
             Version = asset.Version.Trim(),
             Provenance = WorkspaceCatalogCloneHelpers.CloneProvenance(asset.InterventionLibrary.Provenance),
             Items = items
+        };
+    }
+
+    private static ExercisePrescriptionV2? MapDefaultPrescription(
+        WorkspaceExercisePrescriptionAsset? source,
+        string itemId,
+        InterventionKind kind)
+    {
+        if (source is null)
+        {
+            return null;
+        }
+        if (kind != InterventionKind.Exercise ||
+            source.Sets is < 1 or > 999 ||
+            source.Repetitions is < 1 or > 999 ||
+            source.Frequency?.Length > 50)
+        {
+            throw new InvalidOperationException($"Workspace intervention library item '{itemId}' has invalid prescription defaults.");
+        }
+
+        return new ExercisePrescriptionV2
+        {
+            Sets = source.Sets,
+            Repetitions = source.Repetitions,
+            Frequency = string.IsNullOrWhiteSpace(source.Frequency) ? null : source.Frequency.Trim()
         };
     }
 

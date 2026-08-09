@@ -3,6 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 const baseURL = process.env.PTDOC_WEB_BASE_URL ?? 'http://localhost:5145';
 const storageState = process.env.PTDOC_UI_QA_STORAGE_STATE || undefined;
 const requireFullFixtures = process.env.PTDOC_UI_QA_REQUIRE_FULL_FIXTURES === 'true';
+const artifactDirectory = process.env.PTDOC_UI_QA_ARTIFACT_DIR;
 
 if (requireFullFixtures) {
   const requiredVariables = [
@@ -31,7 +32,7 @@ if (requireFullFixtures) {
 
 export default defineConfig({
   testDir: './tests',
-  outputDir: './test-results',
+  outputDir: artifactDirectory ? `${artifactDirectory}/test-results` : './test-results',
   timeout: 45_000,
   retries: 0,
   workers: 1,
@@ -41,7 +42,7 @@ export default defineConfig({
   fullyParallel: false,
   reporter: [
     ['list'],
-    ['html', { outputFolder: 'playwright-report', open: 'never' }]
+    ['html', { outputFolder: artifactDirectory ? `${artifactDirectory}/playwright-report` : 'playwright-report', open: 'never' }]
   ],
   use: {
     baseURL,

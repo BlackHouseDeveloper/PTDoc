@@ -770,19 +770,19 @@ public static class DashboardEndpoints
         var alerts = new List<DashboardAlertItemResponse>();
         foreach (var row in normalizedRows.GroupBy(candidate => candidate.PatientId).Select(group => group.First()))
         {
-            var patient = new PatientAuthorizationAlertCandidate(row.PatientId,row.PatientFirstName,row.PatientLastName,row.PatientMedicalRecordNumber,row.LastModifiedUtc,"{}");
+            var patient = new PatientAuthorizationAlertCandidate(row.PatientId, row.PatientFirstName, row.PatientLastName, row.PatientMedicalRecordNumber, row.LastModifiedUtc, "{}");
             var authorization = new PatientAuthorizationInfo
             {
                 AuthorizationStatus = JsonSerializer.SerializeToElement(row.Status.ToString()),
                 AuthorizationEndDate = row.EndDate.HasValue ? JsonSerializer.SerializeToElement(row.EndDate.Value) : null,
                 ReAuthorizationDueDate = row.ReauthorizationDueDate.HasValue ? JsonSerializer.SerializeToElement(row.ReauthorizationDueDate.Value) : null,
-                VisitsRemaining = row.AuthorizedUnits.HasValue ? JsonSerializer.SerializeToElement(row.AuthorizedUnits.Value-row.UsedUnits.GetValueOrDefault()) : null,
+                VisitsRemaining = row.AuthorizedUnits.HasValue ? JsonSerializer.SerializeToElement(row.AuthorizedUnits.Value - row.UsedUnits.GetValueOrDefault()) : null,
                 VisitAlertThreshold = row.VisitAlertThreshold.HasValue ? JsonSerializer.SerializeToElement(row.VisitAlertThreshold.Value) : null
             };
-            AddAuthorizationStatusAlert(alerts,patient,authorization,now);
-            AddAuthorizationDateAlert(alerts,patient,row.EndDate?.ToString("O"),today,now,DashboardAlertKinds.AuthorizationExpiration,"Authorization Expired","Authorization Expiring","Authorization coverage has expired.","Authorization coverage is nearing its end date.");
-            AddAuthorizationDateAlert(alerts,patient,row.ReauthorizationDueDate?.ToString("O"),today,now,DashboardAlertKinds.AuthorizationReauthorizationDue,"Re-Authorization Overdue","Re-Authorization Due","Re-authorization is overdue.","Re-authorization is due soon.");
-            AddAuthorizationVisitLimitAlert(alerts,patient,authorization,now);
+            AddAuthorizationStatusAlert(alerts, patient, authorization, now);
+            AddAuthorizationDateAlert(alerts, patient, row.EndDate?.ToString("O"), today, now, DashboardAlertKinds.AuthorizationExpiration, "Authorization Expired", "Authorization Expiring", "Authorization coverage has expired.", "Authorization coverage is nearing its end date.");
+            AddAuthorizationDateAlert(alerts, patient, row.ReauthorizationDueDate?.ToString("O"), today, now, DashboardAlertKinds.AuthorizationReauthorizationDue, "Re-Authorization Overdue", "Re-Authorization Due", "Re-authorization is overdue.", "Re-authorization is due soon.");
+            AddAuthorizationVisitLimitAlert(alerts, patient, authorization, now);
         }
 
         var patients = await patientQuery

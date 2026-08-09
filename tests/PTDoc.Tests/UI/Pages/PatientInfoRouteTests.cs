@@ -31,6 +31,7 @@ public sealed class PatientInfoRouteTests : TestContext
         providers.Setup(service => service.ListPatientRelationshipsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
         var insurance = new Mock<IInsurancePolicyService>();
         insurance.Setup(service => service.ListAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        insurance.Setup(service => service.ListAsync(It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
         Services.AddSingleton(providers.Object);
         Services.AddSingleton(insurance.Object);
         Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();

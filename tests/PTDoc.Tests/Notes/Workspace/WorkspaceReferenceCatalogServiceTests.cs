@@ -42,18 +42,30 @@ public sealed class WorkspaceReferenceCatalogServiceTests
             Assert.NotEqual(InterventionKind.General, item.Kind);
         });
 
-        var shoulder = _catalogs.GetBodyRegionCatalog(BodyPart.Shoulder);
-        Assert.All(
-            catalog.Items.Where(item => item.Kind == InterventionKind.Exercise),
-            item => Assert.Contains(item.Name, shoulder.ExerciseOptions));
-        Assert.All(
-            catalog.Items.Where(item => item.Kind == InterventionKind.ManualTechnique),
-            item => Assert.Contains(item.Name, shoulder.TreatmentInterventionOptions));
+        Assert.Equal(
+            ["Pendulum Exercise", "Scapular Retraction", "Cervical Retraction", "Heel Slide", "Ankle Pump", "Bridge"],
+            catalog.Items.Where(item => item.Kind == InterventionKind.Exercise).Select(item => item.Name).ToArray());
+
+        var pendulum = Assert.Single(catalog.Items.Where(item => item.Name == "Pendulum Exercise"));
+        Assert.Equal(InterventionRegion.Shoulder, pendulum.Region);
+        Assert.NotNull(pendulum.DefaultPrescription);
+        Assert.Equal(3, pendulum.DefaultPrescription.Sets);
+        Assert.Equal(10, pendulum.DefaultPrescription.Repetitions);
+        Assert.Equal("3x/week", pendulum.DefaultPrescription.Frequency);
+
+        var scapularRetraction = Assert.Single(catalog.Items.Where(item => item.Name == "Scapular Retraction"));
+        Assert.Contains("scap", scapularRetraction.SearchAliases, StringComparer.OrdinalIgnoreCase);
 
         var first = catalog.Items[0];
         var resolved = _catalogs.GetInterventionLibraryItem(first.Id.ToUpperInvariant());
         Assert.NotNull(resolved);
         Assert.Equal(first.Id, resolved.Id);
+        Assert.NotSame(first.DefaultPrescription, resolved.DefaultPrescription);
+
+        var legacy = _catalogs.GetInterventionLibraryItem("exercise-serratus-punches");
+        Assert.NotNull(legacy);
+        Assert.False(legacy.IsSelectable);
+        Assert.DoesNotContain(catalog.Items, item => item.Id == legacy.Id);
     }
 
     [Fact]

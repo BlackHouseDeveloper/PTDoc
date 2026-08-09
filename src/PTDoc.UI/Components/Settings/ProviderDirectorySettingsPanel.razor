@@ -21,14 +21,14 @@
         <section class="provider-admin__editor" aria-labelledby="submit-provider-title">
             <h2 id="submit-provider-title">Submit provider candidate</h2>
             <div class="provider-admin__form-grid">
-                <label><span>First name</span><input class="form-control" @bind="draft.FirstName" /></label>
-                <label><span>Last name</span><input class="form-control" @bind="draft.LastName" /></label>
-                <label><span>Credentials</span><input class="form-control" @bind="draft.Credentials" /></label>
-                <label><span>NPI</span><input class="form-control" inputmode="numeric" maxlength="10" @bind="draft.Npi" /></label>
-                <label><span>Specialty</span><input class="form-control" @bind="draft.Specialty" /></label>
-                <label><span>Organization</span><input class="form-control" @bind="draft.OrganizationName" /></label>
-                <label><span>Phone</span><input class="form-control" type="tel" @bind="draft.Phone" /></label>
-                <label><span>Fax</span><input class="form-control" type="tel" @bind="draft.Fax" /></label>
+                <label><span>First name</span><input class="form-control" @bind="draft.FirstName" @bind:event="oninput" /></label>
+                <label><span>Last name</span><input class="form-control" @bind="draft.LastName" @bind:event="oninput" /></label>
+                <label><span>Credentials</span><input class="form-control" @bind="draft.Credentials" @bind:event="oninput" /></label>
+                <label><span>NPI</span><input class="form-control" inputmode="numeric" maxlength="10" @bind="draft.Npi" @bind:event="oninput" /></label>
+                <label><span>Specialty</span><input class="form-control" @bind="draft.Specialty" @bind:event="oninput" /></label>
+                <label><span>Organization</span><input class="form-control" @bind="draft.OrganizationName" @bind:event="oninput" /></label>
+                <label><span>Phone</span><input class="form-control" type="tel" @bind="draft.Phone" @bind:event="oninput" /></label>
+                <label><span>Fax</span><input class="form-control" type="tel" @bind="draft.Fax" @bind:event="oninput" /></label>
             </div>
             <button type="button" class="btn btn-primary" @onclick="SubmitAsync" disabled="@isBusy">Submit for approval</button>
         </section>

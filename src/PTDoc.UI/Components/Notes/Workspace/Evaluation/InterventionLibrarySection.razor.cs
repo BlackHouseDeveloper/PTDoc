@@ -24,16 +24,8 @@ public partial class InterventionLibrarySection
         new(InterventionRegion.General, "General")
     ];
 
-    private static readonly IReadOnlyList<string> AssistanceLevelOptions =
-    ["Min Assist", "Mod Assist", "Max Assist", "Contact Guard", "Standby Assist", "Independent"];
-
-    private static readonly IReadOnlyList<string> CueingOptions =
-    ["Verbal", "Visual", "Tactile", "Demonstration", "None"];
-
     private readonly HashSet<ExerciseRowEntry> _collapsedExercises = new();
-    private readonly HashSet<GeneralInterventionEntry> _collapsedTechniques = new();
     private readonly Dictionary<ExerciseRowEntry, Dictionary<string, string>> _exerciseErrors = new();
-    private readonly Dictionary<GeneralInterventionEntry, string> _techniqueMinutesErrors = new();
     private readonly string _modalId = $"intervention-library-dialog-{Guid.NewGuid():N}";
     private InterventionLibraryCatalog? _catalog;
     private InterventionDialogKind _dialogKind;
@@ -44,22 +36,12 @@ public partial class InterventionLibrarySection
     private InterventionRegion? _techniqueRegion;
     private string _customExerciseName = string.Empty;
     private string _customExerciseNotes = string.Empty;
-    private readonly CustomTechniqueDraft _customTechnique = new();
     private readonly Dictionary<string, string> _customExerciseErrors = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string> _customTechniqueErrors = new(StringComparer.Ordinal);
-    private IReadOnlyList<CodeLookupEntry> _manualCptOptions = [];
     private bool _isCatalogLoading;
-    private bool _isCptLoading;
     private string? _catalogError;
-    private string? _cptError;
     private IJSObjectReference? _modalModule;
     private DotNetObjectReference<InterventionLibrarySection>? _dotNetReference;
     private bool _modalAccessibilityActive;
-    private ElementReference _customTechniqueNameInput;
-    private ElementReference _customTechniqueRegionInput;
-    private ElementReference _customTechniqueNotesInput;
-    private ElementReference _customTechniqueMinutesInput;
-    private ElementReference _customTechniqueResponseInput;
     private ElementReference _exerciseLibraryTab;
     private ElementReference _exerciseCustomTab;
     private ElementReference _techniqueLibraryTab;
@@ -172,10 +154,6 @@ public partial class InterventionLibrarySection
     private async Task SetTechniqueModeAsync(DialogMode mode)
     {
         _techniqueMode = mode;
-        if (mode == DialogMode.Custom)
-        {
-            await EnsureManualCptOptionsAsync();
-        }
         await (mode == DialogMode.Library ? _techniqueLibraryTab.FocusAsync() : _techniqueCustomTab.FocusAsync());
     }
 
@@ -195,30 +173,6 @@ public partial class InterventionLibrarySection
         _ => Task.CompletedTask
     };
 
-    private async Task EnsureManualCptOptionsAsync()
-    {
-        if (_manualCptOptions.Count > 0 || _isCptLoading)
-        {
-            return;
-        }
-
-        _isCptLoading = true;
-        _cptError = null;
-        try
-        {
-            _manualCptOptions = await NoteWorkspaceService.SearchCptAsync("manual", 20);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Unable to load manual-technique CPT options");
-            _cptError = "Unable to load CPT options right now.";
-        }
-        finally
-        {
-            _isCptLoading = false;
-        }
-    }
-
     private async Task AddLibraryExerciseAsync(InterventionLibraryItem item)
     {
         Objective.ExerciseRows.Add(new ExerciseRowEntry
@@ -231,7 +185,14 @@ public partial class InterventionLibrarySection
             ActualExercisePerformed = item.Name,
             IsCheckedSuggestedExercise = true,
             IsSourceBacked = true,
-            Prescription = new ExercisePrescriptionEntry(),
+            Prescription = item.DefaultPrescription is null
+                ? new ExercisePrescriptionEntry()
+                : new ExercisePrescriptionEntry
+                {
+                    Sets = item.DefaultPrescription.Sets,
+                    Repetitions = item.DefaultPrescription.Repetitions,
+                    Frequency = item.DefaultPrescription.Frequency
+                },
             IncludeInHomeExerciseProgram = false
         });
         await ObjectiveChanged.InvokeAsync(Objective);
@@ -278,67 +239,6 @@ public partial class InterventionLibrarySection
         await PlanChanged.InvokeAsync(Plan);
     }
 
-    private async Task AddCustomTechniqueAsync()
-    {
-        _customTechniqueErrors.Clear();
-        var name = _customTechnique.Name.Trim();
-        var notes = _customTechnique.Notes.Trim();
-        var response = _customTechnique.Response.Trim();
-        if (name.Length == 0) _customTechniqueErrors[nameof(_customTechnique.Name)] = "Technique name is required.";
-        else if (name.Length > 200) _customTechniqueErrors[nameof(_customTechnique.Name)] = "Technique name cannot exceed 200 characters.";
-        if (!_customTechnique.Region.HasValue) _customTechniqueErrors[nameof(_customTechnique.Region)] = "Body region is required.";
-        if (notes.Length > 2000) _customTechniqueErrors[nameof(_customTechnique.Notes)] = "Notes cannot exceed 2000 characters.";
-        if (response.Length > 2000) _customTechniqueErrors[nameof(_customTechnique.Response)] = "Response cannot exceed 2000 characters.";
-        if (_customTechnique.Minutes is < 1 or > 1440) _customTechniqueErrors[nameof(_customTechnique.Minutes)] = "Minutes must be between 1 and 1440.";
-
-        if (_customTechniqueErrors.Count > 0)
-        {
-            if (_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Name)))
-            {
-                await _customTechniqueNameInput.FocusAsync();
-            }
-            else
-            {
-                if (_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Region)))
-                {
-                    await _customTechniqueRegionInput.FocusAsync();
-                }
-                else if (_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Notes)))
-                {
-                    await _customTechniqueNotesInput.FocusAsync();
-                }
-                else if (_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Minutes)))
-                {
-                    await _customTechniqueMinutesInput.FocusAsync();
-                }
-                else
-                {
-                    await _customTechniqueResponseInput.FocusAsync();
-                }
-            }
-            return;
-        }
-
-        var cpt = _manualCptOptions.FirstOrDefault(option => string.Equals(option.Code, _customTechnique.CptCode, StringComparison.OrdinalIgnoreCase));
-        Plan.GeneralInterventions.Add(new GeneralInterventionEntry
-        {
-            Kind = InterventionKind.ManualTechnique,
-            Name = name,
-            Category = "Manual Work Technique",
-            InterventionRegion = _customTechnique.Region,
-            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes,
-            CptCode = cpt?.Code,
-            CptDescription = cpt?.Description,
-            TimeMinutes = _customTechnique.Minutes,
-            AssistanceLevel = NormalizeOptional(_customTechnique.AssistanceLevel),
-            Cueing = NormalizeOptional(_customTechnique.Cueing),
-            Response = string.IsNullOrWhiteSpace(response) ? null : response,
-            IncludeInHomeExerciseProgram = _customTechnique.IncludeInHomeExerciseProgram
-        });
-        _customTechnique.Reset();
-        await PlanChanged.InvokeAsync(Plan);
-    }
-
     private async Task DuplicateExerciseAsync(ExerciseRowEntry source)
     {
         Objective.ExerciseRows.Add(new ExerciseRowEntry
@@ -370,29 +270,6 @@ public partial class InterventionLibrarySection
         await ObjectiveChanged.InvokeAsync(Objective);
     }
 
-    private async Task DuplicateTechniqueAsync(GeneralInterventionEntry source)
-    {
-        Plan.GeneralInterventions.Add(new GeneralInterventionEntry
-        {
-            Kind = source.Kind,
-            SourceItemId = source.SourceItemId,
-            SourceCatalogVersion = source.SourceCatalogVersion,
-            InterventionRegion = source.InterventionRegion,
-            Name = source.Name,
-            Category = source.Category,
-            IsSourceBacked = source.IsSourceBacked,
-            Notes = source.Notes,
-            CptCode = source.CptCode,
-            CptDescription = source.CptDescription,
-            TimeMinutes = source.TimeMinutes,
-            AssistanceLevel = source.AssistanceLevel,
-            Cueing = source.Cueing,
-            Response = source.Response,
-            IncludeInHomeExerciseProgram = source.IncludeInHomeExerciseProgram
-        });
-        await PlanChanged.InvokeAsync(Plan);
-    }
-
     private async Task RemoveExerciseAsync(ExerciseRowEntry exercise)
     {
         Objective.ExerciseRows.Remove(exercise);
@@ -401,16 +278,7 @@ public partial class InterventionLibrarySection
         await ObjectiveChanged.InvokeAsync(Objective);
     }
 
-    private async Task RemoveTechniqueAsync(GeneralInterventionEntry technique)
-    {
-        Plan.GeneralInterventions.Remove(technique);
-        _collapsedTechniques.Remove(technique);
-        _techniqueMinutesErrors.Remove(technique);
-        await PlanChanged.InvokeAsync(Plan);
-    }
-
     private void ToggleExercise(ExerciseRowEntry exercise) => ToggleCollapsed(_collapsedExercises, exercise);
-    private void ToggleTechnique(GeneralInterventionEntry technique) => ToggleCollapsed(_collapsedTechniques, technique);
 
     private async Task UpdateExerciseNumberAsync(ExerciseRowEntry exercise, string field, object? value)
     {
@@ -455,58 +323,16 @@ public partial class InterventionLibrarySection
         }
     }
 
-    private async Task UpdateTechniqueAsync(GeneralInterventionEntry technique, Action<GeneralInterventionEntry> update)
-    {
-        update(technique);
-        await PlanChanged.InvokeAsync(Plan);
-    }
-
     private async Task UpdateExerciseNotesAsync(ExerciseRowEntry exercise, object? value)
     {
         exercise.Notes = NormalizeOptional(value?.ToString());
         await ObjectiveChanged.InvokeAsync(Objective);
     }
 
-    private async Task UpdateTechniqueMinutesAsync(GeneralInterventionEntry technique, object? value)
-    {
-        var text = value?.ToString()?.Trim();
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            technique.TimeMinutes = null;
-            _techniqueMinutesErrors.Remove(technique);
-            await PlanChanged.InvokeAsync(Plan);
-        }
-        else if (!int.TryParse(text, out var minutes) || minutes is < 1 or > 1440)
-        {
-            _techniqueMinutesErrors[technique] = "Minutes must be a whole number from 1 to 1440.";
-        }
-        else
-        {
-            technique.TimeMinutes = minutes;
-            _techniqueMinutesErrors.Remove(technique);
-            await PlanChanged.InvokeAsync(Plan);
-        }
-    }
-
-    private async Task UpdateTechniqueCptAsync(GeneralInterventionEntry technique, object? value)
-    {
-        var code = value?.ToString();
-        var selected = _manualCptOptions.FirstOrDefault(option => string.Equals(option.Code, code, StringComparison.OrdinalIgnoreCase));
-        technique.CptCode = selected?.Code;
-        technique.CptDescription = selected?.Description;
-        await PlanChanged.InvokeAsync(Plan);
-    }
-
     private async Task ToggleExerciseHepAsync(ExerciseRowEntry exercise)
     {
         exercise.IncludeInHomeExerciseProgram = !exercise.IncludeInHomeExerciseProgram;
         await ObjectiveChanged.InvokeAsync(Objective);
-    }
-
-    private async Task ToggleTechniqueHepAsync(GeneralInterventionEntry technique)
-    {
-        technique.IncludeInHomeExerciseProgram = !technique.IncludeInHomeExerciseProgram;
-        await PlanChanged.InvokeAsync(Plan);
     }
 
     private ExercisePrescriptionEntry GetPrescription(ExerciseRowEntry exercise) =>
@@ -543,9 +369,6 @@ public partial class InterventionLibrarySection
         string.IsNullOrWhiteSpace(exercise.ActualExercisePerformed)
             ? (string.IsNullOrWhiteSpace(exercise.SuggestedExercise) ? "Exercise" : exercise.SuggestedExercise.Trim())
             : exercise.ActualExercisePerformed.Trim();
-
-    private string GetTechniqueMinutesErrorId(GeneralInterventionEntry technique) =>
-        $"technique-minutes-error-{Plan.GeneralInterventions.IndexOf(technique)}";
 
     private (string Category, string Region) GetExerciseDetails(ExerciseRowEntry exercise) =>
         (string.IsNullOrWhiteSpace(exercise.Category) ? "Exercise" : exercise.Category,
@@ -597,7 +420,6 @@ public partial class InterventionLibrarySection
         await CleanupModalAsync();
         _dialogKind = InterventionDialogKind.None;
         _customExerciseErrors.Clear();
-        _customTechniqueErrors.Clear();
     }
 
     private async Task CleanupModalAsync()
@@ -625,32 +447,6 @@ public partial class InterventionLibrarySection
     }
 
     private sealed record RegionFilter(InterventionRegion? Region, string Label);
-
-    private sealed class CustomTechniqueDraft
-    {
-        public string Name { get; set; } = string.Empty;
-        public InterventionRegion? Region { get; set; }
-        public string Notes { get; set; } = string.Empty;
-        public string? CptCode { get; set; }
-        public int? Minutes { get; set; }
-        public string? AssistanceLevel { get; set; }
-        public string? Cueing { get; set; }
-        public string Response { get; set; } = string.Empty;
-        public bool IncludeInHomeExerciseProgram { get; set; }
-
-        public void Reset()
-        {
-            Name = string.Empty;
-            Region = null;
-            Notes = string.Empty;
-            CptCode = null;
-            Minutes = null;
-            AssistanceLevel = null;
-            Cueing = null;
-            Response = string.Empty;
-            IncludeInHomeExerciseProgram = false;
-        }
-    }
 
     private enum InterventionDialogKind { None, Exercise, Technique }
     private enum DialogMode { Library, Custom }

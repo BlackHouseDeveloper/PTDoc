@@ -481,10 +481,7 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Objective.PalpationObservation.TenderMuscles = CloneSet(payload.Objective.TenderMuscles);
         preservedPayload.Objective.PalpationObservation.Other = TrimToNull(payload.Objective.PalpationComments);
         preservedPayload.Objective.PalpationObservation.IsNormal = payload.Objective.IsPalpationUnremarkable;
-        preservedPayload.Objective.ExerciseRows = MergeExerciseRows(
-            preservedPayload.Objective.ExerciseRows,
-            payload.Objective.ExerciseRows,
-            []);
+        preservedPayload.Objective.ExerciseRows = MapExerciseRows(payload.Objective.ExerciseRows);
 
         preservedPayload.Assessment.AssessmentNarrative = payload.Assessment.AssessmentNarrative;
         preservedPayload.Assessment.FindingsSummary = TrimToNull(payload.Assessment.FindingsSummary);
@@ -516,10 +513,7 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Plan.TreatmentFrequencyDaysPerWeek = ParseNumericRange(payload.Plan.TreatmentFrequency);
         preservedPayload.Plan.TreatmentDurationWeeks = ParseNumericRange(payload.Plan.TreatmentDuration);
         preservedPayload.Plan.TreatmentFocuses = CloneSet(payload.Plan.TreatmentFocuses);
-        preservedPayload.Plan.GeneralInterventions = MergeGeneralInterventions(
-            preservedPayload.Plan.GeneralInterventions,
-            payload.Plan.GeneralInterventions,
-            []);
+        preservedPayload.Plan.GeneralInterventions = MapGeneralInterventions(payload.Plan.GeneralInterventions);
         preservedPayload.Plan.SelectedCptCodes = MergePlannedCptCodes(
             preservedPayload.Plan.SelectedCptCodes,
             BuildVisibleCptCodes(payload.Plan, payload.Objective, noteType));
@@ -799,10 +793,7 @@ public sealed class NoteWorkspacePayloadMapper
             .ToList();
     }
 
-    private static List<ExerciseRowV2> MergeExerciseRows(
-        IReadOnlyCollection<ExerciseRowV2>? preservedEntries,
-        IEnumerable<ExerciseRowEntry> visibleRows,
-        IEnumerable<string> legacyExercises)
+    private static List<ExerciseRowV2> MapExerciseRows(IEnumerable<ExerciseRowEntry> visibleRows)
     {
         var rows = visibleRows
             .Where(row =>
@@ -831,48 +822,7 @@ public sealed class NoteWorkspacePayloadMapper
             })
             .ToList();
 
-        if (rows.Count > 0)
-        {
-            return rows;
-        }
-
-        var preserved = (preservedEntries ?? [])
-            .Where(row => !string.IsNullOrWhiteSpace(row.SuggestedExercise) || !string.IsNullOrWhiteSpace(row.ActualExercisePerformed))
-            .Select(row => new ExerciseRowV2
-            {
-                SourceItemId = row.SourceItemId,
-                SourceCatalogVersion = row.SourceCatalogVersion,
-                Category = row.Category,
-                InterventionRegion = row.InterventionRegion,
-                Prescription = ClonePrescription(row.Prescription),
-                Notes = row.Notes,
-                SuggestedExercise = row.SuggestedExercise,
-                ActualExercisePerformed = row.ActualExercisePerformed,
-                SetsRepsDuration = row.SetsRepsDuration,
-                ResistanceOrWeight = row.ResistanceOrWeight,
-                CptCode = row.CptCode,
-                CptDescription = row.CptDescription,
-                TimeMinutes = row.TimeMinutes,
-                AssistanceLevel = row.AssistanceLevel,
-                Cueing = row.Cueing,
-                IncludeInHomeExerciseProgram = row.IncludeInHomeExerciseProgram,
-                IsCheckedSuggestedExercise = row.IsCheckedSuggestedExercise,
-                IsSourceBacked = row.IsSourceBacked
-            })
-            .ToList();
-
-        if (preserved.Count > 0)
-        {
-            return preserved;
-        }
-
-        return legacyExercises
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => new ExerciseRowV2
-            {
-                ActualExercisePerformed = value.Trim()
-            })
-            .ToList();
+        return rows;
     }
 
     private static List<ObjectiveMetricInputV2> MergeObjectiveMetrics(
@@ -1032,10 +982,8 @@ public sealed class NoteWorkspacePayloadMapper
         };
     }
 
-    private static List<GeneralInterventionEntryV2> MergeGeneralInterventions(
-        IReadOnlyCollection<GeneralInterventionEntryV2>? preservedEntries,
-        IEnumerable<GeneralInterventionEntry> selectedEntries,
-        IEnumerable<string> legacyManualTechniques)
+    private static List<GeneralInterventionEntryV2> MapGeneralInterventions(
+        IEnumerable<GeneralInterventionEntry> selectedEntries)
     {
         var interventions = selectedEntries
             .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
@@ -1059,48 +1007,7 @@ public sealed class NoteWorkspacePayloadMapper
             })
             .ToList();
 
-        if (interventions.Count > 0)
-        {
-            return interventions;
-        }
-
-        var preserved = (preservedEntries ?? [])
-            .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
-            .Select(entry => new GeneralInterventionEntryV2
-            {
-                Kind = ResolveInterventionKind(entry.Kind, entry.Category),
-                SourceItemId = entry.SourceItemId,
-                SourceCatalogVersion = entry.SourceCatalogVersion,
-                InterventionRegion = entry.InterventionRegion,
-                Name = entry.Name,
-                Category = entry.Category,
-                IsSourceBacked = entry.IsSourceBacked,
-                Notes = entry.Notes,
-                CptCode = entry.CptCode,
-                CptDescription = entry.CptDescription,
-                TimeMinutes = entry.TimeMinutes,
-                AssistanceLevel = entry.AssistanceLevel,
-                Cueing = entry.Cueing,
-                Response = entry.Response,
-                IncludeInHomeExerciseProgram = entry.IncludeInHomeExerciseProgram
-            })
-            .ToList();
-
-        if (preserved.Count > 0)
-        {
-            return preserved;
-        }
-
-        return legacyManualTechniques
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => new GeneralInterventionEntryV2
-            {
-                Name = value.Trim(),
-                Category = "Manual",
-                Kind = InterventionKind.ManualTechnique,
-                InterventionRegion = InterventionRegion.General
-            })
-            .ToList();
+        return interventions;
     }
 
     private static ExercisePrescriptionV2? MapPrescription(ExercisePrescriptionEntry? prescription)
@@ -1142,16 +1049,6 @@ public sealed class NoteWorkspacePayloadMapper
         }
         return string.Join("; ", values);
     }
-
-    private static ExercisePrescriptionV2? ClonePrescription(ExercisePrescriptionV2? prescription) =>
-        prescription is null
-            ? null
-            : new ExercisePrescriptionV2
-            {
-                Sets = prescription.Sets,
-                Repetitions = prescription.Repetitions,
-                Frequency = prescription.Frequency
-            };
 
     private static InterventionKind ResolveInterventionKind(InterventionKind kind, string? category) =>
         kind != InterventionKind.General

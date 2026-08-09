@@ -61,7 +61,7 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
     {
         Version = InterventionLibrary.Value.Version,
         Provenance = WorkspaceCatalogCloneHelpers.CloneProvenance(InterventionLibrary.Value.Provenance),
-        Items = InterventionLibrary.Value.Items.Select(CloneInterventionItem).ToList()
+        Items = InterventionLibrary.Value.Items.Where(item => item.IsSelectable).Select(CloneInterventionItem).ToList()
     };
 
     public InterventionLibraryItem? GetInterventionLibraryItem(string itemId)
@@ -236,7 +236,16 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
         Name = item.Name,
         Category = item.Category,
         Region = item.Region,
-        SearchAliases = item.SearchAliases.ToList()
+        SearchAliases = item.SearchAliases.ToList(),
+        DefaultPrescription = item.DefaultPrescription is null
+            ? null
+            : new ExercisePrescriptionV2
+            {
+                Sets = item.DefaultPrescription.Sets,
+                Repetitions = item.DefaultPrescription.Repetitions,
+                Frequency = item.DefaultPrescription.Frequency
+            },
+        IsSelectable = item.IsSelectable
     };
 
     private static BodyRegionCatalog CloneForBodyPart(BodyRegionCatalog source, BodyPart bodyPart) => new()

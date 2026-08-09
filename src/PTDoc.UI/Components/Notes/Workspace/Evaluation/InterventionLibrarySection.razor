@@ -141,50 +141,6 @@
                 <span>No manual techniques added yet. Click "Add Technique" to get started.</span>
             </div>
         }
-        else
-        {
-            <div class="exercise-card-list" data-testid="technique-card-list">
-                @foreach (var technique in ManualTechniques)
-                {
-                    var isExpanded = !_collapsedTechniques.Contains(technique);
-                    <article @key="technique" class="exercise-card" data-testid="manual-technique-card">
-                        <div class="exercise-card__header">
-                            <div class="exercise-card__identity">
-                                <h4>@technique.Name</h4>
-                                <div class="exercise-card__metadata">
-                                    <span class="exercise-card__category">@(technique.Category ?? "Manual Work Technique")</span>
-                                    <span>@(technique.InterventionRegion.HasValue ? GetRegionLabel(technique.InterventionRegion.Value) : "General")</span>
-                                    @if (technique.IsSourceBacked) { <span>Source-backed</span> }
-                                </div>
-                            </div>
-                            <div class="exercise-card__actions">
-                                @if (!IsReadOnly)
-                                {
-                                    <button type="button" class="intervention-icon-button" aria-label="Duplicate @technique.Name" @onclick="() => DuplicateTechniqueAsync(technique)"><img src="_content/PTDoc.UI/images/notes/interventions/duplicate.svg" alt="" aria-hidden="true" /></button>
-                                }
-                                <button type="button" class="intervention-icon-button exercise-card__collapse @(isExpanded ? "" : "exercise-card__collapse--collapsed")" aria-label="@(isExpanded ? $"Collapse {technique.Name}" : $"Expand {technique.Name}")" aria-expanded="@isExpanded" @onclick="() => ToggleTechnique(technique)"><img src="_content/PTDoc.UI/images/notes/interventions/chevron-down.svg" alt="" aria-hidden="true" /></button>
-                                @if (!IsReadOnly)
-                                {
-                                    <button type="button" class="intervention-icon-button intervention-icon-button--danger" aria-label="Remove @technique.Name" @onclick="() => RemoveTechniqueAsync(technique)"><img src="_content/PTDoc.UI/images/notes/interventions/remove.svg" alt="" aria-hidden="true" /></button>
-                                }
-                            </div>
-                        </div>
-                        @if (isExpanded)
-                        {
-                            <div class="technique-detail-grid">
-                                <label class="intervention-full-field technique-detail-grid__full"><span>Notes</span><textarea maxlength="2000" value="@technique.Notes" disabled="@IsReadOnly" @oninput="e => UpdateTechniqueAsync(technique, item => item.Notes = e.Value?.ToString())"></textarea></label>
-                                <label><span>CPT</span><select value="@technique.CptCode" disabled="@IsReadOnly" @onfocus="EnsureManualCptOptionsAsync" @onchange="e => UpdateTechniqueCptAsync(technique, e.Value)"><option value="">No CPT selected</option>@if (!string.IsNullOrWhiteSpace(technique.CptCode) && !_manualCptOptions.Any(option => string.Equals(option.Code, technique.CptCode, StringComparison.OrdinalIgnoreCase))) { <option value="@technique.CptCode">@technique.CptCode - @technique.CptDescription</option> }@foreach (var option in _manualCptOptions) { <option value="@option.Code">@option.Code - @option.Description</option> }</select></label>
-                                <label><span>Minutes</span><input type="number" min="1" max="1440" value="@technique.TimeMinutes" aria-invalid="@_techniqueMinutesErrors.ContainsKey(technique)" aria-describedby="@(_techniqueMinutesErrors.ContainsKey(technique) ? GetTechniqueMinutesErrorId(technique) : null)" disabled="@IsReadOnly" @onchange="e => UpdateTechniqueMinutesAsync(technique, e.Value)" />@if (_techniqueMinutesErrors.GetValueOrDefault(technique) is { } minutesError) { <small id="@GetTechniqueMinutesErrorId(technique)" class="intervention-field-error" role="alert">@minutesError</small> }</label>
-                                <label><span>Assistance</span><select value="@technique.AssistanceLevel" disabled="@IsReadOnly" @onchange="e => UpdateTechniqueAsync(technique, item => item.AssistanceLevel = e.Value?.ToString())"><option value="">None documented</option>@foreach (var option in AssistanceLevelOptions) { <option value="@option">@option</option> }</select></label>
-                                <label><span>Cueing</span><select value="@technique.Cueing" disabled="@IsReadOnly" @onchange="e => UpdateTechniqueAsync(technique, item => item.Cueing = e.Value?.ToString())"><option value="">None documented</option>@foreach (var option in CueingOptions) { <option value="@option">@option</option> }</select></label>
-                                <label class="intervention-full-field technique-detail-grid__full"><span>Response</span><textarea maxlength="2000" value="@technique.Response" disabled="@IsReadOnly" @oninput="e => UpdateTechniqueAsync(technique, item => item.Response = e.Value?.ToString())"></textarea></label>
-                            </div>
-                            <div class="exercise-hep-row"><span class="exercise-hep-row__label"><img src="_content/PTDoc.UI/images/notes/interventions/home.svg" alt="" aria-hidden="true" />Include in Home Exercise Program</span><button type="button" class="exercise-hep-toggle @(technique.IncludeInHomeExerciseProgram ? "exercise-hep-toggle--selected" : "")" role="switch" aria-checked="@technique.IncludeInHomeExerciseProgram" aria-label="Include @technique.Name in Home Exercise Program" disabled="@IsReadOnly" @onclick="() => ToggleTechniqueHepAsync(technique)"><span></span></button></div>
-                        }
-                    </article>
-                }
-            </div>
-        }
     </section>
 </div>
 
@@ -254,21 +210,7 @@
                 }
                 else
                 {
-                    <div id="custom-technique-panel" class="intervention-dialog__body custom-exercise-form" role="tabpanel" aria-labelledby="technique-custom-tab" data-testid="custom-technique-panel">
-                        <label><span>Technique Name *</span><input @ref="_customTechniqueNameInput" type="text" maxlength="200" @bind="_customTechnique.Name" @bind:event="oninput" aria-invalid="@_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Name))" aria-describedby="@(_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Name)) ? "custom-technique-name-error" : null)" />@if (_customTechniqueErrors.GetValueOrDefault(nameof(_customTechnique.Name)) is { } nameError) { <small id="custom-technique-name-error" class="intervention-field-error" role="alert">@nameError</small> }</label>
-                        <label><span>Body Region *</span><select @ref="_customTechniqueRegionInput" @bind="_customTechnique.Region" aria-invalid="@_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Region))" aria-describedby="@(_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Region)) ? "custom-technique-region-error" : null)"><option value="">Select body region</option>@foreach (var region in Regions.Where(item => item.Region.HasValue)) { <option value="@region.Region">@region.Label</option> }</select>@if (_customTechniqueErrors.GetValueOrDefault(nameof(_customTechnique.Region)) is { } regionError) { <small id="custom-technique-region-error" class="intervention-field-error" role="alert">@regionError</small> }</label>
-                        <label><span>Notes (Optional)</span><textarea @ref="_customTechniqueNotesInput" maxlength="2000" @bind="_customTechnique.Notes" @bind:event="oninput" aria-invalid="@_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Notes))" aria-describedby="@(_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Notes)) ? "custom-technique-notes-error" : null)"></textarea>@if (_customTechniqueErrors.GetValueOrDefault(nameof(_customTechnique.Notes)) is { } notesError) { <small id="custom-technique-notes-error" class="intervention-field-error" role="alert">@notesError</small> }</label>
-                        <div class="technique-detail-grid">
-                            <label><span>CPT</span><select @bind="_customTechnique.CptCode" disabled="@_isCptLoading"><option value="">No CPT selected</option>@foreach (var option in _manualCptOptions) { <option value="@option.Code">@option.Code - @option.Description</option> }</select></label>
-                            <label><span>Minutes</span><input @ref="_customTechniqueMinutesInput" type="number" min="1" max="1440" @bind="_customTechnique.Minutes" aria-invalid="@_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Minutes))" aria-describedby="@(_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Minutes)) ? "custom-technique-minutes-error" : null)" />@if (_customTechniqueErrors.GetValueOrDefault(nameof(_customTechnique.Minutes)) is { } minutesError) { <small id="custom-technique-minutes-error" class="intervention-field-error" role="alert">@minutesError</small> }</label>
-                            <label><span>Assistance</span><select @bind="_customTechnique.AssistanceLevel"><option value="">None documented</option>@foreach (var option in AssistanceLevelOptions) { <option value="@option">@option</option> }</select></label>
-                            <label><span>Cueing</span><select @bind="_customTechnique.Cueing"><option value="">None documented</option>@foreach (var option in CueingOptions) { <option value="@option">@option</option> }</select></label>
-                        </div>
-                        @if (_isCptLoading) { <small role="status">Loading CPT options…</small> } else if (_cptError is not null) { <small class="intervention-field-error" role="alert">@_cptError</small> }
-                        <label><span>Response</span><textarea @ref="_customTechniqueResponseInput" maxlength="2000" @bind="_customTechnique.Response" @bind:event="oninput" aria-invalid="@_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Response))" aria-describedby="@(_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Response)) ? "custom-technique-response-error" : null)"></textarea>@if (_customTechniqueErrors.GetValueOrDefault(nameof(_customTechnique.Response)) is { } responseError) { <small id="custom-technique-response-error" class="intervention-field-error" role="alert">@responseError</small> }</label>
-                        <label class="intervention-checkbox"><input type="checkbox" @bind="_customTechnique.IncludeInHomeExerciseProgram" />Include in Home Exercise Program</label>
-                        <button type="button" class="intervention-primary-action custom-exercise-form__submit" @onclick="AddCustomTechniqueAsync"><img src="_content/PTDoc.UI/images/notes/interventions/add.svg" alt="" aria-hidden="true" />Add Custom Technique</button>
-                    </div>
+                    <div id="custom-technique-panel" class="intervention-dialog__body" role="tabpanel" aria-labelledby="technique-custom-tab" data-testid="custom-technique-panel"></div>
                 }
             }
         </section>

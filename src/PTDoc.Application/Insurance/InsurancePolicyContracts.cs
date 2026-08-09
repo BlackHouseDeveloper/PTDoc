@@ -27,6 +27,7 @@ public sealed class InsurancePolicyDto
     public string? AdjusterEmail { get; set; }
     public string? AdjusterFax { get; set; }
     public InsurancePolicyStatus Status { get; set; }
+    public bool IsArchived { get; set; }
     public DateTime LastModifiedUtc { get; set; }
     public IReadOnlyList<InsuranceAuthorizationDto> Authorizations { get; set; } = [];
 }
@@ -97,6 +98,7 @@ public sealed record PayerBackfillReport(int PatientsScanned, int PoliciesCreate
 public interface IInsurancePolicyService
 {
     Task<IReadOnlyList<InsurancePolicyDto>> ListAsync(Guid patientId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<InsurancePolicyDto>> ListAsync(Guid patientId, bool includeArchived, CancellationToken cancellationToken);
     Task<InsurancePolicyDto> UpsertPolicyAsync(Guid patientId, Guid? policyId, UpsertInsurancePolicyRequest request, CancellationToken cancellationToken);
     Task ArchivePolicyAsync(Guid patientId, Guid policyId, CancellationToken cancellationToken);
     Task ReorderAsync(Guid patientId, IReadOnlyDictionary<Guid, InsuranceCoveragePriority> priorities, CancellationToken cancellationToken);

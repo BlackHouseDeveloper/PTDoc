@@ -1461,10 +1461,26 @@ public class SyncEngine : ISyncEngine
                     Operation = p.IsArchived ? "Delete" : "Upsert",
                     DataJson = JsonSerializer.Serialize(new
                     {
-                        p.Id, p.FirstName, p.LastName, p.Credentials, p.Npi, p.Specialty,
-                        p.TaxonomyCode, p.OrganizationName, p.Phone, p.Fax, p.Email,
-                        p.AddressLine1, p.AddressLine2, p.City, p.State, p.ZipCode,
-                        p.Status, p.SubmissionSource, p.IsArchived, p.LastModifiedUtc
+                        p.Id,
+                        p.FirstName,
+                        p.LastName,
+                        p.Credentials,
+                        p.Npi,
+                        p.Specialty,
+                        p.TaxonomyCode,
+                        p.OrganizationName,
+                        p.Phone,
+                        p.Fax,
+                        p.Email,
+                        p.AddressLine1,
+                        p.AddressLine2,
+                        p.City,
+                        p.State,
+                        p.ZipCode,
+                        p.Status,
+                        p.SubmissionSource,
+                        p.IsArchived,
+                        p.LastModifiedUtc
                     }, jsonOptions),
                     LastModifiedUtc = p.LastModifiedUtc
                 });
@@ -1486,9 +1502,15 @@ public class SyncEngine : ISyncEngine
                     Operation = r.IsArchived ? "Delete" : "Upsert",
                     DataJson = JsonSerializer.Serialize(new
                     {
-                        r.Id, r.PatientId, r.ProviderDirectoryEntryId, r.Role,
-                        r.EffectiveStartDate, r.EffectiveEndDate, r.IsPrimary,
-                        r.IsArchived, r.LastModifiedUtc
+                        r.Id,
+                        r.PatientId,
+                        r.ProviderDirectoryEntryId,
+                        r.Role,
+                        r.EffectiveStartDate,
+                        r.EffectiveEndDate,
+                        r.IsPrimary,
+                        r.IsArchived,
+                        r.LastModifiedUtc
                     }, jsonOptions),
                     LastModifiedUtc = r.LastModifiedUtc
                 });
@@ -1510,12 +1532,30 @@ public class SyncEngine : ISyncEngine
                     Operation = p.IsArchived ? "Delete" : "Upsert",
                     DataJson = JsonSerializer.Serialize(new
                     {
-                        p.Id, p.PatientId, p.CoveragePriority, p.CarrierKey, p.CarrierDisplayName,
-                        p.PayerType, p.MemberOrPolicyNumber, p.GroupNumber, p.EffectiveStartDate,
-                        p.EffectiveEndDate, p.PlanYearType, p.DeductibleAmount, p.DeductibleMet,
-                        p.OutOfPocketMaximum, p.OutOfPocketMet, p.CopayAmount, p.CoinsurancePercent,
-                        p.AdjusterName, p.AdjusterPhone, p.AdjusterEmail, p.AdjusterFax,
-                        p.Status, p.IsArchived, p.LastModifiedUtc
+                        p.Id,
+                        p.PatientId,
+                        p.CoveragePriority,
+                        p.CarrierKey,
+                        p.CarrierDisplayName,
+                        p.PayerType,
+                        p.MemberOrPolicyNumber,
+                        p.GroupNumber,
+                        p.EffectiveStartDate,
+                        p.EffectiveEndDate,
+                        p.PlanYearType,
+                        p.DeductibleAmount,
+                        p.DeductibleMet,
+                        p.OutOfPocketMaximum,
+                        p.OutOfPocketMet,
+                        p.CopayAmount,
+                        p.CoinsurancePercent,
+                        p.AdjusterName,
+                        p.AdjusterPhone,
+                        p.AdjusterEmail,
+                        p.AdjusterFax,
+                        p.Status,
+                        p.IsArchived,
+                        p.LastModifiedUtc
                     }, jsonOptions),
                     LastModifiedUtc = p.LastModifiedUtc
                 });
@@ -1537,10 +1577,23 @@ public class SyncEngine : ISyncEngine
                     Operation = a.IsArchived ? "Delete" : "Upsert",
                     DataJson = JsonSerializer.Serialize(new
                     {
-                        a.Id, a.PatientInsurancePolicyId, a.PatientId, a.AuthorizationType,
-                        a.ReferenceNumber, a.Status, a.ReceivedDate, a.StartDate, a.EndDate,
-                        a.AuthorizedUnits, a.UsedUnits, a.VisitLimitPeriod, a.ReauthorizationDueDate,
-                        a.VisitAlertThreshold, a.Notes, a.IsArchived, a.LastModifiedUtc
+                        a.Id,
+                        a.PatientInsurancePolicyId,
+                        a.PatientId,
+                        a.AuthorizationType,
+                        a.ReferenceNumber,
+                        a.Status,
+                        a.ReceivedDate,
+                        a.StartDate,
+                        a.EndDate,
+                        a.AuthorizedUnits,
+                        a.UsedUnits,
+                        a.VisitLimitPeriod,
+                        a.ReauthorizationDueDate,
+                        a.VisitAlertThreshold,
+                        a.Notes,
+                        a.IsArchived,
+                        a.LastModifiedUtc
                     }, jsonOptions),
                     LastModifiedUtc = a.LastModifiedUtc
                 });

@@ -962,8 +962,8 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
 
         Assert.True(result.IsValid);
         var exercise = Assert.Single(result.Workspace!.Payload.Objective.ExerciseRows);
-        Assert.Equal("Pendulum swings", exercise.SuggestedExercise);
-        Assert.Equal("Pendulum swings", exercise.ActualExercisePerformed);
+        Assert.Equal("Pendulum Exercise", exercise.SuggestedExercise);
+        Assert.Equal("Pendulum Exercise", exercise.ActualExercisePerformed);
         Assert.Equal("Range of Motion", exercise.Category);
         Assert.Equal(InterventionRegion.Shoulder, exercise.InterventionRegion);
         Assert.Equal("2 sets; 10 reps; daily", exercise.SetsRepsDuration);

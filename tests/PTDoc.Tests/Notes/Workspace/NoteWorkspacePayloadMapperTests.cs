@@ -969,6 +969,48 @@ public sealed class NoteWorkspacePayloadMapperTests
     }
 
     [Fact]
+    public void MapToV2Payload_RemovingFinalExerciseAndInterventionPersistsEmptyCollections()
+    {
+        var original = new NoteWorkspaceV2Payload
+        {
+            Objective = new WorkspaceObjectiveV2
+            {
+                ClinicalObservationNotes = "Preserve this unrelated finding.",
+                ExerciseRows =
+                [
+                    new ExerciseRowV2
+                    {
+                        SuggestedExercise = "Pendulum Exercise",
+                        ActualExercisePerformed = "Pendulum Exercise"
+                    }
+                ]
+            },
+            Plan = new WorkspacePlanV2
+            {
+                FollowUpInstructions = "Preserve this unrelated plan instruction.",
+                GeneralInterventions =
+                [
+                    new GeneralInterventionEntryV2
+                    {
+                        Kind = InterventionKind.ManualTechnique,
+                        Name = "Glenohumeral Joint Mobilization"
+                    }
+                ]
+            }
+        };
+        var uiPayload = _mapper.MapToUiPayload(original);
+        uiPayload.Objective.ExerciseRows.Clear();
+        uiPayload.Plan.GeneralInterventions.Clear();
+
+        var result = _mapper.MapToV2Payload(uiPayload, NoteType.Evaluation);
+
+        Assert.Empty(result.Objective.ExerciseRows);
+        Assert.Empty(result.Plan.GeneralInterventions);
+        Assert.Equal("Preserve this unrelated finding.", result.Objective.ClinicalObservationNotes);
+        Assert.Equal("Preserve this unrelated plan instruction.", result.Plan.FollowUpInstructions);
+    }
+
+    [Fact]
     public void MapToV2Payload_EvaluationNotes_PreserveExplicitPlanCpts()
     {
         var payload = new NoteWorkspacePayload
