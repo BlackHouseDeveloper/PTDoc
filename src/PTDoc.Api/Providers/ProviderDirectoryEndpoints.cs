@@ -17,9 +17,11 @@ public static class ProviderDirectoryEndpoints
         read.MapGet("/patients/{patientId:guid}", async (Guid patientId, IProviderDirectoryService service, CancellationToken ct) => await Execute(() => service.ListPatientRelationshipsAsync(patientId, ct)));
 
         var submit = app.MapGroup("/api/v1/providers").WithTags("Provider Directory").RequireAuthorization(AuthorizationPolicies.ProviderDirectorySubmit);
-        submit.MapPost("/candidates", async (SubmitProviderCandidateRequest request, IProviderDirectoryService service, CancellationToken ct) => await Execute(() => service.SubmitAsync(request, ct), created: true));
+        submit.MapPost("/candidates", async (SubmitProviderCandidateRequest request, IProviderDirectoryService service, CancellationToken ct) => await Execute(
+            () => service.SubmitAsync(request, ct),
+            provider => $"/api/v1/providers/{provider.Id}"));
         submit.MapPut("/candidates/{providerId:guid}", async (Guid providerId, UpdateProviderCandidateRequest request, IProviderDirectoryService service, CancellationToken ct) => await Execute(() => service.UpdateAsync(providerId, request, ct)));
-        submit.MapPost("/patients/{patientId:guid}", async (Guid patientId, UpsertPatientProviderRelationshipRequest request, IProviderDirectoryService service, CancellationToken ct) => await Execute(() => service.UpsertPatientRelationshipAsync(patientId, null, request, ct), created: true));
+        submit.MapPost("/patients/{patientId:guid}", async (Guid patientId, UpsertPatientProviderRelationshipRequest request, IProviderDirectoryService service, CancellationToken ct) => await Execute(() => service.UpsertPatientRelationshipAsync(patientId, null, request, ct)));
         submit.MapPut("/patients/{patientId:guid}/{relationshipId:guid}", async (Guid patientId, Guid relationshipId, UpsertPatientProviderRelationshipRequest request, IProviderDirectoryService service, CancellationToken ct) => await Execute(() => service.UpsertPatientRelationshipAsync(patientId, relationshipId, request, ct)));
         submit.MapDelete("/patients/{patientId:guid}/{relationshipId:guid}", async (Guid patientId, Guid relationshipId, IProviderDirectoryService service, CancellationToken ct) => await Execute(async () => { await service.ArchivePatientRelationshipAsync(patientId, relationshipId, ct); return true; }));
 
@@ -30,13 +32,37 @@ public static class ProviderDirectoryEndpoints
         admin.MapPost("/{providerId:guid}/archive", async (Guid providerId, ProviderDecisionRequest request, IProviderDirectoryService service, CancellationToken ct) => await Execute(async () => { await service.ArchiveAsync(providerId, request, ct); return true; }));
     }
 
-    private static async Task<IResult> Execute<T>(Func<Task<T>> action, bool created = false)
+    private static async Task<IResult> Execute<T>(Func<Task<T>> action, Func<T, string>? createdLocation = null)
     {
-        try { var value = await action(); return created ? Results.Created(string.Empty, value) : Results.Ok(value); }
-        catch (KeyNotFoundException ex) { return Results.NotFound(new { error = ex.Message }); }
-        catch (DbUpdateConcurrencyException ex) { return Results.Conflict(new { error = ex.Message }); }
-        catch (DbUpdateException) { return Results.Conflict(new { error = "The provider change conflicts with a newer directory record. Refresh and review the current entries." }); }
-        catch (ArgumentException ex) { return Results.UnprocessableEntity(new { error = ex.Message }); }
-        catch (InvalidOperationException ex) { return Results.Conflict(new { error = ex.Message }); }
+        try
+        {
+            var value = await action();
+            return createdLocation is null
+                ? Results.Ok(value)
+                : Results.Created(createdLocation(value), value);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Results.NotFound(new { error = ex.Message });
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            return Results.Conflict(new { error = ex.Message });
+        }
+        catch (DbUpdateException)
+        {
+            return Results.Conflict(new
+            {
+                error = "The provider change conflicts with a newer directory record. Refresh and review the current entries."
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return Results.UnprocessableEntity(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.Conflict(new { error = ex.Message });
+        }
     }
 }

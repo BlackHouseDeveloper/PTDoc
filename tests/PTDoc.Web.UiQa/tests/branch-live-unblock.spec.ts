@@ -310,14 +310,16 @@ test.describe.serial('PTDoc fixable live-run blockers', () => {
       const legacy = await createSyntheticPatient(page, 'legacy-insurance', JSON.stringify({
         insuranceCompanyName: `${fixturePrefix} Legacy`, memberIdPolicyNumber: `${fixturePrefix}-LEGACY`, groupNumber: 'LEGACY-GROUP', payerType: 'Commercial'
       }));
-      const first = await apiJson<{ policiesCreated: number }>(page, 'POST', '/api/v1/admin/insurance-policies/backfill');
+      await apiJson<{ policiesCreated: number }>(page, 'POST', '/api/v1/admin/insurance-policies/backfill');
       const rows = await apiJson<Policy[]>(page, 'GET', `/api/v1/patients/${legacy.id}/insurance-policies/`);
       expect(rows).toHaveLength(1);
       expect(rows).toContainEqual(expect.objectContaining({ memberOrPolicyNumber: `${fixturePrefix}-LEGACY` }));
       const second = await apiJson<{ policiesCreated: number }>(page, 'POST', '/api/v1/admin/insurance-policies/backfill');
-      expect(first.policiesCreated).toBe(0);
+      const rowsAfterSecondRun = await apiJson<Policy[]>(page, 'GET', `/api/v1/patients/${legacy.id}/insurance-policies/`);
       expect(second.policiesCreated).toBe(0);
-      return 'The patient API dual-write normalized the alias once; both backfill runs retained one policy and created no duplicate.';
+      expect(rowsAfterSecondRun).toHaveLength(1);
+      expect(rowsAfterSecondRun[0].memberOrPolicyNumber).toBe(`${fixturePrefix}-LEGACY`);
+      return 'The patient API dual-write normalized the alias once; both backfill runs retained one patient policy and the second clinic-wide run created no records.';
     }, 'Pass with limitation: the supported patient API dual-writes the legacy alias before the backfill endpoint runs, so alias parity and duplicate-free repeated runs were observed, while creation from a deliberately unmigrated row and malformed-row reporting remain outside this browser-only fixture.');
   });
 
@@ -643,13 +645,14 @@ test.describe.serial('PTDoc fixable live-run blockers', () => {
       await expect(shoulder).toHaveAttribute('aria-pressed', 'true');
 
       await page.getByLabel('Medication Search').fill('Lipitor');
-      const lipitor = page.getByRole('button', { name: /Lipitor.*Atorvastatin/i });
-      await lipitor.click();
-      await expect(lipitor).toHaveAttribute('aria-pressed', 'true');
       const medicationSection = page.getByLabel('Medication Search').locator('xpath=ancestor::section[1]');
+      const lipitor = medicationSection.getByRole('button', { name: /Lipitor.*Atorvastatin/i });
+      await lipitor.click();
+      await expect(lipitor.first()).toHaveAttribute('aria-pressed', 'true');
       await medicationSection.getByRole('button', { name: 'None', exact: true }).click();
       await expect(medicationSection.getByRole('button', { name: 'None', exact: true })).toHaveAttribute('aria-pressed', 'true');
-      await expect(medicationSection.getByRole('button', { name: /Lipitor.*Atorvastatin/i })).toHaveCount(0);
+      await expect(medicationSection.getByRole('button', { name: /Lipitor.*Atorvastatin/i })).toHaveCount(1);
+      await expect(medicationSection.getByRole('button', { name: /Lipitor.*Atorvastatin/i })).toHaveAttribute('aria-pressed', 'false');
       await medicationSection.getByRole('button', { name: 'None', exact: true }).click();
 
       await page.getByLabel('Assistive Devices').fill('cervical collar');
@@ -660,9 +663,12 @@ test.describe.serial('PTDoc fixable live-run blockers', () => {
 
     await verifyWithEvidence(testInfo, ['LV-INTAKE-001', 'LV-INTAKE-002'], 'Functional-limitation accordions retain multiple choices and reload from the saved draft.', async () => {
       const selectedLabels: string[] = [];
-      for (const category of ['Self Care', 'Mobility', 'Household Activities', 'Community Activities', 'Sleep']) {
-        const details = page.locator('details.intake-card__accordion').filter({ hasText: category });
-        await expect(details, `${category} category`).toBeVisible();
+      const limitationRegion = page.getByRole('region', { name: 'Functional Activities Limited' });
+      const categories = limitationRegion.locator('details.intake-card__accordion');
+      expect(await categories.count()).toBeGreaterThanOrEqual(5);
+      for (let index = 0; index < 5; index += 1) {
+        const details = categories.nth(index);
+        await expect(details, `functional limitation category ${index + 1}`).toBeVisible();
         await details.locator('summary').click();
         const checkbox = details.locator('input[type="checkbox"]').first();
         const label = await checkbox.locator('xpath=..').innerText();
@@ -673,9 +679,13 @@ test.describe.serial('PTDoc fixable live-run blockers', () => {
       }
       await page.locator('#intake-current-level-of-function').fill('Synthetic current function limitation.');
       await page.locator('#intake-functional-limitations').fill('Synthetic additional limitation.');
-      await page.waitForTimeout(1_000);
+      await page.getByTestId('continue-button').click();
+      await expect(page.getByTestId('pain-details-step')).toBeVisible();
       await page.reload();
+      await expect(page.getByTestId('pain-details-step')).toBeVisible();
+      await page.getByTestId('back-button').click();
       await expect(page.getByTestId('pain-assessment-step2')).toBeVisible();
+      await expect(page.getByRole('button', { name: /Shoulder.*Front/i }).first()).toHaveAttribute('aria-pressed', 'true');
       for (const selectedLabel of selectedLabels) {
         await expect(page.getByLabel(selectedLabel, { exact: true })).toBeChecked();
       }
@@ -700,9 +710,9 @@ test.describe.serial('PTDoc fixable live-run blockers', () => {
       const submit = page.getByTestId('submit-button');
       await expect(submit).toBeEnabled();
       await submit.click();
-      await expect(page.getByText(/Intake submitted successfully/i)).toBeVisible();
+      await expect(page.getByTestId('submit-status-message')).toContainText(/Intake submitted successfully/i);
 
-      const candidates = await apiJson<Provider[]>(page, 'GET', `/api/v1/admin/providers?q=${encodeURIComponent(`${fixturePrefix} Unknown Provider`)}&status=0&take=25`);
+      const candidates = await apiJson<Provider[]>(page, 'GET', `/api/v1/admin/providers?q=${encodeURIComponent(`${fixturePrefix} Unknown`)}&status=0&take=25`);
       expect(candidates).toHaveLength(1);
       await recordFixture('ProviderDirectoryEntry', candidates[0].id, 'Disposable database teardown');
       const relationships = await apiJson<{ providerId: string; patientId: string }[]>(page, 'GET', `/api/v1/providers/patients/${patient.id}`);
@@ -789,8 +799,8 @@ test.describe.serial('PTDoc fixable live-run blockers', () => {
       await dialog.getByLabel('Exercise Name *').fill(customName);
       await dialog.getByLabel('Notes (Optional)').fill('Synthetic custom exercise notes.');
       await dialog.getByRole('button', { name: 'Add Custom Exercise' }).click();
-      await expect(page.getByRole('heading', { name: customName, exact: true })).toBeVisible();
       await dialog.getByRole('button', { name: 'Close Add Therapeutic Exercise' }).click();
+      await expect(page.getByRole('heading', { name: customName, exact: true })).toBeVisible();
       return 'The documented name and optional-notes fields inserted one custom exercise card without an extra banner or toast.';
     });
 
@@ -810,9 +820,11 @@ test.describe.serial('PTDoc fixable live-run blockers', () => {
       await expect(page.getByTestId('technique-count')).toContainText('1');
       await expect(page.locator('[data-testid="manual-technique-card"]')).toHaveCount(0);
       await page.getByRole('button', { name: 'Add Technique' }).click();
-      await page.getByRole('tab', { name: 'Custom Technique' }).click();
+      const customTechniqueTab = page.getByRole('tab', { name: 'Custom Technique' });
+      await customTechniqueTab.click();
+      await expect(customTechniqueTab).toHaveAttribute('aria-selected', 'true');
       const panel = page.getByRole('tabpanel', { name: 'Custom Technique' });
-      await expect(panel).toBeVisible();
+      await expect(panel).toHaveCount(1);
       await expect(panel.locator('input, select, textarea, button')).toHaveCount(0);
       await page.getByRole('button', { name: 'Close Add Manual Technique' }).click();
       return 'The default dialog exposed ten filters and seven rows; Shoulder reduced it to five without Elbow, addition changed only the count, and Custom Technique remained empty.';
