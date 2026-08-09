@@ -1,0 +1,281 @@
+.appointment-card {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 22.0625rem;
+    padding: var(--spacing-6);
+    border: 2px solid var(--border);
+    border-radius: var(--radius-xl);
+    background: var(--card);
+    color: var(--foreground);
+    overflow: hidden;
+}
+
+.appointment-card--critical {
+    border-color: color-mix(in srgb, var(--destructive) 55%, var(--border));
+    background: color-mix(in srgb, var(--destructive) 10%, var(--card));
+}
+
+.appointment-card__patient-header,
+.appointment-card__identity,
+.appointment-card__schedule,
+.appointment-card__time-group,
+.appointment-card__intake,
+.appointment-card__actions {
+    display: flex;
+    align-items: center;
+}
+
+.appointment-card__patient-header {
+    justify-content: space-between;
+    gap: var(--spacing-3);
+    min-width: 0;
+}
+
+.appointment-card__identity {
+    gap: var(--spacing-4);
+    min-width: 0;
+}
+
+.appointment-card__patient-icon {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 auto;
+    color: var(--primary);
+}
+
+.appointment-card__identity-text {
+    min-width: 0;
+}
+
+.appointment-card__identity h3,
+.appointment-card__identity p {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.appointment-card__identity h3 {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-normal);
+}
+
+.appointment-card__identity p {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    line-height: var(--line-height-normal);
+}
+
+::deep .appointment-card__badge--scheduled {
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--muted-foreground);
+}
+
+.appointment-card__schedule {
+    justify-content: space-between;
+    gap: var(--spacing-3);
+    margin-top: var(--spacing-4);
+    min-width: 0;
+}
+
+.appointment-card__time-group {
+    gap: var(--spacing-2);
+    min-width: 0;
+    color: var(--status-success-foreground);
+    font-size: var(--text-base);
+    white-space: nowrap;
+}
+
+.appointment-card__time-group svg {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 auto;
+    color: var(--muted-foreground);
+}
+
+.appointment-card__duration {
+    margin-left: var(--spacing-2);
+    color: var(--foreground);
+}
+
+.appointment-card__type {
+    min-width: 0;
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    line-height: var(--line-height-normal);
+    overflow-wrap: anywhere;
+    text-align: right;
+}
+
+.appointment-card__metrics {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--spacing-3);
+    min-height: 36px;
+    margin-top: var(--spacing-3);
+    padding: var(--spacing-2);
+    border-radius: var(--radius-sm);
+    background: var(--muted);
+    color: var(--foreground);
+    font-size: var(--text-sm);
+}
+
+.appointment-card__visit-count {
+    color: var(--status-info-foreground);
+    font-weight: var(--font-weight-normal);
+}
+
+.appointment-card__due-date {
+    color: var(--status-warning-foreground);
+    font-weight: var(--font-weight-normal);
+}
+
+.appointment-card__metrics > :only-child {
+    margin-left: auto;
+}
+
+.appointment-card__description {
+    min-height: 48px;
+    margin: var(--spacing-3) 0 0;
+    padding: var(--spacing-3);
+    border-radius: var(--radius-sm);
+    background: var(--muted);
+    color: var(--foreground);
+    font-size: var(--text-base);
+    line-height: var(--line-height-normal);
+    overflow-wrap: anywhere;
+}
+
+.appointment-card__intake {
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+    margin-top: var(--spacing-3);
+    min-height: 28px;
+}
+
+.appointment-card__warning {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-1);
+    color: var(--status-destructive-foreground);
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-semibold);
+}
+
+.appointment-card__warning svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+}
+
+.appointment-card__actions {
+    gap: var(--spacing-3);
+    margin-top: auto;
+    padding-top: var(--spacing-3);
+    border-top: 1px solid var(--border);
+}
+
+.appointment-card__action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-2);
+    min-width: 0;
+    min-height: 44px;
+    padding: var(--spacing-2);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--foreground);
+    font: inherit;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.appointment-card__action svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+}
+
+.appointment-card__action--primary {
+    flex: 1 1 auto;
+    border-color: var(--primary);
+    background: var(--primary);
+    color: var(--primary-foreground);
+}
+
+.appointment-card__action--check-in {
+    border-color: var(--info);
+    color: var(--status-info-foreground);
+}
+
+.appointment-card__action--quiet:hover {
+    background: var(--muted);
+}
+
+.appointment-card__action--primary:hover {
+    opacity: 0.9;
+}
+
+.appointment-card__action--check-in:hover {
+    background: color-mix(in srgb, var(--info) 10%, transparent);
+}
+
+.appointment-card__action--cancel {
+    color: var(--status-destructive-foreground);
+}
+
+.appointment-card__action--details-only {
+    margin-left: auto;
+}
+
+.appointment-card__action:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+}
+
+.appointment-card__action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+@media (max-width: 560px) {
+    .appointment-card {
+        padding: var(--spacing-4);
+    }
+
+    .appointment-card__patient-header,
+    .appointment-card__schedule {
+        align-items: flex-start;
+    }
+
+    .appointment-card__schedule {
+        flex-direction: column;
+    }
+
+    .appointment-card__type {
+        padding-left: 28px;
+        text-align: left;
+    }
+
+    .appointment-card__actions {
+        flex-wrap: wrap;
+    }
+
+    .appointment-card__action--primary {
+        flex-basis: calc(100% - 5rem);
+    }
+
+    .appointment-card__action--check-in,
+    .appointment-card__action--quiet,
+    .appointment-card__action--cancel {
+        flex: 1 1 calc(50% - var(--spacing-3));
+    }
+}

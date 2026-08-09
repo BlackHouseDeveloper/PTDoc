@@ -25,6 +25,13 @@
                @bind="_medicationSearch"
                @bind:event="oninput" />
 
+        <button type="button"
+                class="intake-card__chip @(StructuredData.NoMedications ? "intake-card__chip--selected" : "")"
+                aria-pressed="@StructuredData.NoMedications"
+                @onclick="() => ToggleNoneAsync(SelectionKind.Medication)">
+            None
+        </button>
+
         @if (SelectedMedicationItems.Count > 0)
         {
             <div class="intake-card__chip-list">
@@ -43,6 +50,7 @@
                 var isSelected = SelectedMedicationIds.Contains(medication.Id, StringComparer.OrdinalIgnoreCase);
                 <button type="button"
                         class="intake-card__chip @(isSelected ? "intake-card__chip--selected" : "")"
+                        aria-pressed="@isSelected"
                         @onclick="() => ToggleMedicationAsync(medication.Id)">
                     @medication.DisplayLabel
                 </button>
@@ -53,11 +61,18 @@
     <section class="intake-card__section">
         <span class="intake-card__field-label">Comorbidities</span>
         <div class="intake-card__option-grid">
+            <button type="button"
+                    class="intake-card__chip @(StructuredData.NoComorbidities ? "intake-card__chip--selected" : "")"
+                    aria-pressed="@StructuredData.NoComorbidities"
+                    @onclick="() => ToggleNoneAsync(SelectionKind.Comorbidity)">
+                None
+            </button>
             @foreach (var option in ComorbidityCatalog)
             {
                 var isSelected = SelectedComorbidityIds.Contains(option.Id, StringComparer.OrdinalIgnoreCase);
                 <button type="button"
                         class="intake-card__chip @(isSelected ? "intake-card__chip--selected" : "")"
+                        aria-pressed="@isSelected"
                         @onclick="() => ToggleCatalogSelectionAsync(option.Id, SelectionKind.Comorbidity)">
                     @option.Label
                 </button>
@@ -88,6 +103,13 @@
                placeholder="Search assistive devices"
                @bind="_assistiveSearch"
                @bind:event="oninput" />
+
+        <button type="button"
+                class="intake-card__chip @(StructuredData.NoAssistiveDevices ? "intake-card__chip--selected" : "")"
+                aria-pressed="@StructuredData.NoAssistiveDevices"
+                @onclick="() => ToggleNoneAsync(SelectionKind.AssistiveDevice)">
+            None
+        </button>
 
         @if (SelectedAssistiveDeviceItems.Count > 0)
         {
@@ -137,10 +159,10 @@
                    class="form-check-input"
                    checked="@State.HasPreviousSurgeriesOrInjuries"
                    @onchange="OnPreviousSurgeriesChangedAsync" />
-            <span>Previous Surgeries or Injuries</span>
+            <span>Relevant Surgeries or Injuries</span>
         </label>
 
-        <label class="intake-card__notes">Notes (optional)
+        <label class="intake-card__notes">Provide details
             <textarea class="form-control"
                       value="@State.MedicalHistoryNotes"
                       @oninput="OnMedicalHistoryNotesChangedAsync"></textarea>
@@ -195,6 +217,7 @@
 
     private async Task ToggleMedicationAsync(string medicationId)
     {
+        StructuredData.NoMedications = false;
         if (StructuredData.MedicationIds.Contains(medicationId, StringComparer.OrdinalIgnoreCase))
         {
             StructuredData.MedicationIds.RemoveAll(id => string.Equals(id, medicationId, StringComparison.OrdinalIgnoreCase));
@@ -210,6 +233,15 @@
 
     private async Task ToggleCatalogSelectionAsync(string optionId, SelectionKind selectionKind)
     {
+        if (selectionKind == SelectionKind.Comorbidity)
+        {
+            StructuredData.NoComorbidities = false;
+        }
+        else if (selectionKind == SelectionKind.AssistiveDevice)
+        {
+            StructuredData.NoAssistiveDevices = false;
+        }
+
         var target = selectionKind switch
         {
             SelectionKind.Comorbidity => StructuredData.ComorbidityIds,
@@ -230,6 +262,41 @@
         IntakeSupplementalSelectionCanonicalizer.Canonicalize(State, IntakeReferenceData);
         SyncDerivedState();
 
+        await NotifyStateChangedAsync();
+    }
+
+    private async Task ToggleNoneAsync(SelectionKind selectionKind)
+    {
+        switch (selectionKind)
+        {
+            case SelectionKind.Medication:
+                StructuredData.NoMedications = !StructuredData.NoMedications;
+                if (StructuredData.NoMedications)
+                {
+                    StructuredData.MedicationIds.Clear();
+                }
+                break;
+            case SelectionKind.Comorbidity:
+                StructuredData.NoComorbidities = !StructuredData.NoComorbidities;
+                if (StructuredData.NoComorbidities)
+                {
+                    StructuredData.ComorbidityIds.Clear();
+                    State.SelectedComorbidities.Clear();
+                }
+                break;
+            case SelectionKind.AssistiveDevice:
+                StructuredData.NoAssistiveDevices = !StructuredData.NoAssistiveDevices;
+                if (StructuredData.NoAssistiveDevices)
+                {
+                    StructuredData.AssistiveDeviceIds.Clear();
+                    State.SelectedAssistiveDevices.Clear();
+                }
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(selectionKind), selectionKind, null);
+        }
+
+        SyncDerivedState();
         await NotifyStateChangedAsync();
     }
 
@@ -281,13 +348,14 @@
 
     private void SyncDerivedState()
     {
-        State.HasCurrentMedications = StructuredData.MedicationIds.Count > 0;
-        State.HasOtherMedicalConditions = StructuredData.ComorbidityIds.Count > 0 || State.SelectedComorbidities.Count > 0;
-        State.UsesAssistiveDevices = StructuredData.AssistiveDeviceIds.Count > 0 || State.SelectedAssistiveDevices.Count > 0;
+        State.HasCurrentMedications = !StructuredData.NoMedications && StructuredData.MedicationIds.Count > 0;
+        State.HasOtherMedicalConditions = !StructuredData.NoComorbidities && (StructuredData.ComorbidityIds.Count > 0 || State.SelectedComorbidities.Count > 0);
+        State.UsesAssistiveDevices = !StructuredData.NoAssistiveDevices && (StructuredData.AssistiveDeviceIds.Count > 0 || State.SelectedAssistiveDevices.Count > 0);
     }
 
     private enum SelectionKind
     {
+        Medication,
         Comorbidity,
         AssistiveDevice,
         LivingSituation

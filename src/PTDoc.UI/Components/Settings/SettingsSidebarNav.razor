@@ -5,7 +5,7 @@
     </div>
 
     <nav class="settings-sidebar-nav" aria-label="Settings sections">
-        @foreach (var item in navItems)
+        @foreach (var item in VisibleNavItems)
         {
             <button
                 type="button"
@@ -26,9 +26,13 @@
     [Parameter]
     public EventCallback<string> OnSectionSelected { get; set; }
 
+    [Parameter]
+    public bool ClinicalApproverOnly { get; set; }
+
     private static readonly IReadOnlyList<SettingsNavItem> navItems =
     [
         new("scheduling", "Scheduling & Visit Types", "Manage appointment cadence and visit templates"),
+        new("providers", "Provider Directory", "Review and manage external providers"),
         new("documentation", "Documentation and Compliance", "Configure charting standards and compliance defaults"),
         new("billing", "Billing and Coding", "Tune payer rules and coding controls"),
         new("ai-outcomes", "AI & Outcome Measures", "Adjust AI prompts and outcomes workflows"),
@@ -36,6 +40,10 @@
         new("integrations", "Clinical Integrations", "Configure Humble Fax and Wibbi by clinic"),
         new("approvals", "Approvals", "Review onboarding and access requests")
     ];
+
+    private IEnumerable<SettingsNavItem> VisibleNavItems => ClinicalApproverOnly
+        ? navItems.Where(item => item.Key == "documentation")
+        : navItems;
 
     private async Task SelectSection(string sectionKey)
     {

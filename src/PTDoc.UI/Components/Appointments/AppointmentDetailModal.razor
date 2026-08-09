@@ -1,4 +1,5 @@
 @using System.Globalization
+@using PTDoc.Application.Appointments
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
@@ -71,9 +72,37 @@
                 </section>
 
                 <section class="appointment-detail-modal__section" aria-label="Appointment details">
-                    <div class="appointment-detail-modal__info-item">
-                        <p class="appointment-detail-modal__field-label">Appointment Type</p>
-                        <p class="appointment-detail-modal__field-value appointment-detail-modal__field-value--strong">@Appointment.AppointmentType</p>
+                    <div class="appointment-detail-modal__type-editor">
+                        <label for="appointment-detail-type" class="appointment-detail-modal__field-label">Appointment Type</label>
+                        <div class="appointment-detail-modal__type-controls">
+                            <select id="appointment-detail-type"
+                                    class="appointment-detail-modal__type-select"
+                                    @bind="selectedAppointmentType"
+                                    disabled="@(!CanEditAppointmentType)"
+                                    aria-describedby="@AppointmentTypeDescriptionId">
+                                @foreach (var appointmentType in AppointmentTypeCatalog.All)
+                                {
+                                    <option value="@appointmentType.DisplayName">@appointmentType.DisplayName</option>
+                                }
+                            </select>
+                            <button type="button"
+                                    class="appointment-detail-modal__save-type"
+                                    @onclick="SaveAppointmentTypeAsync"
+                                    disabled="@(!CanSaveAppointmentType)">
+                                @(isSavingAppointmentType ? "Saving…" : "Save Type")
+                            </button>
+                        </div>
+                        <p id="@AppointmentTypeDescriptionId" class="appointment-detail-modal__field-help">
+                            @GetAppointmentTypeHelpText()
+                        </p>
+                        @if (!string.IsNullOrWhiteSpace(appointmentTypeFeedbackMessage))
+                        {
+                            <p class="@GetAppointmentTypeFeedbackClass()"
+                               role="@(appointmentTypeSaveFailed ? "alert" : "status")"
+                               aria-live="polite">
+                                @appointmentTypeFeedbackMessage
+                            </p>
+                        }
                     </div>
 
                     <div class="appointment-detail-modal__status-grid">
@@ -88,6 +117,20 @@
                             <span class="@GetStatusBadgeClass(Appointment.IntakeStatus)">
                                 @GetIntakeStatusLabel()
                             </span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="appointment-detail-modal__section" aria-labelledby="appointment-detail-visit-information">
+                    <h3 id="appointment-detail-visit-information" class="appointment-detail-modal__section-title">Visit Information</h3>
+                    <div class="appointment-detail-modal__visit-grid">
+                        <div class="appointment-detail-modal__info-item">
+                            <p class="appointment-detail-modal__field-label">Progress Note Due</p>
+                            <p class="appointment-detail-modal__field-value appointment-detail-modal__field-value--strong">@GetProgressNoteDueText()</p>
+                        </div>
+                        <div class="appointment-detail-modal__info-item">
+                            <p class="appointment-detail-modal__field-label">Visit Number</p>
+                            <p class="appointment-detail-modal__field-value appointment-detail-modal__field-value--strong">@GetVisitNumberText()</p>
                         </div>
                     </div>
                 </section>
@@ -206,12 +249,41 @@
     [Parameter]
     public EventCallback<string> OnActionRequested { get; set; }
 
+    [Parameter]
+    public Func<string, Task<bool>>? OnAppointmentTypeChanged { get; set; }
+
     private ElementReference closeButtonRef;
     private IJSObjectReference? modalModule;
     private DotNetObjectReference<AppointmentDetailModal>? dotNetRef;
     private static readonly CultureInfo PaymentCurrencyCulture = CultureInfo.GetCultureInfo("en-US");
     private readonly string modalId = $"appointment-detail-modal-{Guid.NewGuid():N}";
     private bool modalAccessibilityActive;
+    private bool wasOpen;
+    private Guid? activeAppointmentId;
+    private string selectedAppointmentType = string.Empty;
+    private bool isSavingAppointmentType;
+    private bool appointmentTypeSaveFailed;
+    private string? appointmentTypeFeedbackMessage;
+
+    protected override void OnParametersSet()
+    {
+        if (IsOpen && Appointment is not null && (!wasOpen || activeAppointmentId != Appointment.AppointmentId))
+        {
+            activeAppointmentId = Appointment.AppointmentId;
+            selectedAppointmentType = GetCanonicalAppointmentType(Appointment.AppointmentType);
+            appointmentTypeFeedbackMessage = null;
+            appointmentTypeSaveFailed = false;
+        }
+
+        if (!IsOpen)
+        {
+            activeAppointmentId = null;
+            appointmentTypeFeedbackMessage = null;
+            appointmentTypeSaveFailed = false;
+        }
+
+        wasOpen = IsOpen;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -293,6 +365,44 @@
 
     private bool CanUsePrimaryAction => CanCheckIn || CanStartVisit;
 
+    private bool HasKnownAppointmentType =>
+        AppointmentTypeCatalog.TryParse(Appointment?.AppointmentType, out _);
+
+    private bool CanEditAppointmentType =>
+        !IsTerminalStatus
+        && HasKnownAppointmentType
+        && OnAppointmentTypeChanged is not null;
+
+    private bool CanSaveAppointmentType =>
+        CanEditAppointmentType
+        && !isSavingAppointmentType
+        && HasAppointmentTypeChanged;
+
+    private bool HasAppointmentTypeChanged =>
+        Appointment is not null
+        && AppointmentTypeCatalog.TryParse(selectedAppointmentType, out var selectedType)
+        && AppointmentTypeCatalog.TryParse(Appointment.AppointmentType, out var currentType)
+        && selectedType != currentType;
+
+    private string AppointmentTypeDescriptionId => $"{modalId}-appointment-type-description";
+
+    private string GetAppointmentTypeHelpText()
+    {
+        if (IsTerminalStatus)
+        {
+            return "Closed appointments cannot be edited.";
+        }
+
+        if (!HasKnownAppointmentType)
+        {
+            return "This appointment type is not available in the current scheduling catalog.";
+        }
+
+        return OnAppointmentTypeChanged is null
+            ? "Appointment type editing is unavailable."
+            : "Changing the type updates this appointment without changing its date, clinician, or scheduling note.";
+    }
+
     private string PrimaryActionDisabledReasonId => $"{modalId}-primary-action-reason";
 
     private string CopayActionReasonId => $"{modalId}-copay-action-reason";
@@ -333,6 +443,53 @@
     }
 
     private Task HandleEditAppointmentRequested() => HandleActionRequested("edit-appointment");
+
+    private async Task SaveAppointmentTypeAsync()
+    {
+        if (!CanSaveAppointmentType || OnAppointmentTypeChanged is null || Appointment is null)
+        {
+            return;
+        }
+
+        isSavingAppointmentType = true;
+        appointmentTypeFeedbackMessage = null;
+        appointmentTypeSaveFailed = false;
+
+        var requestedType = selectedAppointmentType;
+        try
+        {
+            var wasSuccessful = await OnAppointmentTypeChanged(requestedType);
+            if (wasSuccessful)
+            {
+                appointmentTypeFeedbackMessage = "Appointment type updated.";
+                return;
+            }
+
+            selectedAppointmentType = GetCanonicalAppointmentType(Appointment.AppointmentType);
+            appointmentTypeSaveFailed = true;
+            appointmentTypeFeedbackMessage = "The appointment type could not be updated. The previous type is still in effect.";
+        }
+        catch
+        {
+            selectedAppointmentType = GetCanonicalAppointmentType(Appointment.AppointmentType);
+            appointmentTypeSaveFailed = true;
+            appointmentTypeFeedbackMessage = "The appointment type could not be updated. The previous type is still in effect.";
+        }
+        finally
+        {
+            isSavingAppointmentType = false;
+        }
+    }
+
+    private static string GetCanonicalAppointmentType(string appointmentType) =>
+        AppointmentTypeCatalog.TryParse(appointmentType, out var parsedType)
+            ? AppointmentTypeCatalog.GetDisplayName(parsedType)
+            : appointmentType;
+
+    private string GetAppointmentTypeFeedbackClass() =>
+        appointmentTypeSaveFailed
+            ? "appointment-detail-modal__type-feedback appointment-detail-modal__type-feedback--error"
+            : "appointment-detail-modal__type-feedback appointment-detail-modal__type-feedback--success";
 
     private string GetContextualQuickActionClass()
     {
@@ -400,6 +557,15 @@
         string.IsNullOrWhiteSpace(Appointment?.Notes)
             ? "Appointment notes are not available yet."
             : Appointment.Notes;
+
+    private string GetProgressNoteDueText() =>
+        Appointment?.ProgressNoteDueDate?.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)
+        ?? "Not available";
+
+    private string GetVisitNumberText() =>
+        Appointment?.VisitNumber is > 0
+            ? $"Visit {Appointment.VisitNumber.Value}"
+            : "Not available";
 
     private string VisitNoteReadinessStatus
     {

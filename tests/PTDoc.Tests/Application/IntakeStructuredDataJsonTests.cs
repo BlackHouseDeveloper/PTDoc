@@ -106,4 +106,66 @@ public sealed class IntakeStructuredDataJsonTests
         Assert.Equal(["lives-alone"], result.StructuredData.LivingSituationIds);
         Assert.Equal(["single-story-main-floor-bed-bath"], result.StructuredData.HouseLayoutOptionIds);
     }
+
+    [Fact]
+    public void TryNormalize_EnhancedSubjectiveData_PreservesCanonicalLimitationAndExclusiveNoneStates()
+    {
+        var payload = new IntakeStructuredDataDto
+        {
+            MedicationIds = ["zestril-lisinopril"],
+            NoMedications = true,
+            FunctionalLimitations =
+            [
+                new IntakeFunctionalLimitationSelectionDto
+                {
+                    BodyPart = "Knee",
+                    Category = "Mobility & Transfers",
+                    Activity = "Unable to rise from chair without pushing off with hands"
+                }
+            ],
+            Subjective = new IntakeSubjectiveDataDto
+            {
+                PriorFunctionalLevel = ["Independent"],
+                OnsetDate = new DateTime(2026, 7, 1),
+                KnownCause = "Twisted knee stepping off a curb.",
+                HasImaging = true,
+                ImagingModalities = ["MRI"],
+                ImagingFindings = "Meniscus tear reported."
+            }
+        };
+
+        var normalized = IntakeStructuredDataJson.TryNormalize(payload, _catalog, out var result, out var validation);
+
+        Assert.True(normalized);
+        Assert.True(validation.IsValid);
+        Assert.True(result.StructuredData.NoMedications);
+        Assert.Empty(result.StructuredData.MedicationIds);
+        Assert.Equal("Independent", Assert.Single(result.StructuredData.Subjective.PriorFunctionalLevel));
+        Assert.Equal("MRI", Assert.Single(result.StructuredData.Subjective.ImagingModalities));
+        var limitation = Assert.Single(result.StructuredData.FunctionalLimitations);
+        Assert.Equal("Knee", limitation.BodyPart);
+        Assert.Equal("Mobility & Transfers", limitation.Category);
+    }
+
+    [Fact]
+    public void TryNormalize_NonCatalogFunctionalLimitation_ReturnsValidationError()
+    {
+        var payload = new IntakeStructuredDataDto
+        {
+            FunctionalLimitations =
+            [
+                new IntakeFunctionalLimitationSelectionDto
+                {
+                    BodyPart = "Knee",
+                    Category = "Self Care",
+                    Activity = "Combing hair"
+                }
+            ]
+        };
+
+        var normalized = IntakeStructuredDataJson.TryNormalize(payload, _catalog, out _, out var validation);
+
+        Assert.False(normalized);
+        Assert.Contains("structuredData.functionalLimitations[0]", validation.Errors.Keys);
+    }
 }

@@ -71,6 +71,11 @@ public interface IAuditService
     Task LogIntakeEventAsync(AuditEvent auditEvent, CancellationToken ct = default);
 
     /// <summary>
+    /// Logs an appointment workflow mutation without patient-identifying metadata.
+    /// </summary>
+    Task LogAppointmentEventAsync(AuditEvent auditEvent, CancellationToken ct = default);
+
+    /// <summary>
     /// Logs a sync pipeline event.
     /// NO PHI — only entity identity, operation identity, status, and timestamps.
     /// </summary>

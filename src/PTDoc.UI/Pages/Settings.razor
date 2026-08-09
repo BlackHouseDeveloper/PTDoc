@@ -1,5 +1,5 @@
 @page "/settings"
-@attribute [Authorize(Roles = "Admin,Owner")]
+@attribute [Authorize(Roles = "Admin,Owner,PT")]
 @rendermode InteractiveServer
 
 <PageTitle>Settings - PTDoc</PageTitle>
@@ -10,10 +10,19 @@
     <div class="settings-shell" aria-label="Settings center">
         <SettingsSidebarNav
             ActiveSection="@activeSection"
+            ClinicalApproverOnly="@isClinicalApproverOnly"
             OnSectionSelected="HandleSectionSelected" />
 
         <main class="settings-main-content" aria-live="polite">
-            @if (activeSection == "approvals")
+            @if (activeSection == "providers")
+            {
+                <ProviderDirectorySettingsPanel />
+            }
+            else if (activeSection == "documentation")
+            {
+                <NoteTemplateSettingsPanel />
+            }
+            else if (activeSection == "approvals")
             {
                 <ApprovalsDashboard />
             }
@@ -45,6 +54,21 @@
 
 @code {
     private string activeSection = "approvals";
+    private bool isClinicalApproverOnly;
+
+    [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        isClinicalApproverOnly = state.User.IsInRole(Roles.PT)
+            && !state.User.IsInRole(Roles.Admin)
+            && !state.User.IsInRole(Roles.Owner);
+        if (isClinicalApproverOnly)
+        {
+            activeSection = "documentation";
+        }
+    }
 
     private void HandleSectionSelected(string sectionKey)
     {
@@ -55,6 +79,7 @@
     {
         "scheduling" => "Scheduling & Visit Types",
         "documentation" => "Documentation and Compliance",
+        "providers" => "Provider Directory",
         "billing" => "Billing and Coding",
         "ai-outcomes" => "AI & Outcome Measures",
         "integrations" => "Clinical Integrations",

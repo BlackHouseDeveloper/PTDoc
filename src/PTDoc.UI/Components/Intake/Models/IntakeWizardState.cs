@@ -103,6 +103,11 @@ public sealed class IntakeWizardState
         StructuredData.AssistiveDeviceIds ??= new List<string>();
         StructuredData.LivingSituationIds ??= new List<string>();
         StructuredData.HouseLayoutOptionIds ??= new List<string>();
+        StructuredData.FunctionalLimitations ??= new List<IntakeFunctionalLimitationSelectionDto>();
+        StructuredData.Subjective ??= new IntakeSubjectiveDataDto();
+        StructuredData.Subjective.PriorFunctionalLevel ??= new List<string>();
+        StructuredData.Subjective.ImagingModalities ??= new List<string>();
+        StructuredData.ClinicalContext ??= new IntakeClinicalContextDto();
         return StructuredData;
     }
 
@@ -111,6 +116,7 @@ public sealed class IntakeWizardState
         ConsentPacket ??= new IntakeConsentPacket();
         ConsentPacket.RevokedConsentKeys ??= new List<string>();
         ConsentPacket.AuthorizedContacts ??= new List<AuthorizedContact>();
+        ConsentPacket.PhiAuthorizedContactIds ??= new List<string>();
         return ConsentPacket;
     }
 }

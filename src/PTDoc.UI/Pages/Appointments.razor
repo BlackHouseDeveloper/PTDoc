@@ -1,5 +1,6 @@
 @page "/appointments"
 @attribute [Authorize(Policy = AuthorizationPolicies.SchedulingAccess)]
+@using PTDoc.Application.Appointments
 @using PTDoc.Application.DTOs
 @using PTDoc.Application.Identity
 @using PTDoc.Application.Integrations
@@ -7,6 +8,7 @@
 @using PTDoc.Core.Models
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Routing
+@using System.Net
 @using System.Security.Claims
 @using System.Globalization
 @implements IAsyncDisposable
@@ -77,19 +79,45 @@
 </div>
 
 <!-- New Appointment Modal -->
-<NewAppointmentModal IsOpen="@isNewAppointmentModalOpen"
+<NewAppointmentModal @key="appointmentFormInitialValues"
+                    IsOpen="@isNewAppointmentModalOpen"
                     IsOpenChanged="@HandleNewAppointmentModalChanged"
+                    IsSuspended="@IsNewAppointmentModalSuspended"
                     Title="@(isRescheduleMode ? "Edit Appointment" : "New Appointment")"
                     Description="@(isRescheduleMode ? "Update appointment type, timing, clinician, and notes" : "Schedule a new appointment for a patient")"
                     SubmitButtonText="@(isRescheduleMode ? "Save Appointment" : "Schedule Appointment")"
                     InitialValues="@appointmentFormInitialValues"
+                    PreferredPatientId="@preferredAppointmentPatientId"
+                    ShowAddPatientAction="@(!isRescheduleMode)"
                     AvailablePatients="@availablePatients"
                     AvailableClinicians="@availableClinicians"
+                    OnAddPatientRequested="@HandleAddPatientRequested"
                     OnSubmit="@HandleAppointmentSubmit" />
+
+<AuthorizeView Policy="@AuthorizationPolicies.PatientWrite">
+    <Authorized>
+        <AddPatientModal IsOpen="@isAddPatientModalOpen"
+                         IsOpenChanged="@HandleAddPatientOpenChanged"
+                         OnSubmit="@HandleAddPatientSubmit" />
+    </Authorized>
+</AuthorizeView>
+
+<AuthorizeView Policy="@AuthorizationPolicies.IntakeWrite">
+    <Authorized>
+        <SendIntakeModal IsOpen="@isSendIntakeModalOpen"
+                         IsOpenChanged="@HandleSendIntakeOpenChanged"
+                         AvailablePatients="@availableIntakePatients"
+                         InitialPatientId="@initialSendIntakePatientId"
+                         SuccessMessage="Patient added and intake sent successfully."
+                         FailureHeading="Patient was added, but the intake could not be sent."
+                         OnSubmit="@HandleIntakeSubmit" />
+    </Authorized>
+</AuthorizeView>
 
 <AppointmentDetailModal IsOpen="@isAppointmentDetailModalOpen"
                         IsOpenChanged="@HandleAppointmentDetailModalChanged"
                         Appointment="@selectedAppointmentDetail"
+                        OnAppointmentTypeChanged="@HandleAppointmentTypeChangedAsync"
                         OnActionRequested="@HandleAppointmentDetailAction" />
 
 <AppointmentPaymentModal IsOpen="@isPaymentModalOpen"
@@ -107,6 +135,8 @@
     private bool isFiltersOpen = false;
     private AppointmentsFilter currentFilter = new();
     private bool isNewAppointmentModalOpen = false;
+    private bool isAddPatientModalOpen;
+    private bool isSendIntakeModalOpen;
     private bool isAppointmentDetailModalOpen = false;
     private bool isPaymentModalOpen = false;
     private bool isSubmittingPayment = false;
@@ -118,6 +148,9 @@
     private bool paymentShouldCheckInAfterSuccess = true;
     private bool reopenDetailAfterPaymentModal;
     private NewAppointmentModal.AppointmentFormData? appointmentFormInitialValues;
+    private string? preferredAppointmentPatientId;
+    private string? initialSendIntakePatientId;
+    private PatientResponse? pendingSendIntakePatient;
     private Guid? appointmentBeingEditedId;
     private readonly Dictionary<string, string> appointmentStatusOverrides = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<AppointmentListItemResponse> appointmentDirectory = new();
@@ -127,6 +160,7 @@
     private List<ClinicianSchedule> schedulerClinicians = new();
     private List<AppointmentListItemResponse> visibleAppointments = new();
     private List<NewAppointmentModal.PatientOption> availablePatients = new();
+    private List<SendIntakeModal.PatientOption> availableIntakePatients = new();
     private List<NewAppointmentModal.ClinicianOption> availableClinicians = new();
     private bool isLoadingAppointments = true;
     private string? appointmentLoadError;
@@ -138,8 +172,22 @@
     private Guid? currentUserId;
     private string selectedWeekClinicianId = string.Empty;
     private string? pendingRouteWeekClinicianId;
+    private bool isLoadingAvailableIntakePatients;
+    private bool isPreparingPendingSendIntake;
+    private bool isResumingAppointmentModalAfterChild;
 
-    private bool IsAnyModalOpen => isNewAppointmentModalOpen || isAppointmentDetailModalOpen || isPaymentModalOpen;
+    private bool IsAnyModalOpen =>
+        isNewAppointmentModalOpen
+        || isAddPatientModalOpen
+        || isSendIntakeModalOpen
+        || isAppointmentDetailModalOpen
+        || isPaymentModalOpen;
+    private bool IsNewAppointmentModalSuspended =>
+        isAddPatientModalOpen
+        || isSendIntakeModalOpen
+        || pendingSendIntakePatient is not null
+        || isPreparingPendingSendIntake
+        || isResumingAppointmentModalAfterChild;
     private bool IsAdminUser => currentUser.IsInRole(Roles.Admin);
     private bool IsPtOrPtaUser => currentUser.IsInRole(Roles.PT) || currentUser.IsInRole(Roles.PTA);
     private bool ShowWeekClinicianSelector => selectedView == AppointmentsView.Week && IsAdminUser;
@@ -150,6 +198,7 @@
     [Inject] private IAppointmentService AppointmentService { get; set; } = default!;
     [Inject] private IPaymentClientService PaymentClientService { get; set; } = default!;
     [Inject] private IPatientService PatientService { get; set; } = default!;
+    [Inject] private IIntakeService IntakeService { get; set; } = default!;
     [Inject] private IToastService ToastService { get; set; } = default!;
     [Inject] private ILogger<Appointments> Logger { get; set; } = default!;
 
@@ -171,24 +220,54 @@
     {
         var previousLoadWindow = GetAppointmentLoadWindow();
         var queryChanged = ApplyRouteQuery();
-        HandleRouteAction();
 
         if (!queryChanged)
         {
+            await HandleRouteActionAsync();
             return false;
         }
 
         if (!previousLoadWindow.Equals(GetAppointmentLoadWindow()))
         {
             await LoadAppointmentsAsync();
+            await HandleRouteActionAsync();
             return false;
         }
 
+        await HandleRouteActionAsync();
         return true;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (pendingSendIntakePatient is not null
+            && !isAddPatientModalOpen
+            && !isPreparingPendingSendIntake)
+        {
+            var patient = pendingSendIntakePatient;
+            pendingSendIntakePatient = null;
+            isPreparingPendingSendIntake = true;
+
+            try
+            {
+                await PrepareSendIntakeForPatientAsync(patient);
+            }
+            finally
+            {
+                isPreparingPendingSendIntake = false;
+            }
+        }
+
+        if (isResumingAppointmentModalAfterChild
+            && !isAddPatientModalOpen
+            && !isSendIntakeModalOpen
+            && pendingSendIntakePatient is null
+            && !isPreparingPendingSendIntake)
+        {
+            isResumingAppointmentModalAfterChild = false;
+            await InvokeAsync(StateHasChanged);
+        }
+
         if (!shouldNormalizeRouteAction)
         {
             return;
@@ -259,7 +338,81 @@
         isRescheduleMode = false;
         appointmentFormInitialValues = null;
         appointmentBeingEditedId = null;
+        preferredAppointmentPatientId = null;
+        initialSendIntakePatientId = null;
+        pendingSendIntakePatient = null;
+        isResumingAppointmentModalAfterChild = false;
         isNewAppointmentModalOpen = true;
+    }
+
+    private void HandleAddPatientRequested(NewAppointmentModal.AppointmentFormData appointmentDraft)
+    {
+        appointmentFormInitialValues = appointmentDraft;
+        isAddPatientModalOpen = true;
+    }
+
+    private async Task<bool> HandleAddPatientSubmit(AddPatientModal.PatientFormData formData)
+    {
+        if (!formData.DateOfBirth.HasValue)
+        {
+            ToastService.ShowError("Date of birth is required.");
+            return false;
+        }
+
+        try
+        {
+            var createdPatient = await PatientService.CreateAsync(new CreatePatientRequest
+            {
+                FirstName = formData.FirstName,
+                LastName = formData.LastName,
+                DateOfBirth = formData.DateOfBirth.Value,
+                Email = formData.Email,
+                Phone = formData.PhoneNumber,
+                PayerInfoJson = formData.PayerInfoJson,
+                ReferringPhysician = string.IsNullOrWhiteSpace(formData.ReferringPhysician)
+                    ? null
+                    : formData.ReferringPhysician,
+                PhysicianNpi = string.IsNullOrWhiteSpace(formData.PhysicianNpi)
+                    ? null
+                    : formData.PhysicianNpi,
+                AuthorizationNumber = string.IsNullOrWhiteSpace(formData.AuthorizationNumber)
+                    ? null
+                    : formData.AuthorizationNumber
+            });
+
+            preferredAppointmentPatientId = createdPatient.Id.ToString("D");
+            UpsertAppointmentPatient(createdPatient);
+
+            if (formData.SubmitIntent == AddPatientModal.PatientSubmitIntent.AddPatientAndSendIntake)
+            {
+                pendingSendIntakePatient = createdPatient;
+                ToastService.ShowSuccess("Patient added. Complete the intake delivery details.");
+            }
+            else
+            {
+                ToastService.ShowSuccess("Patient added and selected for this appointment.");
+            }
+
+            return true;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            Logger.LogWarning(ex, "Patient creation from the appointment modal was forbidden.");
+            ToastService.ShowError("You do not have permission to add patients.");
+            return false;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+        {
+            Logger.LogWarning(ex, "Patient creation from the appointment modal failed validation.");
+            ToastService.ShowError("Review the patient details and try again.");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Patient creation from the appointment modal failed.");
+            ToastService.ShowError("Failed to add patient. Please try again.");
+            return false;
+        }
     }
 
     private async Task<bool> HandleAppointmentSubmit(NewAppointmentModal.AppointmentFormData formData)
@@ -412,8 +565,41 @@
             appointmentFormInitialValues = null;
             isRescheduleMode = false;
             appointmentBeingEditedId = null;
+            preferredAppointmentPatientId = null;
+            initialSendIntakePatientId = null;
+            pendingSendIntakePatient = null;
+            isResumingAppointmentModalAfterChild = false;
         }
 
+        return Task.CompletedTask;
+    }
+
+    private Task HandleAddPatientOpenChanged(bool isOpen)
+    {
+        isAddPatientModalOpen = isOpen;
+        if (!isOpen && pendingSendIntakePatient is null && isNewAppointmentModalOpen)
+        {
+            isResumingAppointmentModalAfterChild = true;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task HandleSendIntakeOpenChanged(bool isOpen)
+    {
+        isSendIntakeModalOpen = isOpen;
+        if (!isOpen)
+        {
+            initialSendIntakePatientId = null;
+            isResumingAppointmentModalAfterChild = isNewAppointmentModalOpen;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task HandleIntakeSubmit(SendIntakeModal.IntakeFormData formData)
+    {
+        initialSendIntakePatientId = null;
         return Task.CompletedTask;
     }
 
@@ -429,16 +615,60 @@
         return $"Week of {AppointmentsDateFormatter.FormatWeekRange(selectedDate)}";
     }
 
-    private void HandleRouteAction()
+    private async Task HandleRouteActionAsync()
     {
         var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
-        if (!TryGetQueryParameter(uri.Query, "action", out var action)
-            || !string.Equals(action, "appointments.new", StringComparison.OrdinalIgnoreCase))
+        if (!TryGetQueryParameter(uri.Query, "action", out var action))
         {
             return;
         }
 
-        HandleNewAppointment();
+        if (string.Equals(action, "appointments.new", StringComparison.OrdinalIgnoreCase))
+        {
+            HandleNewAppointment();
+            shouldNormalizeRouteAction = true;
+            return;
+        }
+
+        if (!TryGetQueryParameter(uri.Query, "appointmentId", out var appointmentIdValue)
+            || !Guid.TryParse(appointmentIdValue, out var appointmentId))
+        {
+            return;
+        }
+
+        var appointment = appointmentDirectory.FirstOrDefault(item => item.Id == appointmentId);
+        if (appointment is null)
+        {
+            ToastService.ShowWarning("The selected appointment could not be found in today's schedule.");
+            shouldNormalizeRouteAction = true;
+            return;
+        }
+
+        selectedAppointmentDetail = ToAppointmentDetailViewModel(appointment);
+
+        if (string.Equals(action, "appointments.check-in", StringComparison.OrdinalIgnoreCase))
+        {
+            isAppointmentDetailModalOpen = true;
+            await HandleCheckInAsync();
+        }
+        else if (string.Equals(action, "appointments.start-note", StringComparison.OrdinalIgnoreCase))
+        {
+            await HandleStartVisitAsync();
+        }
+        else if (string.Equals(action, "appointments.reschedule", StringComparison.OrdinalIgnoreCase))
+        {
+            await HandleEditAppointmentAsync();
+        }
+        else if (string.Equals(action, "appointments.details", StringComparison.OrdinalIgnoreCase))
+        {
+            isAppointmentDetailModalOpen = true;
+        }
+        else
+        {
+            selectedAppointmentDetail = null;
+            return;
+        }
+
         shouldNormalizeRouteAction = true;
     }
 
@@ -539,6 +769,76 @@
             ToastService.ShowError("Failed to load appointment patient options.");
         }
     }
+
+    private async Task PrepareSendIntakeForPatientAsync(PatientResponse patient)
+    {
+        initialSendIntakePatientId = patient.Id.ToString("D");
+        await LoadAvailableIntakePatientsAsync();
+        UpsertAvailableIntakePatient(ToIntakePatientOption(patient));
+        isSendIntakeModalOpen = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadAvailableIntakePatientsAsync()
+    {
+        if (isLoadingAvailableIntakePatients)
+        {
+            return;
+        }
+
+        try
+        {
+            isLoadingAvailableIntakePatients = true;
+            var patients = await IntakeService.SearchEligiblePatientsAsync(take: 200);
+            availableIntakePatients = patients
+                .Select(patient => new SendIntakeModal.PatientOption
+                {
+                    Id = patient.Id.ToString("D"),
+                    Name = patient.DisplayName,
+                    Email = patient.Email,
+                    PhoneNumber = patient.Phone
+                })
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(
+                "Failed to load eligible patients for the appointment intake workflow. ErrorType={ErrorType}",
+                ex.GetType().Name);
+            ToastService.ShowError("Unable to load eligible patients for intake invites.");
+        }
+        finally
+        {
+            isLoadingAvailableIntakePatients = false;
+        }
+    }
+
+    private void UpsertAppointmentPatient(PatientResponse patient)
+    {
+        var patientId = patient.Id.ToString("D");
+        availablePatients.RemoveAll(existing =>
+            string.Equals(existing.Id, patientId, StringComparison.OrdinalIgnoreCase));
+        availablePatients.Insert(0, new NewAppointmentModal.PatientOption
+        {
+            Id = patientId,
+            Name = $"{patient.FirstName} {patient.LastName}".Trim()
+        });
+    }
+
+    private void UpsertAvailableIntakePatient(SendIntakeModal.PatientOption patient)
+    {
+        availableIntakePatients.RemoveAll(existing =>
+            string.Equals(existing.Id, patient.Id, StringComparison.OrdinalIgnoreCase));
+        availableIntakePatients.Insert(0, patient);
+    }
+
+    private static SendIntakeModal.PatientOption ToIntakePatientOption(PatientResponse patient) => new()
+    {
+        Id = patient.Id.ToString("D"),
+        Name = $"{patient.FirstName} {patient.LastName}".Trim(),
+        Email = patient.Email,
+        PhoneNumber = patient.Phone
+    };
 
     private async Task LoadAppointmentsAsync()
     {
@@ -772,6 +1072,60 @@
         await HandleAppointmentDetailModalChanged(false);
     }
 
+    private async Task<bool> HandleAppointmentTypeChangedAsync(string appointmentType)
+    {
+        if (selectedAppointmentDetail is null
+            || IsTerminalAppointmentStatus(GetEffectiveAppointmentStatus(selectedAppointmentDetail))
+            || !AppointmentTypeCatalog.TryParse(appointmentType, out var parsedAppointmentType))
+        {
+            return false;
+        }
+
+        var request = new UpdateAppointmentTypeRequest
+        {
+            AppointmentType = AppointmentTypeCatalog.GetDisplayName(parsedAppointmentType),
+            ExpectedLastModifiedUtc = selectedAppointmentDetail.LastModifiedUtc
+        };
+
+        try
+        {
+            var updatedAppointment = await AppointmentService.UpdateAppointmentTypeAsync(selectedAppointmentDetail.AppointmentId, request);
+            if (updatedAppointment is null)
+            {
+                ToastService.ShowError("The appointment could not be found for editing.");
+                return false;
+            }
+
+            UpsertAppointment(updatedAppointment);
+            selectedAppointmentDetail = ToAppointmentDetailViewModel(updatedAppointment);
+            await InvokeAsync(StateHasChanged);
+            ToastService.ShowSuccess("Appointment type updated.");
+            return true;
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("changed by another user", StringComparison.OrdinalIgnoreCase))
+        {
+            Logger.LogInformation(ex, "Refreshing a stale appointment after an appointment-type conflict.");
+            var appointmentId = selectedAppointmentDetail.AppointmentId;
+            await LoadAppointmentsAsync();
+            var currentAppointment = appointmentDirectory.FirstOrDefault(
+                appointment => appointment.Id == appointmentId);
+            if (currentAppointment is not null)
+            {
+                selectedAppointmentDetail = ToAppointmentDetailViewModel(currentAppointment);
+            }
+
+            ToastService.ShowError(ex.Message);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to update appointment type from the appointment details modal.");
+            ToastService.ShowError("Failed to update the appointment type.");
+            return false;
+        }
+    }
+
     private void RebuildSchedulerState()
     {
         RebuildWeekClinicianOptions();
@@ -921,11 +1275,19 @@
     }
 
     private static string MapAppointmentTypeForForm(string appointmentType) =>
-        appointmentType switch
-        {
-            "Follow-up" => "Follow Up",
-            _ => appointmentType
-        };
+        AppointmentTypeCatalog.TryParse(appointmentType, out var parsedAppointmentType)
+            ? AppointmentTypeCatalog.All.First(type => type.Value == parsedAppointmentType).FormValue
+            : appointmentType;
+
+    private static bool IsTerminalAppointmentStatus(string appointmentStatus) =>
+        string.Equals(appointmentStatus, "Cancelled", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(appointmentStatus, "No Show", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(appointmentStatus, "Completed", StringComparison.OrdinalIgnoreCase);
+
+    private static string GetEffectiveAppointmentStatus(AppointmentDetailViewModel appointment) =>
+        string.IsNullOrWhiteSpace(appointment.VisitWorkflowStatus)
+            ? appointment.AppointmentStatus
+            : appointment.VisitWorkflowStatus;
 
     private void UpsertAppointment(AppointmentListItemResponse appointment)
     {
@@ -1003,7 +1365,10 @@
             CanRecordCopay = appointment.CanRecordCopay,
             CopayStatusLabel = appointment.CopayStatusLabel,
             CopayActionUnavailableReason = appointment.CopayActionUnavailableReason,
-            Notes = appointment.Notes
+            ProgressNoteDueDate = appointment.ProgressNoteDueDate,
+            VisitNumber = appointment.VisitNumber,
+            Notes = appointment.Notes,
+            LastModifiedUtc = appointment.LastModifiedUtc
         };
     }
 

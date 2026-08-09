@@ -33,6 +33,7 @@ public static class IntakeStructuredDataJson
             payload.AssistiveDeviceIds ??= new List<string>();
             payload.LivingSituationIds ??= new List<string>();
             payload.HouseLayoutOptionIds ??= new List<string>();
+            EnsureEnhancedCollections(payload);
             errorMessage = null;
             return true;
         }
@@ -53,6 +54,7 @@ public static class IntakeStructuredDataJson
         payload.AssistiveDeviceIds ??= new List<string>();
         payload.LivingSituationIds ??= new List<string>();
         payload.HouseLayoutOptionIds ??= new List<string>();
+        EnsureEnhancedCollections(payload);
         return JsonSerializer.Serialize(payload, SerializerOptions);
     }
 
@@ -73,13 +75,24 @@ public static class IntakeStructuredDataJson
         payload.AssistiveDeviceIds ??= new List<string>();
         payload.LivingSituationIds ??= new List<string>();
         payload.HouseLayoutOptionIds ??= new List<string>();
+        EnsureEnhancedCollections(payload);
 
         var catalog = catalogService.GetCatalog();
         var normalized = new IntakeStructuredDataDto
         {
             SchemaVersion = string.IsNullOrWhiteSpace(payload.SchemaVersion)
                 ? catalog.Version
-                : payload.SchemaVersion.Trim()
+                : payload.SchemaVersion.Trim(),
+            NoMedications = payload.NoMedications,
+            NoComorbidities = payload.NoComorbidities,
+            NoAssistiveDevices = payload.NoAssistiveDevices,
+            ClinicalContext = new IntakeClinicalContextDto
+            {
+                NoteType = string.IsNullOrWhiteSpace(payload.ClinicalContext.NoteType)
+                    ? "Evaluation"
+                    : payload.ClinicalContext.NoteType.Trim()
+            },
+            Subjective = NormalizeSubjective(payload.Subjective)
         };
 
         var normalizedBodySelections = new Dictionary<string, NormalizedBodySelection>(StringComparer.OrdinalIgnoreCase);
@@ -230,6 +243,10 @@ public static class IntakeStructuredDataJson
             "house layout option",
             value => catalogService.GetHouseLayoutOption(value),
             validationResult);
+        var normalizedFunctionalLimitations = NormalizeFunctionalLimitations(
+            payload.FunctionalLimitations,
+            catalogService,
+            validationResult);
 
         if (!validationResult.IsValid)
         {
@@ -259,6 +276,22 @@ public static class IntakeStructuredDataJson
         normalized.AssistiveDeviceIds = normalizedAssistiveDeviceIds;
         normalized.LivingSituationIds = normalizedLivingSituationIds;
         normalized.HouseLayoutOptionIds = normalizedHouseLayoutOptionIds;
+        normalized.FunctionalLimitations = normalizedFunctionalLimitations;
+
+        if (normalized.NoMedications)
+        {
+            normalized.MedicationIds.Clear();
+        }
+
+        if (normalized.NoComorbidities)
+        {
+            normalized.ComorbidityIds.Clear();
+        }
+
+        if (normalized.NoAssistiveDevices)
+        {
+            normalized.AssistiveDeviceIds.Clear();
+        }
 
         normalizationResult = new IntakeStructuredDataNormalizationResult
         {
@@ -383,6 +416,106 @@ public static class IntakeStructuredDataJson
             _ => null
         };
     }
+
+    private static void EnsureEnhancedCollections(IntakeStructuredDataDto payload)
+    {
+        payload.FunctionalLimitations ??= new List<IntakeFunctionalLimitationSelectionDto>();
+        payload.Subjective ??= new IntakeSubjectiveDataDto();
+        payload.Subjective.PriorFunctionalLevel ??= new List<string>();
+        payload.Subjective.ImagingModalities ??= new List<string>();
+        payload.ClinicalContext ??= new IntakeClinicalContextDto();
+    }
+
+    private static IntakeSubjectiveDataDto NormalizeSubjective(IntakeSubjectiveDataDto source) => new()
+    {
+        PriorFunctionalLevel = source.PriorFunctionalLevel
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList(),
+        OnsetDate = source.OnsetDate,
+        OnsetOverAYearAgo = source.OnsetOverAYearAgo,
+        CauseUnknown = source.CauseUnknown,
+        KnownCause = source.CauseUnknown ? null : TrimOrNull(source.KnownCause),
+        HasImaging = source.HasImaging,
+        ImagingModalities = source.ImagingModalities
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList(),
+        OtherImagingModality = TrimOrNull(source.OtherImagingModality),
+        ImagingFindings = TrimOrNull(source.ImagingFindings)
+    };
+
+    private static List<IntakeFunctionalLimitationSelectionDto> NormalizeFunctionalLimitations(
+        IEnumerable<IntakeFunctionalLimitationSelectionDto> selections,
+        IIntakeReferenceDataCatalogService catalogService,
+        IntakeStructuredDataValidationResult validationResult)
+    {
+        var validSelections = new List<IntakeFunctionalLimitationSelectionDto>();
+        var source = selections.ToList();
+
+        for (var index = 0; index < source.Count; index++)
+        {
+            var selection = source[index];
+            var path = $"structuredData.functionalLimitations[{index}]";
+            if (selection is null
+                || string.IsNullOrWhiteSpace(selection.BodyPart)
+                || string.IsNullOrWhiteSpace(selection.Category)
+                || string.IsNullOrWhiteSpace(selection.Activity))
+            {
+                validationResult.AddError(path, "Body part, category, and activity are required for a functional limitation.");
+                continue;
+            }
+
+            if (!Enum.TryParse<PTDoc.Core.Models.BodyPart>(selection.BodyPart, ignoreCase: true, out var bodyPart)
+                || bodyPart == PTDoc.Core.Models.BodyPart.Other)
+            {
+                validationResult.AddError($"{path}.bodyPart", $"Unknown functional-limitation body part '{selection.BodyPart}'.");
+                continue;
+            }
+
+            var category = catalogService.GetFunctionalLimitationCategories(bodyPart)
+                .FirstOrDefault(value => string.Equals(value.Name, selection.Category, StringComparison.OrdinalIgnoreCase));
+            if (category is null
+                || !category.Items.Contains(selection.Activity, StringComparer.OrdinalIgnoreCase))
+            {
+                validationResult.AddError(path, "Functional limitation is not part of the canonical body-region catalog.");
+                continue;
+            }
+
+            validSelections.Add(selection);
+        }
+
+        return validSelections
+            .GroupBy(
+                selection => $"{selection.BodyPart.Trim()}|{selection.Category.Trim()}|{selection.Activity.Trim()}",
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .Select(selection => new IntakeFunctionalLimitationSelectionDto
+            {
+                Id = string.IsNullOrWhiteSpace(selection.Id)
+                    ? BuildFunctionalLimitationId(selection.BodyPart, selection.Category, selection.Activity)
+                    : selection.Id.Trim(),
+                BodyPart = selection.BodyPart.Trim(),
+                Category = selection.Category.Trim(),
+                Activity = selection.Activity.Trim()
+            })
+            .OrderBy(selection => selection.BodyPart, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(selection => selection.Category, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(selection => selection.Activity, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string BuildFunctionalLimitationId(string bodyPart, string category, string activity) =>
+        string.Join("-", new[] { bodyPart, category, activity }
+            .SelectMany(value => value.Trim().ToLowerInvariant()
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)))
+        .Replace("/", "-", StringComparison.Ordinal)
+        .Replace("&", "and", StringComparison.Ordinal);
+
+    private static string? TrimOrNull(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static IEnumerable<string> ExpandLegacyRegionKeys(
         IntakeBodyPartItemDto bodyPart,

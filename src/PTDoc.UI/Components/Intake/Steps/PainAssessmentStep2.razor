@@ -1,4 +1,6 @@
 @using PTDoc.UI.Components.Intake.Cards
+@using PTDoc.Application.Intake
+@using PTDoc.Application.ReferenceData
 @using PTDoc.Core.Models
 @using PTDoc.UI.Components.Intake.Models
 
@@ -20,10 +22,7 @@
 
     <MedicalHistoryCard State="@State" StateChanged="HandleMedicalHistoryChangedAsync" />
 
-    <FunctionalLimitationsCard CurrentLevelOfFunction="@State.CurrentLevelOfFunction"
-                               CurrentLevelOfFunctionChanged="OnCurrentLevelOfFunctionChangedAsync"
-                               FunctionalLimitations="@State.FunctionalLimitations"
-                               FunctionalLimitationsChanged="OnFunctionalLimitationsChangedAsync" />
+    <FunctionalLimitationsCard State="@State" StateChanged="HandleFunctionalLimitationsChangedAsync" />
 
     <IntakeFooterActions
         ShowBack="true"
@@ -86,6 +85,18 @@
         _selectedRegions = selectedRegions;
         State.SelectedBodyRegions = selectedRegions.ToHashSet();
         State.SelectedBodyRegion = selectedRegions.Count > 0 ? selectedRegions.First().ToString() : null;
+        if (State.StructuredData is not null)
+        {
+            State.StructuredData.FunctionalLimitations ??= new List<IntakeFunctionalLimitationSelectionDto>();
+            var selectedBodyParts = selectedRegions
+                .Select(IntakeBodyRegionMapper.Map)
+                .Where(bodyPart => bodyPart != BodyPart.Other)
+                .Select(bodyPart => bodyPart.ToString())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            State.StructuredData.FunctionalLimitations.RemoveAll(limitation =>
+                !selectedBodyParts.Contains(limitation.BodyPart));
+        }
+
         if (selectedRegions.Count == 0 && State.StructuredData is not null)
         {
             State.StructuredData.BodyPartSelections.Clear();
@@ -110,25 +121,6 @@
     private Task HandleMedicalHistoryChangedAsync() =>
         OnStateChanged.HasDelegate ? OnStateChanged.InvokeAsync() : Task.CompletedTask;
 
-    private async Task OnCurrentLevelOfFunctionChangedAsync(string? value)
-    {
-        State.CurrentLevelOfFunction = value;
-        State.IsDirty = true;
-
-        if (OnStateChanged.HasDelegate)
-        {
-            await OnStateChanged.InvokeAsync();
-        }
-    }
-
-    private async Task OnFunctionalLimitationsChangedAsync(string? value)
-    {
-        State.FunctionalLimitations = value;
-        State.IsDirty = true;
-
-        if (OnStateChanged.HasDelegate)
-        {
-            await OnStateChanged.InvokeAsync();
-        }
-    }
+    private Task HandleFunctionalLimitationsChangedAsync() =>
+        OnStateChanged.HasDelegate ? OnStateChanged.InvokeAsync() : Task.CompletedTask;
 }

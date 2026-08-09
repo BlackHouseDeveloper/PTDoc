@@ -331,6 +331,7 @@ else
             <SoapTabNav ActiveSection="@_note.ActiveSection"
                         IsReadOnly="@IsWorkspaceReadOnly"
                         Sections="@CurrentSoapSections"
+                        SectionLabels="@CurrentSectionLabels"
                         CompletionState="@completionState"
                         ActiveSectionChanged="HandleSectionChangedSafelyAsync" />
 
@@ -530,6 +531,7 @@ else
                                   ActiveSection="@_note.ActiveSection"
                                   SaveState="@_note.SaveState"
                                   Sections="@CurrentSoapSections"
+                                  SectionLabels="@CurrentSectionLabels"
                                   IsReadOnly="@IsWorkspaceReadOnly"
                                   DisableSave="@DisableSaveAction"
                                   DisableSubmit="@DisableSubmitAction"
@@ -634,6 +636,7 @@ else
     ];
 
     private SoapNoteVm _note = new();
+    private NoteTemplateVersionDto? _activeTemplateVersion;
     private WorkspaceSubjectiveCatalogNormalizer? _subjectiveCatalogNormalizer;
     private DryNeedlingVm _dryNeedling = new();
     private ClaimsPrincipal _user = new(new ClaimsIdentity());
@@ -695,11 +698,60 @@ else
     private bool IsDischargeNote => string.Equals(_note.NoteType, "Discharge Note", StringComparison.OrdinalIgnoreCase);
     private bool IsDryNeedlingNote => string.Equals(_note.NoteType, "Dry Needling Note", StringComparison.OrdinalIgnoreCase);
     private bool IsReviewSection => _note.ActiveSection == SoapSection.Review;
-    private IReadOnlyList<SoapSection> CurrentSoapSections => IsEvaluationNote
-        ? EvaluationSoapSections
-        : IsDailyTreatment || IsProgressNote
-            ? DailyProgressSoapSections
-            : DefaultSoapSections;
+    private IReadOnlyList<SoapSection> CurrentSoapSections => ResolveTemplateSections();
+    private IReadOnlyDictionary<SoapSection, string> CurrentSectionLabels => ResolveTemplateSectionLabels();
+    private IReadOnlyList<SoapSection> ResolveTemplateSections()
+    {
+        var fallback = IsEvaluationNote
+            ? EvaluationSoapSections
+            : IsDailyTreatment || IsProgressNote
+                ? DailyProgressSoapSections
+                : DefaultSoapSections;
+        if (_activeTemplateVersion?.Schema.Sections is not { Count: > 0 } configured)
+        {
+            return fallback;
+        }
+
+        var mapped = configured
+            .Where(section => section.IsVisible)
+            .OrderBy(section => section.Order)
+            .Select(section => ResolveSoapSection(section.Key))
+            .Where(section => section.HasValue)
+            .Select(section => section!.Value)
+            .Distinct()
+            .ToList();
+
+        // Review contains the signature/compliance gate and cannot be disabled by a template.
+        if (!mapped.Contains(SoapSection.Review)) mapped.Add(SoapSection.Review);
+        return mapped.Count > 1 ? mapped : fallback;
+    }
+
+    private IReadOnlyDictionary<SoapSection, string> ResolveTemplateSectionLabels()
+    {
+        if (_activeTemplateVersion?.Schema.Sections is not { Count: > 0 } configured)
+        {
+            return new Dictionary<SoapSection, string>();
+        }
+
+        return configured
+            .Where(section => section.IsVisible)
+            .OrderBy(section => section.Order)
+            .Select(section => (Section: ResolveSoapSection(section.Key), section.Label))
+            .Where(item => item.Section.HasValue && !string.IsNullOrWhiteSpace(item.Label))
+            .GroupBy(item => item.Section!.Value)
+            .ToDictionary(group => group.Key, group => group.First().Label);
+    }
+
+    private static SoapSection? ResolveSoapSection(string key) => key.Trim().ToLowerInvariant() switch
+    {
+        "subjective" => SoapSection.Subjective,
+        "objective" => SoapSection.Objective,
+        "interventions" or "daily-treatment" or "dry-needling" => SoapSection.Interventions,
+        "assessment" or "progress-questionnaire" or "discharge" => SoapSection.Assessment,
+        "plan" or "billing" => SoapSection.Plan,
+        "review" => SoapSection.Review,
+        _ => null
+    };
     private WorkspaceSubjectiveCatalogNormalizer SubjectiveCatalogNormalizer =>
         _subjectiveCatalogNormalizer ??= new WorkspaceSubjectiveCatalogNormalizer(IntakeReferenceData);
 
@@ -943,6 +995,7 @@ else
         };
 
         _dryNeedling = new DryNeedlingVm();
+        _activeTemplateVersion = null;
         _sourceAppointmentId = ResolveRequestedAppointmentId();
         _dateOfService = ResolveRequestedDateOfService() ?? DateTime.UtcNow;
         _isDarkMode = false;
@@ -1023,7 +1076,7 @@ else
             throw new HttpRequestException(result.ErrorMessage ?? "Unable to load note data.");
         }
 
-        ApplyWorkspaceState(result.NoteId, result.LastModifiedUtc, result.WorkspaceNoteType, result.DateOfService, result.IsReEvaluation, result.Status, result.Payload);
+        ApplyWorkspaceState(result.NoteId, result.LastModifiedUtc, result.WorkspaceNoteType, result.DateOfService, result.IsReEvaluation, result.Status, result.Payload, result.TemplateVersion);
     }
 
     private void ApplyWorkspaceState(
@@ -1034,6 +1087,7 @@ else
         bool isReEvaluation,
         NoteStatus status,
         NoteWorkspacePayload? payload,
+        NoteTemplateVersionDto? templateVersion = null,
         bool resetAutosave = true)
     {
         _currentNoteId = noteId;
@@ -1054,6 +1108,7 @@ else
         _note.StructuredWorkspacePayload = payload?.StructuredPayload;
         _dryNeedling = payload?.DryNeedling ?? new DryNeedlingVm();
         _note.Status = status;
+        _activeTemplateVersion = templateVersion ?? _activeTemplateVersion;
         if (!CurrentSoapSections.Contains(_note.ActiveSection))
         {
             _note.MoveTo(SoapSection.Subjective);
@@ -1865,6 +1920,7 @@ else
                     saveResult.IsReEvaluation,
                     saveResult.Status,
                     saveResult.Payload,
+                    saveResult.TemplateVersion,
                     resetAutosave: false);
             }
             else

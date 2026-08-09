@@ -243,7 +243,7 @@
 
                 <!-- Info Box -->
                 <div class="info-box" role="note">
-                    <p><strong>Note:</strong> Use Add Patient + Send Intake to open the intake invite workflow after creating the patient.</p>
+                    <p><strong>Note:</strong> Use Add Patient and Send Intake to open the intake invite workflow after creating the patient.</p>
                 </div>
 
                 <!-- Modal Footer (Buttons) -->
@@ -263,7 +263,7 @@
                             <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                             <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1"/>
                         </svg>
-                        @(IsSubmitting && ActiveSubmitIntent == PatientSubmitIntent.AddPatientAndSendIntake ? "Adding..." : "Add Patient + Send Intake")
+                        @(IsSubmitting && ActiveSubmitIntent == PatientSubmitIntent.AddPatientAndSendIntake ? "Adding..." : "Add Patient and Send Intake")
                     </button>
                 </div>
             </form>
@@ -432,6 +432,11 @@
 
     private async Task HandleSubmit(PatientSubmitIntent submitIntent)
     {
+        if (IsSubmitting)
+        {
+            return;
+        }
+
         SubmitError = null;
         ValidationErrors.Clear();
         DateOfBirth = ParseDateOfBirthInput(DateOfBirthInput);

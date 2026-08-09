@@ -1,10 +1,13 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 
@@ -93,6 +96,7 @@ public sealed class WebLoginEndpointIntegrationTests
     [Fact]
     public async Task AuthLogin_ForwardsSubmittedUsername_AndRedirectsToReturnUrl_OnSuccess()
     {
+        var expiresAt = DateTime.UtcNow.AddHours(1);
         var recordingFactory = new RecordingHttpClientFactory(request =>
         {
             Assert.Equal("/api/v1/auth/pin-login", request.RequestUri?.AbsolutePath);
@@ -105,7 +109,7 @@ public sealed class WebLoginEndpointIntegrationTests
                     UserId = Guid.NewGuid(),
                     Username = "alice",
                     Token = "token",
-                    ExpiresAt = DateTime.UtcNow.AddHours(1),
+                    ExpiresAt = expiresAt,
                     Role = "PT"
                 })
             };
@@ -130,6 +134,20 @@ public sealed class WebLoginEndpointIntegrationTests
         Assert.Single(recordingFactory.RequestPayloads);
         Assert.Contains("\"username\":\"alice\"", recordingFactory.RequestPayloads[0], StringComparison.Ordinal);
         Assert.Contains("\"pin\":\"1234\"", recordingFactory.RequestPayloads[0], StringComparison.Ordinal);
+
+        var cookieOptions = factory.Services
+            .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(PTDocAuthSchemes.Cookie);
+        var cookieName = Assert.IsType<string>(cookieOptions.Cookie.Name);
+        var setCookie = response.Headers.GetValues("Set-Cookie")
+            .Single(value => value.StartsWith($"{cookieName}=", StringComparison.Ordinal));
+        var protectedTicket = setCookie[(cookieName.Length + 1)..].Split(';', 2)[0];
+        var ticket = cookieOptions.TicketDataFormat.Unprotect(Uri.UnescapeDataString(protectedTicket));
+
+        Assert.NotNull(ticket);
+        var expiryClaim = ticket.Principal.FindFirst(PTDocClaimTypes.ApiAccessTokenExpiresAt)?.Value;
+        Assert.True(DateTimeOffset.TryParse(expiryClaim, out var cookieExpiry));
+        Assert.Equal(new DateTimeOffset(expiresAt), cookieExpiry);
     }
 
     [Fact]

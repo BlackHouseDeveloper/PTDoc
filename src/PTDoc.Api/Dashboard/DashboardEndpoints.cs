@@ -30,7 +30,7 @@ public static class DashboardEndpoints
 
         group.MapGet("/alerts", GetAlerts)
             .WithName("GetDashboardAlerts")
-            .WithSummary("Get live clinical dashboard alerts for notes and intake follow-up");
+            .WithSummary("Get live categorized clinical dashboard alerts");
 
         group.MapGet("/snapshot", GetSnapshot)
             .WithName("GetDashboardSnapshot")
@@ -150,7 +150,7 @@ public static class DashboardEndpoints
         int authorizationActionItems,
         int take)
     {
-        if (authorizationActionItems <= 0 || alerts.Any(alert => IsAuthorizationAlertKind(alert.Kind)))
+        if (authorizationActionItems <= 0 || alerts.Any(alert => alert.Category == DashboardAlertCategory.Authorization))
         {
             return alerts;
         }
@@ -568,6 +568,7 @@ public static class DashboardEndpoints
             {
                 Id = $"notesDueToday:{appointment.Id:N}",
                 Kind = DashboardAlertKinds.NotesDueToday,
+                Category = DashboardAlertCategory.Notes,
                 Priority = DashboardAlertPriorities.High,
                 Title = "Note Due Today",
                 Message = "Today's appointment needs a signed note.",
@@ -617,6 +618,7 @@ public static class DashboardEndpoints
             {
                 Id = $"incompleteIntake:{intake.Id:N}",
                 Kind = DashboardAlertKinds.IncompleteIntake,
+                Category = DashboardAlertCategory.Intake,
                 Priority = isUrgent ? DashboardAlertPriorities.High : DashboardAlertPriorities.Medium,
                 Title = "Incomplete Intake Form",
                 Message = "Patient has not completed intake form.",
@@ -667,6 +669,7 @@ public static class DashboardEndpoints
             {
                 Id = $"submittedIntakeReview:{intake.Id:N}",
                 Kind = DashboardAlertKinds.SubmittedIntakeReview,
+                Category = DashboardAlertCategory.Intake,
                 Priority = isUrgent ? DashboardAlertPriorities.High : DashboardAlertPriorities.Medium,
                 Title = "Intake Review Needed",
                 Message = "Patient intake is submitted and awaiting clinician review.",
@@ -719,6 +722,7 @@ public static class DashboardEndpoints
             {
                 Id = $"unsignedNote:{note.Id:N}",
                 Kind = DashboardAlertKinds.UnsignedNote,
+                Category = DashboardAlertCategory.Notes,
                 Priority = isUrgent ? DashboardAlertPriorities.High : DashboardAlertPriorities.Medium,
                 Title = note.NoteStatus == NoteStatus.PendingCoSign ? "Co-sign Needed" : "Unsigned Note",
                 Message = BuildUnsignedNoteMessage(note, today, now),
@@ -742,9 +746,49 @@ public static class DashboardEndpoints
         CancellationToken cancellationToken)
     {
         var patientQuery = ApplyPatientVisibility(db.Patients.AsNoTracking(), db, visibility);
+        var normalizedRows = await (
+            from authorization in db.PatientInsuranceAuthorizations.AsNoTracking()
+            join patient in patientQuery on authorization.PatientId equals patient.Id
+            where !authorization.IsArchived && !patient.IsArchived
+            orderby authorization.LastModifiedUtc descending
+            select new NormalizedAuthorizationAlertCandidate(
+                patient.Id,
+                patient.FirstName,
+                patient.LastName,
+                patient.MedicalRecordNumber,
+                authorization.LastModifiedUtc,
+                authorization.Id,
+                authorization.Status,
+                authorization.EndDate,
+                authorization.ReauthorizationDueDate,
+                authorization.AuthorizedUnits,
+                authorization.UsedUnits,
+                authorization.VisitAlertThreshold))
+            .Take(MaxAuthorizationAlertCandidates)
+            .ToListAsync(cancellationToken);
+
+        var alerts = new List<DashboardAlertItemResponse>();
+        foreach (var row in normalizedRows.GroupBy(candidate => candidate.PatientId).Select(group => group.First()))
+        {
+            var patient = new PatientAuthorizationAlertCandidate(row.PatientId,row.PatientFirstName,row.PatientLastName,row.PatientMedicalRecordNumber,row.LastModifiedUtc,"{}");
+            var authorization = new PatientAuthorizationInfo
+            {
+                AuthorizationStatus = JsonSerializer.SerializeToElement(row.Status.ToString()),
+                AuthorizationEndDate = row.EndDate.HasValue ? JsonSerializer.SerializeToElement(row.EndDate.Value) : null,
+                ReAuthorizationDueDate = row.ReauthorizationDueDate.HasValue ? JsonSerializer.SerializeToElement(row.ReauthorizationDueDate.Value) : null,
+                VisitsRemaining = row.AuthorizedUnits.HasValue ? JsonSerializer.SerializeToElement(row.AuthorizedUnits.Value-row.UsedUnits.GetValueOrDefault()) : null,
+                VisitAlertThreshold = row.VisitAlertThreshold.HasValue ? JsonSerializer.SerializeToElement(row.VisitAlertThreshold.Value) : null
+            };
+            AddAuthorizationStatusAlert(alerts,patient,authorization,now);
+            AddAuthorizationDateAlert(alerts,patient,row.EndDate?.ToString("O"),today,now,DashboardAlertKinds.AuthorizationExpiration,"Authorization Expired","Authorization Expiring","Authorization coverage has expired.","Authorization coverage is nearing its end date.");
+            AddAuthorizationDateAlert(alerts,patient,row.ReauthorizationDueDate?.ToString("O"),today,now,DashboardAlertKinds.AuthorizationReauthorizationDue,"Re-Authorization Overdue","Re-Authorization Due","Re-authorization is overdue.","Re-authorization is due soon.");
+            AddAuthorizationVisitLimitAlert(alerts,patient,authorization,now);
+        }
+
         var patients = await patientQuery
             .Where(patient =>
                 !patient.IsArchived &&
+                !db.PatientInsuranceAuthorizations.Any(authorization => authorization.PatientId == patient.Id && !authorization.IsArchived) &&
                 !string.IsNullOrWhiteSpace(patient.PayerInfoJson) &&
                 patient.PayerInfoJson != "{}" &&
                 (EF.Functions.Like(patient.PayerInfoJson, "%authorizationStatus%") ||
@@ -764,7 +808,6 @@ public static class DashboardEndpoints
                 patient.PayerInfoJson))
             .ToListAsync(cancellationToken);
 
-        var alerts = new List<DashboardAlertItemResponse>();
         foreach (var patient in patients)
         {
             if (TryDeserializePayerAuthorization(patient.PayerInfoJson) is not { } payer)
@@ -808,7 +851,7 @@ public static class DashboardEndpoints
         DateTimeOffset now)
     {
         var normalizedStatus = NormalizeStatus(ReadJsonScalar(payer.AuthorizationStatus));
-        if (string.IsNullOrWhiteSpace(normalizedStatus) || normalizedStatus == "active")
+        if (string.IsNullOrWhiteSpace(normalizedStatus) || normalizedStatus is "active" or "approved" or "unknown")
         {
             return;
         }
@@ -920,6 +963,7 @@ public static class DashboardEndpoints
         {
             Id = id,
             Kind = kind,
+            Category = DashboardAlertCategory.Authorization,
             Priority = priority,
             Title = title,
             Message = message,
@@ -998,12 +1042,6 @@ public static class DashboardEndpoints
         DashboardAlertKinds.IncompleteIntake => 7,
         _ => 8
     };
-
-    private static bool IsAuthorizationAlertKind(string kind) => kind is
-        DashboardAlertKinds.AuthorizationStatus or
-        DashboardAlertKinds.AuthorizationExpiration or
-        DashboardAlertKinds.AuthorizationReauthorizationDue or
-        DashboardAlertKinds.AuthorizationVisitLimit;
 
     private static DashboardVisibilityContext BuildVisibilityContext(IIdentityContextAccessor identityContext) =>
         new(identityContext.TryGetCurrentUserId(), identityContext.GetCurrentUserRole());
@@ -1381,6 +1419,20 @@ public static class DashboardEndpoints
         string? PatientMedicalRecordNumber,
         DateTime LastModifiedUtc,
         string PayerInfoJson);
+
+    private sealed record NormalizedAuthorizationAlertCandidate(
+        Guid PatientId,
+        string PatientFirstName,
+        string PatientLastName,
+        string? PatientMedicalRecordNumber,
+        DateTime LastModifiedUtc,
+        Guid AuthorizationId,
+        InsuranceAuthorizationStatus Status,
+        DateTime? EndDate,
+        DateTime? ReauthorizationDueDate,
+        decimal? AuthorizedUnits,
+        decimal? UsedUnits,
+        int? VisitAlertThreshold);
 
     private sealed class PatientAuthorizationInfo
     {

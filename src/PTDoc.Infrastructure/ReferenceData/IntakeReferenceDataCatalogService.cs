@@ -1,4 +1,7 @@
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.ReferenceData;
+using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Notes.Workspace;
 
 namespace PTDoc.Infrastructure.ReferenceData;
 
@@ -9,10 +12,14 @@ public sealed class IntakeReferenceDataCatalogService : IIntakeReferenceDataCata
     private const string MedicationsDocumentPath = "docs/clinicrefdata/app-list-of-medications.md";
     private const string PainDescriptorsDocumentPath = "docs/clinicrefdata/app-pain-quality-descriptors-patient.md";
     private const string SupplementalResourceName = "PTDoc.Application.Data.IntakeSupplementalReferenceData.json";
+    private const string WorkspaceCatalogResourceName = "PTDoc.Application.Data.WorkspaceReferenceCatalog.json";
 
     private static readonly IntakeSupplementalReferenceAsset SupplementalAsset =
         EmbeddedJsonResourceLoader.LoadFromApplicationAssembly<IntakeSupplementalReferenceAsset>(SupplementalResourceName);
     private static readonly IntakeReferenceCatalogDto Catalog = BuildCatalog();
+    private static readonly IReadOnlyDictionary<BodyPart, BodyRegionCatalog> WorkspaceCatalogs =
+        WorkspaceReferenceCatalogAssetMapper.Map(
+            EmbeddedJsonResourceLoader.LoadFromApplicationAssembly<WorkspaceReferenceCatalogAsset>(WorkspaceCatalogResourceName));
     private static readonly Dictionary<string, IntakeBodyPartItemDto> BodyPartsById = Catalog.BodyPartGroups
         .SelectMany(group => group.Items)
         .ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase);
@@ -44,6 +51,36 @@ public sealed class IntakeReferenceDataCatalogService : IIntakeReferenceDataCata
     public IReadOnlyList<IntakeCatalogOptionDto> GetLivingSituations() => Catalog.LivingSituations;
 
     public IReadOnlyList<IntakeCatalogOptionDto> GetHouseLayoutOptions() => Catalog.HouseLayoutOptions;
+
+    public IReadOnlyList<IntakeCatalogOptionDto> SearchInsuranceCarriers(string? query, int take = 10)
+    {
+        var effectiveTake = take <= 0 ? 10 : Math.Min(take, 25);
+        var trimmed = query?.Trim();
+
+        return Catalog.InsuranceCarriers
+            .Where(option => string.IsNullOrWhiteSpace(trimmed)
+                || option.Label.Contains(trimmed, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(option => option.Label.StartsWith(trimmed ?? string.Empty, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(option => option.DisplayOrder)
+            .Take(effectiveTake)
+            .ToList();
+    }
+
+    public IReadOnlyList<CatalogCategory> GetFunctionalLimitationCategories(BodyPart bodyPart)
+    {
+        if (!WorkspaceCatalogs.TryGetValue(bodyPart, out var catalog))
+        {
+            return Array.Empty<CatalogCategory>();
+        }
+
+        return catalog.FunctionalLimitationCategories
+            .Select(category => new CatalogCategory
+            {
+                Name = category.Name,
+                Items = category.Items.ToList()
+            })
+            .ToList();
+    }
 
     public IntakeBodyPartItemDto? GetBodyPart(string bodyPartId)
     {
@@ -219,7 +256,8 @@ public sealed class IntakeReferenceDataCatalogService : IIntakeReferenceDataCata
                 CreateProvenance(SupplementalAsset.Comorbidities.DocumentPath, SupplementalAsset.Version),
                 CreateProvenance(SupplementalAsset.AssistiveDevices.DocumentPath, SupplementalAsset.Version),
                 CreateProvenance(SupplementalAsset.LivingSituations.DocumentPath, SupplementalAsset.Version),
-                CreateProvenance(SupplementalAsset.HouseLayoutOptions.DocumentPath, SupplementalAsset.Version)
+                CreateProvenance(SupplementalAsset.HouseLayoutOptions.DocumentPath, SupplementalAsset.Version),
+                CreateProvenance(SupplementalAsset.InsuranceCarriers.DocumentPath, SupplementalAsset.Version)
             ],
             BodyPartGroups = bodyPartGroups,
             Medications =
@@ -298,6 +336,7 @@ public sealed class IntakeReferenceDataCatalogService : IIntakeReferenceDataCata
                 PainDescriptor(19, "cutting"),
                 PainDescriptor(20, "pounding")
             ],
+            InsuranceCarriers = BuildSupplementalOptions(SupplementalAsset.InsuranceCarriers, SupplementalAsset.Version),
             Comorbidities = BuildSupplementalOptions(SupplementalAsset.Comorbidities, SupplementalAsset.Version),
             AssistiveDevices = BuildSupplementalOptions(SupplementalAsset.AssistiveDevices, SupplementalAsset.Version),
             LivingSituations = BuildSupplementalOptions(SupplementalAsset.LivingSituations, SupplementalAsset.Version),

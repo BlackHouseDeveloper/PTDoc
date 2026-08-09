@@ -10,6 +10,13 @@
 @inject ILogger<EvaluationInterventionsSection> Logger
 
 <section class="plan-tab" data-testid="evaluation-interventions-section" role="tabpanel" aria-label="Interventions section">
+    <InterventionLibrarySection Objective="Objective"
+                                ObjectiveChanged="ObjectiveChanged"
+                                Plan="Plan"
+                                PlanChanged="PlanChanged"
+                                IsReadOnly="IsReadOnly"
+                                SelectedBodyPart="@SelectedBodyPart" />
+
     @if (!string.IsNullOrWhiteSpace(_errorMessage))
     {
         <p class="pt-card__poc-placeholder" role="alert">@_errorMessage</p>

@@ -244,6 +244,7 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         var alerts = body!.Alerts;
         var dueAlert = Assert.Single(alerts, alert => alert.Id == $"notesDueToday:{dueAppointment.Id:N}");
         Assert.Equal("notesDueToday", dueAlert.Kind);
+        Assert.Equal(DashboardAlertCategory.Notes, dueAlert.Category);
         Assert.Equal("high", dueAlert.Priority);
         Assert.Equal(duePatient.Id, dueAlert.PatientId);
         Assert.Equal("ALRT-DUE", dueAlert.PatientMedicalRecordNumber);
@@ -252,6 +253,7 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
 
         var unsignedAlert = Assert.Single(alerts, alert => alert.Id == $"unsignedNote:{unsignedNote.Id:N}");
         Assert.Equal("unsignedNote", unsignedAlert.Kind);
+        Assert.Equal(DashboardAlertCategory.Notes, unsignedAlert.Category);
         Assert.Equal($"/patient/{unsignedPatient.Id:D}/note/{unsignedNote.Id:D}", unsignedAlert.TargetUrl);
 
         var coSignAlert = Assert.Single(alerts, alert => alert.Id == $"unsignedNote:{pendingCoSignNote.Id:N}");
@@ -259,6 +261,7 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
         Assert.Equal("Review", coSignAlert.ActionLabel);
 
         var intakeAlert = Assert.Single(alerts, alert => alert.PatientId == intakePatient.Id);
+        Assert.Equal(DashboardAlertCategory.Intake, intakeAlert.Category);
         Assert.Equal(intakePatient.Id, intakeAlert.PatientId);
         Assert.Equal($"/intake/{intakePatient.Id:D}", intakeAlert.TargetUrl);
         Assert.Equal("Open Intake", intakeAlert.ActionLabel);
@@ -272,6 +275,7 @@ public sealed class DashboardApiIntegrationTests : IClassFixture<PtDocApiFactory
             alerts,
             alert => alert.Id.StartsWith($"authorizationExpiration:{expiringAuthorizationPatient.Id:N}", StringComparison.Ordinal));
         Assert.Equal("authorizationExpiration", expiringAuthorizationAlert.Kind);
+        Assert.Equal(DashboardAlertCategory.Authorization, expiringAuthorizationAlert.Category);
         Assert.Equal("Authorization Expiring", expiringAuthorizationAlert.Title);
         Assert.Equal("Authorization coverage is nearing its end date.", expiringAuthorizationAlert.Message);
         Assert.Equal($"/patient/{expiringAuthorizationPatient.Id:D}/info", expiringAuthorizationAlert.TargetUrl);

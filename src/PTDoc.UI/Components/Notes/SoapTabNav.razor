@@ -46,7 +46,7 @@
                     <span class="soap-tab-nav__dot"></span>
                 }
             </span>
-            <span class="soap-tab-nav__label">@soapSection.ToString()</span>
+            <span class="soap-tab-nav__label">@GetSectionLabel(soapSection)</span>
         </button>
     }
 </nav>
@@ -81,19 +81,26 @@
     [Parameter, EditorRequired] public SoapSection ActiveSection { get; set; }
     [Parameter, EditorRequired] public EventCallback<SoapSection> ActiveSectionChanged { get; set; }
     [Parameter] public IReadOnlyList<SoapSection>? Sections { get; set; }
+    [Parameter] public IReadOnlyDictionary<SoapSection, string>? SectionLabels { get; set; }
     [Parameter] public NoteCompletionState? CompletionState { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
 
     private Task HandleTabClickAsync(SoapSection section) =>
         ActiveSectionChanged.InvokeAsync(section);
 
-    private static string GetTabAriaLabel(SoapSection section, int missingCount, bool isCompleted)
+    private string GetTabAriaLabel(SoapSection section, int missingCount, bool isCompleted)
     {
+        var label = GetSectionLabel(section);
         if (missingCount > 0)
         {
-            return $"{section}: {missingCount} required {(missingCount == 1 ? "item" : "items")} missing";
+            return $"{label}: {missingCount} required {(missingCount == 1 ? "item" : "items")} missing";
         }
 
-        return isCompleted ? $"{section}: complete" : section.ToString();
+        return isCompleted ? $"{label}: complete" : label;
     }
+
+    private string GetSectionLabel(SoapSection section) =>
+        SectionLabels?.TryGetValue(section, out var label) == true && !string.IsNullOrWhiteSpace(label)
+            ? label
+            : section.ToString();
 }

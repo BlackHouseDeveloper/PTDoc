@@ -220,7 +220,7 @@ public sealed class AddPatientModalTests : TestContext
         cut.Find("#email").Change("alex.patient@example.com");
         cut.Find("#dob").Change("1990-01-01");
         cut.FindAll("button")
-            .Single(button => button.TextContent.Contains("Add Patient + Send Intake", StringComparison.Ordinal))
+            .Single(button => button.TextContent.Contains("Add Patient and Send Intake", StringComparison.Ordinal))
             .Click();
 
         cut.WaitForAssertion(() =>

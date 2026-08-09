@@ -21,8 +21,22 @@ public sealed class IntakeReferenceDataCatalogServiceTests
         Assert.Equal(10, catalog.LivingSituations.Count);
         Assert.Equal(6, catalog.HouseLayoutOptions.Count);
         Assert.NotEmpty(catalog.AssistiveDevices);
+        Assert.Contains(catalog.InsuranceCarriers, carrier => carrier.Label == "Blue Cross Blue Shield");
         Assert.Contains(catalog.BodyPartGroups, group => group.Id == "neurological-systemic-focus");
         Assert.Contains(catalog.Sources, source => source.DocumentPath == "docs/clinicrefdata/Comorbidities.md");
+    }
+
+    [Fact]
+    public void SharedCatalogs_ReturnCarrierMatchesAndBodyRegionFunctionalLimitations()
+    {
+        var carriers = _service.SearchInsuranceCarriers("Blue Cr");
+        var limitations = _service.GetFunctionalLimitationCategories(PTDoc.Core.Models.BodyPart.Knee);
+
+        Assert.Equal("Blue Cross Blue Shield", Assert.Single(carriers).Label);
+        Assert.Contains(limitations, category => category.Name == "Mobility & Transfers");
+        Assert.Contains(
+            limitations.SelectMany(category => category.Items),
+            item => item.Contains("rise from chair", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -56,6 +70,6 @@ public sealed class IntakeReferenceDataCatalogServiceTests
         Assert.NotNull(option);
         Assert.Equal("Hypertension (High Blood Pressure)", option!.Label);
         Assert.Equal("docs/clinicrefdata/Comorbidities.md", option.Provenance?.DocumentPath);
-        Assert.Equal("2026-04-10", option.Provenance?.Version);
+        Assert.Equal("2026-08-08", option.Provenance?.Version);
     }
 }

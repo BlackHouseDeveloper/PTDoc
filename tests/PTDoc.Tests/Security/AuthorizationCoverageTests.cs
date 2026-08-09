@@ -194,6 +194,47 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/patients/{id:guid}/diagnoses",  AuthorizationPolicies.PatientWrite),
         new("DELETE", "/api/v1/patients/{id:guid}/diagnoses/{code}", AuthorizationPolicies.PatientWrite),
 
+        // ── External provider directory ─────────────────────────────────────
+        new("GET", "/api/v1/providers", AuthorizationPolicies.ProviderDirectorySearch),
+        new("GET", "/api/v1/providers/{providerId:guid}", AuthorizationPolicies.ProviderDirectoryRead),
+        new("GET", "/api/v1/providers/patients/{patientId:guid}", AuthorizationPolicies.ProviderDirectoryRead),
+        new("POST", "/api/v1/providers/candidates", AuthorizationPolicies.ProviderDirectorySubmit),
+        new("PUT", "/api/v1/providers/candidates/{providerId:guid}", AuthorizationPolicies.ProviderDirectorySubmit),
+        new("POST", "/api/v1/providers/patients/{patientId:guid}", AuthorizationPolicies.ProviderDirectorySubmit),
+        new("PUT", "/api/v1/providers/patients/{patientId:guid}/{relationshipId:guid}", AuthorizationPolicies.ProviderDirectorySubmit),
+        new("DELETE", "/api/v1/providers/patients/{patientId:guid}/{relationshipId:guid}", AuthorizationPolicies.ProviderDirectorySubmit),
+        new("GET", "/api/v1/admin/providers/", AuthorizationPolicies.ProviderDirectoryAdmin),
+        new("POST", "/api/v1/admin/providers/{providerId:guid}/approve", AuthorizationPolicies.ProviderDirectoryAdmin),
+        new("POST", "/api/v1/admin/providers/{providerId:guid}/reject", AuthorizationPolicies.ProviderDirectoryAdmin),
+        new("POST", "/api/v1/admin/providers/{providerId:guid}/archive", AuthorizationPolicies.ProviderDirectoryAdmin),
+
+        // ── Normalized insurance policies ───────────────────────────────────
+        new("GET", "/api/v1/patients/{patientId:guid}/insurance-policies/", AuthorizationPolicies.InsurancePolicyRead),
+        new("POST", "/api/v1/patients/{patientId:guid}/insurance-policies/", AuthorizationPolicies.InsurancePolicyWrite),
+        new("PUT", "/api/v1/patients/{patientId:guid}/insurance-policies/{policyId:guid}", AuthorizationPolicies.InsurancePolicyWrite),
+        new("DELETE", "/api/v1/patients/{patientId:guid}/insurance-policies/{policyId:guid}", AuthorizationPolicies.InsurancePolicyWrite),
+        new("PUT", "/api/v1/patients/{patientId:guid}/insurance-policies/priority", AuthorizationPolicies.InsurancePolicyWrite),
+        new("POST", "/api/v1/patients/{patientId:guid}/insurance-policies/{policyId:guid}/authorizations", AuthorizationPolicies.InsurancePolicyWrite),
+        new("PUT", "/api/v1/patients/{patientId:guid}/insurance-policies/{policyId:guid}/authorizations/{authorizationId:guid}", AuthorizationPolicies.InsurancePolicyWrite),
+        new("DELETE", "/api/v1/patients/{patientId:guid}/insurance-policies/{policyId:guid}/authorizations/{authorizationId:guid}", AuthorizationPolicies.InsurancePolicyWrite),
+        new("POST", "/api/v1/admin/insurance-policies/backfill", AuthorizationPolicies.ProviderDirectoryAdmin),
+
+        // ── Note template administration ────────────────────────────────────
+        new("GET", "/api/v1/admin/note-templates/", AuthorizationPolicies.NoteTemplateDraftManage),
+        new("GET", "/api/v1/admin/note-templates/versions/{versionId:guid}", AuthorizationPolicies.NoteTemplateDraftManage),
+        new("POST", "/api/v1/admin/note-templates/drafts", AuthorizationPolicies.NoteTemplateDraftManage),
+        new("POST", "/api/v1/admin/note-templates/validate", AuthorizationPolicies.NoteTemplateDraftManage),
+        new("PUT", "/api/v1/admin/note-templates/versions/{versionId:guid}", AuthorizationPolicies.NoteTemplateDraftManage),
+        new("POST", "/api/v1/admin/note-templates/versions/{versionId:guid}/submit", AuthorizationPolicies.NoteTemplateDraftManage),
+        new("GET", "/api/v1/clinical/note-templates/", AuthorizationPolicies.NoteTemplateClinicalPublish),
+        new("GET", "/api/v1/clinical/note-templates/versions/{versionId:guid}", AuthorizationPolicies.NoteTemplateClinicalPublish),
+        new("POST", "/api/v1/clinical/note-templates/versions/{versionId:guid}/publish", AuthorizationPolicies.NoteTemplateClinicalPublish),
+        new("POST", "/api/v1/clinical/note-templates/versions/{versionId:guid}/reject", AuthorizationPolicies.NoteTemplateClinicalPublish),
+        new("POST", "/api/v1/clinical/note-templates/versions/{versionId:guid}/retire", AuthorizationPolicies.NoteTemplateClinicalPublish),
+        new("GET", "/api/v1/note-templates/resolve", AuthorizationPolicies.NoteRead),
+        new("GET", "/api/v1/note-templates/versions/{versionId:guid}", AuthorizationPolicies.NoteRead),
+        new("GET", "/api/v1/note-templates/{templateId:guid}/versions", AuthorizationPolicies.NoteRead),
+
         // ── Intake (Intake/IntakeEndpoints.cs) ────────────────────────────────
         new("POST", "/api/v1/intake",                                             AuthorizationPolicies.IntakeWrite),
         new("POST", "/api/v1/intake/drafts/{patientId:guid}",                     AuthorizationPolicies.IntakeWrite),
@@ -305,6 +346,7 @@ public class AuthorizationCoverageTests
         new("GET", "/api/v1/navigation/badges", AuthorizationPolicies.PatientRead),
 
         // ── Appointments (Appointments/AppointmentEndpoints.cs) ──────────────
+        new("PATCH", "/api/v1/appointments/{id:guid}/appointment-type", AuthorizationPolicies.SchedulingAccess),
         new("POST", "/api/v1/appointments/{id:guid}/check-in-payment", AuthorizationPolicies.SchedulingAccess),
 
         // ── Diagnostics (Diagnostics/DiagnosticsEndpoints.cs) ─────────────────

@@ -1033,6 +1033,25 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
                 SchemaVersion = "2026-03-30",
                 MedicationIds = ["zestril-lisinopril"],
                 PainDescriptorIds = ["aching"],
+                FunctionalLimitations =
+                [
+                    new IntakeFunctionalLimitationSelectionDto
+                    {
+                        Id = "knee-mobility-chair-rise",
+                        BodyPart = "Knee",
+                        Category = "Mobility & Transfers",
+                        Activity = "Unable to rise from chair without pushing off with hands"
+                    }
+                ],
+                Subjective = new IntakeSubjectiveDataDto
+                {
+                    PriorFunctionalLevel = ["Independent"],
+                    OnsetDate = new DateTime(2026, 3, 15),
+                    KnownCause = "Twisted knee stepping off a curb.",
+                    HasImaging = true,
+                    ImagingModalities = ["MRI"],
+                    ImagingFindings = "Meniscus tear reported."
+                },
                 BodyPartSelections =
                 [
                     new IntakeBodyPartSelectionDto
@@ -1089,6 +1108,16 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             "Can perform household tasks with pacing; requires seated breaks for community walking.",
             seed.Payload.Subjective.CurrentLevelOfFunction);
         Assert.Equal("Difficulty walking longer than 10 minutes.", seed.Payload.Subjective.AdditionalFunctionalLimitations);
+        var seededLimitation = Assert.Single(seed.Payload.Subjective.FunctionalLimitations);
+        Assert.Equal(BodyPart.Knee, seededLimitation.BodyPart);
+        Assert.Equal("Mobility & Transfers", seededLimitation.Category);
+        Assert.Equal("Unable to rise from chair without pushing off with hands", seededLimitation.Description);
+        Assert.Contains("Independent", seed.Payload.Subjective.PriorFunctionalLevel);
+        Assert.Equal(new DateTime(2026, 3, 15), seed.Payload.Subjective.OnsetDate);
+        Assert.Equal("Twisted knee stepping off a curb.", seed.Payload.Subjective.KnownCause);
+        Assert.True(seed.Payload.Subjective.Imaging.HasImaging);
+        Assert.Contains("MRI", seed.Payload.Subjective.Imaging.Modalities);
+        Assert.Equal("Meniscus tear reported.", seed.Payload.Subjective.Imaging.Findings);
         Assert.Equal("Difficulty walking longer than 10 minutes.", seed.Payload.Assessment.FunctionalLimitationsSummary);
         Assert.Contains("Left leg", seed.Payload.Subjective.Locations);
         Assert.Equal(BodyPart.Knee, seed.Payload.Objective.PrimaryBodyPart);

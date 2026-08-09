@@ -107,6 +107,7 @@ public static class IntakeDraftPersistence
                     ?? new IntakeConsentPacket();
         clone.RevokedConsentKeys ??= new List<string>();
         clone.AuthorizedContacts ??= new List<AuthorizedContact>();
+        clone.PhiAuthorizedContactIds ??= new List<string>();
         return clone;
     }
 
@@ -199,6 +200,26 @@ public static class IntakeDraftPersistence
         if ((draft.StructuredData?.ComorbidityIds?.Count ?? 0) > 0)
         {
             draft.SelectedComorbidities.Clear();
+        }
+
+        if (draft.StructuredData?.NoComorbidities == true)
+        {
+            draft.StructuredData.ComorbidityIds.Clear();
+            draft.SelectedComorbidities.Clear();
+            draft.HasOtherMedicalConditions = false;
+        }
+
+        if (draft.StructuredData?.NoAssistiveDevices == true)
+        {
+            draft.StructuredData.AssistiveDeviceIds.Clear();
+            draft.SelectedAssistiveDevices.Clear();
+            draft.UsesAssistiveDevices = false;
+        }
+
+        if (draft.StructuredData?.NoMedications == true)
+        {
+            draft.StructuredData.MedicationIds.Clear();
+            draft.HasCurrentMedications = false;
         }
 
         if ((draft.StructuredData?.AssistiveDeviceIds?.Count ?? 0) > 0)

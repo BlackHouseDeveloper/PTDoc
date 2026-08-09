@@ -12,24 +12,42 @@
                 <h2 id="dashboard-alerts-title" class="dashboard-alerts__title">Notifications & Alerts</h2>
                 <span class="dashboard-alerts__urgent-badge" data-testid="dashboard-alerts-urgent-count">@VisibleUrgentCount Urgent</span>
             </div>
-            <button type="button"
-                    class="dashboard-alerts__collapse"
-                    aria-label="@(_isCollapsed ? "Expand alerts" : "Collapse alerts")"
-                    aria-expanded="@(!_isCollapsed)"
-                    @onclick="ToggleCollapsed">
-                <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="@(_isCollapsed ? "M5 7.5L10 12.5L15 7.5" : "M5 12.5L10 7.5L15 12.5")" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-            </button>
+            <div class="dashboard-alerts__header-actions">
+                <div class="dashboard-alerts__filter-wrap">
+                    <label for="dashboard-alerts-category-filter" class="sr-only">Filter alerts by category</label>
+                    <select id="dashboard-alerts-category-filter"
+                            class="dashboard-alerts__filter"
+                            value="@SelectedCategoryValue"
+                            @onchange="HandleCategoryChanged"
+                            data-testid="dashboard-alerts-category-filter">
+                        <option value="all">All</option>
+                        <option value="notes">Notes</option>
+                        <option value="authorization">Authorization</option>
+                    </select>
+                    <svg class="dashboard-alerts__filter-caret" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <button type="button"
+                        class="dashboard-alerts__collapse"
+                        aria-label="@(_isCollapsed ? "Expand alerts" : "Collapse alerts")"
+                        aria-expanded="@(!_isCollapsed)"
+                        aria-controls="dashboard-alerts-content"
+                        @onclick="ToggleCollapsed">
+                    <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="@(_isCollapsed ? "M5 7.5L10 12.5L15 7.5" : "M5 12.5L10 7.5L15 12.5")" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </div>
         </div>
 
         @if (!_isCollapsed)
         {
-            <div class="dashboard-alerts__content">
+            <div id="dashboard-alerts-content" class="dashboard-alerts__content" aria-live="polite">
                 @if (VisibleAlerts.Count == 0)
                 {
                     <div class="dashboard-alerts__empty" role="status" data-testid="dashboard-alerts-empty">
-                        <p>No active clinical alerts</p>
+                        <p>@EmptyStateMessage</p>
                     </div>
                 }
                 else
@@ -48,7 +66,8 @@
                                     <article class="@BuildAlertClass(alert)"
                                              role="listitem"
                                              data-testid="dashboard-alert-card"
-                                             data-alert-kind="@alert.Kind">
+                                             data-alert-kind="@alert.Kind"
+                                             data-alert-category="@ToCategoryValue(alert.Category)">
                                         <div class="dashboard-alert-card__icon" aria-hidden="true">
                                             @RenderAlertIcon(alert.Kind)
                                         </div>
@@ -107,18 +126,35 @@
 
     private readonly HashSet<string> _dismissedAlertIds = new(StringComparer.Ordinal);
     private bool _isCollapsed;
+    private DashboardAlertCategory? _selectedCategory;
+
+    private List<DashboardAlertItemResponse> ActiveAlerts =>
+        Alerts.Where(alert => !_dismissedAlertIds.Contains(alert.Id)).ToList();
 
     private List<DashboardAlertItemResponse> VisibleAlerts =>
-        Alerts.Where(alert => !_dismissedAlertIds.Contains(alert.Id)).ToList();
+        ActiveAlerts
+            .Where(alert => !_selectedCategory.HasValue || alert.Category == _selectedCategory.Value)
+            .ToList();
 
     private List<DashboardAlertGroup> VisibleAlertGroups =>
         VisibleAlerts
-            .GroupBy(GetAlertCategory)
+            .GroupBy(alert => alert.Category)
             .OrderBy(group => AlertCategoryRank(group.Key))
-            .Select(group => new DashboardAlertGroup(group.Key, group.ToList()))
+            .Select(group => new DashboardAlertGroup(GetCategoryLabel(group.Key), group.ToList()))
             .ToList();
 
     private int VisibleUrgentCount => VisibleAlerts.Count(alert => alert.IsUrgent);
+    private string SelectedCategoryValue => _selectedCategory.HasValue
+        ? ToCategoryValue(_selectedCategory.Value)
+        : "all";
+    private string EmptyStateMessage => ActiveAlerts.Count == 0 || !_selectedCategory.HasValue
+        ? "No active clinical alerts"
+        : _selectedCategory.Value switch
+        {
+            DashboardAlertCategory.Notes => "No note alerts available.",
+            DashboardAlertCategory.Authorization => "No authorization alerts available.",
+            _ => "No alerts available for this category."
+        };
 
     protected override void OnParametersSet()
     {
@@ -129,6 +165,16 @@
     private void ToggleCollapsed()
     {
         _isCollapsed = !_isCollapsed;
+    }
+
+    private void HandleCategoryChanged(ChangeEventArgs eventArgs)
+    {
+        _selectedCategory = eventArgs.Value?.ToString() switch
+        {
+            "notes" => DashboardAlertCategory.Notes,
+            "authorization" => DashboardAlertCategory.Authorization,
+            _ => null
+        };
     }
 
     private void DismissAlert(string alertId)
@@ -176,30 +222,23 @@
         _ => "Priority"
     };
 
-    private static string GetAlertCategory(DashboardAlertItemResponse alert)
+    private static string GetCategoryLabel(DashboardAlertCategory category) => category switch
     {
-        var normalizedKind = NormalizeCssToken(alert.Kind);
-        if (normalizedKind.Contains("authorization", StringComparison.Ordinal))
-        {
-            return "Authorization";
-        }
+        DashboardAlertCategory.Notes => "Notes",
+        DashboardAlertCategory.Authorization => "Authorization",
+        DashboardAlertCategory.Intake => "Intake",
+        _ => "Other"
+    };
 
-        return normalizedKind switch
-        {
-            "incompleteintake" or "submittedintakereview" => "Intake",
-            "unsignednote" => "Unsigned items",
-            "notesduetoday" => "Notes",
-            _ => "Notes"
-        };
-    }
+    private static string ToCategoryValue(DashboardAlertCategory category) =>
+        GetCategoryLabel(category).ToLowerInvariant();
 
-    private static int AlertCategoryRank(string category) => category switch
+    private static int AlertCategoryRank(DashboardAlertCategory category) => category switch
     {
-        "Notes" => 0,
-        "Authorization" => 1,
-        "Intake" => 2,
-        "Unsigned items" => 3,
-        _ => 4
+        DashboardAlertCategory.Notes => 0,
+        DashboardAlertCategory.Authorization => 1,
+        DashboardAlertCategory.Intake => 2,
+        _ => 3
     };
 
     private static string ToCategoryAnchorId(string category) =>

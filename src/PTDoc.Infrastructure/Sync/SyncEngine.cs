@@ -2,8 +2,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PTDoc.Application.BackgroundJobs;
+using PTDoc.Application.Appointments;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
+using PTDoc.Application.NoteTemplates;
 using PTDoc.Application.Observability;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
@@ -34,6 +36,8 @@ public class SyncEngine : ISyncEngine
     private readonly IIdentityContextAccessor? _identityContext;
     private readonly IAuditService? _auditService;
     private readonly ISignatureService? _signatureService;
+    private readonly INoteTemplateAdministrationService? _noteTemplates;
+    private readonly IClinicalVisitOrdinalAllocator? _visitOrdinalAllocator;
     private readonly ISyncRuntimeStateStore _runtimeStateStore;
     private readonly ITelemetrySink? _telemetrySink;
     private readonly TimeSpan _retryDelay;
@@ -52,7 +56,9 @@ public class SyncEngine : ISyncEngine
         IAuditService? auditService = null,
         ISignatureService? signatureService = null,
         ITelemetrySink? telemetrySink = null,
-        IOptions<SyncRetryOptions>? retryOptions = null)
+        IOptions<SyncRetryOptions>? retryOptions = null,
+        INoteTemplateAdministrationService? noteTemplates = null,
+        IClinicalVisitOrdinalAllocator? visitOrdinalAllocator = null)
     {
         _context = context;
         _logger = logger;
@@ -61,6 +67,8 @@ public class SyncEngine : ISyncEngine
         _auditService = auditService;
         _signatureService = signatureService;
         _telemetrySink = telemetrySink;
+        _noteTemplates = noteTemplates;
+        _visitOrdinalAllocator = visitOrdinalAllocator;
         _retryDelay = retryOptions?.Value.MinRetryDelay ?? DefaultRetryDelay;
     }
 
@@ -752,6 +760,46 @@ public class SyncEngine : ISyncEngine
                 clinicalNote.SyncState = SyncState.Synced;
                 break;
 
+            case "ProviderDirectoryEntry":
+                var provider = await _context.ProviderDirectoryEntries
+                    .FirstOrDefaultAsync(p => p.Id == item.EntityId, cancellationToken);
+                if (provider == null)
+                {
+                    return QueueItemProcessingResult.ValidationFailure("Entity not found while processing sync item.");
+                }
+                provider.SyncState = SyncState.Synced;
+                break;
+
+            case "PatientProviderRelationship":
+                var providerRelationship = await _context.PatientProviderRelationships
+                    .FirstOrDefaultAsync(r => r.Id == item.EntityId, cancellationToken);
+                if (providerRelationship == null)
+                {
+                    return QueueItemProcessingResult.ValidationFailure("Entity not found while processing sync item.");
+                }
+                providerRelationship.SyncState = SyncState.Synced;
+                break;
+
+            case "PatientInsurancePolicy":
+                var insurancePolicy = await _context.PatientInsurancePolicies
+                    .FirstOrDefaultAsync(p => p.Id == item.EntityId, cancellationToken);
+                if (insurancePolicy == null)
+                {
+                    return QueueItemProcessingResult.ValidationFailure("Entity not found while processing sync item.");
+                }
+                insurancePolicy.SyncState = SyncState.Synced;
+                break;
+
+            case "PatientInsuranceAuthorization":
+                var insuranceAuthorization = await _context.PatientInsuranceAuthorizations
+                    .FirstOrDefaultAsync(a => a.Id == item.EntityId, cancellationToken);
+                if (insuranceAuthorization == null)
+                {
+                    return QueueItemProcessingResult.ValidationFailure("Entity not found while processing sync item.");
+                }
+                insuranceAuthorization.SyncState = SyncState.Synced;
+                break;
+
             default:
                 _logger.LogWarning("Unknown entity type in sync queue: {EntityType}:{EntityId}",
                     item.EntityType, item.EntityId);
@@ -1163,6 +1211,8 @@ public class SyncEngine : ISyncEngine
         var isRestrictedRole = userRoles is { Length: > 0 } &&
             userRoles.Any(r => string.Equals(r, Roles.Aide, StringComparison.OrdinalIgnoreCase) ||
                                string.Equals(r, Roles.FrontDesk, StringComparison.OrdinalIgnoreCase));
+        var isAideRole = userRoles is { Length: > 0 } &&
+            userRoles.Any(r => string.Equals(r, Roles.Aide, StringComparison.OrdinalIgnoreCase));
         var isPatientRole = userRoles is { Length: > 0 } &&
             userRoles.Any(r => string.Equals(r, Roles.Patient, StringComparison.OrdinalIgnoreCase));
 
@@ -1172,13 +1222,40 @@ public class SyncEngine : ISyncEngine
 
         var effectiveTypes = entityTypes is { Length: > 0 }
             ? entityTypes
-            : new[] { "Patient", "Appointment", "IntakeForm", "ClinicalNote", "ObjectiveMetric", "AuditLog" };
+            : new[]
+            {
+                "Patient", "Appointment", "IntakeForm", "ClinicalNote", "ObjectiveMetric", "AuditLog",
+                "ProviderDirectoryEntry", "PatientProviderRelationship", "PatientInsurancePolicy",
+                "PatientInsuranceAuthorization"
+            };
 
         // Filter out clinical types for Aide/FrontDesk and Patient roles
         if (isRestrictedRole || isPatientRole)
         {
             effectiveTypes = effectiveTypes
                 .Where(t => !clinicalEntityTypes.Contains(t))
+                .ToArray();
+        }
+
+        if (isPatientRole)
+        {
+            // Patient clients may search the approved directory through the scoped API,
+            // but must never receive a clinic-wide offline copy of other patients'
+            // care-team, policy, or authorization records.
+            effectiveTypes = effectiveTypes
+                .Where(t => !string.Equals(t, "PatientProviderRelationship", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(t, "PatientInsurancePolicy", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(t, "PatientInsuranceAuthorization", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+        }
+
+        if (isAideRole)
+        {
+            effectiveTypes = effectiveTypes
+                .Where(t => !string.Equals(t, "ProviderDirectoryEntry", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(t, "PatientProviderRelationship", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(t, "PatientInsurancePolicy", StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(t, "PatientInsuranceAuthorization", StringComparison.OrdinalIgnoreCase))
                 .ToArray();
         }
 
@@ -1242,6 +1319,9 @@ public class SyncEngine : ISyncEngine
                         a.PatientId,
                         a.StartTimeUtc,
                         a.EndTimeUtc,
+                        a.AppointmentType,
+                        a.Status,
+                        a.ClinicalVisitOrdinal,
                         a.LastModifiedUtc
                     }, jsonOptions),
                     LastModifiedUtc = a.LastModifiedUtc
@@ -1302,6 +1382,7 @@ public class SyncEngine : ISyncEngine
                         n.Id,
                         n.PatientId,
                         n.NoteType,
+                        n.TemplateVersionId,
                         n.DateOfService,
                         ContentJson = CanonicalizeClinicalNoteContentJson(n),
                         n.SignatureHash,
@@ -1357,6 +1438,111 @@ public class SyncEngine : ISyncEngine
                         m.IsWNL
                     }, jsonOptions),
                     LastModifiedUtc = m.NoteLastModifiedUtc
+                });
+            }
+        }
+
+        if (effectiveTypes.Contains("ProviderDirectoryEntry", StringComparer.OrdinalIgnoreCase))
+        {
+            var providers = await _context.ProviderDirectoryEntries.AsNoTracking()
+                // Pending/rejected candidates are patient-scoped review data, not clinic-wide
+                // directory entries.  Relationship pulls still expose the link, while the
+                // patient-specific provider API applies the pending-candidate visibility rule.
+                .Where(p => p.LastModifiedUtc > effectiveSince
+                    && (p.Status == ProviderDirectoryStatus.Active || p.IsArchived))
+                .ToListAsync(cancellationToken);
+
+            foreach (var p in providers)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "ProviderDirectoryEntry",
+                    ServerId = p.Id,
+                    Operation = p.IsArchived ? "Delete" : "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        p.Id, p.FirstName, p.LastName, p.Credentials, p.Npi, p.Specialty,
+                        p.TaxonomyCode, p.OrganizationName, p.Phone, p.Fax, p.Email,
+                        p.AddressLine1, p.AddressLine2, p.City, p.State, p.ZipCode,
+                        p.Status, p.SubmissionSource, p.IsArchived, p.LastModifiedUtc
+                    }, jsonOptions),
+                    LastModifiedUtc = p.LastModifiedUtc
+                });
+            }
+        }
+
+        if (effectiveTypes.Contains("PatientProviderRelationship", StringComparer.OrdinalIgnoreCase))
+        {
+            var relationships = await _context.PatientProviderRelationships.AsNoTracking()
+                .Where(r => r.LastModifiedUtc > effectiveSince)
+                .ToListAsync(cancellationToken);
+
+            foreach (var r in relationships)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "PatientProviderRelationship",
+                    ServerId = r.Id,
+                    Operation = r.IsArchived ? "Delete" : "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        r.Id, r.PatientId, r.ProviderDirectoryEntryId, r.Role,
+                        r.EffectiveStartDate, r.EffectiveEndDate, r.IsPrimary,
+                        r.IsArchived, r.LastModifiedUtc
+                    }, jsonOptions),
+                    LastModifiedUtc = r.LastModifiedUtc
+                });
+            }
+        }
+
+        if (effectiveTypes.Contains("PatientInsurancePolicy", StringComparer.OrdinalIgnoreCase))
+        {
+            var policies = await _context.PatientInsurancePolicies.AsNoTracking()
+                .Where(p => p.LastModifiedUtc > effectiveSince)
+                .ToListAsync(cancellationToken);
+
+            foreach (var p in policies)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "PatientInsurancePolicy",
+                    ServerId = p.Id,
+                    Operation = p.IsArchived ? "Delete" : "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        p.Id, p.PatientId, p.CoveragePriority, p.CarrierKey, p.CarrierDisplayName,
+                        p.PayerType, p.MemberOrPolicyNumber, p.GroupNumber, p.EffectiveStartDate,
+                        p.EffectiveEndDate, p.PlanYearType, p.DeductibleAmount, p.DeductibleMet,
+                        p.OutOfPocketMaximum, p.OutOfPocketMet, p.CopayAmount, p.CoinsurancePercent,
+                        p.AdjusterName, p.AdjusterPhone, p.AdjusterEmail, p.AdjusterFax,
+                        p.Status, p.IsArchived, p.LastModifiedUtc
+                    }, jsonOptions),
+                    LastModifiedUtc = p.LastModifiedUtc
+                });
+            }
+        }
+
+        if (effectiveTypes.Contains("PatientInsuranceAuthorization", StringComparer.OrdinalIgnoreCase))
+        {
+            var authorizations = await _context.PatientInsuranceAuthorizations.AsNoTracking()
+                .Where(a => a.LastModifiedUtc > effectiveSince)
+                .ToListAsync(cancellationToken);
+
+            foreach (var a in authorizations)
+            {
+                items.Add(new ClientSyncPullItem
+                {
+                    EntityType = "PatientInsuranceAuthorization",
+                    ServerId = a.Id,
+                    Operation = a.IsArchived ? "Delete" : "Upsert",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        a.Id, a.PatientInsurancePolicyId, a.PatientId, a.AuthorizationType,
+                        a.ReferenceNumber, a.Status, a.ReceivedDate, a.StartDate, a.EndDate,
+                        a.AuthorizedUnits, a.UsedUnits, a.VisitLimitPeriod, a.ReauthorizationDueDate,
+                        a.VisitAlertThreshold, a.Notes, a.IsArchived, a.LastModifiedUtc
+                    }, jsonOptions),
+                    LastModifiedUtc = a.LastModifiedUtc
                 });
             }
         }
@@ -1464,7 +1650,9 @@ public class SyncEngine : ISyncEngine
                     appointment.PatientId,
                     appointment.StartTimeUtc,
                     appointment.EndTimeUtc,
+                    appointment.AppointmentType,
                     appointment.Status,
+                    appointment.ClinicalVisitOrdinal,
                     appointment.LastModifiedUtc
                 }, ConflictJsonOptions)
             };
@@ -1539,6 +1727,78 @@ public class SyncEngine : ISyncEngine
                     note.LastModifiedUtc
                 }, ConflictJsonOptions)
             };
+        }
+
+        if (string.Equals(entityType, "ProviderDirectoryEntry", StringComparison.OrdinalIgnoreCase))
+        {
+            var provider = await _context.ProviderDirectoryEntries.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == serverId, cancellationToken);
+            return provider is null
+                ? new ServerSyncSnapshot { EntityType = entityType, EntityId = serverId }
+                : new ServerSyncSnapshot
+                {
+                    EntityType = entityType,
+                    EntityId = provider.Id,
+                    Exists = true,
+                    LastModifiedUtc = provider.LastModifiedUtc,
+                    ModifiedByUserId = provider.ModifiedByUserId,
+                    IsDeleted = provider.IsArchived,
+                    CurrentDataJson = JsonSerializer.Serialize(provider, ConflictJsonOptions)
+                };
+        }
+
+        if (string.Equals(entityType, "PatientProviderRelationship", StringComparison.OrdinalIgnoreCase))
+        {
+            var relationship = await _context.PatientProviderRelationships.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.Id == serverId, cancellationToken);
+            return relationship is null
+                ? new ServerSyncSnapshot { EntityType = entityType, EntityId = serverId }
+                : new ServerSyncSnapshot
+                {
+                    EntityType = entityType,
+                    EntityId = relationship.Id,
+                    Exists = true,
+                    LastModifiedUtc = relationship.LastModifiedUtc,
+                    ModifiedByUserId = relationship.ModifiedByUserId,
+                    IsDeleted = relationship.IsArchived,
+                    CurrentDataJson = JsonSerializer.Serialize(relationship, ConflictJsonOptions)
+                };
+        }
+
+        if (string.Equals(entityType, "PatientInsurancePolicy", StringComparison.OrdinalIgnoreCase))
+        {
+            var policy = await _context.PatientInsurancePolicies.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == serverId, cancellationToken);
+            return policy is null
+                ? new ServerSyncSnapshot { EntityType = entityType, EntityId = serverId }
+                : new ServerSyncSnapshot
+                {
+                    EntityType = entityType,
+                    EntityId = policy.Id,
+                    Exists = true,
+                    LastModifiedUtc = policy.LastModifiedUtc,
+                    ModifiedByUserId = policy.ModifiedByUserId,
+                    IsDeleted = policy.IsArchived,
+                    CurrentDataJson = JsonSerializer.Serialize(policy, ConflictJsonOptions)
+                };
+        }
+
+        if (string.Equals(entityType, "PatientInsuranceAuthorization", StringComparison.OrdinalIgnoreCase))
+        {
+            var authorization = await _context.PatientInsuranceAuthorizations.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Id == serverId, cancellationToken);
+            return authorization is null
+                ? new ServerSyncSnapshot { EntityType = entityType, EntityId = serverId }
+                : new ServerSyncSnapshot
+                {
+                    EntityType = entityType,
+                    EntityId = authorization.Id,
+                    Exists = true,
+                    LastModifiedUtc = authorization.LastModifiedUtc,
+                    ModifiedByUserId = authorization.ModifiedByUserId,
+                    IsDeleted = authorization.IsArchived,
+                    CurrentDataJson = JsonSerializer.Serialize(authorization, ConflictJsonOptions)
+                };
         }
 
         if (string.Equals(entityType, "AuditLog", StringComparison.OrdinalIgnoreCase))
@@ -2051,6 +2311,7 @@ public class SyncEngine : ISyncEngine
                     ModifiedByUserId = actingUserId,
                     SyncState = SyncState.Synced
                 };
+                appt.AssignClinicalVisitOrdinal(await GetNextClinicalVisitOrdinalAsync(patientServerId, cancellationToken));
                 _context.Appointments.Add(appt);
             }
             else
@@ -2058,6 +2319,9 @@ public class SyncEngine : ISyncEngine
                 existing.StartTimeUtc = TryGetDateTime(root, "startTimeUtc") ?? TryGetDateTime(root, "StartTimeUtc") ?? existing.StartTimeUtc;
                 existing.EndTimeUtc = TryGetDateTime(root, "endTimeUtc") ?? TryGetDateTime(root, "EndTimeUtc") ?? existing.EndTimeUtc;
                 existing.Notes = TryGetString(root, "notes") ?? TryGetString(root, "Notes") ?? existing.Notes;
+                var appointmentTypeRaw = TryGetInt(root, "appointmentType") ?? TryGetInt(root, "AppointmentType");
+                if (appointmentTypeRaw.HasValue && Enum.IsDefined(typeof(AppointmentType), appointmentTypeRaw.Value))
+                    existing.AppointmentType = (AppointmentType)appointmentTypeRaw.Value;
                 var statusRaw = TryGetInt(root, "status") ?? TryGetInt(root, "Status");
                 if (statusRaw.HasValue && Enum.IsDefined(typeof(AppointmentStatus), statusRaw.Value))
                     existing.Status = (AppointmentStatus)statusRaw.Value;
@@ -2167,6 +2431,14 @@ public class SyncEngine : ISyncEngine
                     isReEvaluation,
                     dateOfService,
                     normalizedContentJson);
+                var templateVariant = isReEvaluation
+                    ? NoteTemplateVariant.ReEvaluation
+                    : isDryNeedling
+                        ? NoteTemplateVariant.DryNeedling
+                        : NoteTemplateVariant.Standard;
+                var templateVersion = _noteTemplates is null
+                    ? null
+                    : await _noteTemplates.ResolveAsync(noteType, templateVariant, cancellationToken);
                 var note = new ClinicalNote
                 {
                     Id = serverId,
@@ -2174,6 +2446,9 @@ public class SyncEngine : ISyncEngine
                     ClinicId = clinicId,
                     NoteType = noteType,
                     IsReEvaluation = isReEvaluation,
+                    TemplateVersionId = templateVersion is null || templateVersion.Id == Guid.Empty
+                        ? null
+                        : templateVersion.Id,
                     CreatedUtc = createdUtc,
                     ParentNoteId = parentNoteId,
                     IsAddendum = isAddendum,
@@ -2234,10 +2509,224 @@ public class SyncEngine : ISyncEngine
                 }
             }
         }
+        else if (string.Equals(entityType, "ProviderDirectoryEntry", StringComparison.OrdinalIgnoreCase))
+        {
+            // Provider lifecycle decisions are privileged operations and must use the
+            // directory endpoints so approval, duplicate review, and audit rules run.
+            throw new InvalidOperationException("Provider directory entries cannot be modified through client sync.");
+        }
+        else if (string.Equals(entityType, "PatientProviderRelationship", StringComparison.OrdinalIgnoreCase))
+        {
+            var existing = await _context.PatientProviderRelationships
+                .FirstOrDefaultAsync(r => r.Id == serverId, cancellationToken);
+            if (item.Operation.Equals("Delete", StringComparison.OrdinalIgnoreCase))
+            {
+                if (existing is null) return;
+                existing.IsArchived = true;
+                existing.LastModifiedUtc = item.LastModifiedUtc;
+                existing.ModifiedByUserId = actingUserId;
+                existing.SyncState = SyncState.Synced;
+                return;
+            }
+
+            var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? existing?.PatientId ?? Guid.Empty;
+            var providerId = TryGetGuid(root, "providerDirectoryEntryId")
+                ?? TryGetGuid(root, "ProviderDirectoryEntryId")
+                ?? existing?.ProviderDirectoryEntryId
+                ?? Guid.Empty;
+            if (patientId == Guid.Empty || providerId == Guid.Empty)
+                throw new InvalidOperationException("A patient and provider are required for a provider relationship.");
+            if (existing is not null && patientId != existing.PatientId)
+                throw new InvalidOperationException("A provider relationship cannot be moved to another patient through sync.");
+            var provider = await _context.ProviderDirectoryEntries.FirstOrDefaultAsync(p => p.Id == providerId && !p.IsArchived, cancellationToken);
+            if (provider is null)
+                throw new InvalidOperationException("The selected provider is unavailable.");
+            if (provider.Status != ProviderDirectoryStatus.Active && !await _context.PatientProviderRelationships.AnyAsync(
+                    relationship => relationship.PatientId == patientId && relationship.ProviderDirectoryEntryId == providerId,
+                    cancellationToken))
+                throw new InvalidOperationException("A pending provider is only available to the patient who submitted it.");
+            if (HasInvalidEnum<PatientProviderRole>(root, "role", "Role"))
+                throw new InvalidOperationException("Provider relationship role must be a supported value.");
+
+            var relationship = existing ?? new PatientProviderRelationship
+            {
+                Id = serverId,
+                PatientId = patientId,
+                ProviderDirectoryEntryId = providerId,
+                ClinicId = await ResolvePatientClinicIdAsync(patientId, cancellationToken)
+            };
+            relationship.Role = ParseEnum(root, "role", "Role", relationship.Role);
+            relationship.EffectiveStartDate = TryGetDateTime(root, "effectiveStartDate") ?? TryGetDateTime(root, "EffectiveStartDate") ?? relationship.EffectiveStartDate;
+            relationship.EffectiveEndDate = TryGetDateTime(root, "effectiveEndDate") ?? TryGetDateTime(root, "EffectiveEndDate") ?? relationship.EffectiveEndDate;
+            relationship.IsPrimary = TryGetBool(root, "isPrimary") ?? TryGetBool(root, "IsPrimary") ?? relationship.IsPrimary;
+            relationship.IsArchived = TryGetBool(root, "isArchived") ?? TryGetBool(root, "IsArchived") ?? false;
+            if (relationship.EffectiveStartDate.HasValue
+                && relationship.EffectiveEndDate.HasValue
+                && relationship.EffectiveStartDate > relationship.EffectiveEndDate)
+                throw new InvalidOperationException("Provider relationship start date must not be after the end date.");
+            if (relationship.IsPrimary && !relationship.IsArchived && await _context.PatientProviderRelationships.AnyAsync(
+                    candidate => candidate.PatientId == patientId && candidate.Id != relationship.Id
+                        && candidate.Role == relationship.Role && candidate.IsPrimary && !candidate.IsArchived,
+                    cancellationToken))
+                throw new InvalidOperationException($"The patient already has a primary {relationship.Role} provider relationship.");
+            relationship.LastModifiedUtc = item.LastModifiedUtc;
+            relationship.ModifiedByUserId = actingUserId;
+            relationship.SyncState = SyncState.Synced;
+            if (existing is null) _context.PatientProviderRelationships.Add(relationship);
+        }
+        else if (string.Equals(entityType, "PatientInsurancePolicy", StringComparison.OrdinalIgnoreCase))
+        {
+            var existing = await _context.PatientInsurancePolicies
+                .FirstOrDefaultAsync(p => p.Id == serverId, cancellationToken);
+            if (item.Operation.Equals("Delete", StringComparison.OrdinalIgnoreCase))
+            {
+                if (existing is null) return;
+                existing.IsArchived = true;
+                existing.Status = InsurancePolicyStatus.Inactive;
+                existing.LastModifiedUtc = item.LastModifiedUtc;
+                existing.ModifiedByUserId = actingUserId;
+                existing.SyncState = SyncState.Synced;
+                return;
+            }
+
+            var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? existing?.PatientId ?? Guid.Empty;
+            if (patientId == Guid.Empty) throw new InvalidOperationException("A patient is required for an insurance policy.");
+            if (existing is not null && patientId != existing.PatientId)
+                throw new InvalidOperationException("An insurance policy cannot be moved to another patient through sync.");
+            if (HasInvalidEnum<InsuranceCoveragePriority>(root, "coveragePriority", "CoveragePriority")
+                || HasInvalidEnum<InsurancePayerType>(root, "payerType", "PayerType")
+                || HasInvalidEnum<InsurancePlanYearType>(root, "planYearType", "PlanYearType")
+                || HasInvalidEnum<InsurancePolicyStatus>(root, "status", "Status"))
+                throw new InvalidOperationException("Insurance policy enum values must be supported.");
+            var policy = existing ?? new PatientInsurancePolicy
+            {
+                Id = serverId,
+                PatientId = patientId,
+                ClinicId = await ResolvePatientClinicIdAsync(patientId, cancellationToken)
+            };
+            policy.CoveragePriority = ParseEnum(root, "coveragePriority", "CoveragePriority", policy.CoveragePriority);
+            policy.CarrierKey = TryGetString(root, "carrierKey") ?? TryGetString(root, "CarrierKey") ?? policy.CarrierKey;
+            policy.CarrierDisplayName = TryGetString(root, "carrierDisplayName") ?? TryGetString(root, "CarrierDisplayName") ?? policy.CarrierDisplayName;
+            policy.PayerType = ParseEnum(root, "payerType", "PayerType", policy.PayerType);
+            policy.MemberOrPolicyNumber = TryGetString(root, "memberOrPolicyNumber") ?? TryGetString(root, "MemberOrPolicyNumber") ?? policy.MemberOrPolicyNumber;
+            policy.GroupNumber = TryGetString(root, "groupNumber") ?? TryGetString(root, "GroupNumber") ?? policy.GroupNumber;
+            policy.EffectiveStartDate = TryGetDateTime(root, "effectiveStartDate") ?? TryGetDateTime(root, "EffectiveStartDate") ?? policy.EffectiveStartDate;
+            policy.EffectiveEndDate = TryGetDateTime(root, "effectiveEndDate") ?? TryGetDateTime(root, "EffectiveEndDate") ?? policy.EffectiveEndDate;
+            policy.PlanYearType = ParseEnum(root, "planYearType", "PlanYearType", policy.PlanYearType);
+            policy.DeductibleAmount = TryGetDecimal(root, "deductibleAmount") ?? TryGetDecimal(root, "DeductibleAmount") ?? policy.DeductibleAmount;
+            policy.DeductibleMet = TryGetDecimal(root, "deductibleMet") ?? TryGetDecimal(root, "DeductibleMet") ?? policy.DeductibleMet;
+            policy.OutOfPocketMaximum = TryGetDecimal(root, "outOfPocketMaximum") ?? TryGetDecimal(root, "OutOfPocketMaximum") ?? policy.OutOfPocketMaximum;
+            policy.OutOfPocketMet = TryGetDecimal(root, "outOfPocketMet") ?? TryGetDecimal(root, "OutOfPocketMet") ?? policy.OutOfPocketMet;
+            policy.CopayAmount = TryGetDecimal(root, "copayAmount") ?? TryGetDecimal(root, "CopayAmount") ?? policy.CopayAmount;
+            policy.CoinsurancePercent = TryGetDecimal(root, "coinsurancePercent") ?? TryGetDecimal(root, "CoinsurancePercent") ?? policy.CoinsurancePercent;
+            policy.AdjusterName = TryGetString(root, "adjusterName") ?? TryGetString(root, "AdjusterName") ?? policy.AdjusterName;
+            policy.AdjusterPhone = TryGetString(root, "adjusterPhone") ?? TryGetString(root, "AdjusterPhone") ?? policy.AdjusterPhone;
+            policy.AdjusterEmail = TryGetString(root, "adjusterEmail") ?? TryGetString(root, "AdjusterEmail") ?? policy.AdjusterEmail;
+            policy.AdjusterFax = TryGetString(root, "adjusterFax") ?? TryGetString(root, "AdjusterFax") ?? policy.AdjusterFax;
+            policy.Status = ParseEnum(root, "status", "Status", policy.Status);
+            policy.IsArchived = TryGetBool(root, "isArchived") ?? TryGetBool(root, "IsArchived") ?? false;
+            if (policy.EffectiveStartDate.HasValue && policy.EffectiveEndDate.HasValue && policy.EffectiveStartDate > policy.EffectiveEndDate)
+                throw new InvalidOperationException("Policy effective start date must not be after the end date.");
+            if (policy.PayerType != InsurancePayerType.SelfPay && string.IsNullOrWhiteSpace(policy.CarrierDisplayName))
+                throw new InvalidOperationException("Carrier name is required unless the payer type is Self Pay.");
+            if (new[] { policy.DeductibleAmount, policy.DeductibleMet, policy.OutOfPocketMaximum, policy.OutOfPocketMet, policy.CopayAmount }.Any(value => value < 0)
+                || policy.CoinsurancePercent < 0 || policy.CoinsurancePercent > 100)
+                throw new InvalidOperationException("Insurance cost-sharing values must be within their valid ranges.");
+            if (!policy.IsArchived && policy.Status == InsurancePolicyStatus.Active && await _context.PatientInsurancePolicies.AnyAsync(
+                    candidate => candidate.PatientId == patientId && candidate.Id != policy.Id && !candidate.IsArchived
+                        && candidate.Status == InsurancePolicyStatus.Active && candidate.CoveragePriority == policy.CoveragePriority,
+                    cancellationToken))
+                throw new InvalidOperationException($"The patient already has an active {policy.CoveragePriority} policy.");
+            policy.LastModifiedUtc = item.LastModifiedUtc;
+            policy.ModifiedByUserId = actingUserId;
+            policy.SyncState = SyncState.Synced;
+            if (existing is null) _context.PatientInsurancePolicies.Add(policy);
+        }
+        else if (string.Equals(entityType, "PatientInsuranceAuthorization", StringComparison.OrdinalIgnoreCase))
+        {
+            var existing = await _context.PatientInsuranceAuthorizations
+                .FirstOrDefaultAsync(a => a.Id == serverId, cancellationToken);
+            if (item.Operation.Equals("Delete", StringComparison.OrdinalIgnoreCase))
+            {
+                if (existing is null) return;
+                existing.IsArchived = true;
+                existing.LastModifiedUtc = item.LastModifiedUtc;
+                existing.ModifiedByUserId = actingUserId;
+                existing.SyncState = SyncState.Synced;
+                return;
+            }
+
+            var policyId = TryGetGuid(root, "patientInsurancePolicyId")
+                ?? TryGetGuid(root, "PatientInsurancePolicyId")
+                ?? existing?.PatientInsurancePolicyId
+                ?? Guid.Empty;
+            var policy = await _context.PatientInsurancePolicies.FirstOrDefaultAsync(p => p.Id == policyId, cancellationToken)
+                ?? throw new InvalidOperationException("The insurance policy for this authorization is unavailable.");
+            if (existing is not null && existing.PatientInsurancePolicyId != policy.Id)
+                throw new InvalidOperationException("An authorization cannot be moved to another policy through sync.");
+            if (HasInvalidEnum<InsuranceAuthorizationType>(root, "authorizationType", "AuthorizationType")
+                || HasInvalidEnum<InsuranceAuthorizationStatus>(root, "status", "Status")
+                || HasInvalidEnum<InsuranceVisitLimitPeriod>(root, "visitLimitPeriod", "VisitLimitPeriod"))
+                throw new InvalidOperationException("Insurance authorization enum values must be supported.");
+            var authorization = existing ?? new PatientInsuranceAuthorization
+            {
+                Id = serverId,
+                PatientInsurancePolicyId = policy.Id,
+                PatientId = policy.PatientId,
+                ClinicId = policy.ClinicId
+            };
+            authorization.AuthorizationType = ParseEnum(root, "authorizationType", "AuthorizationType", authorization.AuthorizationType);
+            authorization.ReferenceNumber = TryGetString(root, "referenceNumber") ?? TryGetString(root, "ReferenceNumber") ?? authorization.ReferenceNumber;
+            authorization.Status = ParseEnum(root, "status", "Status", authorization.Status);
+            authorization.ReceivedDate = TryGetDateTime(root, "receivedDate") ?? TryGetDateTime(root, "ReceivedDate") ?? authorization.ReceivedDate;
+            authorization.StartDate = TryGetDateTime(root, "startDate") ?? TryGetDateTime(root, "StartDate") ?? authorization.StartDate;
+            authorization.EndDate = TryGetDateTime(root, "endDate") ?? TryGetDateTime(root, "EndDate") ?? authorization.EndDate;
+            authorization.AuthorizedUnits = TryGetDecimal(root, "authorizedUnits") ?? TryGetDecimal(root, "AuthorizedUnits") ?? authorization.AuthorizedUnits;
+            authorization.UsedUnits = TryGetDecimal(root, "usedUnits") ?? TryGetDecimal(root, "UsedUnits") ?? authorization.UsedUnits;
+            authorization.VisitLimitPeriod = ParseEnum(root, "visitLimitPeriod", "VisitLimitPeriod", authorization.VisitLimitPeriod);
+            authorization.ReauthorizationDueDate = TryGetDateTime(root, "reauthorizationDueDate") ?? TryGetDateTime(root, "ReauthorizationDueDate") ?? authorization.ReauthorizationDueDate;
+            authorization.VisitAlertThreshold = TryGetInt(root, "visitAlertThreshold") ?? TryGetInt(root, "VisitAlertThreshold") ?? authorization.VisitAlertThreshold;
+            authorization.Notes = TryGetString(root, "notes") ?? TryGetString(root, "Notes") ?? authorization.Notes;
+            authorization.IsArchived = TryGetBool(root, "isArchived") ?? TryGetBool(root, "IsArchived") ?? false;
+            if (authorization.StartDate.HasValue && authorization.EndDate.HasValue && authorization.StartDate > authorization.EndDate)
+                throw new InvalidOperationException("Authorization start date must not be after the end date.");
+            if (authorization.AuthorizedUnits < 0 || authorization.UsedUnits < 0 || authorization.VisitAlertThreshold < 0)
+                throw new InvalidOperationException("Authorization units and alert threshold cannot be negative.");
+            authorization.LastModifiedUtc = item.LastModifiedUtc;
+            authorization.ModifiedByUserId = actingUserId;
+            authorization.SyncState = SyncState.Synced;
+            if (existing is null) _context.PatientInsuranceAuthorizations.Add(authorization);
+        }
         else
         {
-            _logger.LogDebug("ApplyEntityFromPayloadAsync: unhandled entity type {EntityType}", entityType);
+            throw new InvalidOperationException($"Unsupported client sync entity type '{entityType}'.");
         }
+    }
+
+    private async Task<int> GetNextClinicalVisitOrdinalAsync(
+        Guid patientId,
+        CancellationToken cancellationToken)
+    {
+        if (_visitOrdinalAllocator is not null)
+        {
+            return await _visitOrdinalAllocator.GetNextAsync(patientId, cancellationToken);
+        }
+
+        var patientAppointments = _context.Appointments
+            .AsNoTracking()
+            .Where(appointment => appointment.PatientId == patientId);
+        var highestOrdinal = await patientAppointments
+            .Where(appointment => appointment.ClinicalVisitOrdinal != null)
+            .MaxAsync(appointment => appointment.ClinicalVisitOrdinal, cancellationToken)
+            ?? 0;
+        var eligibleLegacyCount = await patientAppointments.CountAsync(
+            appointment => appointment.Status == AppointmentStatus.Scheduled
+                || appointment.Status == AppointmentStatus.Confirmed
+                || appointment.Status == AppointmentStatus.CheckedIn
+                || appointment.Status == AppointmentStatus.InProgress
+                || appointment.Status == AppointmentStatus.Completed,
+            cancellationToken);
+        return checked(Math.Max(highestOrdinal, eligibleLegacyCount) + 1);
     }
 
     // ── JSON parsing helpers ─────────────────────────────────────────────────────
@@ -2293,6 +2782,30 @@ public class SyncEngine : ISyncEngine
         if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var n)) return n;
         if (el.ValueKind == JsonValueKind.String && int.TryParse(el.GetString(), out var ns)) return ns;
         return null;
+    }
+
+    private static decimal? TryGetDecimal(JsonElement root, string propertyName)
+    {
+        if (!root.TryGetProperty(propertyName, out var el)) return null;
+        if (el.ValueKind == JsonValueKind.Number && el.TryGetDecimal(out var value)) return value;
+        if (el.ValueKind == JsonValueKind.String && decimal.TryParse(el.GetString(), out value)) return value;
+        return null;
+    }
+
+    private static TEnum ParseEnum<TEnum>(JsonElement root, string camelCaseName, string pascalCaseName, TEnum fallback)
+        where TEnum : struct, Enum
+    {
+        var raw = TryGetInt(root, camelCaseName) ?? TryGetInt(root, pascalCaseName);
+        return raw.HasValue && Enum.IsDefined(typeof(TEnum), raw.Value)
+            ? (TEnum)Enum.ToObject(typeof(TEnum), raw.Value)
+            : fallback;
+    }
+
+    private static bool HasInvalidEnum<TEnum>(JsonElement root, string camelCaseName, string pascalCaseName)
+        where TEnum : struct, Enum
+    {
+        var raw = TryGetInt(root, camelCaseName) ?? TryGetInt(root, pascalCaseName);
+        return raw.HasValue && !Enum.IsDefined(typeof(TEnum), raw.Value);
     }
 
     private static NoteType? TryGetNoteType(JsonElement root)

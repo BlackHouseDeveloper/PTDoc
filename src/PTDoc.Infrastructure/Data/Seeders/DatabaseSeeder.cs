@@ -1832,6 +1832,7 @@ public static class DatabaseSeeder
         var noteType = appointment.AppointmentType switch
         {
             AppointmentType.InitialEvaluation => NoteType.Evaluation,
+            AppointmentType.ReEvaluation => NoteType.ProgressNote,
             AppointmentType.Discharge => NoteType.Discharge,
             _ => NoteType.Daily
         };

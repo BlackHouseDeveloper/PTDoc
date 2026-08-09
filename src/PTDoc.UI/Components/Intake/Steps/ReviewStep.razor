@@ -247,7 +247,7 @@
                 <StatusBadge Text="@(State.UsesAssistiveDevices ? "Yes" : "No")" Variant="@(State.UsesAssistiveDevices ? BadgeVariant.Warning : BadgeVariant.Secondary)" />
             </div>
             <div class="review-step__row">
-                <span>Previous Surgeries</span>
+                <span>Relevant Surgeries or Injuries</span>
                 <StatusBadge Text="@(State.HasPreviousSurgeriesOrInjuries ? "Yes" : "No")" Variant="@(State.HasPreviousSurgeriesOrInjuries ? BadgeVariant.Warning : BadgeVariant.Secondary)" />
             </div>
         </div>
@@ -317,20 +317,64 @@
             </div>
         }
 
+        @if (State.StructuredData?.Subjective.PriorFunctionalLevel.Count > 0)
+        {
+            <div class="review-step__field">
+                <span class="review-step__field-label">Prior Level of Function</span>
+                <div class="review-step__chip-list">
+                    @foreach (var level in State.StructuredData.Subjective.PriorFunctionalLevel)
+                    {
+                        <span class="review-step__pill">@level</span>
+                    }
+                </div>
+            </div>
+        }
+
         <div class="review-step__note-box">
             <span class="review-step__field-label">Current Level of Function</span>
             <p>@Display(State.CurrentLevelOfFunction)</p>
         </div>
 
         <div class="review-step__note-box">
-            <span class="review-step__field-label">Functional Limitations</span>
+            <span class="review-step__field-label">Additional Functional Limitations</span>
             <p>@Display(State.FunctionalLimitations)</p>
         </div>
+
+        @if (State.StructuredData?.FunctionalLimitations.Count > 0)
+        {
+            <div class="review-step__field">
+                <span class="review-step__field-label">Selected Functional Activities</span>
+                <div class="review-step__chip-list">
+                    @foreach (var limitation in State.StructuredData.FunctionalLimitations)
+                    {
+                        <span class="review-step__pill">@limitation.Category: @limitation.Activity</span>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (State.StructuredData?.Subjective is { } patientSubjective)
+        {
+            <div class="review-step__field-grid">
+                <div class="review-step__field">
+                    <span class="review-step__field-label">Onset</span>
+                    <span class="review-step__field-value">@(patientSubjective.OnsetOverAYearAgo ? "Over a year ago" : DisplayDate(patientSubjective.OnsetDate))</span>
+                </div>
+                <div class="review-step__field">
+                    <span class="review-step__field-label">Cause / Mechanism</span>
+                    <span class="review-step__field-value">@(patientSubjective.CauseUnknown ? "Unknown" : Display(patientSubjective.KnownCause))</span>
+                </div>
+                <div class="review-step__field">
+                    <span class="review-step__field-label">Imaging</span>
+                    <span class="review-step__field-value">@FormatImaging(patientSubjective)</span>
+                </div>
+            </div>
+        }
 
         @if (!string.IsNullOrWhiteSpace(State.MedicalHistoryNotes))
         {
             <div class="review-step__note-box">
-                <span class="review-step__field-label">Notes</span>
+                <span class="review-step__field-label">Relevant Surgeries or Injuries — Details</span>
                 <p>@State.MedicalHistoryNotes</p>
             </div>
         }
@@ -628,7 +672,7 @@
         <div class="review-step__row review-step__row--panel">
             <div>
                 <span>Release Authorization</span>
-                <p>@(PhiReleaseAllowed ? "You have authorized release of protected health information." : "PHI release has been revoked in this draft.")</p>
+                <p>@(PhiReleaseAllowed ? PhiRecipientSummary : "PHI release has been revoked in this draft.")</p>
             </div>
             <StatusBadge Text="@(PhiReleaseAllowed ? "Allowed" : "Revoked")" Variant="@(PhiReleaseAllowed ? BadgeVariant.Success : BadgeVariant.Secondary)" />
         </div>
@@ -704,6 +748,34 @@
                                @oninput="args => OnAuthorizedContactChanged(contactIndex, ContactField.Relationship, args)" />
                     </div>
                 </div>
+            }
+
+            @if (PopulatedAuthorizedContacts.Count > 0)
+            {
+                <fieldset class="review-step__recipient-fieldset">
+                    <legend>I authorize release of PHI to:</legend>
+                    <div class="review-step__check-grid">
+                        @foreach (var contact in PopulatedAuthorizedContacts)
+                        {
+                            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+                                <input type="checkbox"
+                                       class="form-check-input"
+                                       checked="@IsPhiRecipientSelected(contact)"
+                                       disabled="@(IsReadOnlyReview || ConsentPacket.PhiReleaseAuthorized != true)"
+                                       @onchange="args => OnPhiRecipientChanged(contact.Id, args)" />
+                                <span>@contact.Name — @contact.Relationship</span>
+                            </label>
+                        }
+                    </div>
+                    @if (!PhiRecipientsComplete && ConsentPacket.PhiReleaseAuthorized == true)
+                    {
+                        <p class="review-step__validation-hint" role="alert">Select at least one contact to receive protected health information.</p>
+                    }
+                </fieldset>
+            }
+            else
+            {
+                <p class="review-step__field-label">Add an authorized contact above before selecting a PHI recipient.</p>
             }
         </div>
     </section>
@@ -851,12 +923,34 @@
     private bool HipaaConsentComplete => ConsentPacket.HipaaAcknowledged == true && !IsConsentRevoked("hipaaAcknowledged");
     private bool TreatmentConsentComplete => ConsentPacket.TreatmentConsentAccepted == true && !IsConsentRevoked("treatmentConsentAccepted");
     private bool IsReadOnlyReview => State.IsLocked || State.IsSubmitted;
-    private bool SubmitReady => ConsentCompleteness.IsComplete && State.TermsOfServiceAccepted && FinalAttestationAccepted && !IsReadOnlyReview;
+    private bool SubmitReady => ConsentCompleteness.IsComplete && PhiRecipientsComplete && State.TermsOfServiceAccepted && FinalAttestationAccepted && !IsReadOnlyReview;
     private bool HasSubmitStatusMessage => IsReadOnlyReview
         && !string.IsNullOrWhiteSpace(ValidationMessage)
         && ValidationMessage.StartsWith("Intake submitted successfully", StringComparison.Ordinal);
     private bool CompletionReady => IsReadOnlyReview || SubmitReady;
     private bool PhiReleaseAllowed => IntakeConsentJson.IsPhiReleaseConsentActive(ConsentPacket);
+    private IReadOnlyList<AuthorizedContact> PopulatedAuthorizedContacts => ConsentPacket.AuthorizedContacts
+        .Where(contact => !contact.IsEmpty)
+        .ToList();
+    private bool PhiRecipientsComplete => ConsentPacket.PhiReleaseAuthorized != true
+        || PopulatedAuthorizedContacts.Count == 0
+        || ConsentPacket.PhiAuthorizedContactIds.Any(id => PopulatedAuthorizedContacts.Any(contact =>
+            string.Equals(contact.Id, id, StringComparison.OrdinalIgnoreCase)));
+    private string PhiRecipientSummary
+    {
+        get
+        {
+            var selectedNames = PopulatedAuthorizedContacts
+                .Where(IsPhiRecipientSelected)
+                .Select(contact => contact.Name?.Trim())
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToList();
+
+            return selectedNames.Count == 0
+                ? "You have authorized release of protected health information; no contact recipient has been selected."
+                : $"Authorized recipients: {string.Join(", ", selectedNames)}.";
+        }
+    }
     private bool PhoneCallsAllowed => IntakeConsentJson.IsCallConsentActive(ConsentPacket);
     private bool TextMessagesAllowed => IntakeConsentJson.IsTextConsentActive(ConsentPacket);
     private bool EmailAllowed => IntakeConsentJson.IsEmailConsentActive(ConsentPacket);
@@ -1080,6 +1174,18 @@
         }
     });
 
+    private Task OnPhiRecipientChanged(string contactId, ChangeEventArgs args) => UpdateStateAsync(() =>
+    {
+        ConsentPacket.PhiAuthorizedContactIds.RemoveAll(id => string.Equals(id, contactId, StringComparison.OrdinalIgnoreCase));
+        if (ToBool(args))
+        {
+            ConsentPacket.PhiAuthorizedContactIds.Add(contactId);
+        }
+    });
+
+    private bool IsPhiRecipientSelected(AuthorizedContact contact) =>
+        ConsentPacket.PhiAuthorizedContactIds.Contains(contact.Id, StringComparer.OrdinalIgnoreCase);
+
     private Task UpdateStateAsync(Action update)
     {
         if (IsReadOnlyReview)
@@ -1124,9 +1230,18 @@
 
     private AuthorizedContact GetAuthorizedContact(int index)
     {
-        return index < ConsentPacket.AuthorizedContacts.Count
-            ? ConsentPacket.AuthorizedContacts[index]
-            : new AuthorizedContact();
+        if (index >= ConsentPacket.AuthorizedContacts.Count)
+        {
+            return new AuthorizedContact();
+        }
+
+        var contact = ConsentPacket.AuthorizedContacts[index];
+        if (string.IsNullOrWhiteSpace(contact.Id))
+        {
+            contact.Id = Guid.NewGuid().ToString("N");
+        }
+
+        return contact;
     }
 
     private AuthorizedContact EnsureAuthorizedContact(int index)
@@ -1230,6 +1345,32 @@
     private static string DisplayDate(DateTime? value)
     {
         return value?.ToString("MMMM d, yyyy") ?? "Not provided";
+    }
+
+    private static string FormatImaging(IntakeSubjectiveDataDto subjective)
+    {
+        if (subjective.HasImaging is null)
+        {
+            return "Not provided";
+        }
+
+        if (subjective.HasImaging == false)
+        {
+            return "No";
+        }
+
+        var modalities = subjective.ImagingModalities
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .ToList();
+        if (!string.IsNullOrWhiteSpace(subjective.OtherImagingModality))
+        {
+            modalities.Add(subjective.OtherImagingModality.Trim());
+        }
+
+        var summary = modalities.Count == 0 ? "Yes" : string.Join(", ", modalities);
+        return string.IsNullOrWhiteSpace(subjective.ImagingFindings)
+            ? summary
+            : $"{summary}: {subjective.ImagingFindings.Trim()}";
     }
 
     private static string FormatAssignedOutcomeMeasure(AssignedOutcomeMeasureDraft assignment)

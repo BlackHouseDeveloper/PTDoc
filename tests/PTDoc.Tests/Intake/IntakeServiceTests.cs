@@ -217,8 +217,8 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.False(responseJson.RootElement.TryGetProperty("consentToTreatAcknowledged", out _));
 
         using var consentsJson = JsonDocument.Parse(storedDraft.Consents);
-        Assert.True(consentsJson.RootElement.GetProperty("HipaaAcknowledged").GetBoolean());
-        Assert.True(consentsJson.RootElement.GetProperty("ConsentToTreat").GetBoolean());
+        Assert.True(consentsJson.RootElement.GetProperty("hipaaAcknowledged").GetBoolean());
+        Assert.True(consentsJson.RootElement.GetProperty("treatmentConsentAccepted").GetBoolean());
     }
 
     [Fact]

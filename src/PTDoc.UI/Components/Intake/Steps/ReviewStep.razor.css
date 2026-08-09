@@ -219,6 +219,28 @@
     gap: var(--spacing-3);
 }
 
+.review-step__recipient-fieldset {
+    border: 0;
+    display: grid;
+    gap: var(--spacing-3);
+    margin: var(--spacing-4) 0 0;
+    min-width: 0;
+    padding: 0;
+}
+
+.review-step__recipient-fieldset legend {
+    color: var(--card-foreground);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-semibold);
+    margin-bottom: var(--spacing-2);
+}
+
+.review-step__validation-hint {
+    color: var(--destructive);
+    font-size: var(--text-sm);
+    margin: 0;
+}
+
 .review-step__row,
 .review-step__check-row,
 .review-step__status-card,

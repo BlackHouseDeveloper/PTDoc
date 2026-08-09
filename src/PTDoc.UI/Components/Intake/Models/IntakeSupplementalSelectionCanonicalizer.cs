@@ -30,8 +30,26 @@ public static class IntakeSupplementalSelectionCanonicalizer
             state.SelectedHouseLayoutOptions,
             catalogService.GetHouseLayoutOptions());
 
-        state.HasOtherMedicalConditions = structuredData.ComorbidityIds.Count > 0 || state.SelectedComorbidities.Count > 0;
-        state.UsesAssistiveDevices = structuredData.AssistiveDeviceIds.Count > 0 || state.SelectedAssistiveDevices.Count > 0;
+        if (structuredData.NoComorbidities)
+        {
+            structuredData.ComorbidityIds.Clear();
+            state.SelectedComorbidities.Clear();
+        }
+
+        if (structuredData.NoAssistiveDevices)
+        {
+            structuredData.AssistiveDeviceIds.Clear();
+            state.SelectedAssistiveDevices.Clear();
+        }
+
+        if (structuredData.NoMedications)
+        {
+            structuredData.MedicationIds.Clear();
+        }
+
+        state.HasCurrentMedications = !structuredData.NoMedications && structuredData.MedicationIds.Count > 0;
+        state.HasOtherMedicalConditions = !structuredData.NoComorbidities && (structuredData.ComorbidityIds.Count > 0 || state.SelectedComorbidities.Count > 0);
+        state.UsesAssistiveDevices = !structuredData.NoAssistiveDevices && (structuredData.AssistiveDeviceIds.Count > 0 || state.SelectedAssistiveDevices.Count > 0);
     }
 
     private static void CanonicalizeSelections(

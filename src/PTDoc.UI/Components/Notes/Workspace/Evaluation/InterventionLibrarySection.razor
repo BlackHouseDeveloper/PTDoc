@@ -1,0 +1,259 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.Evaluation
+@using Microsoft.JSInterop
+@using PTDoc.UI.Components.Notes.Models
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="intervention-library" data-testid="intervention-library-section">
+    <section class="intervention-module" aria-labelledby="intervention-exercises-title">
+        <header class="intervention-module__header">
+            <div class="intervention-module__identity">
+                <img src="_content/PTDoc.UI/images/notes/interventions/exercise.svg" alt="" aria-hidden="true" />
+                <h3 id="intervention-exercises-title">Exercises</h3>
+                <span class="intervention-count" data-testid="exercise-count">@FormatCount(Objective.ExerciseRows.Count, "exercise")</span>
+            </div>
+            @if (!IsReadOnly)
+            {
+                <button type="button" class="intervention-primary-action" @onclick="OpenExerciseDialogAsync" data-testid="add-exercise">
+                    <img src="_content/PTDoc.UI/images/notes/interventions/add.svg" alt="" aria-hidden="true" />
+                    Add Exercise
+                </button>
+            }
+        </header>
+
+        @if (Objective.ExerciseRows.Count == 0)
+        {
+            <div class="intervention-empty" role="status" data-testid="exercise-empty-state">
+                <img src="_content/PTDoc.UI/images/notes/interventions/info.svg" alt="" aria-hidden="true" />
+                <span>No exercises added yet. Click "Add Exercise" to get started.</span>
+            </div>
+        }
+        else
+        {
+            <div class="exercise-card-list" data-testid="exercise-card-list">
+                @foreach (var exercise in Objective.ExerciseRows)
+                {
+                    var details = GetExerciseDetails(exercise);
+                    var isExpanded = !_collapsedExercises.Contains(exercise);
+                    <article @key="exercise" class="exercise-card" data-testid="exercise-prescription-card">
+                        <div class="exercise-card__header">
+                            <div class="exercise-card__identity">
+                                <h4>@GetExerciseTitle(exercise)</h4>
+                                <div class="exercise-card__metadata">
+                                    <span class="exercise-card__category">@details.Category</span>
+                                    <span>@details.Region</span>
+                                </div>
+                            </div>
+                            <div class="exercise-card__actions">
+                                @if (!IsReadOnly)
+                                {
+                                    <button type="button" class="intervention-icon-button" aria-label="Duplicate @GetExerciseTitle(exercise)" @onclick="() => DuplicateExerciseAsync(exercise)">
+                                        <img src="_content/PTDoc.UI/images/notes/interventions/duplicate.svg" alt="" aria-hidden="true" />
+                                    </button>
+                                }
+                                <button type="button"
+                                        class="intervention-icon-button exercise-card__collapse @(isExpanded ? "" : "exercise-card__collapse--collapsed")"
+                                        aria-label="@(isExpanded ? $"Collapse {GetExerciseTitle(exercise)}" : $"Expand {GetExerciseTitle(exercise)}")"
+                                        aria-expanded="@isExpanded"
+                                        @onclick="() => ToggleExercise(exercise)">
+                                    <img src="_content/PTDoc.UI/images/notes/interventions/chevron-down.svg" alt="" aria-hidden="true" />
+                                </button>
+                                @if (!IsReadOnly)
+                                {
+                                    <button type="button" class="intervention-icon-button" aria-label="Remove @GetExerciseTitle(exercise)" @onclick="() => RemoveExerciseAsync(exercise)">
+                                        <img src="_content/PTDoc.UI/images/notes/interventions/remove.svg" alt="" aria-hidden="true" />
+                                    </button>
+                                }
+                            </div>
+                        </div>
+
+                        @if (isExpanded)
+                        {
+                            var prescription = GetPrescription(exercise);
+                            <div class="exercise-prescription" data-testid="exercise-prescription-fields">
+                                <label>
+                                    <span>Sets</span>
+                                    <input type="text" aria-label="Sets for @GetExerciseTitle(exercise)" @bind="prescription.Sets" @bind:event="oninput" disabled="@IsReadOnly" />
+                                </label>
+                                <label>
+                                    <span>Reps</span>
+                                    <input type="text" aria-label="Reps for @GetExerciseTitle(exercise)" @bind="prescription.Reps" @bind:event="oninput" disabled="@IsReadOnly" />
+                                </label>
+                                <label>
+                                    <span>Frequency</span>
+                                    <input type="text" aria-label="Frequency for @GetExerciseTitle(exercise)" @bind="prescription.Frequency" @bind:event="oninput" disabled="@IsReadOnly" />
+                                </label>
+                            </div>
+
+                            <div class="exercise-hep-row">
+                                <span class="exercise-hep-row__label">
+                                    <img src="_content/PTDoc.UI/images/notes/interventions/home.svg" alt="" aria-hidden="true" />
+                                    Include in Home Exercise Program
+                                </span>
+                                <button type="button"
+                                        class="exercise-hep-toggle @(exercise.IncludeInHomeExerciseProgram ? "exercise-hep-toggle--selected" : "")"
+                                        role="switch"
+                                        aria-checked="@exercise.IncludeInHomeExerciseProgram"
+                                        aria-label="Include @GetExerciseTitle(exercise) in Home Exercise Program"
+                                        disabled="@IsReadOnly"
+                                        @onclick="() => ToggleHepAsync(exercise)">
+                                    <span></span>
+                                </button>
+                            </div>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="intervention-module" aria-labelledby="intervention-techniques-title">
+        <header class="intervention-module__header">
+            <div class="intervention-module__identity">
+                <img src="_content/PTDoc.UI/images/notes/interventions/technique.svg" alt="" aria-hidden="true" />
+                <h3 id="intervention-techniques-title">Manual Work Techniques</h3>
+                <span class="intervention-count" data-testid="technique-count">@FormatCount(ManualTechniqueCount, "technique")</span>
+            </div>
+            @if (!IsReadOnly)
+            {
+                <button type="button" class="intervention-primary-action" @onclick="OpenTechniqueDialogAsync" data-testid="add-technique">
+                    <img src="_content/PTDoc.UI/images/notes/interventions/add.svg" alt="" aria-hidden="true" />
+                    Add Technique
+                </button>
+            }
+        </header>
+
+        @if (ManualTechniqueCount == 0)
+        {
+            <div class="intervention-empty" role="status" data-testid="technique-empty-state">
+                <img src="_content/PTDoc.UI/images/notes/interventions/info.svg" alt="" aria-hidden="true" />
+                <span>No manual techniques added yet. Click "Add Technique" to get started.</span>
+            </div>
+        }
+    </section>
+</div>
+
+@if (_dialogKind != InterventionDialogKind.None)
+{
+    <div class="intervention-dialog-backdrop" data-testid="intervention-dialog-backdrop">
+        <section id="@_modalId"
+                 class="intervention-dialog"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="intervention-dialog-title"
+                 aria-describedby="intervention-dialog-description"
+                 tabindex="-1">
+            <header class="intervention-dialog__header">
+                <img class="intervention-dialog__icon"
+                     src="@(_dialogKind == InterventionDialogKind.Exercise ? "_content/PTDoc.UI/images/notes/interventions/exercise.svg" : "_content/PTDoc.UI/images/notes/interventions/technique.svg")"
+                     alt=""
+                     aria-hidden="true" />
+                <div>
+                    <h3 id="intervention-dialog-title">@DialogTitle</h3>
+                    <p id="intervention-dialog-description">@DialogDescription</p>
+                </div>
+                <button type="button" class="intervention-dialog__close" aria-label="Close @DialogTitle" @onclick="CloseDialogAsync">
+                    <img src="_content/PTDoc.UI/images/notes/interventions/close.svg" alt="" aria-hidden="true" />
+                </button>
+            </header>
+
+            @if (_dialogKind == InterventionDialogKind.Exercise)
+            {
+                <div class="intervention-tabs" role="tablist" aria-label="Exercise source">
+                    <button type="button" role="tab" aria-selected="@(_exerciseMode == DialogMode.Library)" class="@GetTabClass(_exerciseMode == DialogMode.Library)" @onclick="() => _exerciseMode = DialogMode.Library">Exercise Library</button>
+                    <button type="button" role="tab" aria-selected="@(_exerciseMode == DialogMode.Custom)" class="@GetTabClass(_exerciseMode == DialogMode.Custom)" @onclick="() => _exerciseMode = DialogMode.Custom">Custom Exercise</button>
+                </div>
+
+                @if (_exerciseMode == DialogMode.Library)
+                {
+                    <div class="intervention-dialog__body" role="tabpanel" data-testid="exercise-library-panel">
+                        <label class="intervention-search">
+                            <span class="visually-hidden">Search exercises</span>
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M7.333 12.667A5.333 5.333 0 1 0 7.333 2a5.333 5.333 0 0 0 0 10.667ZM14 14l-2.9-2.9" stroke="currentColor" stroke-width="1.333" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                            <input type="search" placeholder="Search exercises..." @bind="_exerciseSearchQuery" @bind:event="oninput" data-testid="exercise-search" />
+                        </label>
+                        <div class="intervention-region-filters" role="group" aria-label="Body region">
+                            @foreach (var region in Regions)
+                            {
+                                <button @key="region"
+                                        type="button"
+                                        class="@GetRegionFilterClass(_exerciseRegion == region)"
+                                        aria-pressed="@(_exerciseRegion == region ? "true" : "false")"
+                                        @onclick="() => SelectExerciseRegion(region)">@region</button>
+                            }
+                        </div>
+                        <div class="intervention-results" data-testid="exercise-library-results">
+                            @foreach (var exercise in FilteredExercises)
+                            {
+                                <div @key="exercise.Name" class="intervention-result" data-testid="exercise-library-result">
+                                    <div>
+                                        <h4>@exercise.Name</h4>
+                                        <p><span>@exercise.Category</span><span>@exercise.Region</span></p>
+                                    </div>
+                                    <button type="button" @onclick="() => AddLibraryExerciseAsync(exercise)">Add</button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="intervention-dialog__body custom-exercise-form" role="tabpanel" data-testid="custom-exercise-panel">
+                        <label>
+                            <span>Exercise Name *</span>
+                            <input type="text" placeholder="e.g., Resistance Band Exercises" @bind="_customExerciseName" @bind:event="oninput" />
+                        </label>
+                        <label>
+                            <span>Notes (Optional)</span>
+                            <input type="text" placeholder="Special instructions or modifications..." @bind="_customExerciseNotes" @bind:event="oninput" />
+                        </label>
+                        <button type="button" class="intervention-primary-action custom-exercise-form__submit" @onclick="AddCustomExerciseAsync">
+                            <img src="_content/PTDoc.UI/images/notes/interventions/add.svg" alt="" aria-hidden="true" />
+                            Add Custom Exercise
+                        </button>
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="intervention-tabs" role="tablist" aria-label="Manual technique source">
+                    <button type="button" role="tab" aria-selected="@(_techniqueMode == DialogMode.Library)" class="@GetTabClass(_techniqueMode == DialogMode.Library)" @onclick="() => _techniqueMode = DialogMode.Library">Technique Library</button>
+                    <button type="button" role="tab" aria-selected="@(_techniqueMode == DialogMode.Custom)" class="@GetTabClass(_techniqueMode == DialogMode.Custom)" @onclick="() => _techniqueMode = DialogMode.Custom">Custom Technique</button>
+                </div>
+
+                @if (_techniqueMode == DialogMode.Library)
+                {
+                    <div class="intervention-dialog__body" role="tabpanel" data-testid="technique-library-panel">
+                        <div class="intervention-region-filters" role="group" aria-label="Body region">
+                            @foreach (var region in Regions)
+                            {
+                                <button @key="region"
+                                        type="button"
+                                        class="@GetRegionFilterClass(_techniqueRegion == region)"
+                                        aria-pressed="@(_techniqueRegion == region ? "true" : "false")"
+                                        @onclick="() => SelectTechniqueRegion(region)">@region</button>
+                            }
+                        </div>
+                        <div class="intervention-results" data-testid="technique-library-results">
+                            @foreach (var technique in FilteredTechniques)
+                            {
+                                <div @key="technique.Name" class="intervention-result" data-testid="technique-library-result">
+                                    <div>
+                                        <h4>@technique.Name</h4>
+                                        <p>@technique.Region</p>
+                                    </div>
+                                    <button type="button" @onclick="() => AddLibraryTechniqueAsync(technique)">Add</button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    @* TODO: Custom Technique fields and actions require product/design requirements. *@
+                    <div class="intervention-dialog__body" role="tabpanel" data-testid="custom-technique-panel"></div>
+                }
+            }
+        </section>
+    </div>
+}

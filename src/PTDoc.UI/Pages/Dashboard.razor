@@ -4,11 +4,14 @@
 @using PTDoc.Application.Services
 @using PTDoc.Application.Dashboard
 @using PTDoc.Application.DTOs
+@using PTDoc.Application.Identity
 @using PTDoc.UI.Components.Dashboard
 @using PTDoc.UI.Services
 @inject IPatientService PatientService
 @inject IIntakeService IntakeService
 @inject IDashboardAlertService DashboardAlertService
+@inject IAppointmentService AppointmentService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IToastService ToastService
 @inject ILogger<Dashboard> Logger
 @rendermode InteractiveServer
@@ -86,7 +89,7 @@
             </div>
         </section>
     }
-    else if (_hasLoadedDashboard && !HasDashboardContent)
+    else if (_hasLoadedDashboard && !HasDashboardContent && !_isPtUser)
     {
         <section class="dashboard-state" data-testid="dashboard-empty">
             <div class="dashboard-state__card">
@@ -130,6 +133,15 @@
             </div>
         </div>
     }
+
+    @if ((!_isDashboardLoading || _hasLoadedDashboard) && _isPtUser)
+    {
+        <AppointmentsSection Appointments="@_todayAppointments"
+                             IsLoading="@_isAppointmentsLoading"
+                             HasError="@_appointmentsLoadFailed"
+                             ErrorMessage="@_appointmentsErrorMessage"
+                             OnRetry="RetryAppointmentsAsync" />
+    }
 </div>
 
 <!-- Add Patient Modal -->
@@ -154,6 +166,11 @@
     private bool _isRecentActivityLoading;
     private bool _recentActivityLoadFailed;
     private string? _recentActivityErrorMessage;
+    private bool _isPtUser;
+    private Guid? _currentUserId;
+    private bool _isAppointmentsLoading;
+    private bool _appointmentsLoadFailed;
+    private string _appointmentsErrorMessage = "Appointment data could not be refreshed. Please try again.";
     private bool _isDashboardLoading = true;
     private bool _dashboardLoadFailed;
     private bool _hasLoadedDashboard;
@@ -172,6 +189,7 @@
     private List<DashboardPlanOfCareSummaryResponse> _recentPlansOfCare = [];
     private List<RecentActivity> _recentActivities = [];
     private List<DashboardAlertItemResponse> _dashboardAlerts = [];
+    private List<AppointmentListItemResponse> _todayAppointments = [];
     private List<SendIntakeModal.PatientOption> availablePatients = new();
     private bool HasDashboardContent =>
         _patientsToday > 0 ||
@@ -183,10 +201,14 @@
         _recentNotes.Count > 0 ||
         _recentPlansOfCare.Count > 0 ||
         _recentActivities.Count > 0 ||
-        _dashboardAlerts.Count > 0;
+        _dashboardAlerts.Count > 0 ||
+        _todayAppointments.Count > 0;
 
     protected override async Task OnInitializedAsync()
     {
+        var authenticationState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _isPtUser = authenticationState.User.IsInRole(Roles.PT);
+        _currentUserId = ResolveCurrentUserId(authenticationState.User);
         await RetryDashboardAsync();
         SetupAutoRefresh();
     }
@@ -266,13 +288,19 @@
         _dashboardErrorMessage = null;
         _recentActivityLoadFailed = false;
         _recentActivityErrorMessage = null;
+        _isAppointmentsLoading = _isPtUser;
+        _appointmentsLoadFailed = false;
+        _appointmentsErrorMessage = "Appointment data could not be refreshed. Please try again.";
         await InvokeStateHasChangedAsync();
 
         try
         {
-            var snapshot = await DashboardAlertService.GetSnapshotAsync(_dashboardCts.Token);
-            ApplySnapshot(snapshot);
-            _hasLoadedDashboard = true;
+            var dashboardTask = LoadDashboardDataAsync(_dashboardCts.Token);
+            var appointmentsTask = _isPtUser
+                ? LoadTodayAppointmentsAsync(_dashboardCts.Token)
+                : Task.CompletedTask;
+
+            await Task.WhenAll(dashboardTask, appointmentsTask);
         }
         catch (OperationCanceledException) when (_isDisposed || _dashboardCts.IsCancellationRequested)
         {
@@ -288,11 +316,102 @@
         {
             _isDashboardLoading = false;
             _isRecentActivityLoading = false;
+            _isAppointmentsLoading = false;
             await InvokeStateHasChangedAsync();
         }
     }
 
     private async Task RetryRecentActivityAsync() => await LoadDashboardSnapshotAsync();
+
+    private async Task RetryAppointmentsAsync() => await LoadTodayAppointmentsWithStateAsync();
+
+    private async Task LoadDashboardDataAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var snapshot = await DashboardAlertService.GetSnapshotAsync(cancellationToken);
+            ApplySnapshot(snapshot);
+            _hasLoadedDashboard = true;
+        }
+        catch (OperationCanceledException) when (_isDisposed || cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _dashboardLoadFailed = true;
+            _dashboardErrorMessage = ToUserFacingDashboardError(ex, "The dashboard could not be loaded right now.");
+            Logger.LogWarning(ex, "[Dashboard] Error loading dashboard snapshot");
+        }
+    }
+
+    private async Task LoadTodayAppointmentsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var today = DateTime.Today;
+            var overview = await AppointmentService.GetOverviewAsync(today, today, cancellationToken);
+            _todayAppointments = overview.Appointments
+                .Where(IsCurrentPtAppointment)
+                .Where(IsActiveDashboardAppointment)
+                .OrderBy(appointment => appointment.StartTimeUtc)
+                .ThenBy(appointment => appointment.PatientName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (OperationCanceledException) when (_isDisposed || cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _appointmentsLoadFailed = true;
+            _appointmentsErrorMessage = ToUserFacingDashboardError(ex, "Appointment data could not be refreshed. Please try again.");
+            Logger.LogWarning(ex, "[Dashboard] Error loading today's PT appointments");
+        }
+    }
+
+    private async Task LoadTodayAppointmentsWithStateAsync()
+    {
+        if (!_isPtUser || _isAppointmentsLoading)
+        {
+            return;
+        }
+
+        _isAppointmentsLoading = true;
+        _appointmentsLoadFailed = false;
+        await InvokeStateHasChangedAsync();
+
+        try
+        {
+            using var cancellationTokenSource = new CancellationTokenSource();
+            await LoadTodayAppointmentsAsync(cancellationTokenSource.Token);
+        }
+        finally
+        {
+            _isAppointmentsLoading = false;
+            await InvokeStateHasChangedAsync();
+        }
+    }
+
+    private bool IsCurrentPtAppointment(AppointmentListItemResponse appointment) =>
+        !_currentUserId.HasValue || appointment.ClinicianId == _currentUserId;
+
+    private static bool IsActiveDashboardAppointment(AppointmentListItemResponse appointment) =>
+        !string.Equals(appointment.AppointmentStatus, "Cancelled", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(appointment.AppointmentStatus, "No Show", StringComparison.OrdinalIgnoreCase);
+
+    private static Guid? ResolveCurrentUserId(System.Security.Claims.ClaimsPrincipal user)
+    {
+        foreach (var claimType in PTDocClaimTypes.InternalUserIdAliases())
+        {
+            if (Guid.TryParse(user.FindFirst(claimType)?.Value, out var userId))
+            {
+                return userId;
+            }
+        }
+
+        return null;
+    }
 
     private void SetupAutoRefresh()
     {

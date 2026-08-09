@@ -56,6 +56,20 @@ public sealed class IntakeResponseDraft
     public string? AdjusterPhone { get; set; }
     public string? AdjusterEmail { get; set; }
     public string? AdjusterFax { get; set; }
+    public string? AuthorizationType { get; set; }
+    public string? AuthorizationNumber { get; set; }
+    public string? AuthorizationStatus { get; set; }
+    public string? DateAuthorizationReceived { get; set; }
+    public string? AuthorizationStartDate { get; set; }
+    public string? AuthorizationEndDate { get; set; }
+    public string? NumberOfVisitsOrUnitsAuthorized { get; set; }
+    public string? TotalVisitLimit { get; set; }
+    public string? VisitsUsed { get; set; }
+    public string? VisitLimitPeriod { get; set; }
+    public string? ReAuthorizationDueDate { get; set; }
+    public string? VisitAlertThreshold { get; set; }
+    public string? AuthorizationNotes { get; set; }
+    public string? NotesComments { get; set; }
 
     public bool HasCurrentMedications { get; set; }
     public bool HasOtherMedicalConditions { get; set; }

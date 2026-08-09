@@ -60,12 +60,18 @@ public sealed class IntakeConsentPacket
     [JsonPropertyName("authorizedContacts")]
     public List<AuthorizedContact> AuthorizedContacts { get; set; } = new();
 
+    [JsonPropertyName("phiAuthorizedContactIds")]
+    public List<string> PhiAuthorizedContactIds { get; set; } = new();
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? AdditionalData { get; set; }
 }
 
 public sealed class AuthorizedContact
 {
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+
     [JsonPropertyName("name")]
     public string? Name { get; set; }
 
@@ -124,6 +130,9 @@ public static class IntakeConsentJson
             packet = JsonSerializer.Deserialize<IntakeConsentPacket>(json, SerializerOptions) ?? new IntakeConsentPacket();
             packet.AuthorizedContacts ??= new List<AuthorizedContact>();
             packet.RevokedConsentKeys ??= new List<string>();
+            packet.PhiAuthorizedContactIds ??= new List<string>();
+            EnsureContactIds(packet.AuthorizedContacts);
+            HydrateLegacyAliases(packet);
             errorMessage = null;
             return true;
         }
@@ -140,6 +149,17 @@ public static class IntakeConsentJson
         packet.AuthorizedContacts = packet.AuthorizedContacts
             .Where(contact => !contact.IsEmpty)
             .Take(3)
+            .ToList();
+        EnsureContactIds(packet.AuthorizedContacts);
+
+        var availableContactIds = packet.AuthorizedContacts
+            .Select(contact => contact.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        packet.PhiAuthorizedContactIds = (packet.PhiAuthorizedContactIds ?? new List<string>())
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Where(availableContactIds.Contains)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         packet.RevokedConsentKeys = packet.RevokedConsentKeys
@@ -188,6 +208,14 @@ public static class IntakeConsentJson
             {
                 result.AddError($"{keyPrefix}.relationship", "Authorized contact relationship is required when a contact entry is provided.");
             }
+        }
+
+        if (packet.PhiReleaseAuthorized == true
+            && populatedContacts.Count > 0
+            && !packet.PhiAuthorizedContactIds.Any(id => populatedContacts.Any(contact =>
+                string.Equals(contact.Id, id, StringComparison.OrdinalIgnoreCase))))
+        {
+            result.AddError("phiAuthorizedContactIds", "Select at least one authorized contact to receive protected health information.");
         }
 
         if ((packet.CommunicationCallConsent == true || packet.CommunicationTextConsent == true) &&
@@ -362,6 +390,7 @@ public static class IntakeConsentJson
             ["PhiReleaseAuthorized"] = packet.PhiReleaseAuthorized == true,
             ["MediaConsentAccepted"] = packet.MediaConsentAccepted == true,
             ["AuthorizedContactCount"] = packet.AuthorizedContacts.Count(contact => !contact.IsEmpty),
+            ["PhiAuthorizedContactCount"] = packet.PhiAuthorizedContactIds.Count,
             ["CommunicationCallConsent"] = packet.CommunicationCallConsent == true,
             ["CommunicationTextConsent"] = packet.CommunicationTextConsent == true,
             ["CommunicationEmailConsent"] = packet.CommunicationEmailConsent == true,
@@ -370,6 +399,40 @@ public static class IntakeConsentJson
             ["CreditCardAuthorizationAccepted"] = packet.CreditCardAuthorizationAccepted == true,
             ["FinalAttestationAccepted"] = packet.FinalAttestationAccepted == true
         };
+    }
+
+    private static void EnsureContactIds(IEnumerable<AuthorizedContact> contacts)
+    {
+        foreach (var contact in contacts)
+        {
+            if (string.IsNullOrWhiteSpace(contact.Id))
+            {
+                contact.Id = Guid.NewGuid().ToString("N");
+            }
+        }
+    }
+
+    private static void HydrateLegacyAliases(IntakeConsentPacket packet)
+    {
+        if (packet.TreatmentConsentAccepted.HasValue || packet.AdditionalData is null)
+        {
+            return;
+        }
+
+        var legacyKey = packet.AdditionalData.Keys
+            .FirstOrDefault(key => string.Equals(key, "ConsentToTreat", StringComparison.OrdinalIgnoreCase));
+        if (legacyKey is null)
+        {
+            return;
+        }
+
+        var value = packet.AdditionalData[legacyKey];
+        if (value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+        {
+            packet.TreatmentConsentAccepted = value.GetBoolean();
+        }
+
+        packet.AdditionalData.Remove(legacyKey);
     }
 
     public static bool IsCallConsentActive(IntakeConsentPacket packet)

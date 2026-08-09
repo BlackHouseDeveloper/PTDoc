@@ -9,6 +9,11 @@ public static class JwtClaimParser
     public static ClaimsPrincipal CreatePrincipal(string token)
     {
         var claims = ParseClaims(token);
+        if (claims.Count == 0)
+        {
+            return new ClaimsPrincipal(new ClaimsIdentity());
+        }
+
         var identity = new ClaimsIdentity(claims, PTDocAuthSchemes.Bearer);
         return new ClaimsPrincipal(identity);
     }

@@ -1,9 +1,11 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.NoteTemplates;
 using PTDoc.Application.Outcomes;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
@@ -28,7 +30,8 @@ public sealed class NoteWorkspaceV2Service(
     IIntakeDraftCanonicalizer intakeDraftCanonicalizer,
     ICarryForwardService carryForwardService,
     IAuditService? auditService = null,
-    IOverrideService? overrideService = null) : INoteWorkspaceV2Service
+    IOverrideService? overrideService = null,
+    INoteTemplateAdministrationService? noteTemplates = null) : INoteWorkspaceV2Service
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -203,6 +206,26 @@ public sealed class NoteWorkspaceV2Service(
         DryNeedlingBillingPolicy.Enforce(payload);
         NormalizeCptModifierSources(payload.Plan.SelectedCptCodes);
 
+        NoteTemplateVersionDto? resolvedTemplateVersion = null;
+        if (note?.TemplateVersionId is { } pinnedTemplateVersionId && noteTemplates is not null)
+        {
+            resolvedTemplateVersion = await noteTemplates.GetVersionAsync(pinnedTemplateVersionId, cancellationToken);
+        }
+        else if (note is null && noteTemplates is not null)
+        {
+            var templateVariant = request.IsReEvaluation
+                ? NoteTemplateVariant.ReEvaluation
+                : payload.DryNeedling is not null
+                    ? NoteTemplateVariant.DryNeedling
+                    : NoteTemplateVariant.Standard;
+            resolvedTemplateVersion = await noteTemplates.ResolveAsync(request.NoteType, templateVariant, cancellationToken);
+        }
+
+        if (note is null)
+        {
+            ApplyTemplateDefaults(resolvedTemplateVersion, payload);
+        }
+
         var scheduledVisits = await db.Appointments
             .Where(appointment => appointment.PatientId == request.PatientId && appointment.StartTimeUtc >= request.DateOfService.Date)
             .Select(appointment => appointment.StartTimeUtc)
@@ -309,6 +332,14 @@ public sealed class NoteWorkspaceV2Service(
             return saveResponse;
         }
 
+        var templateErrors = ValidateTemplateRequirements(resolvedTemplateVersion, payload);
+        if (templateErrors.Count > 0)
+        {
+            saveResponse.IsValid = false;
+            saveResponse.Errors = saveResponse.Errors.Concat(templateErrors).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            return saveResponse;
+        }
+
         var overrideError = OverrideWorkflow.ValidateSubmission(validation, request.Override);
         if (!string.IsNullOrWhiteSpace(overrideError))
         {
@@ -350,6 +381,11 @@ public sealed class NoteWorkspaceV2Service(
             ClinicId = clinicId,
             CreatedUtc = now
         };
+
+        if (!note.TemplateVersionId.HasValue && resolvedTemplateVersion is not null)
+        {
+            note.TemplateVersionId = resolvedTemplateVersion.Id == Guid.Empty ? null : resolvedTemplateVersion.Id;
+        }
 
         note.PatientId = request.PatientId;
         if (request.AppointmentId.HasValue)
@@ -468,6 +504,29 @@ public sealed class NoteWorkspaceV2Service(
             ? null
             : draft.CurrentLevelOfFunction.Trim();
         var initialOutcomeMeasureSummary = BuildInitialOutcomeMeasureSummary(draft.InitialOutcomeMeasureReports);
+        var structuredFunctionalLimitations = structuredData.FunctionalLimitations
+            .Select(selection => new
+            {
+                Selection = selection,
+                BodyPart = Enum.TryParse<BodyPart>(selection.BodyPart, ignoreCase: true, out var parsed)
+                    ? parsed
+                    : BodyPart.Other
+            })
+            .Where(entry => entry.BodyPart != BodyPart.Other
+                && !string.IsNullOrWhiteSpace(entry.Selection.Category)
+                && !string.IsNullOrWhiteSpace(entry.Selection.Activity))
+            .Select(entry => new FunctionalLimitationEntryV2
+            {
+                Id = string.IsNullOrWhiteSpace(entry.Selection.Id)
+                    ? $"{entry.BodyPart}:{entry.Selection.Category.Trim()}:{entry.Selection.Activity.Trim()}"
+                    : entry.Selection.Id.Trim(),
+                BodyPart = entry.BodyPart,
+                Category = entry.Selection.Category.Trim(),
+                Description = entry.Selection.Activity.Trim(),
+                IsSourceBacked = true
+            })
+            .ToList();
+        var subjectiveIntake = structuredData.Subjective;
 
         var payload = new NoteWorkspaceV2Payload
         {
@@ -495,13 +554,31 @@ public sealed class NoteWorkspaceV2Service(
                 Comorbidities = comorbiditySelections.ToHashSet(StringComparer.OrdinalIgnoreCase),
                 AssistiveDevice = new AssistiveDeviceDetailsV2
                 {
-                    UsesAssistiveDevice = draft.UsesAssistiveDevices || assistiveDeviceSelections.Count > 0,
+                    UsesAssistiveDevice = structuredData.NoAssistiveDevices
+                        ? false
+                        : draft.UsesAssistiveDevices || assistiveDeviceSelections.Count > 0,
                     Devices = assistiveDeviceSelections.ToHashSet(StringComparer.OrdinalIgnoreCase)
                 },
-                TakingMedications = medicationEntries.Count > 0 ? true : null,
+                TakingMedications = structuredData.NoMedications
+                    ? false
+                    : medicationEntries.Count > 0 ? true : null,
                 Medications = medicationEntries,
+                OnsetDate = subjectiveIntake.OnsetDate,
+                OnsetOverAYearAgo = subjectiveIntake.OnsetOverAYearAgo,
+                CauseUnknown = subjectiveIntake.CauseUnknown,
+                KnownCause = subjectiveIntake.CauseUnknown ? null : subjectiveIntake.KnownCause,
+                PriorFunctionalLevel = subjectiveIntake.PriorFunctionalLevel.ToHashSet(StringComparer.OrdinalIgnoreCase),
                 CurrentLevelOfFunction = currentLevelOfFunction,
+                FunctionalLimitations = structuredFunctionalLimitations,
                 AdditionalFunctionalLimitations = functionalLimitations,
+                Imaging = new ImagingDetailsV2
+                {
+                    HasImaging = subjectiveIntake.HasImaging,
+                    Modalities = subjectiveIntake.ImagingModalities.ToHashSet(StringComparer.OrdinalIgnoreCase),
+                    OtherModality = subjectiveIntake.OtherImagingModality,
+                    PositiveFindings = null,
+                    Findings = subjectiveIntake.ImagingFindings
+                },
                 NarrativeContext = new SubjectNarrativeContextV2
                 {
                     ChiefComplaint = bodyPartLabels.Count == 0
@@ -511,6 +588,7 @@ public sealed class NoteWorkspaceV2Service(
                         ? null
                         : $"Intake pain descriptors: {string.Join(", ", painDescriptorLabels)}",
                     DifficultyExperienced = currentLevelOfFunction,
+                    MechanismOfInjury = subjectiveIntake.CauseUnknown ? "Patient reports cause is unknown." : subjectiveIntake.KnownCause,
                     PatientHistorySummary = string.IsNullOrWhiteSpace(draft.MedicalHistoryNotes)
                         ? null
                         : draft.MedicalHistoryNotes.Trim()
@@ -840,86 +918,14 @@ public sealed class NoteWorkspaceV2Service(
         foreach (var region in (draft.SelectedBodyRegion ?? string.Empty)
                      .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            if (TryMapRegionBodyPart(region, out var mapped))
+            var mapped = IntakeBodyRegionMapper.Map(region);
+            if (mapped != BodyPart.Other)
             {
                 return mapped;
             }
         }
 
         return BodyPart.Other;
-    }
-
-    private static bool TryMapRegionBodyPart(string regionKey, out BodyPart mapped)
-    {
-        if (regionKey.Contains("Neck", StringComparison.OrdinalIgnoreCase) || regionKey.Contains("Head", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Cervical;
-            return true;
-        }
-
-        if (regionKey.Contains("Upperback", StringComparison.OrdinalIgnoreCase)
-            || regionKey.Contains("Midback", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Thoracic;
-            return true;
-        }
-
-        if (regionKey.Contains("Lowerback", StringComparison.OrdinalIgnoreCase)
-            || regionKey.Contains("Pelvis", StringComparison.OrdinalIgnoreCase)
-            || regionKey.Contains("Gluteal", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Lumbar;
-            return true;
-        }
-
-        if (regionKey.Contains("Shoulder", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Shoulder;
-            return true;
-        }
-
-        if (regionKey.Contains("Arm", StringComparison.OrdinalIgnoreCase)
-            || regionKey.Contains("Forearm", StringComparison.OrdinalIgnoreCase)
-            || regionKey.Contains("Elbow", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Elbow;
-            return true;
-        }
-
-        if (regionKey.Contains("Hand", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Hand;
-            return true;
-        }
-
-        if (regionKey.Contains("Hip", StringComparison.OrdinalIgnoreCase)
-            || regionKey.Contains("Thigh", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Hip;
-            return true;
-        }
-
-        if (regionKey.Contains("Knee", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Knee;
-            return true;
-        }
-
-        if (regionKey.Contains("Calf", StringComparison.OrdinalIgnoreCase)
-            || regionKey.Contains("Ankle", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Ankle;
-            return true;
-        }
-
-        if (regionKey.Contains("Foot", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Foot;
-            return true;
-        }
-
-        mapped = BodyPart.Other;
-        return false;
     }
 
     private static string HumanizeRegion(string rawValue)
@@ -1107,6 +1113,12 @@ public sealed class NoteWorkspaceV2Service(
             await db.SaveChangesAsync(cancellationToken);
         }
 
+        NoteTemplateVersionDto? templateVersion = null;
+        if (note.TemplateVersionId.HasValue && noteTemplates is not null)
+        {
+            templateVersion = await noteTemplates.GetVersionAsync(note.TemplateVersionId.Value, cancellationToken);
+        }
+
         return new NoteWorkspaceV2LoadResponse
         {
             NoteId = note.Id,
@@ -1117,6 +1129,7 @@ public sealed class NoteWorkspaceV2Service(
             IsReEvaluation = note.IsReEvaluation,
             NoteStatus = note.NoteStatus,
             IsSigned = note.SignatureHash is not null,
+            TemplateVersion = templateVersion,
             Payload = payload
         };
     }
@@ -1129,6 +1142,133 @@ public sealed class NoteWorkspaceV2Service(
 
         return totalMinutes > 0 ? totalMinutes : null;
     }
+
+    private static List<string> ValidateTemplateRequirements(NoteTemplateVersionDto? templateVersion, NoteWorkspaceV2Payload payload)
+    {
+        if (templateVersion is null || templateVersion.Id == Guid.Empty) return [];
+        var payloadJson = JsonSerializer.SerializeToElement(payload, SerializerOptions);
+        var errors = new List<string>();
+        foreach (var field in templateVersion.Schema.Sections.Where(section => section.IsVisible).SelectMany(section => section.Fields)
+                     .Where(field => field.IsVisible && field.IsRequired && ConditionsMatch(field.VisibilityConditions, payloadJson)))
+        {
+            if (!TryResolveJsonPath(payloadJson, field.BindingKey, out var value) || IsMissingTemplateValue(value))
+                errors.Add($"{field.Label} is required by the published documentation template.");
+        }
+        return errors;
+    }
+
+    private static void ApplyTemplateDefaults(NoteTemplateVersionDto? templateVersion, NoteWorkspaceV2Payload payload)
+    {
+        if (templateVersion is null || templateVersion.Id == Guid.Empty) return;
+        foreach (var field in templateVersion.Schema.Sections
+                     .Where(section => section.IsVisible)
+                     .SelectMany(section => section.Fields)
+                     .Where(field => field.IsVisible && !string.IsNullOrWhiteSpace(field.DefaultValue)))
+        {
+            TrySetDefaultValue(payload, field.BindingKey, field.DefaultValue!);
+        }
+    }
+
+    private static void TrySetDefaultValue(object root, string path, string defaultValue)
+    {
+        object current = root;
+        var segments = path.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        for (var index = 0; index < segments.Length; index++)
+        {
+            var property = current.GetType().GetProperties()
+                .FirstOrDefault(candidate => string.Equals(
+                    JsonNamingPolicy.CamelCase.ConvertName(candidate.Name),
+                    segments[index],
+                    StringComparison.OrdinalIgnoreCase));
+            if (property is null || !property.CanRead) return;
+
+            if (index < segments.Length - 1)
+            {
+                var nested = property.GetValue(current);
+                if (nested is null && property.CanWrite && property.PropertyType.GetConstructor(Type.EmptyTypes) is not null)
+                {
+                    nested = Activator.CreateInstance(property.PropertyType);
+                    property.SetValue(current, nested);
+                }
+                if (nested is null) return;
+                current = nested;
+                continue;
+            }
+
+            if (!property.CanWrite || !IsUnsetTemplateValue(property.GetValue(current))) return;
+            var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            try
+            {
+                object? converted = targetType == typeof(string)
+                    ? defaultValue
+                    : targetType == typeof(Guid)
+                        ? Guid.Parse(defaultValue)
+                        : targetType == typeof(DateTime)
+                            ? DateTime.Parse(defaultValue, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
+                            : targetType.IsEnum
+                                ? Enum.Parse(targetType, defaultValue, ignoreCase: true)
+                                : typeof(System.Collections.IEnumerable).IsAssignableFrom(targetType)
+                                    ? JsonSerializer.Deserialize(defaultValue, targetType, SerializerOptions)
+                                    : Convert.ChangeType(defaultValue, targetType, CultureInfo.InvariantCulture);
+                property.SetValue(current, converted);
+            }
+            catch (FormatException) { }
+            catch (InvalidCastException) { }
+            catch (OverflowException) { }
+            catch (ArgumentException) { }
+            catch (JsonException) { }
+            return;
+        }
+    }
+
+    private static bool IsUnsetTemplateValue(object? value) => value switch
+    {
+        null => true,
+        string text => string.IsNullOrWhiteSpace(text),
+        System.Collections.ICollection collection => collection.Count == 0,
+        _ => value.Equals(Activator.CreateInstance(value.GetType()))
+    };
+
+    private static bool ConditionsMatch(IReadOnlyCollection<NoteTemplateConditionDefinition> conditions, JsonElement payload)
+    {
+        foreach (var condition in conditions)
+        {
+            if (!TryResolveJsonPath(payload, condition.SourceBindingKey, out var value)) return false;
+            var actual = value.ValueKind == JsonValueKind.String ? value.GetString() : value.ToString();
+            var expected = condition.ExpectedValue;
+            var matches = condition.Operator switch
+            {
+                NoteTemplateConditionOperator.Equals => string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase),
+                NoteTemplateConditionOperator.NotEquals => !string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase),
+                NoteTemplateConditionOperator.IsEmpty => IsMissingTemplateValue(value),
+                NoteTemplateConditionOperator.IsNotEmpty => !IsMissingTemplateValue(value),
+                NoteTemplateConditionOperator.Contains => actual?.Contains(expected ?? string.Empty, StringComparison.OrdinalIgnoreCase) == true,
+                _ => false
+            };
+            if (!matches) return false;
+        }
+        return true;
+    }
+
+    private static bool TryResolveJsonPath(JsonElement root, string path, out JsonElement value)
+    {
+        value = root;
+        foreach (var segment in path.Split('.', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (value.ValueKind != JsonValueKind.Object || !value.TryGetProperty(segment, out var next)) return false;
+            value = next;
+        }
+        return true;
+    }
+
+    private static bool IsMissingTemplateValue(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Null or JsonValueKind.Undefined => true,
+        JsonValueKind.String => string.IsNullOrWhiteSpace(value.GetString()),
+        JsonValueKind.Array => value.GetArrayLength() == 0,
+        JsonValueKind.False => true,
+        _ => false
+    };
 
     private async Task SyncObjectiveMetricsAsync(
         ClinicalNote note,

@@ -73,7 +73,7 @@
         </button>
 
         <span class="soap-sticky-footer__state-label" data-testid="footer-state-label">
-            @NoteType • @ActiveSection • @GetFooterStateLabel()
+            @NoteType • @GetSectionLabel(ActiveSection) • @GetFooterStateLabel()
         </span>
     </div>
 
@@ -143,6 +143,7 @@
     [Parameter, EditorRequired] public SoapSection ActiveSection { get; set; }
     [Parameter, EditorRequired] public NoteSaveState SaveState { get; set; }
     [Parameter] public IReadOnlyList<SoapSection>? Sections { get; set; }
+    [Parameter] public IReadOnlyDictionary<SoapSection, string>? SectionLabels { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public bool DisableSave { get; set; }
     [Parameter] public bool DisableSubmit { get; set; }
@@ -172,4 +173,9 @@
         NoteSaveState.Error   => "Failed",
         _                     => string.Empty
     };
+
+    private string GetSectionLabel(SoapSection section) =>
+        SectionLabels?.TryGetValue(section, out var label) == true && !string.IsNullOrWhiteSpace(label)
+            ? label
+            : section.ToString();
 }

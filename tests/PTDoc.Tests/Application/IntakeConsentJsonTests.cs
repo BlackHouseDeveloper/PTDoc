@@ -22,6 +22,19 @@ public sealed class IntakeConsentJsonTests
     }
 
     [Fact]
+    public void TryParse_LegacyConsentToTreatAlias_HydratesCanonicalTreatmentConsent()
+    {
+        const string json = "{\"HipaaAcknowledged\":true,\"ConsentToTreat\":true}";
+
+        var parsed = IntakeConsentJson.TryParse(json, out var packet, out var errorMessage);
+
+        Assert.True(parsed);
+        Assert.Null(errorMessage);
+        Assert.True(packet.HipaaAcknowledged);
+        Assert.True(packet.TreatmentConsentAccepted);
+    }
+
+    [Fact]
     public void Validate_MoreThanThreeAuthorizedContacts_ReturnsError()
     {
         var packet = new IntakeConsentPacket
@@ -175,5 +188,55 @@ public sealed class IntakeConsentJsonTests
         Assert.Equal(timestampUtc, packet.LastRevocationAtUtc);
         Assert.Contains("hipaaAcknowledged", packet.RevokedConsentKeys, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("communicationEmailConsent", packet.RevokedConsentKeys, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Serialize_PhiRecipients_PersistsContactReferencesAndPrunesUnknownIds()
+    {
+        var selected = new AuthorizedContact
+        {
+            Id = "contact-one",
+            Name = "Jane Smith",
+            PhoneNumber = "555-0100",
+            Relationship = "Spouse"
+        };
+        var packet = new IntakeConsentPacket
+        {
+            PhiReleaseAuthorized = true,
+            AuthorizedContacts = [selected],
+            PhiAuthorizedContactIds = [selected.Id, "missing-contact"]
+        };
+
+        var json = IntakeConsentJson.Serialize(packet);
+        var parsed = IntakeConsentJson.TryParse(json, out var roundTrip, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal("contact-one", Assert.Single(roundTrip.PhiAuthorizedContactIds));
+        Assert.Equal("contact-one", Assert.Single(roundTrip.AuthorizedContacts).Id);
+        Assert.True(IntakeConsentJson.Validate(roundTrip).IsValid);
+    }
+
+    [Fact]
+    public void Validate_PhiReleaseWithContactsButNoSelectedRecipient_ReturnsError()
+    {
+        var packet = new IntakeConsentPacket
+        {
+            PhiReleaseAuthorized = true,
+            AuthorizedContacts =
+            [
+                new AuthorizedContact
+                {
+                    Name = "Jane Smith",
+                    PhoneNumber = "555-0100",
+                    Relationship = "Spouse"
+                }
+            ]
+        };
+
+        var result = IntakeConsentJson.Validate(packet);
+
+        Assert.False(result.IsValid);
+        Assert.Contains("phiAuthorizedContactIds", result.Errors.Keys);
     }
 }

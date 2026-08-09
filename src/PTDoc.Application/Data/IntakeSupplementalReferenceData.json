@@ -1,5 +1,5 @@
 {
-  "version": "2026-04-10",
+  "version": "2026-08-08",
   "comorbidities": {
     "documentPath": "docs/clinicrefdata/Comorbidities.md",
     "items": [
@@ -90,6 +90,20 @@
       { "id": "crutches-axillary-forearm", "label": "Crutches (axillary or forearm)" },
       { "id": "walker-standard-front-wheeled-rollator", "label": "Walker (standard, front-wheeled, rollator)" },
       { "id": "wheelchair-manual-powered", "label": "Wheelchair (manual or powered)" }
+    ]
+  },
+  "insuranceCarriers": {
+    "documentPath": "docs/clinicrefdata/Insurance Carriers.md",
+    "items": [
+      { "id": "aetna", "label": "Aetna" },
+      { "id": "anthem", "label": "Anthem" },
+      { "id": "blue-cross-blue-shield", "label": "Blue Cross Blue Shield" },
+      { "id": "cigna", "label": "Cigna" },
+      { "id": "humana", "label": "Humana" },
+      { "id": "medicaid", "label": "Medicaid" },
+      { "id": "medicare", "label": "Medicare" },
+      { "id": "tricare", "label": "TRICARE" },
+      { "id": "united-healthcare", "label": "UnitedHealthcare" }
     ]
   }
 }

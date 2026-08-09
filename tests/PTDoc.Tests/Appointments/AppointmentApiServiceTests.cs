@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using PTDoc.Application.DTOs;
@@ -74,6 +75,46 @@ public sealed class AppointmentApiServiceTests
         var result = await service.GetCliniciansAsync();
 
         Assert.Collection(result, clinician => Assert.Equal("Taylor PT", clinician.DisplayName));
+    }
+
+    [Fact]
+    public async Task UpdateAppointmentTypeAsync_PatchesOnlyTypeAndExpectedVersion()
+    {
+        var appointmentId = Guid.NewGuid();
+        var expectedLastModifiedUtc = new DateTime(2026, 8, 9, 14, 0, 0, DateTimeKind.Utc);
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            Assert.Equal(HttpMethod.Patch, request.Method);
+            Assert.Equal($"/api/v1/appointments/{appointmentId}/appointment-type", request.RequestUri!.AbsolutePath);
+
+            var payload = await request.Content!.ReadFromJsonAsync<UpdateAppointmentTypeRequest>(
+                JsonOptions,
+                cancellationToken);
+            Assert.NotNull(payload);
+            Assert.Equal("Discharge", payload!.AppointmentType);
+            Assert.Equal(expectedLastModifiedUtc, payload.ExpectedLastModifiedUtc);
+
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(
+                new AppointmentListItemResponse
+                {
+                    Id = appointmentId,
+                    AppointmentType = "Discharge",
+                    LastModifiedUtc = expectedLastModifiedUtc.AddMinutes(1)
+                },
+                JsonOptions));
+        });
+
+        var service = CreateService(handler);
+        var result = await service.UpdateAppointmentTypeAsync(
+            appointmentId,
+            new UpdateAppointmentTypeRequest
+            {
+                AppointmentType = "Discharge",
+                ExpectedLastModifiedUtc = expectedLastModifiedUtc
+            });
+
+        Assert.NotNull(result);
+        Assert.Equal("Discharge", result!.AppointmentType);
     }
 
     [Fact]

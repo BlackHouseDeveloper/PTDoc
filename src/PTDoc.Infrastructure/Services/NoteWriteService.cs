@@ -5,6 +5,7 @@ using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Notes.Content;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.NoteTemplates;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
@@ -22,7 +23,8 @@ public sealed class NoteWriteService(
     IAuditService auditService,
     INoteSaveValidationService validationService,
     IOverrideService overrideService,
-    ISyncEngine syncEngine) : INoteWriteService
+    ISyncEngine syncEngine,
+    INoteTemplateAdministrationService noteTemplates) : INoteWriteService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -97,6 +99,12 @@ public sealed class NoteWriteService(
 
         var clinicId = tenantContext.GetCurrentClinicId();
         var now = DateTime.UtcNow;
+        var templateVariant = request.IsReEvaluation
+            ? NoteTemplateVariant.ReEvaluation
+            : isDryNeedling
+                ? NoteTemplateVariant.DryNeedling
+                : NoteTemplateVariant.Standard;
+        var templateVersion = await noteTemplates.ResolveAsync(request.NoteType, templateVariant, ct);
 
         var note = new ClinicalNote
         {
@@ -104,6 +112,7 @@ public sealed class NoteWriteService(
             PatientId = request.PatientId,
             AppointmentId = request.AppointmentId,
             NoteType = request.NoteType,
+            TemplateVersionId = templateVersion.Id == Guid.Empty ? null : templateVersion.Id,
             IsReEvaluation = request.IsReEvaluation,
             ContentJson = normalizedContentJson,
             DateOfService = request.DateOfService,
@@ -1148,6 +1157,7 @@ public sealed class NoteWriteService(
         ParentNoteId = note.ParentNoteId,
         IsAddendum = note.IsAddendum,
         NoteType = note.NoteType,
+        TemplateVersionId = note.TemplateVersionId,
         IsReEvaluation = note.IsReEvaluation,
         NoteStatus = note.NoteStatus,
         ContentJson = NormalizeContentJson(

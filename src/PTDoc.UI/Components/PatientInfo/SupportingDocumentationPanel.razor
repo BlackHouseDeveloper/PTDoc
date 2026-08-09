@@ -1,4 +1,4 @@
-@* SupportingDocumentationPanel — case manager contact info, PCP, and referring physician *@
+@* SupportingDocumentationPanel — payer case-manager contact details. Provider selection lives in the tenant directory panel. *@
 @using PTDoc.UI.Components.PatientInfo.Models
 
 <PatientInfoSectionPanel Title="Supporting Documentation">
@@ -15,30 +15,6 @@
                                  Placeholder="Name, phone, email, and other contact details..."
                                  Rows="4"
                                  HasError="@HasError("caseManager")" />
-        </PatientInfoField>
-
-        <PatientInfoField Label="Primary Care Provider" ForId="pi-primary-care-provider" Error="@GetError("primaryCareProvider")">
-            <PatientInfoTextInput Id="pi-primary-care-provider"
-                                  Value="@Model.PrimaryCareProviderName"
-                                  ValueChanged="@(v => SetField(v, f => f.PrimaryCareProviderName = v))"
-                                  Placeholder="PCP name"
-                                  HasError="@HasError("primaryCareProvider")" />
-        </PatientInfoField>
-
-        <PatientInfoField Label="Referring Physician Name" ForId="pi-referring-physician" Error="@GetError("referringPhysician")">
-            <PatientInfoTextInput Id="pi-referring-physician"
-                                  Value="@Model.ReferringPhysicianName"
-                                  ValueChanged="@(v => SetField(v, f => f.ReferringPhysicianName = v))"
-                                  HasError="@HasError("referringPhysician")" />
-        </PatientInfoField>
-
-        <PatientInfoField Label="Physician NPI Number" ForId="pi-npi" Error="@GetError("npi")">
-            <PatientInfoTextInput Id="pi-npi"
-                                  Value="@Model.PhysicianNpiNumber"
-                                  ValueChanged="@(v => SetField(v, f => f.PhysicianNpiNumber = v))"
-                                  Placeholder="10-digit NPI"
-                                  HasError="@HasError("npi")" />
-            @* NPI format validation is performed in PatientInfoPage before save. *@
         </PatientInfoField>
 
     </PatientInfoFormGrid>

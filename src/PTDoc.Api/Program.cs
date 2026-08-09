@@ -31,6 +31,9 @@ using PTDoc.Api.Integrations;
 using PTDoc.Api.Notes;
 using PTDoc.Api.Navigation;
 using PTDoc.Api.Patients;
+using PTDoc.Api.Providers;
+using PTDoc.Api.Insurance;
+using PTDoc.Api.NoteTemplates;
 using PTDoc.Api.Pdf;
 using PTDoc.Api.ReferenceData;
 using PTDoc.Api.Sync;
@@ -42,6 +45,10 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Integrations;
+using PTDoc.Application.Providers;
+using PTDoc.Application.Insurance;
+using PTDoc.Application.NoteTemplates;
+using PTDoc.Application.Appointments;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Observability;
 using PTDoc.Application.Pdf;
@@ -291,6 +298,10 @@ builder.Services.AddScoped<IIntegrationJobProcessor>(sp => sp.GetRequiredService
 builder.Services.AddScoped<IUserNotificationWriter, UserNotificationWriter>();
 builder.Services.AddHostedService<IntegrationOutboxHostedService>();
 builder.Services.AddScoped<IIntakeService, IntakeService>();
+builder.Services.AddScoped<IProviderDirectoryService, ProviderDirectoryService>();
+builder.Services.AddScoped<IInsurancePolicyService, InsurancePolicyService>();
+builder.Services.AddScoped<INoteTemplateAdministrationService, NoteTemplateAdministrationService>();
+builder.Services.AddScoped<IClinicalVisitOrdinalAllocator, ClinicalVisitOrdinalAllocator>();
 builder.Services.AddScoped<PTDoc.Application.Services.IUserNotificationService, PTDoc.Infrastructure.Services.UserNotificationService>();
 builder.Services.AddScoped<IIntakeInviteService, JwtIntakeInviteService>();
 builder.Services.AddScoped<IIntakeDeliveryService, IntakeDeliveryService>();
@@ -951,6 +962,9 @@ app.MapRegistrationEndpoints(); // Self-service registration lookups and create
 app.MapAdminRegistrationEndpoints(); // Admin approval/rejection for pending registrations
 app.MapAppointmentEndpoints(); // Scheduling read endpoints
 app.MapPatientEndpoints(); // Sprint O: Patient CRUD
+app.MapProviderDirectoryEndpoints(); // Tenant-managed external provider directory
+app.MapInsurancePolicyEndpoints(); // Normalized patient insurance and authorizations
+app.MapNoteTemplateEndpoints(); // Versioned tenant note-template administration
 app.MapIntakeEndpoints();  // Sprint O: Intake CRUD
 app.MapIntakeAccessEndpoints(); // Standalone patient invite validation, OTP, and patient access
 app.MapIntakeDeliveryEndpoints(); // Share-link, QR, email, and SMS intake delivery

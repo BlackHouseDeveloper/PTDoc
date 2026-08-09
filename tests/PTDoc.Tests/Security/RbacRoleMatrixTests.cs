@@ -90,7 +90,15 @@ public class RbacRoleMatrixTests : IAsyncDisposable
             AuthorizationPolicies.FaxAdmin,
             AuthorizationPolicies.HepAuthor,
             AuthorizationPolicies.HepRead,
-            AuthorizationPolicies.HepAdmin
+            AuthorizationPolicies.HepAdmin,
+            AuthorizationPolicies.ProviderDirectorySearch,
+            AuthorizationPolicies.ProviderDirectoryRead,
+            AuthorizationPolicies.ProviderDirectorySubmit,
+            AuthorizationPolicies.ProviderDirectoryAdmin,
+            AuthorizationPolicies.InsurancePolicyRead,
+            AuthorizationPolicies.InsurancePolicyWrite,
+            AuthorizationPolicies.NoteTemplateDraftManage,
+            AuthorizationPolicies.NoteTemplateClinicalPublish
         };
 
         Assert.Equal(policyNames.Length, new HashSet<string>(policyNames).Count);
@@ -162,6 +170,18 @@ public class RbacRoleMatrixTests : IAsyncDisposable
             .SetEquals(GetAllowedRoles(authOptions.GetPolicy(AuthorizationPolicies.FaxTriage))));
         Assert.True(new HashSet<string> { Roles.PT, Roles.PTA }
             .SetEquals(GetAllowedRoles(authOptions.GetPolicy(AuthorizationPolicies.HepAuthor))));
+        Assert.True(new HashSet<string> { Roles.Admin, Roles.Owner }
+            .SetEquals(GetAllowedRoles(authOptions.GetPolicy(AuthorizationPolicies.ProviderDirectoryAdmin))));
+        Assert.Contains(Roles.Patient,
+            GetAllowedRoles(authOptions.GetPolicy(AuthorizationPolicies.ProviderDirectorySearch)));
+        Assert.DoesNotContain(Roles.Patient,
+            GetAllowedRoles(authOptions.GetPolicy(AuthorizationPolicies.ProviderDirectoryRead)));
+        Assert.True(new HashSet<string> { Roles.PT, Roles.PTA, Roles.Admin }
+            .SetEquals(GetAllowedRoles(authOptions.GetPolicy(AuthorizationPolicies.InsurancePolicyWrite))));
+        Assert.True(new HashSet<string> { Roles.Admin, Roles.Owner }
+            .SetEquals(GetAllowedRoles(authOptions.GetPolicy(AuthorizationPolicies.NoteTemplateDraftManage))));
+        Assert.True(new HashSet<string> { Roles.PT }
+            .SetEquals(GetAllowedRoles(authOptions.GetPolicy(AuthorizationPolicies.NoteTemplateClinicalPublish))));
     }
 
     // ─── Authorization service evaluation tests ──────────────────────────────

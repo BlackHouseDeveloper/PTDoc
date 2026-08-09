@@ -16,7 +16,6 @@ public sealed class CreateNoteRequest
 
     [Required]
     public NoteType NoteType { get; set; }
-
     /// <summary>True when this Evaluation note represents a re-evaluation.</summary>
     public bool IsReEvaluation { get; set; }
 
@@ -117,6 +116,7 @@ public sealed class NoteResponse
     public Guid? ParentNoteId { get; set; }
     public bool IsAddendum { get; set; }
     public NoteType NoteType { get; set; }
+    public Guid? TemplateVersionId { get; set; }
     public bool IsReEvaluation { get; set; }
     public NoteStatus NoteStatus { get; set; }
     public string ContentJson { get; set; } = "{}";

@@ -392,6 +392,7 @@ public sealed class IntakeService : IIntakeService
             patient.LastModifiedUtc = DateTime.UtcNow;
             patient.ModifiedByUserId = userId;
             patient.SyncState = SyncState.Pending;
+            await IntakeDomainProjection.UpsertAsync(_context, patient, canonicalState, userId, cancellationToken);
         }
 
         await _context.SaveChangesAsync(cancellationToken);
@@ -764,12 +765,7 @@ public sealed class IntakeService : IIntakeService
     private static string BuildConsentsJson(IntakeResponseDraft state)
     {
         var canonicalConsent = IntakeDraftPersistence.BuildCanonicalConsentPacket(state);
-        var consents = new
-        {
-            HipaaAcknowledged = canonicalConsent.HipaaAcknowledged == true,
-            ConsentToTreat = canonicalConsent.TreatmentConsentAccepted == true
-        };
-        return JsonSerializer.Serialize(consents);
+        return IntakeConsentJson.Serialize(canonicalConsent);
     }
 
     private static string GenerateAccessTokenPlaceholderHash()

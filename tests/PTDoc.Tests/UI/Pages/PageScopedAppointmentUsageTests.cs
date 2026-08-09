@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.DTOs;
+using PTDoc.Application.NoteTemplates;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.UI.Pages;
@@ -617,6 +618,7 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
     {
         var adminApprovalService = new Mock<IAdminApprovalService>(MockBehavior.Strict);
         var notificationCenterService = new Mock<INotificationCenterService>(MockBehavior.Strict);
+        var noteTemplateService = new Mock<INoteTemplateAdministrationService>(MockBehavior.Strict);
 
         adminApprovalService
             .Setup(service => service.GetPendingAsync(It.IsAny<AdminApprovalQuery>(), It.IsAny<CancellationToken>()))
@@ -625,10 +627,15 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
         notificationCenterService
             .Setup(service => service.GetStateAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new NotificationCenterState());
+        noteTemplateService
+            .Setup(service => service.ListForClinicalReviewAsync(null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<NoteTemplateSummaryDto>());
 
-        RegisterCommonServices();
+        RegisterCommonServices(Roles.Admin);
         Services.AddSingleton(adminApprovalService.Object);
         Services.AddSingleton(notificationCenterService.Object);
+        Services.AddSingleton<IToastService>(Mock.Of<IToastService>());
+        Services.AddSingleton<INoteTemplateAdministrationService>(noteTemplateService.Object);
 
         var cut = RenderComponent<global::PTDoc.UI.Pages.Settings>();
         cut.FindAll("button")
@@ -642,11 +649,11 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
         });
     }
 
-    private void RegisterCommonServices()
+    private void RegisterCommonServices(string role = Roles.PT)
     {
         var authorization = this.AddTestAuthorization();
         authorization.SetAuthorized("test-user");
-        authorization.SetRoles(Roles.PT);
+        authorization.SetRoles(role);
 
         var headerConfigurationService = new Mock<IHeaderConfigurationService>(MockBehavior.Loose);
         headerConfigurationService

@@ -68,6 +68,7 @@ public sealed class NoteWorkspaceApiService(
             DateOfService = workspace.DateOfService,
             IsReEvaluation = workspace.IsReEvaluation,
             Status = workspace.NoteStatus,
+            TemplateVersion = workspace.TemplateVersion,
             Payload = _payloadMapper.MapToUiPayload(workspace.Payload)
         };
     }
@@ -230,6 +231,7 @@ public sealed class NoteWorkspaceApiService(
             LastModifiedUtc = saved.Workspace.LastModifiedUtc,
             IsReEvaluation = saved.Workspace.IsReEvaluation,
             Status = saved.Workspace.NoteStatus,
+            TemplateVersion = saved.Workspace.TemplateVersion,
             Errors = saved.Errors,
             Warnings = saved.Warnings,
             RequiresOverride = saved.RequiresOverride,

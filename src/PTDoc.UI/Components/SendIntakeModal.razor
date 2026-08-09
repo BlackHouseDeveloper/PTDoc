@@ -27,7 +27,7 @@
                 @if (!string.IsNullOrWhiteSpace(_errorMessage))
                 {
                     <div class="success-box success-box--warning" role="alert" data-testid="send-intake-error">
-                        <strong>Unable to continue.</strong>
+                        <strong>@(FailureHeading ?? "Unable to continue.")</strong>
                         <p>@_errorMessage</p>
                     </div>
                 }
@@ -186,6 +186,8 @@
     [Parameter] public EventCallback<IntakeFormData> OnSubmit { get; set; }
     [Parameter] public List<PatientOption> AvailablePatients { get; set; } = new();
     [Parameter] public string? InitialPatientId { get; set; }
+    [Parameter] public string? SuccessMessage { get; set; }
+    [Parameter] public string? FailureHeading { get; set; }
 
     private ElementReference firstInputRef;
     private ElementReference modalContainerRef;
@@ -425,6 +427,11 @@
 
     private async Task HandleSubmit()
     {
+        if (_isBusy)
+        {
+            return;
+        }
+
         _errorMessage = null;
 
         if (string.IsNullOrWhiteSpace(Email) && string.IsNullOrWhiteSpace(PhoneNumber))
@@ -488,7 +495,9 @@
             _bundle = await IntakeDeliveryService.GetDeliveryBundleAsync(intakeId);
             await LoadStatusAsync(intakeId);
 
-            ToastService.ShowSuccess($"Intake invite sent via {string.Join(" and ", sentChannels)}.");
+            ToastService.ShowSuccess(
+                SuccessMessage
+                ?? $"Intake invite sent via {string.Join(" and ", sentChannels)}.");
             await OnSubmit.InvokeAsync(new IntakeFormData
             {
                 PatientId = SelectedPatientId,

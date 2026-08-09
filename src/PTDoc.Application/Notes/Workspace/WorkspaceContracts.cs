@@ -510,6 +510,7 @@ public sealed class NoteWorkspaceV2LoadResponse
     public bool IsReEvaluation { get; set; }
     public NoteStatus NoteStatus { get; set; }
     public bool IsSigned { get; set; }
+    public PTDoc.Application.NoteTemplates.NoteTemplateVersionDto? TemplateVersion { get; set; }
     public NoteWorkspaceV2Payload Payload { get; set; } = new();
 }
 

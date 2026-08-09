@@ -19,6 +19,12 @@ public class Appointment : ISyncTrackedEntity
     // Type
     public AppointmentType AppointmentType { get; set; }
 
+    /// <summary>
+    /// Immutable, one-based clinical visit sequence assigned within the patient record.
+    /// Null is retained for legacy and non-visit appointments until an ordinal is assigned.
+    /// </summary>
+    public int? ClinicalVisitOrdinal { get; private set; }
+
     // Status
     public AppointmentStatus Status { get; set; }
 
@@ -39,13 +45,29 @@ public class Appointment : ISyncTrackedEntity
     // Navigation properties
     public Patient? Patient { get; set; }
     public Clinic? Clinic { get; set; }
+
+    public void AssignClinicalVisitOrdinal(int ordinal)
+    {
+        if (ordinal <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ordinal), "Clinical visit ordinals must be positive.");
+        }
+
+        if (ClinicalVisitOrdinal.HasValue && ClinicalVisitOrdinal.Value != ordinal)
+        {
+            throw new InvalidOperationException("A clinical visit ordinal cannot be changed after assignment.");
+        }
+
+        ClinicalVisitOrdinal = ordinal;
+    }
 }
 
 public enum AppointmentType
 {
     InitialEvaluation = 0,
     FollowUp = 1,
-    Discharge = 2
+    Discharge = 2,
+    ReEvaluation = 3
 }
 
 public enum AppointmentStatus

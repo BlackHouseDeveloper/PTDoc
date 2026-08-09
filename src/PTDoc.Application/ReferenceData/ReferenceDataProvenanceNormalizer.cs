@@ -23,6 +23,7 @@ public static class ReferenceDataProvenanceNormalizer
         ["Commonly used CPT codes and modifiers.md"] = "docs/clinicrefdata/Commonly used CPT codes and modifiers.md",
         ["Exercises.md"] = "docs/clinicrefdata/Exercises.md",
         ["House Levels & Room Location Options.md"] = "docs/clinicrefdata/House Levels & Room Location Options.md",
+        ["Insurance Carriers.md"] = "docs/clinicrefdata/Insurance Carriers.md",
         ["ICD-10 codes.md"] = "docs/clinicrefdata/ICD-10 codes.md",
         ["Joint mobility and MMT.md"] = "docs/clinicrefdata/Joint mobility and MMT.md",
         ["LBP limitations_object_smart goals.md"] = "docs/clinicrefdata/LBP limitations_object_smart goals.md",

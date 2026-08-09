@@ -35,6 +35,12 @@
         {
         <div class="pi-page-panels">
 
+            @if (Guid.TryParse(Id, out var normalizedPatientId))
+            {
+                <PatientInsurancePoliciesPanel PatientId="@normalizedPatientId" />
+                <PatientProviderRelationshipsPanel PatientId="@normalizedPatientId" />
+            }
+
             <PatientPayerInformationPanel
                 Model="@Vm.PatientPayer"
                 ModelChanged="@(m => { Vm.PatientPayer = m; })"
@@ -659,7 +665,6 @@
         ValidateNumericField("coinsurancePercent", Vm.PatientPayer.CoinsurancePercent);
         ValidateAuthorizationDateRange();
         ValidateAuthorizationReferralHistory();
-        ValidateNpi("npi", Vm.SupportingDocs.PhysicianNpiNumber);
     }
 
     private void ValidateNumericField(string key, string value)

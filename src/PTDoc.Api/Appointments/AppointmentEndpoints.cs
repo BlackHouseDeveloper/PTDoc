@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Appointments;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
@@ -64,6 +65,10 @@ public static class AppointmentEndpoints
             .WithName("UpdateAppointment")
             .WithSummary("Update an existing appointment");
 
+        group.MapPatch("/{id:guid}/appointment-type", UpdateAppointmentType)
+            .WithName("UpdateAppointmentType")
+            .WithSummary("Update only an appointment's scheduling type");
+
         group.MapPost("/{id:guid}/check-in", CheckInAppointment)
             .WithName("CheckInAppointment")
             .WithSummary("Mark an appointment as checked in");
@@ -102,6 +107,7 @@ public static class AppointmentEndpoints
             .ThenBy(row => row.PatientName)
             .ToListAsync(cancellationToken);
         await HydrateAppointmentNoteWorkflowAsync(db, appointments, cancellationToken);
+        await HydrateAppointmentClinicalMetadataAsync(db, appointments, cancellationToken);
 
         var clinicians = await BuildCliniciansQuery(db, currentClinicId).ToListAsync(cancellationToken);
 
@@ -147,6 +153,7 @@ public static class AppointmentEndpoints
             .ThenBy(row => row.AppointmentType)
             .ToListAsync(cancellationToken);
         await HydrateAppointmentNoteWorkflowAsync(db, appointments, cancellationToken);
+        await HydrateAppointmentClinicalMetadataAsync(db, appointments, cancellationToken);
 
         var paymentAvailable = IsPaymentConfigured(configuration);
         return Results.Ok(appointments.Select(row => ToResponse(row, paymentAvailable)).ToList());
@@ -165,6 +172,8 @@ public static class AppointmentEndpoints
         [FromBody] CreateAppointmentRequest request,
         [FromServices] ApplicationDbContext db,
         [FromServices] IConfiguration configuration,
+        [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IClinicalVisitOrdinalAllocator visitOrdinalAllocator,
         CancellationToken cancellationToken)
     {
         var validationErrors = ValidateWriteRequest(
@@ -223,30 +232,48 @@ public static class AppointmentEndpoints
             });
         }
 
-        var appointment = new Appointment
+        Appointment? appointment = null;
+        const int maxOrdinalAllocationAttempts = 3;
+        for (var attempt = 1; attempt <= maxOrdinalAllocationAttempts; attempt++)
         {
-            PatientId = patient.Id,
-            ClinicalId = clinician.Id,
-            StartTimeUtc = startUtc,
-            EndTimeUtc = endUtc,
-            AppointmentType = appointmentType,
-            Status = AppointmentStatus.Scheduled,
-            Notes = NormalizeNotes(request.Notes),
-            ClinicId = patient.ClinicId,
-            SyncState = SyncState.Pending
-        };
+            appointment = new Appointment
+            {
+                PatientId = patient.Id,
+                ClinicalId = clinician.Id,
+                StartTimeUtc = startUtc,
+                EndTimeUtc = endUtc,
+                AppointmentType = appointmentType,
+                Status = AppointmentStatus.Scheduled,
+                Notes = NormalizeNotes(request.Notes),
+                ClinicId = patient.ClinicId,
+                LastModifiedUtc = DateTime.UtcNow,
+                ModifiedByUserId = identityContext.GetCurrentUserId(),
+                SyncState = SyncState.Pending
+            };
+            appointment.AssignClinicalVisitOrdinal(
+                await visitOrdinalAllocator.GetNextAsync(patient.Id, cancellationToken));
 
-        db.Appointments.Add(appointment);
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException ex) when (IsSchedulingConflictDbException(ex))
-        {
-            return BuildSchedulingConflictResult();
+            db.Appointments.Add(appointment);
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                break;
+            }
+            catch (DbUpdateException ex) when (IsSchedulingConflictDbException(ex))
+            {
+                return BuildSchedulingConflictResult();
+            }
+            catch (DbUpdateException ex) when (IsClinicalVisitOrdinalConflictDbException(ex))
+            {
+                db.Entry(appointment).State = EntityState.Detached;
+                if (attempt == maxOrdinalAllocationAttempts)
+                {
+                    return Results.Conflict(new { error = "Another appointment reserved this patient's next visit number. Try scheduling again." });
+                }
+            }
         }
 
-        var response = await BuildAppointmentResponseAsync(db, appointment.Id, IsPaymentConfigured(configuration), cancellationToken);
+        var response = await BuildAppointmentResponseAsync(db, appointment!.Id, IsPaymentConfigured(configuration), cancellationToken);
         return Results.Created($"/api/v1/appointments/{appointment.Id}", response);
     }
 
@@ -255,6 +282,7 @@ public static class AppointmentEndpoints
         [FromBody] UpdateAppointmentRequest request,
         [FromServices] ApplicationDbContext db,
         [FromServices] IConfiguration configuration,
+        [FromServices] IIdentityContextAccessor identityContext,
         CancellationToken cancellationToken)
     {
         var validationErrors = ValidateWriteRequest(
@@ -284,6 +312,14 @@ public static class AppointmentEndpoints
         if (patient is null)
         {
             return Results.NotFound(new { error = $"Patient {request.PatientId} not found." });
+        }
+
+        if (appointment.ClinicalVisitOrdinal.HasValue && appointment.PatientId != patient.Id)
+        {
+            return Results.Conflict(new
+            {
+                error = "A numbered clinical visit cannot be reassigned to another patient. Create a new appointment instead."
+            });
         }
 
         var clinician = await GetClinicianAsync(db, request.ClinicianId, patient.ClinicId, cancellationToken);
@@ -328,6 +364,7 @@ public static class AppointmentEndpoints
         appointment.AppointmentType = appointmentType;
         appointment.Notes = NormalizeNotes(request.Notes);
         appointment.ClinicId = patient.ClinicId;
+        MarkAppointmentModified(appointment, identityContext.GetCurrentUserId());
 
         try
         {
@@ -337,6 +374,95 @@ public static class AppointmentEndpoints
         {
             return BuildSchedulingConflictResult();
         }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Results.Conflict(new { error = "The appointment was changed by another user. Refresh and try again." });
+        }
+
+        var response = await BuildAppointmentResponseAsync(db, appointment.Id, IsPaymentConfigured(configuration), cancellationToken);
+        return Results.Ok(response);
+    }
+
+    private static async Task<IResult> UpdateAppointmentType(
+        Guid id,
+        [FromBody] UpdateAppointmentTypeRequest request,
+        [FromServices] ApplicationDbContext db,
+        [FromServices] IConfiguration configuration,
+        [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IAuditService auditService,
+        CancellationToken cancellationToken)
+    {
+        if (!TryMapAppointmentType(request.AppointmentType, out var appointmentType))
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.AppointmentType), ["Appointment type is not supported."] }
+            });
+        }
+
+        if (request.ExpectedLastModifiedUtc == default)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.ExpectedLastModifiedUtc), ["The appointment version is required."] }
+            });
+        }
+
+        var appointment = await db.Appointments
+            .FirstOrDefaultAsync(existing => existing.Id == id, cancellationToken);
+
+        if (appointment is null)
+        {
+            return Results.NotFound(new { error = $"Appointment {id} not found." });
+        }
+
+        if (appointment.Status is AppointmentStatus.Completed or AppointmentStatus.Cancelled or AppointmentStatus.NoShow)
+        {
+            return Results.Conflict(new { error = "The appointment type cannot be changed after the appointment reaches a terminal status." });
+        }
+
+        if (appointment.LastModifiedUtc != request.ExpectedLastModifiedUtc)
+        {
+            return Results.Conflict(new
+            {
+                error = "The appointment was changed by another user. Refresh and try again.",
+                lastModifiedUtc = appointment.LastModifiedUtc
+            });
+        }
+
+        if (appointment.AppointmentType == appointmentType)
+        {
+            var unchanged = await BuildAppointmentResponseAsync(db, appointment.Id, IsPaymentConfigured(configuration), cancellationToken);
+            return Results.Ok(unchanged);
+        }
+
+        var previousAppointmentType = appointment.AppointmentType;
+        var modifiedByUserId = identityContext.GetCurrentUserId();
+        appointment.AppointmentType = appointmentType;
+        MarkAppointmentModified(appointment, modifiedByUserId);
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Results.Conflict(new { error = "The appointment was changed by another user. Refresh and try again." });
+        }
+
+        await auditService.LogAppointmentEventAsync(new AuditEvent
+        {
+            EventType = "AppointmentTypeChanged",
+            UserId = modifiedByUserId,
+            EntityType = nameof(Appointment),
+            EntityId = appointment.Id,
+            Metadata = new Dictionary<string, object>
+            {
+                ["PreviousAppointmentType"] = previousAppointmentType.ToString(),
+                ["NewAppointmentType"] = appointmentType.ToString(),
+                ["TimestampUtc"] = appointment.LastModifiedUtc
+            }
+        }, cancellationToken);
 
         var response = await BuildAppointmentResponseAsync(db, appointment.Id, IsPaymentConfigured(configuration), cancellationToken);
         return Results.Ok(response);
@@ -346,6 +472,7 @@ public static class AppointmentEndpoints
         Guid id,
         [FromServices] ApplicationDbContext db,
         [FromServices] IConfiguration configuration,
+        [FromServices] IIdentityContextAccessor identityContext,
         CancellationToken cancellationToken)
     {
         var appointment = await db.Appointments
@@ -369,13 +496,7 @@ public static class AppointmentEndpoints
             return Results.UnprocessableEntity(new { error });
         }
 
-        if (appointment.Status != AppointmentStatus.CheckedIn
-            && appointment.Status != AppointmentStatus.InProgress
-            && appointment.Status != AppointmentStatus.Completed)
-        {
-            appointment.Status = AppointmentStatus.CheckedIn;
-            await db.SaveChangesAsync(cancellationToken);
-        }
+        await MarkAppointmentCheckedInAsync(db, appointment, identityContext.GetCurrentUserId(), cancellationToken);
 
         var response = await BuildAppointmentResponseAsync(db, appointment.Id, IsPaymentConfigured(configuration), cancellationToken);
         return Results.Ok(response);
@@ -388,6 +509,7 @@ public static class AppointmentEndpoints
         [FromServices] IConfiguration configuration,
         [FromServices] IPaymentService paymentService,
         [FromServices] IAuditService auditService,
+        [FromServices] IIdentityContextAccessor identityContext,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.OpaqueDataDescriptor) || string.IsNullOrWhiteSpace(request.OpaqueDataToken))
@@ -433,7 +555,7 @@ public static class AppointmentEndpoints
         {
             if (request.CheckInAfterPayment)
             {
-                await MarkAppointmentCheckedInAsync(db, appointment, cancellationToken);
+                await MarkAppointmentCheckedInAsync(db, appointment, identityContext.GetCurrentUserId(), cancellationToken);
             }
 
             var paidAppointment = await BuildAppointmentResponseAsync(db, appointment.Id, paymentAvailable: true, cancellationToken);
@@ -456,7 +578,7 @@ public static class AppointmentEndpoints
             return await BuildPaymentInProgressResponseAsync(db, appointment.Id, cancellationToken);
         }
 
-        var copayAmount = TryParseCopayAmount(patient.PayerInfoJson);
+        var copayAmount = await GetCopayAmountAsync(db, patient.Id, patient.PayerInfoJson, cancellationToken);
         if (copayAmount is null || copayAmount <= 0)
         {
             return Results.ValidationProblem(new Dictionary<string, string[]>
@@ -483,7 +605,7 @@ public static class AppointmentEndpoints
         catch (DbUpdateException ex) when (IsPaymentConcurrencyDbException(ex))
         {
             db.Entry(transaction).State = EntityState.Detached;
-            return await BuildConcurrentPaymentResponseAsync(db, appointment.Id, request.CheckInAfterPayment, cancellationToken);
+            return await BuildConcurrentPaymentResponseAsync(db, appointment.Id, request.CheckInAfterPayment, identityContext.GetCurrentUserId(), cancellationToken);
         }
 
         PaymentResult paymentResult;
@@ -535,7 +657,7 @@ public static class AppointmentEndpoints
 
         if (paymentResult.Success && request.CheckInAfterPayment)
         {
-            await MarkAppointmentCheckedInAsync(db, appointment, cancellationToken, saveChanges: false);
+            await MarkAppointmentCheckedInAsync(db, appointment, identityContext.GetCurrentUserId(), cancellationToken, saveChanges: false);
         }
 
         try
@@ -545,7 +667,7 @@ public static class AppointmentEndpoints
         catch (DbUpdateException ex) when (IsPaymentConcurrencyDbException(ex))
         {
             db.Entry(transaction).State = EntityState.Detached;
-            return await BuildConcurrentPaymentResponseAsync(db, appointment.Id, request.CheckInAfterPayment, cancellationToken);
+            return await BuildConcurrentPaymentResponseAsync(db, appointment.Id, request.CheckInAfterPayment, identityContext.GetCurrentUserId(), cancellationToken);
         }
 
         await auditService.LogRuleEvaluationAsync(new PTDoc.Application.Compliance.AuditEvent
@@ -573,6 +695,7 @@ public static class AppointmentEndpoints
         ApplicationDbContext db,
         Guid appointmentId,
         bool checkInAfterPayment,
+        Guid modifiedByUserId,
         CancellationToken cancellationToken)
     {
         var existingTransactionId = await GetSuccessfulPaymentTransactionIdAsync(db, appointmentId, cancellationToken);
@@ -582,7 +705,7 @@ public static class AppointmentEndpoints
             {
                 var appointment = await db.Appointments
                     .FirstAsync(existing => existing.Id == appointmentId, cancellationToken);
-                await MarkAppointmentCheckedInAsync(db, appointment, cancellationToken);
+                await MarkAppointmentCheckedInAsync(db, appointment, modifiedByUserId, cancellationToken);
             }
 
             var paidAppointment = await BuildAppointmentResponseAsync(db, appointmentId, paymentAvailable: true, cancellationToken);
@@ -706,25 +829,54 @@ public static class AppointmentEndpoints
             .Select(patient => patient.PayerInfoJson)
             .FirstOrDefaultAsync(cancellationToken);
 
-        return TryParseCopayAmount(payerInfoJson) is > 0;
+        return await GetCopayAmountAsync(db, patientId, payerInfoJson, cancellationToken) is > 0;
+    }
+
+    private static async Task<decimal?> GetCopayAmountAsync(
+        ApplicationDbContext db,
+        Guid patientId,
+        string? legacyPayerInfoJson,
+        CancellationToken cancellationToken)
+    {
+        var normalized = await db.PatientInsurancePolicies.AsNoTracking()
+            .Where(policy => policy.PatientId == patientId && !policy.IsArchived && policy.Status == InsurancePolicyStatus.Active)
+            .OrderBy(policy => policy.CoveragePriority)
+            .Select(policy => policy.CopayAmount)
+            .FirstOrDefaultAsync(cancellationToken);
+        return normalized ?? TryParseCopayAmount(legacyPayerInfoJson);
     }
 
     private static async Task MarkAppointmentCheckedInAsync(
         ApplicationDbContext db,
         Appointment appointment,
+        Guid modifiedByUserId,
         CancellationToken cancellationToken,
         bool saveChanges = true)
     {
+        var changed = false;
         if (appointment.Status != AppointmentStatus.CheckedIn
             && appointment.Status != AppointmentStatus.InProgress
             && appointment.Status != AppointmentStatus.Completed)
         {
             appointment.Status = AppointmentStatus.CheckedIn;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            MarkAppointmentModified(appointment, modifiedByUserId);
             if (saveChanges)
             {
                 await db.SaveChangesAsync(cancellationToken);
             }
         }
+    }
+
+    private static void MarkAppointmentModified(Appointment appointment, Guid modifiedByUserId)
+    {
+        appointment.LastModifiedUtc = DateTime.UtcNow;
+        appointment.ModifiedByUserId = modifiedByUserId;
+        appointment.SyncState = SyncState.Pending;
     }
 
     private static string BuildCopayInvoiceNumber(Guid appointmentId) =>
@@ -790,9 +942,23 @@ public static class AppointmentEndpoints
                 StartTimeUtc = appointment.StartTimeUtc,
                 EndTimeUtc = appointment.EndTimeUtc,
                 AppointmentType = appointment.AppointmentType,
+                ClinicalVisitOrdinal = appointment.ClinicalVisitOrdinal,
                 AppointmentStatus = appointment.Status,
                 Notes = appointment.Notes,
+                LastModifiedUtc = appointment.LastModifiedUtc,
                 PayerInfoJson = patient.PayerInfoJson,
+                NormalizedCopayAmount = db.PatientInsurancePolicies.AsNoTracking()
+                    .Where(policy => policy.PatientId == patient.Id && !policy.IsArchived && policy.Status == InsurancePolicyStatus.Active)
+                    .OrderBy(policy => policy.CoveragePriority)
+                    .Select(policy => policy.CopayAmount)
+                    .FirstOrDefault(),
+                VisitCount = db.Appointments
+                    .AsNoTracking()
+                    .Count(visit => visit.PatientId == patient.Id
+                        && visit.StartTimeUtc <= appointment.StartTimeUtc
+                        && (visit.Status == AppointmentStatus.CheckedIn
+                            || visit.Status == AppointmentStatus.InProgress
+                            || visit.Status == AppointmentStatus.Completed)),
                 SuccessfulPaymentTransactionId = db.AppointmentPaymentTransactions
                     .AsNoTracking()
                     .Where(payment => payment.AppointmentId == appointment.Id
@@ -825,6 +991,7 @@ public static class AppointmentEndpoints
                 db)
             .ToListAsync(cancellationToken);
         await HydrateAppointmentNoteWorkflowAsync(db, rows, cancellationToken);
+        await HydrateAppointmentClinicalMetadataAsync(db, rows, cancellationToken);
 
         var row = rows.FirstOrDefault();
 
@@ -905,6 +1072,145 @@ public static class AppointmentEndpoints
             appointment.HasCompletedNote = noteSummary.HasCompletedNote;
             appointment.VisitNoteId = noteSummary.VisitNoteId;
         }
+    }
+
+    private static async Task HydrateAppointmentClinicalMetadataAsync(
+        ApplicationDbContext db,
+        IReadOnlyList<AppointmentQueryRow> appointments,
+        CancellationToken cancellationToken)
+    {
+        if (appointments.Count == 0)
+        {
+            return;
+        }
+
+        var patientIds = appointments
+            .Select(appointment => appointment.PatientRecordId)
+            .Distinct()
+            .ToArray();
+
+        const int patientIdBatchSize = 500;
+        var planOfCareRows = new List<AppointmentPlanOfCareRow>();
+        for (var offset = 0; offset < patientIds.Length; offset += patientIdBatchSize)
+        {
+            var batchIds = patientIds
+                .Skip(offset)
+                .Take(patientIdBatchSize)
+                .ToArray();
+
+            var batchRows = await db.ClinicalNotes
+                .AsNoTracking()
+                .Where(note => batchIds.Contains(note.PatientId)
+                    && !note.IsAddendum
+                    && (note.NoteType == NoteType.Evaluation || note.NoteType == NoteType.ProgressNote))
+                .Select(note => new AppointmentPlanOfCareRow
+                {
+                    PatientId = note.PatientId,
+                    DateOfService = note.DateOfService,
+                    LastModifiedUtc = note.LastModifiedUtc,
+                    ContentJson = note.ContentJson
+                })
+                .ToListAsync(cancellationToken);
+
+            planOfCareRows.AddRange(batchRows);
+        }
+
+        foreach (var planOfCareRow in planOfCareRows)
+        {
+            planOfCareRow.ProgressNoteDueDates = ReadProgressNoteDueDates(planOfCareRow.ContentJson);
+        }
+
+        var planRowsByPatient = planOfCareRows
+            .GroupBy(row => row.PatientId)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderByDescending(row => row.DateOfService)
+                    .ThenByDescending(row => row.LastModifiedUtc)
+                    .ToList());
+
+        foreach (var appointment in appointments)
+        {
+            if (!planRowsByPatient.TryGetValue(appointment.PatientRecordId, out var patientPlanRows))
+            {
+                continue;
+            }
+
+            var appointmentDate = appointment.StartTimeUtc.Date;
+            foreach (var planRow in patientPlanRows.Where(row => row.DateOfService.Date <= appointmentDate))
+            {
+                var progressNoteDueDates = planRow.ProgressNoteDueDates;
+                if (progressNoteDueDates.Count == 0)
+                {
+                    continue;
+                }
+
+                appointment.ProgressNoteDueDate = progressNoteDueDates
+                    .FirstOrDefault(date => date.Date >= appointmentDate);
+
+                if (!appointment.ProgressNoteDueDate.HasValue
+                    || appointment.ProgressNoteDueDate.Value == default)
+                {
+                    appointment.ProgressNoteDueDate = progressNoteDueDates[^1];
+                }
+
+                break;
+            }
+        }
+    }
+
+    private static IReadOnlyList<DateTime> ReadProgressNoteDueDates(string? contentJson)
+    {
+        if (string.IsNullOrWhiteSpace(contentJson))
+        {
+            return Array.Empty<DateTime>();
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(contentJson);
+            if (!TryGetJsonProperty(document.RootElement, "plan", out var plan)
+                || !TryGetJsonProperty(plan, "computedPlanOfCare", out var computedPlanOfCare)
+                || !TryGetJsonProperty(computedPlanOfCare, "progressNoteDueDates", out var dueDatesElement)
+                || dueDatesElement.ValueKind != JsonValueKind.Array)
+            {
+                return Array.Empty<DateTime>();
+            }
+
+            return dueDatesElement
+                .EnumerateArray()
+                .Select(element => element.ValueKind == JsonValueKind.String
+                    && element.TryGetDateTime(out var dueDate)
+                        ? (DateTime?)dueDate.Date
+                        : null)
+                .Where(date => date.HasValue)
+                .Select(date => date!.Value)
+                .Distinct()
+                .OrderBy(date => date)
+                .ToArray();
+        }
+        catch (JsonException)
+        {
+            return Array.Empty<DateTime>();
+        }
+    }
+
+    private static bool TryGetJsonProperty(JsonElement element, string propertyName, out JsonElement property)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var candidate in element.EnumerateObject())
+            {
+                if (string.Equals(candidate.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    property = candidate.Value;
+                    return true;
+                }
+            }
+        }
+
+        property = default;
+        return false;
     }
 
     private static Dictionary<string, string[]> ValidateWriteRequest(
@@ -1006,26 +1312,8 @@ public static class AppointmentEndpoints
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    private static bool TryMapAppointmentType(string appointmentType, out AppointmentType result)
-    {
-        switch (appointmentType.Trim())
-        {
-            case "Initial Evaluation":
-            case "Re-Evaluation":
-                result = AppointmentType.InitialEvaluation;
-                return true;
-            case "Follow Up":
-            case "Follow-up":
-                result = AppointmentType.FollowUp;
-                return true;
-            case "Discharge":
-                result = AppointmentType.Discharge;
-                return true;
-            default:
-                result = AppointmentType.FollowUp;
-                return false;
-        }
-    }
+    private static bool TryMapAppointmentType(string appointmentType, out AppointmentType result) =>
+        AppointmentTypeCatalog.TryParse(appointmentType, out result);
 
     private static (DateTime StartUtc, DateTime EndUtc) BuildUtcRange(
         DateTime appointmentDate,
@@ -1091,6 +1379,13 @@ public static class AppointmentEndpoints
         };
     }
 
+    private static bool IsClinicalVisitOrdinalConflictDbException(DbUpdateException exception)
+    {
+        var message = exception.GetBaseException().Message;
+        return message.Contains("ClinicalVisitOrdinal", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("UX_Appointments_PatientId_ClinicalVisitOrdinal", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static async Task<AppointmentPaymentLockLease> AcquireAppointmentPaymentLockAsync(
         Guid appointmentId,
         CancellationToken cancellationToken)
@@ -1133,7 +1428,7 @@ public static class AppointmentEndpoints
     private static AppointmentListItemResponse ToResponse(AppointmentQueryRow row, bool paymentAvailable)
     {
         var visitWorkflowStatus = MapVisitWorkflowStatus(row.AppointmentStatus, row.HasStartedNote, row.HasCompletedNote);
-        var copayAmount = TryParseCopayAmount(row.PayerInfoJson);
+        var copayAmount = row.NormalizedCopayAmount ?? TryParseCopayAmount(row.PayerInfoJson);
         var hasSuccessfulPayment = !string.IsNullOrWhiteSpace(row.SuccessfulPaymentTransactionId);
         var canRecordCopay = copayAmount > 0 && !hasSuccessfulPayment && paymentAvailable;
         var (copayStatusLabel, unavailableReason) = BuildCopayStatus(copayAmount, hasSuccessfulPayment, paymentAvailable);
@@ -1154,6 +1449,10 @@ public static class AppointmentEndpoints
             VisitNoteId = ResolveVisitNoteId(row, visitWorkflowStatus),
             IntakeStatus = MapIntakeStatus(row.HasIntake, row.IntakeSubmittedAt),
             Notes = row.Notes?.Trim() ?? string.Empty,
+            LastModifiedUtc = DateTime.SpecifyKind(row.LastModifiedUtc, DateTimeKind.Utc),
+            VisitCount = row.VisitCount,
+            VisitNumber = ResolveVisitNumber(row.AppointmentStatus, row.ClinicalVisitOrdinal, row.VisitCount),
+            ProgressNoteDueDate = row.ProgressNoteDueDate,
             CopayAmount = copayAmount,
             CopayStatusLabel = copayStatusLabel,
             CanRecordCopay = canRecordCopay,
@@ -1205,13 +1504,17 @@ public static class AppointmentEndpoints
     }
 
     private static string MapAppointmentType(AppointmentType appointmentType) =>
-        appointmentType switch
-        {
-            AppointmentType.InitialEvaluation => "Initial Evaluation",
-            AppointmentType.FollowUp => "Follow-up",
-            AppointmentType.Discharge => "Discharge",
-            _ => "Follow-up"
-        };
+        AppointmentTypeCatalog.GetDisplayName(appointmentType);
+
+    private static int? ResolveVisitNumber(
+        AppointmentStatus status,
+        int? clinicalVisitOrdinal,
+        int attendedVisitCount) => status switch
+    {
+        AppointmentStatus.Scheduled or AppointmentStatus.Confirmed => clinicalVisitOrdinal ?? (attendedVisitCount + 1),
+        AppointmentStatus.CheckedIn or AppointmentStatus.InProgress or AppointmentStatus.Completed => clinicalVisitOrdinal ?? Math.Max(1, attendedVisitCount),
+        _ => null
+    };
 
     private static string MapAppointmentStatus(AppointmentStatus status) =>
         status switch
@@ -1273,9 +1576,14 @@ public static class AppointmentEndpoints
         public DateTime StartTimeUtc { get; init; }
         public DateTime EndTimeUtc { get; init; }
         public AppointmentType AppointmentType { get; init; }
+        public int? ClinicalVisitOrdinal { get; init; }
         public AppointmentStatus AppointmentStatus { get; init; }
         public string? Notes { get; init; }
+        public DateTime LastModifiedUtc { get; init; }
         public string PayerInfoJson { get; init; } = "{}";
+        public decimal? NormalizedCopayAmount { get; init; }
+        public int VisitCount { get; init; }
+        public DateTime? ProgressNoteDueDate { get; set; }
         public string? SuccessfulPaymentTransactionId { get; init; }
         public bool HasStartedNote { get; set; }
         public bool HasCompletedNote { get; set; }
@@ -1291,6 +1599,15 @@ public static class AppointmentEndpoints
         public bool IsCompleted { get; init; }
         public DateTime LastModifiedUtc { get; init; }
         public DateTime CreatedUtc { get; init; }
+    }
+
+    private sealed class AppointmentPlanOfCareRow
+    {
+        public Guid PatientId { get; init; }
+        public DateTime DateOfService { get; init; }
+        public DateTime LastModifiedUtc { get; init; }
+        public string ContentJson { get; init; } = "{}";
+        public IReadOnlyList<DateTime> ProgressNoteDueDates { get; set; } = Array.Empty<DateTime>();
     }
 
     private sealed class AppointmentConflictRow

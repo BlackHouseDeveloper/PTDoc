@@ -1,0 +1,100 @@
+.intake-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    color: var(--card-foreground);
+    display: grid;
+    gap: var(--spacing-4);
+    padding: var(--spacing-6);
+}
+
+.intake-card h2,
+.intake-card p {
+    margin: 0;
+}
+
+.intake-card h2 {
+    font-size: var(--text-base);
+}
+
+.intake-card__subtext {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+}
+
+.intake-card__form-grid {
+    display: grid;
+    gap: var(--spacing-4);
+}
+
+.intake-card label {
+    color: var(--card-foreground);
+    display: grid;
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    gap: var(--spacing-2);
+    margin: 0;
+}
+
+.intake-card label.intake-card__same-provider {
+    align-items: center;
+    display: flex;
+    min-height: 2.75rem;
+}
+
+.intake-card__directory-search {
+    display: grid;
+    gap: var(--spacing-3);
+    grid-column: 1 / -1;
+}
+
+.intake-card__directory-results {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    display: grid;
+    overflow: hidden;
+}
+
+.intake-card__directory-results article {
+    align-items: center;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-3);
+    justify-content: space-between;
+    padding: var(--spacing-3);
+}
+
+.intake-card__directory-results article:last-child {
+    border-bottom: 0;
+}
+
+.intake-card__directory-results article > span {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+}
+
+.intake-card__directory-results article > span:first-child {
+    display: grid;
+}
+
+.intake-card__directory-results small,
+.intake-card__directory-help {
+    color: var(--muted-foreground);
+}
+
+.intake-card__directory-error {
+    color: var(--destructive);
+}
+
+@media (min-width: 48rem) {
+    .intake-card__form-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .intake-card__same-provider {
+        grid-column: 1 / -1;
+    }
+}

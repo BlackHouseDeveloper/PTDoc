@@ -1,7 +1,9 @@
 using System.Globalization;
+using AngleSharp.Html.Dom;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
+using PTDoc.Application.Appointments;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Integrations;
 using PTDoc.Core.Models;
@@ -130,7 +132,7 @@ public sealed class AppointmentComponentsTests : TestContext
 
         var cut = RenderComponent<AppointmentDetailModal>(parameters => parameters
             .Add(component => component.IsOpen, true)
-            .Add(component => component.Appointment, CreateAppointment(status: "Scheduled")));
+            .Add(component => component.Appointment, CreateAppointment(status: "Scheduled", notes: null)));
 
         Assert.Contains("Visit note pending", cut.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Visit note missing", cut.Markup, StringComparison.Ordinal);
@@ -248,7 +250,8 @@ public sealed class AppointmentComponentsTests : TestContext
 
         var cut = RenderComponent<AppointmentDetailModal>(parameters => parameters
             .Add(component => component.IsOpen, true)
-            .Add(component => component.Appointment, CreateAppointment(status: status)));
+            .Add(component => component.Appointment, CreateAppointment(status: status))
+            .Add(component => component.OnAppointmentTypeChanged, _ => Task.FromResult(true)));
 
         var primaryButtons = cut.FindAll("button").Where(button => button.TextContent.Contains("Start Visit", StringComparison.Ordinal)).ToList();
         Assert.NotEmpty(primaryButtons);
@@ -268,6 +271,9 @@ public sealed class AppointmentComponentsTests : TestContext
         var editButton = Assert.Single(cut.FindAll("button"), button => button.TextContent.Contains("Edit Appointment", StringComparison.Ordinal));
         Assert.True(editButton.HasAttribute("disabled"));
         Assert.Equal(reasonId, editButton.GetAttribute("aria-describedby"));
+        Assert.True(cut.Find("#appointment-detail-type").HasAttribute("disabled"));
+        Assert.True(cut.Find(".appointment-detail-modal__save-type").HasAttribute("disabled"));
+        Assert.Contains("Closed appointments cannot be edited.", cut.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -286,6 +292,92 @@ public sealed class AppointmentComponentsTests : TestContext
             .Click();
 
         Assert.Equal("edit-appointment", requestedAction);
+    }
+
+    [Fact]
+    public void AppointmentDetailModal_ShowsPrototypeVisitInformationAndSchedulingNote()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+
+        var cut = RenderComponent<AppointmentDetailModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.Appointment, CreateAppointment(
+                status: "Scheduled",
+                progressNoteDueDate: new DateTime(2026, 5, 25),
+                visitNumber: 4)));
+
+        Assert.Contains("Progress Note Due", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("May 25, 2026", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Visit 4", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Appointment Notes", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Shoulder mobility follow-up.", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Alex Patient", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("PT-123456", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Tue, May 19, 2026", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("9:00 AM", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("45 minutes", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Scheduled", cut.Markup, StringComparison.Ordinal);
+        Assert.Equal("Follow-up", Assert.IsAssignableFrom<IHtmlSelectElement>(cut.Find("#appointment-detail-type")).Value);
+    }
+
+    [Fact]
+    public void AppointmentDetailModal_MissingVisitInformation_UsesNonMisleadingFallbacks()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+
+        var cut = RenderComponent<AppointmentDetailModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.Appointment, CreateAppointment(status: "Scheduled", notes: null)));
+
+        Assert.Equal(2, cut.FindAll(".appointment-detail-modal__visit-grid .appointment-detail-modal__field-value")
+            .Count(element => element.TextContent.Contains("Not available", StringComparison.Ordinal)));
+        Assert.Contains("Appointment notes are not available yet.", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AppointmentDetailModal_AppointmentTypeEditor_UsesCatalogAndSavesSelection()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var requestedType = string.Empty;
+
+        var cut = RenderComponent<AppointmentDetailModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.Appointment, CreateAppointment(status: "Scheduled"))
+            .Add(component => component.OnAppointmentTypeChanged, type =>
+            {
+                requestedType = type;
+                return Task.FromResult(true);
+            }));
+
+        var typeSelect = cut.Find("#appointment-detail-type");
+        Assert.Equal(AppointmentTypeCatalog.All.Count, typeSelect.QuerySelectorAll("option").Length);
+        Assert.Equal("Follow-up", Assert.IsAssignableFrom<IHtmlSelectElement>(typeSelect).Value);
+
+        typeSelect.Change("Re-evaluation");
+        cut.Find(".appointment-detail-modal__save-type").Click();
+
+        Assert.Equal("Re-evaluation", requestedType);
+        Assert.Contains("Appointment type updated.", cut.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AppointmentDetailModal_FailedAppointmentTypeUpdate_RestoresPersistedType()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+
+        var cut = RenderComponent<AppointmentDetailModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.Appointment, CreateAppointment(status: "Scheduled"))
+            .Add(component => component.OnAppointmentTypeChanged, _ => Task.FromResult(false)));
+
+        cut.Find("#appointment-detail-type").Change("Discharge");
+        cut.Find(".appointment-detail-modal__save-type").Click();
+
+        Assert.Equal(
+            "Follow-up",
+            Assert.IsAssignableFrom<IHtmlSelectElement>(cut.Find("#appointment-detail-type")).Value);
+        Assert.Contains("The previous type is still in effect.", cut.Markup, StringComparison.Ordinal);
+        Assert.Equal("alert", cut.Find(".appointment-detail-modal__type-feedback--error").GetAttribute("role"));
     }
 
     [Theory]
@@ -363,7 +455,7 @@ public sealed class AppointmentComponentsTests : TestContext
         cut.Find("#patient").Change("patient-1");
         cut.Find("#appointmentType").Change("Follow Up");
         cut.Find("#clinician").Change("clinician-1");
-        cut.Find("#notes").Change("Keep this note");
+        cut.Find("#notes").Input("Keep this note");
         cut.Find("form").Submit();
 
         cut.WaitForAssertion(() =>
@@ -560,7 +652,10 @@ public sealed class AppointmentComponentsTests : TestContext
         Guid? visitNoteId = null,
         bool canRecordCopay = false,
         string copayStatusLabel = "Copay not configured",
-        decimal? copayAmount = null)
+        decimal? copayAmount = null,
+        DateTime? progressNoteDueDate = null,
+        int? visitNumber = null,
+        string? notes = "Shoulder mobility follow-up.")
     {
         return new AppointmentDetailViewModel
         {
@@ -581,7 +676,9 @@ public sealed class AppointmentComponentsTests : TestContext
             CopayAmount = copayAmount,
             CanRecordCopay = canRecordCopay,
             CopayStatusLabel = copayStatusLabel,
-            Notes = "Shoulder mobility follow-up."
+            ProgressNoteDueDate = progressNoteDueDate,
+            VisitNumber = visitNumber,
+            Notes = notes ?? string.Empty
         };
     }
 

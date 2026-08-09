@@ -19,6 +19,7 @@ public sealed class MauiUserService : IUserService
     private readonly ILogger<MauiUserService> logger;
 
     private ClaimsPrincipal? currentUser;
+    private int logoutTriggered;
 
     public MauiUserService(
         ITokenService tokenService,
@@ -71,8 +72,16 @@ public sealed class MauiUserService : IUserService
             }
 
             logger.LogInformation("Login successful, saving tokens");
+            var principal = JwtClaimParser.CreatePrincipal(tokens.AccessToken);
+            if (principal.Identity?.IsAuthenticated != true)
+            {
+                logger.LogWarning("Login returned an unusable access token");
+                return false;
+            }
+
+            Volatile.Write(ref logoutTriggered, 0);
             await tokenStore.SaveAsync(tokens, cancellationToken);
-            currentUser = JwtClaimParser.CreatePrincipal(tokens.AccessToken);
+            currentUser = principal;
             await authStateProvider.NotifyUserAuthenticationAsync(tokens);
 
             return true;
@@ -191,14 +200,28 @@ public sealed class MauiUserService : IUserService
 
     public async Task LogoutAsync(CancellationToken cancellationToken = default)
     {
-        var tokens = await tokenStore.GetAsync(cancellationToken);
-        if (tokens is not null)
+        if (Interlocked.Exchange(ref logoutTriggered, 1) != 0)
         {
-            await tokenService.LogoutAsync(new RefreshTokenRequest(tokens.RefreshToken), cancellationToken);
+            return;
         }
 
-        await authStateProvider.NotifyUserLogoutAsync();
-        currentUser = null;
+        try
+        {
+            var tokens = await tokenStore.GetAsync(cancellationToken);
+            if (tokens is not null)
+            {
+                await tokenService.LogoutAsync(new RefreshTokenRequest(tokens.RefreshToken), cancellationToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Server-side logout could not be completed; clearing the local session");
+        }
+        finally
+        {
+            currentUser = null;
+            await authStateProvider.NotifyUserLogoutAsync();
+        }
     }
 
     public async Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default)
@@ -217,6 +240,7 @@ public sealed class MauiUserService : IUserService
 
             if (refreshed is null)
             {
+                await LogoutAsync(cancellationToken);
                 return null;
             }
 
@@ -225,6 +249,12 @@ public sealed class MauiUserService : IUserService
         }
 
         currentUser = JwtClaimParser.CreatePrincipal(tokens.AccessToken);
+        if (currentUser.Identity?.IsAuthenticated != true)
+        {
+            await LogoutAsync(cancellationToken);
+            return null;
+        }
+
         return tokens.AccessToken;
     }
 
@@ -242,10 +272,19 @@ public sealed class MauiUserService : IUserService
 
         if (refreshed is null)
         {
+            await LogoutAsync(cancellationToken);
+            return false;
+        }
+
+        var principal = JwtClaimParser.CreatePrincipal(refreshed.AccessToken);
+        if (principal.Identity?.IsAuthenticated != true)
+        {
+            await LogoutAsync(cancellationToken);
             return false;
         }
 
         await tokenStore.SaveAsync(refreshed, cancellationToken);
+        currentUser = principal;
         await authStateProvider.NotifyUserAuthenticationAsync(refreshed);
         return true;
     }
