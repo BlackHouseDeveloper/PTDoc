@@ -1,4 +1,4 @@
-import { APIResponse, expect, Page, TestInfo } from '@playwright/test';
+import { expect, Page, TestInfo } from '@playwright/test';
 import { appendFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { authenticateAs, waitForAppInteractive } from './auth';
@@ -16,10 +16,18 @@ export type EvidenceDisposition = 'Pass' | 'Pass with limitation' | 'Fail' | 'Bl
 const artifactDirectory = process.env.PTDOC_UI_QA_ARTIFACT_DIR;
 const faultControlUrl = process.env.PTDOC_UI_QA_FAULT_PROXY_CONTROL_URL;
 const faultNonce = process.env.PTDOC_UI_QA_FAULT_PROXY_NONCE;
+const webBaseUrl = process.env.PTDOC_WEB_BASE_URL ?? 'http://localhost:5145';
 export const fixturePrefix = sanitizePrefix(process.env.PTDOC_UI_QA_FIXTURE_PREFIX ?? 'live-unblock');
 let activeRole = 'not established';
 let activeRoute = 'API workflow through Web origin';
 const recentFixtureIds: string[] = [];
+const apiAccessTokens = new WeakMap<Page, string>();
+
+export type LiveApiResponse = {
+  ok(): boolean;
+  status(): number;
+  json(): Promise<unknown>;
+};
 
 export async function loginAs(page: Page, role: 'admin' | 'pt' | 'pta') {
   const username = role === 'admin'
@@ -35,7 +43,12 @@ export async function loginAs(page: Page, role: 'admin' | 'pt' | 'pta') {
   if (!username || !pin) {
     throw new Error(`Missing ${role} live-verification credentials.`);
   }
+  await loginWithCredentials(page, username, pin, role);
+}
+
+export async function loginWithCredentials(page: Page, username: string, pin: string, role: string) {
   await authenticateAs(page, username, pin);
+  await authenticateApi(page, username, pin);
   activeRole = role;
 }
 
@@ -54,13 +67,36 @@ export async function apiJson<T>(page: Page, method: string, route: string, data
   return await response.json() as T;
 }
 
-export async function apiResponse(page: Page, method: string, route: string, data?: unknown): Promise<APIResponse> {
-  return page.request.fetch(route, {
+export async function apiResponse(page: Page, method: string, route: string, data?: unknown): Promise<LiveApiResponse> {
+  if (!route.startsWith('/api/')) {
+    return page.request.fetch(route, {
+      method,
+      data,
+      failOnStatusCode: false,
+      headers: data === undefined ? undefined : { 'content-type': 'application/json' }
+    });
+  }
+
+  const token = apiAccessTokens.get(page);
+  if (!token) {
+    throw new Error('API session is unavailable. Call loginAs before using authenticated API helpers.');
+  }
+
+  const response = await fetch(new URL(route, webBaseUrl), {
     method,
-    data,
-    failOnStatusCode: false,
-    headers: data === undefined ? undefined : { 'content-type': 'application/json' }
+    headers: {
+      authorization: `Bearer ${token}`,
+      ...(data === undefined ? {} : { 'content-type': 'application/json' })
+    },
+    body: data === undefined ? undefined : JSON.stringify(data),
+    redirect: 'manual'
   });
+
+  return {
+    ok: () => response.ok,
+    status: () => response.status,
+    json: () => response.json()
+  };
 }
 
 export async function configureFault(rule: FaultRule) {
@@ -74,7 +110,7 @@ export async function configureFault(rule: FaultRule) {
     body: JSON.stringify(rule)
   });
   if (response.status !== 201) {
-    throw new Error(`Fault proxy rejected an allowlisted rule with HTTP ${response.status()}.`);
+    throw new Error(`Fault proxy rejected an allowlisted rule with HTTP ${response.status}.`);
   }
 }
 
@@ -133,8 +169,27 @@ export async function recordBlocked(checkIds: string[], expected: string, reason
   await recordEvidence({ checkIds, disposition: 'Blocked', expected, observed: reason });
 }
 
-export async function expectStatus(response: APIResponse, allowed: number[]) {
+export async function expectStatus(response: LiveApiResponse, allowed: number[]) {
   expect(allowed, `unexpected HTTP ${response.status()}`).toContain(response.status());
+}
+
+async function authenticateApi(page: Page, username: string, pin: string) {
+  const response = await fetch(new URL('/api/v1/auth/pin-login', webBaseUrl), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username, pin }),
+    redirect: 'manual'
+  });
+  if (!response.ok) {
+    throw new Error(`API login failed with HTTP ${response.status}. Verify the selected role credentials.`);
+  }
+
+  const payload = await response.json() as { token?: string };
+  if (!payload.token) {
+    throw new Error('API login succeeded without returning a session token.');
+  }
+
+  apiAccessTokens.set(page, payload.token);
 }
 
 export async function recordFixture(type: string, id: string, cleanup: string) {

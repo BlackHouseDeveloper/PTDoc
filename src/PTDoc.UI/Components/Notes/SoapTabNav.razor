@@ -24,7 +24,7 @@
         <button type="button"
                 role="tab"
                 class="soap-tab-nav__tab @(isActive ? "soap-tab-nav__tab--active" : string.Empty) @(isCompleted ? "soap-tab-nav__tab--completed" : string.Empty) @(hasMissing ? "soap-tab-nav__tab--missing" : string.Empty) @(IsReadOnly ? "soap-tab-nav__tab--readonly" : string.Empty)"
-                aria-selected="@isActive"
+                aria-selected="@(isActive ? "true" : "false")"
                 aria-controls="soap-tab-panel"
                 aria-label="@GetTabAriaLabel(soapSection, missingCount, isCompleted)"
                 data-testid="@($"soap-tab-{soapSection.ToString().ToLower()}")"

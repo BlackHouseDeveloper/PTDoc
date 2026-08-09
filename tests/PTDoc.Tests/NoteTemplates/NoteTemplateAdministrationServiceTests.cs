@@ -6,16 +6,173 @@ using PTDoc.Application.NoteTemplates;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Services;
+
 namespace PTDoc.Tests.NoteTemplates;
+
 [Trait("Category", "CoreCi")]
 public sealed class NoteTemplateAdministrationServiceTests : IDisposable
 {
-    private readonly ApplicationDbContext db; private readonly NoteTemplateAdministrationService service; private readonly Mock<IIdentityContextAccessor> identity = new(); private Guid currentUser = Guid.NewGuid();
-    public NoteTemplateAdministrationServiceTests() { var tenant = new Mock<ITenantContextAccessor>(); tenant.Setup(x => x.GetCurrentClinicId()).Returns(Guid.NewGuid()); identity.Setup(x => x.GetCurrentUserId()).Returns(() => currentUser); db = new(new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase($"templates-{Guid.NewGuid()}").Options, tenant.Object); service = new(db, tenant.Object, identity.Object, new Mock<IAuditService>().Object); }
-    [Fact] public async Task PublishedVersion_RequiresDifferentClinicalReviewer_AndBecomesImmutable() { var draft = await service.CreateDraftAsync(new() { Name = "Progress", NoteType = NoteType.ProgressNote, Variant = NoteTemplateVariant.Standard }, default); await service.SubmitAsync(draft.Id, default); await Assert.ThrowsAsync<InvalidOperationException>(() => service.PublishAsync(draft.Id, new(), default)); currentUser = Guid.NewGuid(); var published = await service.PublishAsync(draft.Id, new(), default); Assert.Equal(NoteTemplateVersionStatus.Published, published.Status); await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateDraftAsync(draft.Id, new() { Schema = published.Schema, ExpectedLastModifiedUtc = published.LastModifiedUtc }, default)); }
-    [Fact] public void Validation_RejectsArbitraryBindingsAndScripts() { var result = service.Validate(NoteType.Daily, NoteTemplateVariant.Standard, new() { Sections = [new() { Key = "subjective", Label = "Subjective", Fields = [new() { Key = "bad", Label = "Bad", BindingKey = "arbitrary.script", RendererKey = "textarea" }] }] }); Assert.False(result.IsValid); Assert.Contains(result.Errors, e => e.Contains("Unsupported workspace binding")); }
-    [Fact] public async Task Resolve_FallsBackToPackagedBaseline() { var resolved = await service.ResolveAsync(NoteType.Discharge, NoteTemplateVariant.Standard, default); Assert.Equal(Guid.Empty, resolved.Id); Assert.Contains(resolved.Schema.Sections, s => s.Key == "discharge"); }
-    [Fact] public void Validation_RejectsDisabledComplianceReviewSection() { var result = service.Validate(NoteType.Evaluation, NoteTemplateVariant.Standard, new() { Sections = [new() { Key = "subjective", Label = "Subjective", RendererKey = "specialized-section", Order = 10 }, new() { Key = "review", Label = "Review", RendererKey = "specialized-section", Order = 20, IsVisible = false }] }); Assert.False(result.IsValid); Assert.Contains(result.Errors, error => error.Contains("signature", StringComparison.OrdinalIgnoreCase)); }
-    [Fact] public void Validation_RejectsInvalidTypedDefault() { var result = service.Validate(NoteType.Evaluation, NoteTemplateVariant.Standard, new() { Sections = [new() { Key = "subjective", Label = "Subjective", RendererKey = "specialized-section", Order = 10, Fields = [new() { Key = "pain", Label = "Pain score", BindingKey = "subjective.currentPainScore", RendererKey = "number", DefaultValue = "not-a-number" }] }, new() { Key = "review", Label = "Review", RendererKey = "specialized-section", Order = 20 }] }); Assert.False(result.IsValid); Assert.Contains(result.Errors, error => error.Contains("Default value", StringComparison.OrdinalIgnoreCase)); }
+    private readonly ApplicationDbContext db;
+    private readonly NoteTemplateAdministrationService service;
+    private readonly Mock<IIdentityContextAccessor> identity = new();
+    private Guid currentUser = Guid.NewGuid();
+
+    public NoteTemplateAdministrationServiceTests()
+    {
+        var tenant = new Mock<ITenantContextAccessor>();
+        tenant.Setup(x => x.GetCurrentClinicId()).Returns(Guid.NewGuid());
+        identity.Setup(x => x.GetCurrentUserId()).Returns(() => currentUser);
+        db = new ApplicationDbContext(
+            new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseInMemoryDatabase($"templates-{Guid.NewGuid()}")
+                .Options,
+            tenant.Object);
+        service = new(db, tenant.Object, identity.Object, new Mock<IAuditService>().Object);
+    }
+
+    [Fact]
+    public async Task PublishedVersion_RequiresDifferentClinicalReviewer_AndBecomesImmutable()
+    {
+        var draft = await service.CreateDraftAsync(
+            new()
+            {
+                Name = "Progress",
+                NoteType = NoteType.ProgressNote,
+                Variant = NoteTemplateVariant.Standard
+            },
+            default);
+
+        await service.SubmitAsync(draft.Id, default);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.PublishAsync(draft.Id, new(), default));
+
+        currentUser = Guid.NewGuid();
+        var published = await service.PublishAsync(draft.Id, new(), default);
+
+        Assert.Equal(NoteTemplateVersionStatus.Published, published.Status);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateDraftAsync(
+            draft.Id,
+            new()
+            {
+                Schema = published.Schema,
+                ExpectedLastModifiedUtc = published.LastModifiedUtc
+            },
+            default));
+    }
+
+    [Fact]
+    public void Validation_RejectsArbitraryBindingsAndScripts()
+    {
+        var result = service.Validate(
+            NoteType.Daily,
+            NoteTemplateVariant.Standard,
+            new()
+            {
+                Sections =
+                [
+                    new()
+                    {
+                        Key = "subjective",
+                        Label = "Subjective",
+                        Fields =
+                        [
+                            new()
+                            {
+                                Key = "bad",
+                                Label = "Bad",
+                                BindingKey = "arbitrary.script",
+                                RendererKey = "textarea"
+                            }
+                        ]
+                    }
+                ]
+            });
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("Unsupported workspace binding"));
+    }
+
+    [Fact]
+    public async Task Resolve_FallsBackToPackagedBaseline()
+    {
+        var resolved = await service.ResolveAsync(NoteType.Discharge, NoteTemplateVariant.Standard, default);
+
+        Assert.Equal(Guid.Empty, resolved.Id);
+        Assert.Contains(resolved.Schema.Sections, section => section.Key == "discharge");
+    }
+
+    [Fact]
+    public void Validation_RejectsDisabledComplianceReviewSection()
+    {
+        var result = service.Validate(
+            NoteType.Evaluation,
+            NoteTemplateVariant.Standard,
+            new()
+            {
+                Sections =
+                [
+                    new()
+                    {
+                        Key = "subjective",
+                        Label = "Subjective",
+                        RendererKey = "specialized-section",
+                        Order = 10
+                    },
+                    new()
+                    {
+                        Key = "review",
+                        Label = "Review",
+                        RendererKey = "specialized-section",
+                        Order = 20,
+                        IsVisible = false
+                    }
+                ]
+            });
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("signature", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Validation_RejectsInvalidTypedDefault()
+    {
+        var result = service.Validate(
+            NoteType.Evaluation,
+            NoteTemplateVariant.Standard,
+            new()
+            {
+                Sections =
+                [
+                    new()
+                    {
+                        Key = "subjective",
+                        Label = "Subjective",
+                        RendererKey = "specialized-section",
+                        Order = 10,
+                        Fields =
+                        [
+                            new()
+                            {
+                                Key = "pain",
+                                Label = "Pain score",
+                                BindingKey = "subjective.currentPainScore",
+                                RendererKey = "number",
+                                DefaultValue = "not-a-number"
+                            }
+                        ]
+                    },
+                    new()
+                    {
+                        Key = "review",
+                        Label = "Review",
+                        RendererKey = "specialized-section",
+                        Order = 20
+                    }
+                ]
+            });
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("Default value", StringComparison.OrdinalIgnoreCase));
+    }
+
     public void Dispose() => db.Dispose();
 }

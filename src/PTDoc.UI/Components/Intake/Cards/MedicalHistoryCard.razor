@@ -27,7 +27,7 @@
 
         <button type="button"
                 class="intake-card__chip @(StructuredData.NoMedications ? "intake-card__chip--selected" : "")"
-                aria-pressed="@StructuredData.NoMedications"
+                aria-pressed="@(StructuredData.NoMedications ? "true" : "false")"
                 @onclick="() => ToggleNoneAsync(SelectionKind.Medication)">
             None
         </button>
@@ -37,7 +37,7 @@
             <div class="intake-card__chip-list">
                 @foreach (var medication in SelectedMedicationItems)
                 {
-                    <button type="button" class="intake-card__chip intake-card__chip--selected" @onclick="() => ToggleMedicationAsync(medication.Id)">
+                    <button type="button" class="intake-card__chip intake-card__chip--selected" aria-pressed="true" @onclick="() => ToggleMedicationAsync(medication.Id)">
                         @medication.DisplayLabel
                     </button>
                 }
@@ -50,7 +50,7 @@
                 var isSelected = SelectedMedicationIds.Contains(medication.Id, StringComparer.OrdinalIgnoreCase);
                 <button type="button"
                         class="intake-card__chip @(isSelected ? "intake-card__chip--selected" : "")"
-                        aria-pressed="@isSelected"
+                        aria-pressed="@(isSelected ? "true" : "false")"
                         @onclick="() => ToggleMedicationAsync(medication.Id)">
                     @medication.DisplayLabel
                 </button>
@@ -63,7 +63,7 @@
         <div class="intake-card__option-grid">
             <button type="button"
                     class="intake-card__chip @(StructuredData.NoComorbidities ? "intake-card__chip--selected" : "")"
-                    aria-pressed="@StructuredData.NoComorbidities"
+                    aria-pressed="@(StructuredData.NoComorbidities ? "true" : "false")"
                     @onclick="() => ToggleNoneAsync(SelectionKind.Comorbidity)">
                 None
             </button>
@@ -72,7 +72,7 @@
                 var isSelected = SelectedComorbidityIds.Contains(option.Id, StringComparer.OrdinalIgnoreCase);
                 <button type="button"
                         class="intake-card__chip @(isSelected ? "intake-card__chip--selected" : "")"
-                        aria-pressed="@isSelected"
+                        aria-pressed="@(isSelected ? "true" : "false")"
                         @onclick="() => ToggleCatalogSelectionAsync(option.Id, SelectionKind.Comorbidity)">
                     @option.Label
                 </button>
@@ -88,6 +88,7 @@
                 var isSelected = SelectedLivingSituationIds.Contains(option.Id, StringComparer.OrdinalIgnoreCase);
                 <button type="button"
                         class="intake-card__chip @(isSelected ? "intake-card__chip--selected" : "")"
+                        aria-pressed="@(isSelected ? "true" : "false")"
                         @onclick="() => ToggleCatalogSelectionAsync(option.Id, SelectionKind.LivingSituation)">
                     @option.Label
                 </button>
@@ -106,7 +107,7 @@
 
         <button type="button"
                 class="intake-card__chip @(StructuredData.NoAssistiveDevices ? "intake-card__chip--selected" : "")"
-                aria-pressed="@StructuredData.NoAssistiveDevices"
+                aria-pressed="@(StructuredData.NoAssistiveDevices ? "true" : "false")"
                 @onclick="() => ToggleNoneAsync(SelectionKind.AssistiveDevice)">
             None
         </button>
@@ -118,6 +119,7 @@
                 {
                     <button type="button"
                             class="intake-card__chip intake-card__chip--selected"
+                            aria-pressed="true"
                             @onclick="() => ToggleCatalogSelectionAsync(option.Id, SelectionKind.AssistiveDevice)">
                         @option.Label
                     </button>
@@ -131,6 +133,7 @@
                 var isSelected = SelectedAssistiveDeviceIds.Contains(option.Id, StringComparer.OrdinalIgnoreCase);
                 <button type="button"
                         class="intake-card__chip @(isSelected ? "intake-card__chip--selected" : "")"
+                        aria-pressed="@(isSelected ? "true" : "false")"
                         @onclick="() => ToggleCatalogSelectionAsync(option.Id, SelectionKind.AssistiveDevice)">
                     @option.Label
                 </button>
@@ -146,6 +149,7 @@
                 var isSelected = SelectedHouseLayoutOptionIds.Contains(option.Id, StringComparer.OrdinalIgnoreCase);
                 <button type="button"
                         class="intake-card__chip @(isSelected ? "intake-card__chip--selected" : "")"
+                        aria-pressed="@(isSelected ? "true" : "false")"
                         @onclick="() => SelectHouseLayoutAsync(option.Id)">
                     @option.Label
                 </button>

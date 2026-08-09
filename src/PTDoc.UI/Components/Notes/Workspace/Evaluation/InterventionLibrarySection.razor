@@ -109,7 +109,7 @@
                                     <img src="_content/PTDoc.UI/images/notes/interventions/home.svg" alt="" aria-hidden="true" />
                                     Include in Home Exercise Program
                                 </span>
-                                <button type="button" class="exercise-hep-toggle @(exercise.IncludeInHomeExerciseProgram ? "exercise-hep-toggle--selected" : "")" role="switch" aria-checked="@exercise.IncludeInHomeExerciseProgram" aria-label="Include @GetExerciseTitle(exercise) in Home Exercise Program" disabled="@IsReadOnly" @onclick="() => ToggleExerciseHepAsync(exercise)"><span></span></button>
+                                <button type="button" class="exercise-hep-toggle @(exercise.IncludeInHomeExerciseProgram ? "exercise-hep-toggle--selected" : "")" role="switch" aria-checked="@(exercise.IncludeInHomeExerciseProgram ? "true" : "false")" aria-label="Include @GetExerciseTitle(exercise) in Home Exercise Program" disabled="@IsReadOnly" @onclick="() => ToggleExerciseHepAsync(exercise)"><span></span></button>
                             </div>
                         }
                     </article>

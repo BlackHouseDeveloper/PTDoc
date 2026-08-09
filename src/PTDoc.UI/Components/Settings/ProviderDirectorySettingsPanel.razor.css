@@ -1,1 +1,127 @@
-.provider-admin{display:grid;gap:var(--spacing-6)}.provider-admin__header,.provider-admin__toolbar,.provider-admin__row,.provider-admin__actions{display:flex;align-items:center;gap:var(--spacing-3)}.provider-admin__header,.provider-admin__row{justify-content:space-between}.provider-admin__toolbar{flex-wrap:wrap}.provider-admin__toolbar label{flex:1 1 18rem}.provider-admin label{display:grid;gap:var(--spacing-2);color:var(--foreground)}.provider-admin__editor{display:grid;gap:var(--spacing-4);padding:var(--spacing-4);border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--muted)}.provider-admin__editor h2,.provider-admin section h2{margin:0 0 var(--spacing-3);font-size:var(--text-lg)}.provider-admin__form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--spacing-3)}.provider-admin__list{display:grid;border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden}.provider-admin__row{min-width:0;padding:var(--spacing-4);background:var(--card);border-bottom:1px solid var(--border)}.provider-admin__row:last-child{border-bottom:0}.provider-admin__row>div:first-child{display:grid;gap:var(--spacing-1);min-width:0}.provider-admin__row span,.provider-admin__state{color:var(--muted-foreground)}.provider-admin__warning{color:var(--warning-foreground)!important}.provider-admin__count{display:inline-flex;min-width:1.75rem;justify-content:center;padding:0 var(--spacing-2);border-radius:var(--radius-lg);background:var(--muted);font-size:var(--text-sm)}.provider-admin__state{padding:var(--spacing-4);border:1px dashed var(--border);border-radius:var(--radius-md)}.provider-admin__state--error{color:var(--destructive);border-color:var(--destructive)}@media(max-width:767px){.provider-admin__form-grid{grid-template-columns:1fr}.provider-admin__row{align-items:flex-start;flex-direction:column}.provider-admin__actions{width:100%;flex-wrap:wrap}.provider-admin__actions .btn{flex:1 1 auto}}
+.provider-admin {
+    display: grid;
+    gap: var(--spacing-6);
+}
+
+.provider-admin__header,
+.provider-admin__toolbar,
+.provider-admin__row,
+.provider-admin__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+}
+
+.provider-admin__header,
+.provider-admin__row {
+    justify-content: space-between;
+}
+
+.provider-admin__toolbar {
+    flex-wrap: wrap;
+}
+
+.provider-admin__toolbar label {
+    flex: 1 1 18rem;
+}
+
+.provider-admin label {
+    display: grid;
+    gap: var(--spacing-2);
+    color: var(--foreground);
+}
+
+.provider-admin__editor {
+    display: grid;
+    gap: var(--spacing-4);
+    padding: var(--spacing-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--muted);
+}
+
+.provider-admin__editor h2,
+.provider-admin section h2 {
+    margin: 0 0 var(--spacing-3);
+    font-size: var(--text-lg);
+}
+
+.provider-admin__form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-3);
+}
+
+.provider-admin__list {
+    display: grid;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+.provider-admin__row {
+    min-width: 0;
+    padding: var(--spacing-4);
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+}
+
+.provider-admin__row:last-child {
+    border-bottom: 0;
+}
+
+.provider-admin__row > div:first-child {
+    display: grid;
+    gap: var(--spacing-1);
+    min-width: 0;
+}
+
+.provider-admin__row span,
+.provider-admin__state {
+    color: var(--muted-foreground);
+}
+
+.provider-admin__warning {
+    color: var(--warning-foreground) !important;
+}
+
+.provider-admin__count {
+    display: inline-flex;
+    min-width: 1.75rem;
+    justify-content: center;
+    padding: 0 var(--spacing-2);
+    border-radius: var(--radius-lg);
+    background: var(--muted);
+    font-size: var(--text-sm);
+}
+
+.provider-admin__state {
+    padding: var(--spacing-4);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md);
+}
+
+.provider-admin__state--error {
+    color: var(--destructive);
+    border-color: var(--destructive);
+}
+
+@media (max-width: 767px) {
+    .provider-admin__form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .provider-admin__row {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .provider-admin__actions {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .provider-admin__actions .btn {
+        flex: 1 1 auto;
+    }
+}

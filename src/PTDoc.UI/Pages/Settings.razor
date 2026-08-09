@@ -72,6 +72,12 @@
 
     private void HandleSectionSelected(string sectionKey)
     {
+        if (isClinicalApproverOnly && sectionKey != "documentation")
+        {
+            activeSection = "documentation";
+            return;
+        }
+
         activeSection = sectionKey;
     }
 

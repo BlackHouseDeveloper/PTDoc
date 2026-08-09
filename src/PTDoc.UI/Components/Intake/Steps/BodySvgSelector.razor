@@ -19,7 +19,7 @@
                         role="button"
                         tabindex="0"
                         aria-label="@GetAriaLabel(region)"
-                        aria-pressed="@isSelected"
+                        aria-pressed="@(isSelected ? "true" : "false")"
                         @onclick="() => ToggleRegionAsync(region)"
                         @onkeydown="@(args => HandleRegionKeyDownAsync(region, args))" />
                 }
