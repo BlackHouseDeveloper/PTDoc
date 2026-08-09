@@ -1,1 +1,113 @@
-.patient-providers{display:grid;gap:var(--spacing-4)}.patient-providers>p{margin:0;color:var(--muted-foreground)}.patient-providers__list{display:grid;gap:var(--spacing-2)}.patient-providers__list article,.patient-providers__search,.patient-providers__results button{display:flex;align-items:center;justify-content:space-between;gap:var(--spacing-3)}.patient-providers__list article{padding:var(--spacing-3);border:1px solid var(--border);border-radius:var(--radius-md)}.patient-providers__list article>div,.patient-providers__results button>span:first-child{display:grid;gap:var(--spacing-1)}.patient-providers span,.patient-providers small{color:var(--muted-foreground)}.patient-providers__search label{display:grid;flex:1;gap:var(--spacing-2)}.patient-providers__results{display:grid;border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden}.patient-providers__results button{padding:var(--spacing-3);border:0;border-bottom:1px solid var(--border);background:var(--card);color:var(--foreground);text-align:left}.patient-providers__results button:last-child{border-bottom:0}.patient-providers details{padding:var(--spacing-3);border:1px solid var(--border);border-radius:var(--radius-md)}.patient-providers summary{cursor:pointer;font-weight:600}.patient-providers__candidate{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--spacing-3);margin-top:var(--spacing-3)}.patient-providers__candidate label{display:grid;gap:var(--spacing-2)}.patient-providers__state{padding:var(--spacing-3);border:1px dashed var(--border);border-radius:var(--radius-md);color:var(--muted-foreground)}.patient-providers__state--error{color:var(--destructive);border-color:var(--destructive)}@media(max-width:700px){.patient-providers__search,.patient-providers__list article{align-items:flex-start;flex-direction:column}.patient-providers__candidate{grid-template-columns:1fr}}
+.patient-providers {
+    display: grid;
+    gap: var(--spacing-4);
+}
+
+.patient-providers > p {
+    margin: 0;
+    color: var(--muted-foreground);
+}
+
+.patient-providers__list {
+    display: grid;
+    gap: var(--spacing-2);
+}
+
+.patient-providers__list article,
+.patient-providers__search,
+.patient-providers__results button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-3);
+}
+
+.patient-providers__list article {
+    padding: var(--spacing-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+.patient-providers__list article > div,
+.patient-providers__results button > span:first-child {
+    display: grid;
+    gap: var(--spacing-1);
+}
+
+.patient-providers span,
+.patient-providers small {
+    color: var(--muted-foreground);
+}
+
+.patient-providers__search label {
+    display: grid;
+    flex: 1;
+    gap: var(--spacing-2);
+}
+
+.patient-providers__results {
+    display: grid;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+.patient-providers__results button {
+    padding: var(--spacing-3);
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--card);
+    color: var(--foreground);
+    text-align: left;
+}
+
+.patient-providers__results button:last-child {
+    border-bottom: 0;
+}
+
+.patient-providers details {
+    padding: var(--spacing-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+.patient-providers summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.patient-providers__candidate {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-3);
+    margin-top: var(--spacing-3);
+}
+
+.patient-providers__candidate label {
+    display: grid;
+    gap: var(--spacing-2);
+}
+
+.patient-providers__state {
+    padding: var(--spacing-3);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md);
+    color: var(--muted-foreground);
+}
+
+.patient-providers__state--error {
+    border-color: var(--destructive);
+    color: var(--destructive);
+}
+
+@media (max-width: 700px) {
+    .patient-providers__search,
+    .patient-providers__list article {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .patient-providers__candidate {
+        grid-template-columns: 1fr;
+    }
+}

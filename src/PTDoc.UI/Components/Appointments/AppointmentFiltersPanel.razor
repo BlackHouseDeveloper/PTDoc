@@ -106,9 +106,9 @@
 
     private string? openDropdown = null;
 
-    private IReadOnlyList<string> AppointmentTypes => AppointmentTypeCatalog.All
+    private static readonly string[] AppointmentTypes = AppointmentTypeCatalog.All
         .Select(appointmentType => appointmentType.DisplayName)
-        .ToList();
+        .ToArray();
 
     private List<string> IntakeStatuses => new()
     {
