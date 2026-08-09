@@ -1,0 +1,105 @@
+@using PTDoc.Application.Providers
+@inject IProviderDirectoryService ProviderDirectory
+@inject IToastService ToastService
+
+<section class="settings-section-card provider-admin" aria-labelledby="provider-directory-title">
+    <header class="settings-section-header provider-admin__header">
+        <div><h1 id="provider-directory-title">Provider Directory</h1><p>Review external provider candidates and maintain the clinic-approved referral directory.</p></div>
+        <button type="button" class="btn btn-outline" @onclick="LoadAsync" disabled="@isBusy">Refresh</button>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(error)) { <div class="provider-admin__state provider-admin__state--error" role="alert">@error</div> }
+
+    <div class="provider-admin__toolbar">
+        <label><span>Search providers</span><input class="form-control" @bind="search" @bind:event="oninput" placeholder="Name, organization, or NPI" /></label>
+        <button type="button" class="btn btn-primary" @onclick="LoadAsync" disabled="@isBusy">Search</button>
+        <button type="button" class="btn btn-outline" @onclick="ToggleCreate">@(showCreate ? "Close form" : "Submit provider")</button>
+    </div>
+
+    @if (showCreate)
+    {
+        <section class="provider-admin__editor" aria-labelledby="submit-provider-title">
+            <h2 id="submit-provider-title">Submit provider candidate</h2>
+            <div class="provider-admin__form-grid">
+                <label><span>First name</span><input class="form-control" @bind="draft.FirstName" @bind:event="oninput" /></label>
+                <label><span>Last name</span><input class="form-control" @bind="draft.LastName" @bind:event="oninput" /></label>
+                <label><span>Credentials</span><input class="form-control" @bind="draft.Credentials" @bind:event="oninput" /></label>
+                <label><span>NPI</span><input class="form-control" inputmode="numeric" maxlength="10" @bind="draft.Npi" @bind:event="oninput" /></label>
+                <label><span>Specialty</span><input class="form-control" @bind="draft.Specialty" @bind:event="oninput" /></label>
+                <label><span>Organization</span><input class="form-control" @bind="draft.OrganizationName" @bind:event="oninput" /></label>
+                <label><span>Phone</span><input class="form-control" type="tel" @bind="draft.Phone" @bind:event="oninput" /></label>
+                <label><span>Fax</span><input class="form-control" type="tel" @bind="draft.Fax" @bind:event="oninput" /></label>
+            </div>
+            <button type="button" class="btn btn-primary" @onclick="SubmitAsync" disabled="@isBusy">Submit for approval</button>
+        </section>
+    }
+
+    @if (isLoading) { <div class="provider-admin__state" role="status">Loading provider directory…</div> }
+    else
+    {
+        <section aria-labelledby="pending-providers-title">
+            <h2 id="pending-providers-title">Pending approval <span class="provider-admin__count">@pending.Count</span></h2>
+            @if (pending.Count == 0) { <p class="provider-admin__state">No provider candidates are awaiting review.</p> }
+            else
+            {
+                <div class="provider-admin__list">
+                    @foreach (var provider in pending)
+                    {
+                        <article class="provider-admin__row">
+                            <div><strong>@provider.DisplayName</strong><span>@FormatMeta(provider)</span>
+                                @if (provider.PossibleDuplicates.Count > 0)
+                                {
+                                    <span class="provider-admin__warning">Possible duplicate — review before approval</span>
+                                    @foreach (var duplicate in provider.PossibleDuplicates)
+                                    {
+                                        <span>@duplicate.DisplayName (@duplicate.Reason · @duplicate.Status)</span>
+                                        @if (duplicate.Status == ProviderDirectoryStatus.Active)
+                                        {
+                                            <button type="button" class="btn btn-outline" @onclick="() => MergeAsync(provider.Id, duplicate.Id)" disabled="@isBusy">Merge into @duplicate.DisplayName</button>
+                                        }
+                                    }
+                                }
+                            </div>
+                            <div class="provider-admin__actions">
+                                @if (!RequiresNpiMerge(provider))
+                                {
+                                    <button type="button" class="btn btn-primary" @onclick="() => ApproveAsync(provider.Id, provider.PossibleDuplicates.Count > 0)" disabled="@isBusy">@(provider.PossibleDuplicates.Count > 0 ? "Approve as separate" : "Approve")</button>
+                                }
+                                <button type="button" class="btn btn-outline" @onclick="() => RejectAsync(provider.Id)" disabled="@isBusy">Reject</button>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+
+        <section aria-labelledby="active-providers-title">
+            <h2 id="active-providers-title">Active directory <span class="provider-admin__count">@active.Count</span></h2>
+            @if (active.Count == 0) { <p class="provider-admin__state">No active providers match this search.</p> }
+            else
+            {
+                <div class="provider-admin__list">
+                    @foreach (var provider in active)
+                    {
+                        <article class="provider-admin__row"><div><strong>@provider.DisplayName</strong><span>@FormatMeta(provider)</span></div><button type="button" class="btn btn-outline" @onclick="() => ArchiveAsync(provider.Id)" disabled="@isBusy">Archive</button></article>
+                    }
+                </div>
+            }
+        </section>
+    }
+</section>
+
+@code {
+    private List<ProviderDirectoryEntryDto> pending=[]; private List<ProviderDirectoryEntryDto> active=[];
+    private SubmitProviderCandidateRequest draft=new(); private string search=string.Empty; private string? error; private bool isLoading=true; private bool isBusy; private bool showCreate;
+    protected override Task OnInitializedAsync()=>LoadAsync();
+    private async Task LoadAsync(){isLoading=true;error=null;try{var pendingTask=ProviderDirectory.SearchForAdministrationAsync(search,ProviderDirectoryStatus.Pending,100,default);var activeTask=ProviderDirectory.SearchForAdministrationAsync(search,ProviderDirectoryStatus.Active,100,default);await Task.WhenAll(pendingTask,activeTask);pending=[..pendingTask.Result];active=[..activeTask.Result];}catch(Exception ex){error=ex.Message;}finally{isLoading=false;}}
+    private void ToggleCreate()=>showCreate=!showCreate;
+    private async Task SubmitAsync(){if(string.IsNullOrWhiteSpace(draft.FirstName)||string.IsNullOrWhiteSpace(draft.LastName)){error="First and last name are required.";return;}isBusy=true;error=null;try{await ProviderDirectory.SubmitAsync(draft,default);draft=new();showCreate=false;ToastService.ShowSuccess("Provider candidate submitted for approval.");await LoadAsync();}catch(Exception ex){error=ex.Message;}finally{isBusy=false;}}
+    private Task ApproveAsync(Guid id,bool confirmDuplicate)=>DecideAsync(id,true,confirmDuplicate);private Task RejectAsync(Guid id)=>DecideAsync(id,false,false);
+    private async Task DecideAsync(Guid id,bool approve,bool confirmDuplicate){isBusy=true;try{if(approve)await ProviderDirectory.ApproveAsync(id,new(){ConfirmDuplicate=confirmDuplicate,Reason=confirmDuplicate?"Confirmed as a separate provider during duplicate review.":null},default);else await ProviderDirectory.RejectAsync(id,new(){Reason="Rejected during directory review."},default);ToastService.ShowSuccess(approve?"Provider approved.":"Provider candidate rejected.");await LoadAsync();}catch(Exception ex){error=ex.Message;}finally{isBusy=false;}}
+    private async Task ArchiveAsync(Guid id){isBusy=true;try{await ProviderDirectory.ArchiveAsync(id,new(){Reason="Archived from provider directory settings."},default);ToastService.ShowSuccess("Provider archived.");await LoadAsync();}catch(Exception ex){error=ex.Message;}finally{isBusy=false;}}
+    private async Task MergeAsync(Guid candidateId,Guid targetId){isBusy=true;try{await ProviderDirectory.ApproveAsync(candidateId,new(){MergeIntoProviderId=targetId,Reason="Merged during duplicate review."},default);ToastService.ShowSuccess("Provider candidate merged.");await LoadAsync();}catch(Exception ex){error=ex.Message;}finally{isBusy=false;}}
+    private static bool RequiresNpiMerge(ProviderDirectoryEntryDto provider)=>provider.PossibleDuplicates.Any(duplicate=>duplicate.Status==ProviderDirectoryStatus.Active&&duplicate.Reason=="Exact NPI match");
+    private static string FormatMeta(ProviderDirectoryEntryDto p)=>string.Join(" · ",new[]{p.OrganizationName,p.Specialty,string.IsNullOrWhiteSpace(p.Npi)?null:$"NPI {p.Npi}"}.Where(v=>!string.IsNullOrWhiteSpace(v)));
+}

@@ -7,11 +7,13 @@ using Moq;
 using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.Dashboard;
 using PTDoc.Application.DTOs;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.UI.Components.Dashboard;
 using PTDoc.UI.Services;
+using System.Security.Claims;
 
 namespace PTDoc.Tests.UI.Dashboard;
 
@@ -187,6 +189,7 @@ public sealed class DashboardWidgetNavigationTests : TestContext
                 }
             ]
         }));
+        RegisterEmptyAppointmentService();
 
         var authStateTask = Services
             .GetRequiredService<AuthenticationStateProvider>()
@@ -280,6 +283,7 @@ public sealed class DashboardWidgetNavigationTests : TestContext
                 PatientsToday = 1
             }
         }));
+        RegisterEmptyAppointmentService();
 
         var authStateTask = Services
             .GetRequiredService<AuthenticationStateProvider>()
@@ -307,7 +311,7 @@ public sealed class DashboardWidgetNavigationTests : TestContext
         root.Find("#referringPhysician").Change(" ");
         root.Find("#authorizationNumber").Change(" ");
         root.FindAll("button")
-            .Single(button => button.TextContent.Contains("Add Patient + Send Intake", StringComparison.Ordinal))
+            .Single(button => button.TextContent.Contains("Add Patient and Send Intake", StringComparison.Ordinal))
             .Click();
 
         root.WaitForAssertion(() =>
@@ -366,6 +370,7 @@ public sealed class DashboardWidgetNavigationTests : TestContext
                 {
                     Id = $"authorizationExpiration:{patientId:N}:20260630",
                     Kind = "authorizationExpiration",
+                    Category = DashboardAlertCategory.Authorization,
                     Priority = "high",
                     Title = "Authorization Expiring",
                     Message = "Authorization coverage is nearing its end date.",
@@ -380,6 +385,7 @@ public sealed class DashboardWidgetNavigationTests : TestContext
                 }
             ]
         }));
+        RegisterEmptyAppointmentService();
 
         var authStateTask = Services
             .GetRequiredService<AuthenticationStateProvider>()
@@ -440,6 +446,118 @@ public sealed class DashboardWidgetNavigationTests : TestContext
             .Click();
 
         Assert.EndsWith("/patient/patient-456/info", navigation.Uri, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(Roles.PT, true)]
+    [InlineData(Roles.PTA, false)]
+    public void Dashboard_TodaysAppointments_IsVisibleOnlyForPtRole(string role, bool shouldRender)
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("test-user");
+        authorization.SetRoles(role);
+        var currentUserId = Guid.NewGuid();
+        authorization.SetClaims(new Claim(PTDocClaimTypes.InternalUserId, currentUserId.ToString("D")));
+        authorization.SetPolicies(
+            AuthorizationPolicies.ClinicalStaff,
+            AuthorizationPolicies.PatientWrite,
+            AuthorizationPolicies.IntakeWrite);
+
+        var appointmentService = new Mock<IAppointmentService>(MockBehavior.Strict);
+        appointmentService
+            .Setup(service => service.GetOverviewAsync(
+                It.IsAny<DateTime>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AppointmentsOverviewResponse
+            {
+                Appointments =
+                [
+                    new AppointmentListItemResponse
+                    {
+                        Id = Guid.NewGuid(),
+                        PatientRecordId = Guid.NewGuid(),
+                        PatientName = "PT Dashboard Patient",
+                        MedicalRecordNumber = "PT001",
+                        ClinicianId = currentUserId,
+                        StartTimeUtc = DateTime.UtcNow,
+                        EndTimeUtc = DateTime.UtcNow.AddMinutes(45),
+                        AppointmentType = "Follow-up",
+                        AppointmentStatus = "Scheduled",
+                        VisitWorkflowStatus = "Scheduled",
+                        IntakeStatus = "Completed"
+                    },
+                    new AppointmentListItemResponse
+                    {
+                        Id = Guid.NewGuid(),
+                        PatientRecordId = Guid.NewGuid(),
+                        PatientName = "Other Clinician Patient",
+                        MedicalRecordNumber = "PT999",
+                        ClinicianId = Guid.NewGuid(),
+                        StartTimeUtc = DateTime.UtcNow.AddHours(1),
+                        EndTimeUtc = DateTime.UtcNow.AddHours(1).AddMinutes(45),
+                        AppointmentType = "Follow-up",
+                        AppointmentStatus = "Scheduled",
+                        VisitWorkflowStatus = "Scheduled",
+                        IntakeStatus = "Completed"
+                    }
+                ]
+            });
+
+        Services.AddLogging();
+        Services.AddSingleton<IHeaderConfigurationService, HeaderConfigurationService>();
+        Services.AddSingleton<IToastService, ToastService>();
+        Services.AddSingleton(Mock.Of<IPatientService>());
+        Services.AddSingleton(Mock.Of<IIntakeService>());
+        Services.AddSingleton(Mock.Of<IIntakeDeliveryService>());
+        Services.AddSingleton(appointmentService.Object);
+        Services.AddSingleton<IDashboardAlertService>(new StaticDashboardAlertService(new DashboardSnapshotResponse
+        {
+            Overview = new DashboardOverviewCountsResponse { PatientsToday = 1 }
+        }));
+
+        var authStateTask = Services
+            .GetRequiredService<AuthenticationStateProvider>()
+            .GetAuthenticationStateAsync();
+        var root = Render(builder =>
+        {
+            builder.OpenComponent<CascadingValue<Task<AuthenticationState>>>(0);
+            builder.AddAttribute(1, "Value", authStateTask);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(childBuilder =>
+            {
+                childBuilder.OpenComponent<PTDoc.UI.Pages.Dashboard>(3);
+                childBuilder.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        root.WaitForAssertion(() =>
+            Assert.Equal(shouldRender, root.FindAll("[data-testid='today-appointments']").Count == 1));
+
+        if (shouldRender)
+        {
+            Assert.Contains("PT Dashboard Patient", root.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Other Clinician Patient", root.Markup, StringComparison.Ordinal);
+        }
+
+        appointmentService.Verify(service => service.GetOverviewAsync(
+                It.IsAny<DateTime>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()),
+            shouldRender ? Times.Once() : Times.Never());
+    }
+
+    private void RegisterEmptyAppointmentService()
+    {
+        var appointmentService = new Mock<IAppointmentService>(MockBehavior.Strict);
+        appointmentService
+            .Setup(service => service.GetOverviewAsync(
+                It.IsAny<DateTime>(),
+                It.IsAny<DateTime>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AppointmentsOverviewResponse());
+        Services.AddSingleton(appointmentService.Object);
     }
 
     private sealed class StaticDashboardAlertService(DashboardSnapshotResponse snapshot) : IDashboardAlertService

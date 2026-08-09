@@ -1,7 +1,8 @@
+@using PTDoc.Application.Appointments
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
-@if (IsOpen)
+@if (IsOpen && !IsSuspended)
 {
     <div class="modal-overlay" @onclick="HandleOverlayClick" @onclick:stopPropagation="false">
         <div class="modal-container" @ref="modalContainerRef" @onclick:stopPropagation="true" role="dialog" 
@@ -36,7 +37,22 @@
 
                 <!-- Patient Selection -->
                 <div class="form-field">
-                    <label for="patient" class="form-label">Patient <span class="required">*</span></label>
+                    <div class="form-field-header">
+                        <label for="patient" class="form-label">Patient <span class="required">*</span></label>
+                        @if (ShowAddPatientAction && OnAddPatientRequested.HasDelegate)
+                        {
+                            <AuthorizeView Policy="@AuthorizationPolicies.PatientWrite">
+                                <Authorized>
+                                    <button type="button"
+                                            class="btn-add-patient"
+                                            @onclick="HandleAddPatientRequestedAsync"
+                                            disabled="@isSubmitting">
+                                        Add Patient
+                                    </button>
+                                </Authorized>
+                            </AuthorizeView>
+                        }
+                    </div>
                     <select 
                         id="patient" 
                         class="@GetInputClass(nameof(PatientId))"
@@ -73,10 +89,10 @@
                         aria-invalid="@AriaInvalid(nameof(AppointmentType))"
                         aria-describedby="@GetFieldDescriptionId(nameof(AppointmentType))">
                         <option value="">Select type...</option>
-                        <option value="Initial Evaluation">Initial Evaluation</option>
-                        <option value="Follow Up">Follow Up</option>
-                        <option value="Re-Evaluation">Re-Evaluation</option>
-                        <option value="Discharge">Discharge</option>
+                        @foreach (var appointmentType in AppointmentTypeCatalog.All)
+                        {
+                            <option value="@appointmentType.FormValue">@appointmentType.DisplayName</option>
+                        }
                     </select>
                     @RenderFieldError(nameof(AppointmentType))
                 </div>
@@ -172,7 +188,9 @@
                         class="form-input form-textarea" 
                         rows="3"
                         placeholder="Add any additional notes..."
-                        @bind="Notes"></textarea>
+                        value="@Notes"
+                        @oninput="HandleNotesInput"
+                        @onchange="HandleNotesInput"></textarea>
                 </div>
 
                 <!-- Modal Footer (Buttons) -->
@@ -208,7 +226,19 @@
     public EventCallback<bool> IsOpenChanged { get; set; }
 
     [Parameter]
+    public bool IsSuspended { get; set; }
+
+    [Parameter]
     public Func<AppointmentFormData, Task<bool>>? OnSubmit { get; set; }
+
+    [Parameter]
+    public EventCallback<AppointmentFormData> OnAddPatientRequested { get; set; }
+
+    [Parameter]
+    public bool ShowAddPatientAction { get; set; }
+
+    [Parameter]
+    public string? PreferredPatientId { get; set; }
 
     [Parameter]
     public string Title { get; set; } = "New Appointment";
@@ -239,7 +269,10 @@
     private DotNetObjectReference<NewAppointmentModal>? dotNetRef;
     private string modalId = $"new-appointment-modal-{Guid.NewGuid():N}";
     private bool wasOpen;
+    private bool wasSuspended;
+    private AppointmentFormData? appliedInitialValues;
     private bool modalAccessibilityActive;
+    private string? appliedPreferredPatientId;
 
     private string PatientId { get; set; } = string.Empty;
     private string AppointmentType { get; set; } = string.Empty;
@@ -254,12 +287,36 @@
 
     protected override void OnParametersSet()
     {
-        if (IsOpen && !wasOpen)
+        var shouldApplyInitialValues = IsOpen
+            && !IsSuspended
+            && (!wasOpen
+                || wasSuspended
+                || !ReferenceEquals(appliedInitialValues, InitialValues));
+        if (shouldApplyInitialValues)
         {
             ApplyFormState(InitialValues);
+            appliedInitialValues = InitialValues;
+            appliedPreferredPatientId = null;
+        }
+
+        if (IsOpen
+            && !string.IsNullOrWhiteSpace(PreferredPatientId)
+            && !string.Equals(appliedPreferredPatientId, PreferredPatientId, StringComparison.Ordinal)
+            && AvailablePatients.Any(patient => string.Equals(patient.Id, PreferredPatientId, StringComparison.OrdinalIgnoreCase)))
+        {
+            PatientId = PreferredPatientId;
+            appliedPreferredPatientId = PreferredPatientId;
+            validationErrors.Remove(nameof(PatientId));
+        }
+
+        if (!IsOpen)
+        {
+            appliedPreferredPatientId = null;
+            appliedInitialValues = null;
         }
 
         wasOpen = IsOpen;
+        wasSuspended = IsSuspended;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -277,7 +334,7 @@
             }
         }
 
-        if (IsOpen && !modalAccessibilityActive && modalModule != null && dotNetRef != null)
+        if (IsOpen && !IsSuspended && !modalAccessibilityActive && modalModule != null && dotNetRef != null)
         {
             try
             {
@@ -291,7 +348,7 @@
                 Console.WriteLine($"Modal JS interop error: {ex.Message}");
             }
         }
-        else if (!IsOpen && modalAccessibilityActive && modalModule != null)
+        else if ((!IsOpen || IsSuspended) && modalAccessibilityActive && modalModule != null)
         {
             try
             {
@@ -324,11 +381,37 @@
         ApplyFormState(null);
         submitFeedbackMessage = null;
         wasOpen = false;
+        wasSuspended = false;
+        appliedInitialValues = null;
     }
 
     private void HandleOverlayClick()
     {
         _ = Close();
+    }
+
+    private async Task HandleAddPatientRequestedAsync()
+    {
+        if (isSubmitting || !OnAddPatientRequested.HasDelegate)
+        {
+            return;
+        }
+
+        await OnAddPatientRequested.InvokeAsync(new AppointmentFormData
+        {
+            PatientId = PatientId,
+            AppointmentType = AppointmentType,
+            AppointmentDate = AppointmentDate ?? DateTime.Today,
+            AppointmentTime = (AppointmentTimeInput ?? new TimeOnly(9, 0)).ToTimeSpan(),
+            DurationMinutes = DurationMinutes,
+            ClinicianId = ClinicianId,
+            Notes = Notes
+        });
+    }
+
+    private void HandleNotesInput(ChangeEventArgs eventArgs)
+    {
+        Notes = eventArgs.Value?.ToString() ?? string.Empty;
     }
 
     private async Task HandleSubmit()

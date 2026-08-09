@@ -125,6 +125,15 @@ main {
         width: 100%;
     }
 
+    .sidebar.closed ::deep .ptdoc-nav-scrollable {
+        flex: 1 1 auto;
+    }
+
+    .sidebar.closed ::deep .ptdoc-nav-footer {
+        flex: 0 0 auto;
+        min-height: 0;
+    }
+
     .sidebar.closed ::deep .ptdoc-nav-content {
         flex: 0 0 auto;
         justify-content: center;

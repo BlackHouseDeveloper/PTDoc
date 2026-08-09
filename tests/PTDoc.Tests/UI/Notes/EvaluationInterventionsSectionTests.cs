@@ -113,6 +113,40 @@ public sealed class EvaluationInterventionsSectionTests : TestContext
     }
 
     [Fact]
+    public void TypedManualTechniques_AreExcludedFromTheLegacyGeneralInterventionEditor()
+    {
+        var plan = new PlanVm
+        {
+            GeneralInterventions =
+            [
+                new GeneralInterventionEntry
+                {
+                    Kind = InterventionKind.ManualTechnique,
+                    Name = "Glenohumeral Joint Mobilization",
+                    Category = "Manual Work Technique",
+                    InterventionRegion = InterventionRegion.Shoulder
+                },
+                new GeneralInterventionEntry
+                {
+                    Kind = InterventionKind.General,
+                    Name = "Patient education"
+                }
+            ]
+        };
+
+        var cut = RenderComponent<EvaluationInterventionsSection>(parameters => parameters
+            .Add(component => component.Objective, new ObjectiveVm())
+            .Add(component => component.Plan, plan)
+            .Add(component => component.IsReadOnly, false));
+
+        Assert.Empty(cut.FindAll("[data-testid='manual-technique-card']"));
+        Assert.Contains("1 technique", cut.Find("[data-testid='technique-count']").TextContent, StringComparison.Ordinal);
+        var legacyEditor = Assert.Single(cut.FindAll("[data-testid='evaluation-general-intervention-row']"));
+        Assert.Contains("Patient education", legacyEditor.TextContent, StringComparison.Ordinal);
+        Assert.DoesNotContain("Glenohumeral Joint Mobilization", legacyEditor.TextContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RemoveCptCode_ClearsInterventionRowsReferencingRemovedCode()
     {
         var objective = new ObjectiveVm

@@ -9,6 +9,7 @@ internal sealed class IntakeSupplementalReferenceAsset
     public IntakeSupplementalOptionGroupAsset AssistiveDevices { get; set; } = new();
     public IntakeSupplementalOptionGroupAsset LivingSituations { get; set; } = new();
     public IntakeSupplementalOptionGroupAsset HouseLayoutOptions { get; set; } = new();
+    public IntakeSupplementalOptionGroupAsset InsuranceCarriers { get; set; } = new();
 }
 
 internal sealed class IntakeSupplementalOptionGroupAsset

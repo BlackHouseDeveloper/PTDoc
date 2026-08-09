@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.NoteTemplates;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
@@ -496,6 +497,18 @@ public class SyncClientProtocolTests
             }
         });
         var noteId = Guid.NewGuid();
+        var templateVersionId = Guid.NewGuid();
+        var noteTemplates = new Mock<INoteTemplateAdministrationService>();
+        noteTemplates
+            .Setup(service => service.ResolveAsync(
+                NoteType.Daily,
+                NoteTemplateVariant.DryNeedling,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteTemplateVersionDto
+            {
+                Id = templateVersionId,
+                Status = NoteTemplateVersionStatus.Published
+            });
         var request = new ClientSyncPushRequest
         {
             Items =
@@ -522,12 +535,14 @@ public class SyncClientProtocolTests
         var syncEngine = new SyncEngine(
             context,
             NullLogger<SyncEngine>.Instance,
-            signatureService: CreateSignatureService(context));
+            signatureService: CreateSignatureService(context),
+            noteTemplates: noteTemplates.Object);
 
         var response = await syncEngine.ReceiveClientPushAsync(request);
 
         Assert.Equal(1, response.AcceptedCount);
         var savedNote = await context.ClinicalNotes.AsNoTracking().SingleAsync(note => note.Id == noteId);
+        Assert.Equal(templateVersionId, savedNote.TemplateVersionId);
         Assert.Equal("[]", savedNote.CptCodesJson);
         Assert.Equal(0, savedNote.TotalTreatmentMinutes);
         var savedPayload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(
@@ -600,14 +615,17 @@ public class SyncClientProtocolTests
         };
         context.Patients.Add(patient);
 
-        context.Appointments.Add(new Appointment
+        var appointment = new Appointment
         {
             PatientId = patient.Id,
             StartTimeUtc = DateTime.UtcNow,
             EndTimeUtc = DateTime.UtcNow.AddHours(1),
+            AppointmentType = AppointmentType.ReEvaluation,
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = Guid.NewGuid()
-        });
+        };
+        appointment.AssignClinicalVisitOrdinal(3);
+        context.Appointments.Add(appointment);
 
         context.IntakeForms.Add(new IntakeForm
         {
@@ -669,6 +687,11 @@ public class SyncClientProtocolTests
         Assert.Contains("ClinicalNote", entityTypes);
         Assert.Contains("ObjectiveMetric", entityTypes);
         Assert.Contains("AuditLog", entityTypes);
+
+        var appointmentPayload = result.Items.Single(item => item.EntityType == "Appointment");
+        using var appointmentJson = JsonDocument.Parse(appointmentPayload.DataJson);
+        Assert.Equal(3, appointmentJson.RootElement.GetProperty("ClinicalVisitOrdinal").GetInt32());
+        Assert.Equal((int)AppointmentType.ReEvaluation, appointmentJson.RootElement.GetProperty("AppointmentType").GetInt32());
     }
 
     [Fact]
@@ -676,11 +699,14 @@ public class SyncClientProtocolTests
     {
         var context = CreateInMemoryContext();
         await SeedClinicalNoteAsync(context, "{\"subjective\":\"Patient reports pain\"}");
+        context.ProviderDirectoryEntries.Add(new ProviderDirectoryEntry { ClinicId = context.Patients.Select(patient => patient.ClinicId).First(), FirstName = "Directory", LastName = "Provider", Status = ProviderDirectoryStatus.Active, LastModifiedUtc = DateTime.UtcNow });
+        await context.SaveChangesAsync();
 
         var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
         var result = await syncEngine.GetClientDeltaAsync(DateTime.UtcNow.AddMinutes(-2), null, userRoles: [Roles.Aide]);
 
         Assert.Empty(result.Items.Where(i => i.EntityType == "ClinicalNote"));
+        Assert.Empty(result.Items.Where(i => i.EntityType == "ProviderDirectoryEntry"));
         Assert.NotEmpty(result.Items.Where(i => i.EntityType == "Patient"));
     }
 
@@ -701,6 +727,10 @@ public class SyncClientProtocolTests
     {
         var context = CreateInMemoryContext();
         await SeedClinicalNoteAsync(context, "{\"subjective\":\"Follow-up\"}");
+        var patient = await context.Patients.FirstAsync();
+        var policy = new PatientInsurancePolicy { PatientId = patient.Id, ClinicId = patient.ClinicId, CoveragePriority = InsuranceCoveragePriority.Primary, CarrierDisplayName = "Example", Status = InsurancePolicyStatus.Active, LastModifiedUtc = DateTime.UtcNow };
+        context.PatientInsurancePolicies.Add(policy);
+        context.PatientInsuranceAuthorizations.Add(new PatientInsuranceAuthorization { PatientId = patient.Id, PatientInsurancePolicyId = policy.Id, ClinicId = patient.ClinicId, LastModifiedUtc = DateTime.UtcNow });
         context.AuditLogs.Add(new AuditLog
         {
             EventType = "SyncEvent",
@@ -715,6 +745,8 @@ public class SyncClientProtocolTests
 
         Assert.Empty(result.Items.Where(i => i.EntityType == "ClinicalNote"));
         Assert.Empty(result.Items.Where(i => i.EntityType == "AuditLog"));
+        Assert.Empty(result.Items.Where(i => i.EntityType == "PatientInsurancePolicy"));
+        Assert.Empty(result.Items.Where(i => i.EntityType == "PatientInsuranceAuthorization"));
     }
 
     [Fact]

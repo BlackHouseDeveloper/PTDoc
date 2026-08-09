@@ -86,4 +86,22 @@ public sealed class SoapTabNavTests : TestContext
         Assert.Contains("1", planTab.TextContent, StringComparison.Ordinal);
         Assert.Equal("Plan: 1 required item missing", planTab.GetAttribute("aria-label"));
     }
+
+    [Fact]
+    public void Tabs_UsePublishedTemplateLabels_InVisibleAndAccessibleNames()
+    {
+        var cut = RenderComponent<SoapTabNav>(parameters => parameters
+            .Add(component => component.ActiveSection, SoapSection.Subjective)
+            .Add(component => component.Sections, new[] { SoapSection.Subjective, SoapSection.Review })
+            .Add(component => component.SectionLabels, new Dictionary<SoapSection, string>
+            {
+                [SoapSection.Subjective] = "Patient Report",
+                [SoapSection.Review] = "Clinical Review"
+            })
+            .Add(component => component.ActiveSectionChanged, EventCallback.Factory.Create<SoapSection>(this, _ => { })));
+
+        var subjective = cut.Find("[data-testid='soap-tab-subjective']");
+        Assert.Contains("Patient Report", subjective.TextContent, StringComparison.Ordinal);
+        Assert.Equal("Patient Report", subjective.GetAttribute("aria-label"));
+    }
 }

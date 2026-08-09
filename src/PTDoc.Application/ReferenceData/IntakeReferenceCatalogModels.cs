@@ -17,6 +17,7 @@ public sealed class IntakeReferenceCatalogDto
     public IReadOnlyList<IntakeCatalogOptionDto> AssistiveDevices { get; set; } = Array.Empty<IntakeCatalogOptionDto>();
     public IReadOnlyList<IntakeCatalogOptionDto> LivingSituations { get; set; } = Array.Empty<IntakeCatalogOptionDto>();
     public IReadOnlyList<IntakeCatalogOptionDto> HouseLayoutOptions { get; set; } = Array.Empty<IntakeCatalogOptionDto>();
+    public IReadOnlyList<IntakeCatalogOptionDto> InsuranceCarriers { get; set; } = Array.Empty<IntakeCatalogOptionDto>();
 }
 
 public sealed class IntakeBodyPartGroupDto

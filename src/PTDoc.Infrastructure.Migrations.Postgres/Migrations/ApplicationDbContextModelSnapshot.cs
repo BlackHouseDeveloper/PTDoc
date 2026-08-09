@@ -44,10 +44,14 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<Guid>("ClinicalId")
                         .HasColumnType("uuid");
 
+                    b.Property<int?>("ClinicalVisitOrdinal")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("EndTimeUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("LastModifiedUtc")
+                        .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("ModifiedByUserId")
@@ -81,6 +85,13 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("StartTimeUtc");
 
                     b.HasIndex("ClinicalId", "StartTimeUtc");
+
+                    b.HasIndex("ClinicId", "PatientId", "ClinicalVisitOrdinal");
+
+                    b.HasIndex("PatientId", "ClinicalVisitOrdinal")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Appointments_PatientId_ClinicalVisitOrdinal")
+                        .HasFilter("\"ClinicalVisitOrdinal\" IS NOT NULL");
 
                     b.ToTable("Appointments");
                 });
@@ -2146,6 +2157,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 });
 #pragma warning disable 612, 618
             ApplicationDbContext.ConfigureIntegrationSnapshotModels(modelBuilder);
+            ApplicationDbContext.ConfigureEnterpriseDataSnapshotModels(modelBuilder, "Postgres");
 #pragma warning restore 612, 618
         }
     }

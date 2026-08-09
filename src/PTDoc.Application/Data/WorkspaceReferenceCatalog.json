@@ -1,5 +1,32 @@
 {
-  "version": "2026-04-18",
+  "version": "2026-08-09",
+  "interventionLibrary": {
+    "provenance": {
+      "documentPath": "src/PTDoc.Application/Data/WorkspaceReferenceCatalog.json",
+      "version": "2026-08-09",
+      "notes": "Runtime-canonical intervention library assembled from the governed workspace exercise and treatment reference catalogs."
+    },
+    "items": [
+      { "id": "exercise-pendulum-swings", "kind": "Exercise", "name": "Pendulum Exercise", "category": "Range of Motion", "region": "Shoulder", "searchAliases": ["pendulum swings", "codman"], "defaultPrescription": { "sets": 3, "repetitions": 10, "frequency": "3x/week" } },
+      { "id": "exercise-scapular-retraction", "kind": "Exercise", "name": "Scapular Retraction", "category": "Strengthening", "region": "Shoulder", "searchAliases": ["scap", "shoulder blade squeeze"] },
+      { "id": "exercise-cervical-retraction", "kind": "Exercise", "name": "Cervical Retraction", "category": "Mobility", "region": "CervicalSpine", "searchAliases": ["chin tuck"] },
+      { "id": "exercise-heel-slide", "kind": "Exercise", "name": "Heel Slide", "category": "Range of Motion", "region": "Knee", "searchAliases": ["heel slides", "knee flexion"] },
+      { "id": "exercise-ankle-pump", "kind": "Exercise", "name": "Ankle Pump", "category": "Mobility", "region": "AnkleFoot", "searchAliases": ["ankle pumps", "dorsiflexion plantarflexion"] },
+      { "id": "exercise-bridge", "kind": "Exercise", "name": "Bridge", "category": "Strengthening", "region": "LumbarSpine", "searchAliases": ["bridging", "glute bridge"] },
+      { "id": "exercise-wall-slides", "kind": "Exercise", "name": "Wall slides", "category": "Range of Motion", "region": "Shoulder", "searchAliases": ["wall slide", "shoulder flexion"], "isSelectable": false },
+      { "id": "exercise-shoulder-external-rotation-band", "kind": "Exercise", "name": "Shoulder external rotation with resistance band", "category": "Strengthening", "region": "Shoulder", "searchAliases": ["external rotation", "rotator cuff"], "isSelectable": false },
+      { "id": "exercise-shoulder-flexion-wand", "kind": "Exercise", "name": "Shoulder flexion with wand", "category": "Range of Motion", "region": "Shoulder", "searchAliases": ["active assisted shoulder flexion", "aarom"], "isSelectable": false },
+      { "id": "exercise-serratus-punches", "kind": "Exercise", "name": "Serratus punches", "category": "Strengthening", "region": "Shoulder", "searchAliases": ["serratus anterior", "scapular protraction"], "isSelectable": false },
+      { "id": "exercise-biceps-curls-light", "kind": "Exercise", "name": "Biceps curls (light resistance)", "category": "Strengthening", "region": "Shoulder", "searchAliases": ["biceps curl", "elbow flexion"], "isSelectable": false },
+      { "id": "manual-joint-mobilization-shoulder", "kind": "ManualTechnique", "name": "Joint Mobilization - grade I-V, Maitland or Kaltenborn techniques", "category": "Manual Work Technique", "region": "Shoulder", "searchAliases": ["joint mobilization", "glenohumeral mobilization"] },
+      { "id": "manual-soft-tissue-mobilization-shoulder", "kind": "ManualTechnique", "name": "Soft Tissue Mobilization - myofascial release, trigger point therapy", "category": "Manual Work Technique", "region": "Shoulder", "searchAliases": ["soft tissue mobilization", "myofascial release"] },
+      { "id": "manual-scar-tissue-mobilization-shoulder", "kind": "ManualTechnique", "name": "Scar Tissue Mobilization - post-op or injury", "category": "Manual Work Technique", "region": "Shoulder", "searchAliases": ["scar mobilization", "postoperative scar"] },
+      { "id": "manual-therapy-shoulder", "kind": "ManualTechnique", "name": "Manual Therapy - massage, mobilization, joint distraction", "category": "Manual Work Technique", "region": "Shoulder", "searchAliases": ["manual therapy", "joint distraction"] },
+      { "id": "manual-stretching-shoulder", "kind": "ManualTechnique", "name": "Stretching - static, dynamic, PNF", "category": "Manual Work Technique", "region": "Shoulder", "searchAliases": ["manual stretching", "pnf"] },
+      { "id": "manual-joint-mobilization-elbow", "kind": "ManualTechnique", "name": "Joint Mobilization - grade I-V, Maitland or Kaltenborn techniques", "category": "Manual Work Technique", "region": "Elbow", "searchAliases": ["elbow joint mobilization", "radiohumeral"] },
+      { "id": "manual-soft-tissue-mobilization-elbow", "kind": "ManualTechnique", "name": "Soft Tissue Mobilization - myofascial release, trigger point therapy", "category": "Manual Work Technique", "region": "Elbow", "searchAliases": ["forearm soft tissue", "trigger point therapy"] }
+    ]
+  },
   "shared": {
     "treatmentInterventions": {
       "isAvailable": true,

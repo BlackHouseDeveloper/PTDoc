@@ -69,5 +69,8 @@ public class Patient : ISyncTrackedEntity
     public ICollection<IntakeForm> IntakeForms { get; set; } = new List<IntakeForm>();
     public ICollection<PatientDocument> Documents { get; set; } = new List<PatientDocument>();
     public ICollection<PatientCommunicationLogEntry> CommunicationLogEntries { get; set; } = new List<PatientCommunicationLogEntry>();
+    public ICollection<PatientProviderRelationship> ProviderRelationships { get; set; } = new List<PatientProviderRelationship>();
+    public ICollection<PatientInsurancePolicy> InsurancePolicies { get; set; } = new List<PatientInsurancePolicy>();
+    public ICollection<PatientInsuranceAuthorization> InsuranceAuthorizations { get; set; } = new List<PatientInsuranceAuthorization>();
     public Clinic? Clinic { get; set; }
 }

@@ -210,7 +210,7 @@ export class ModalHelper {
     }
 
     hideBackgroundSiblings(modalId, modalElement) {
-        const overlayElement = modalElement.closest('.modal-overlay, .detail-backdrop, .notifications-modal-overlay, .appointment-detail-modal-overlay, .appointment-detail-modal__overlay, .appointment-payment-modal__overlay, .signature-consent-overlay') ?? modalElement;
+        const overlayElement = modalElement.closest('.modal-overlay, .detail-backdrop, .notifications-modal-overlay, .appointment-detail-modal-overlay, .appointment-detail-modal__overlay, .appointment-payment-modal__overlay, .signature-consent-overlay, .intervention-dialog-backdrop') ?? modalElement;
         const parent = overlayElement.parentElement;
         if (!parent) return;
 

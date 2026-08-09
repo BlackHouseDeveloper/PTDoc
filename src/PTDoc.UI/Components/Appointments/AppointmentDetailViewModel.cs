@@ -20,7 +20,10 @@ public sealed class AppointmentDetailViewModel
     public bool CanRecordCopay { get; init; }
     public string CopayStatusLabel { get; init; } = "Copay not configured";
     public string CopayActionUnavailableReason { get; init; } = "Copay collection is not configured for this appointment.";
+    public DateTime? ProgressNoteDueDate { get; init; }
+    public int? VisitNumber { get; init; }
     public string Notes { get; init; } = string.Empty;
+    public DateTime LastModifiedUtc { get; init; }
 
     public TimeOnly EndTime => StartTime.AddMinutes(DurationMinutes);
 

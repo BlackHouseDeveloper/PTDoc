@@ -1,5 +1,9 @@
-﻿@namespace PTDoc.UI.Components
+@namespace PTDoc.UI.Components
+@using System.Globalization
 @using System.Reflection
+@using System.Security.Claims
+@using PTDoc.Application.Auth
+@using PTDoc.Application.Identity
 @using PTDoc.UI.Components.Intake
 @using PTDoc.UI.Components.Layout
 @using PTDoc.UI.Pages
@@ -7,6 +11,7 @@
 @implements IDisposable
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IUserService UserService
 @inject ILogger<Routes> Logger
 
 <Router AppAssembly="@typeof(Routes).Assembly" AdditionalAssemblies="@resolvedAdditionalAssemblies">
@@ -36,20 +41,21 @@
             </AuthorizeRouteView>
         }
     </Found>
-
 </Router>
 
 @code {
     private bool isAuthenticated;
+    private int logoutTriggered;
     private IReadOnlyList<Assembly>? resolvedAdditionalAssemblies;
 
     protected override async Task OnInitializedAsync()
     {
         resolvedAdditionalAssemblies = ResolveAdditionalAssemblies();
         AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+        NavigationManager.LocationChanged += OnLocationChanged;
 
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
+        await ApplyAuthenticationStateAsync(authState);
     }
 
     private void OnAuthenticationStateChanged(Task<AuthenticationState> authStateTask)
@@ -62,13 +68,81 @@
         try
         {
             var authState = await authStateTask;
-            isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
+            await ApplyAuthenticationStateAsync(authState);
             await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Authentication state change handler failed.");
         }
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args)
+    {
+        _ = ValidateAuthenticationOnNavigationAsync();
+    }
+
+    private async Task ValidateAuthenticationOnNavigationAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            await ApplyAuthenticationStateAsync(authState);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Authentication validation during navigation failed.");
+        }
+    }
+
+    private async Task ApplyAuthenticationStateAsync(AuthenticationState authState)
+    {
+        isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
+        if (!isAuthenticated)
+        {
+            return;
+        }
+
+        if (!HasExpiredOrInvalidApiToken(authState.User))
+        {
+            Volatile.Write(ref logoutTriggered, 0);
+            return;
+        }
+
+        isAuthenticated = false;
+        if (Interlocked.Exchange(ref logoutTriggered, 1) == 0)
+        {
+            Logger.LogInformation("Ending the authenticated session because its API access token is missing, invalid, or expired during navigation.");
+            await UserService.LogoutAsync();
+        }
+    }
+
+    internal static bool HasExpiredOrInvalidApiToken(ClaimsPrincipal principal)
+    {
+        var isLocalWebSession = string.Equals(
+            principal.FindFirst(PTDocClaimTypes.AuthenticationType)?.Value,
+            "web_cookie",
+            StringComparison.Ordinal);
+        var accessToken = principal.FindFirst(PTDocClaimTypes.ApiAccessToken)?.Value;
+        var expiry = principal.FindFirst(PTDocClaimTypes.ApiAccessTokenExpiresAt)?.Value;
+
+        // Local Web sessions always receive both claims at sign-in. Missing metadata
+        // means the UI cookie can no longer prove that its required API session is usable.
+        // External OIDC sessions do not use these claims and remain on their existing path.
+        if (isLocalWebSession
+            && (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(expiry)))
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(expiry)
+            && (!DateTimeOffset.TryParse(
+                    expiry,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind,
+                    out var expiresAt)
+                || expiresAt <= DateTimeOffset.UtcNow);
     }
 
     private bool ShouldUseStandaloneIntakeLayout(RouteData routeData)
@@ -88,6 +162,7 @@
     public void Dispose()
     {
         AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+        NavigationManager.LocationChanged -= OnLocationChanged;
     }
 
     private static IReadOnlyList<Assembly>? ResolveAdditionalAssemblies()

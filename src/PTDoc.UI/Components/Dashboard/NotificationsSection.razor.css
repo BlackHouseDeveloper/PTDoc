@@ -14,6 +14,7 @@
 
 .dashboard-alerts__header,
 .dashboard-alerts__heading,
+.dashboard-alerts__header-actions,
 .dashboard-alerts__content,
 .dashboard-alerts__list,
 .dashboard-alert-card,
@@ -34,6 +35,41 @@
     align-items: center;
     gap: var(--spacing-3);
     min-width: 0;
+}
+
+.dashboard-alerts__header-actions {
+    align-items: center;
+    gap: var(--spacing-2);
+    flex: 0 0 auto;
+}
+
+.dashboard-alerts__filter-wrap {
+    position: relative;
+}
+
+.dashboard-alerts__filter {
+    min-width: 9.75rem;
+    min-height: var(--touch-target-desktop);
+    padding: 0 calc(var(--spacing-6) + var(--spacing-2)) 0 var(--spacing-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    appearance: none;
+    background: var(--input-background);
+    color: var(--foreground);
+    font: inherit;
+    font-size: var(--text-sm);
+    cursor: pointer;
+}
+
+.dashboard-alerts__filter-caret {
+    position: absolute;
+    top: 50%;
+    right: var(--spacing-3);
+    width: 16px;
+    height: 16px;
+    color: var(--muted-foreground);
+    pointer-events: none;
+    transform: translateY(-50%);
 }
 
 .dashboard-alerts__bell {
@@ -103,6 +139,7 @@
 }
 
 .dashboard-alerts__collapse:focus-visible,
+.dashboard-alerts__filter:focus-visible,
 .dashboard-alert-card__dismiss:focus-visible,
 .dashboard-alert-card__action:focus-visible {
     outline: 2px solid var(--ring);
@@ -316,6 +353,23 @@
 
     .dashboard-alerts__heading {
         flex-wrap: wrap;
+    }
+
+    .dashboard-alerts__header {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .dashboard-alerts__header-actions {
+        width: 100%;
+    }
+
+    .dashboard-alerts__filter-wrap {
+        flex: 1 1 auto;
+    }
+
+    .dashboard-alerts__filter {
+        width: 100%;
     }
 
     .dashboard-alerts__title {

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -44,6 +45,45 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         var completedWithDraft = SeedAppointmentCase(db, clinician.Id, prefix, "CompletedWithDraft", date.AddHours(16), AppointmentStatus.Completed, NoteStatus.Draft);
         var cancelledWithDraft = SeedAppointmentCase(db, clinician.Id, prefix, "CancelledWithDraft", date.AddHours(14), AppointmentStatus.Cancelled, NoteStatus.Draft);
         var noShowWithSigned = SeedAppointmentCase(db, clinician.Id, prefix, "NoShowWithSigned", date.AddHours(15), AppointmentStatus.NoShow, NoteStatus.Signed);
+        db.Appointments.Add(new Appointment
+        {
+            Id = Guid.NewGuid(),
+            PatientId = scheduled.PatientId,
+            ClinicalId = clinician.Id,
+            StartTimeUtc = date.AddDays(-1).AddHours(8),
+            EndTimeUtc = date.AddDays(-1).AddHours(8).AddMinutes(45),
+            AppointmentType = AppointmentType.FollowUp,
+            Status = AppointmentStatus.Completed,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = clinician.Id,
+            SyncState = SyncState.Pending
+        });
+        db.ClinicalNotes.Add(new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = scheduled.PatientId,
+            NoteType = NoteType.Evaluation,
+            NoteStatus = NoteStatus.Signed,
+            ContentJson = JsonSerializer.Serialize(new
+            {
+                plan = new
+                {
+                    computedPlanOfCare = new
+                    {
+                        progressNoteDueDates = new[] { date.AddDays(3), date.AddDays(33) }
+                    }
+                }
+            }),
+            CptCodesJson = "[]",
+            DateOfService = date.AddDays(-30),
+            CreatedUtc = date.AddDays(-30),
+            LastModifiedUtc = date.AddDays(-30),
+            ModifiedByUserId = clinician.Id,
+            SyncState = SyncState.Pending,
+            SignatureHash = "signed-plan-of-care-note",
+            SignedUtc = date.AddDays(-30),
+            SignedByUserId = clinician.Id
+        });
 
         await db.SaveChangesAsync();
 
@@ -60,8 +100,13 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
             .ToDictionary(appointment => appointment.PatientName);
 
         Assert.Equal("Scheduled", appointmentsByPatient[scheduled.PatientName].VisitWorkflowStatus);
+        Assert.Equal(1, appointmentsByPatient[scheduled.PatientName].VisitCount);
+        Assert.Equal(2, appointmentsByPatient[scheduled.PatientName].VisitNumber);
+        Assert.Equal(date.AddDays(3).Date, appointmentsByPatient[scheduled.PatientName].ProgressNoteDueDate);
         Assert.Null(appointmentsByPatient[scheduled.PatientName].VisitNoteId);
         Assert.Equal("Checked In", appointmentsByPatient[checkedIn.PatientName].VisitWorkflowStatus);
+        Assert.Equal(1, appointmentsByPatient[checkedIn.PatientName].VisitCount);
+        Assert.Equal(1, appointmentsByPatient[checkedIn.PatientName].VisitNumber);
         Assert.Null(appointmentsByPatient[checkedIn.PatientName].VisitNoteId);
         Assert.Equal("Note Started", appointmentsByPatient[draftNote.PatientName].VisitWorkflowStatus);
         Assert.Equal(draftNote.NoteId, appointmentsByPatient[draftNote.PatientName].VisitNoteId);
@@ -70,10 +115,13 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         Assert.Equal("Completed", appointmentsByPatient[signedNote.PatientName].VisitWorkflowStatus);
         Assert.Equal(signedNote.NoteId, appointmentsByPatient[signedNote.PatientName].VisitNoteId);
         Assert.Equal("Completed", appointmentsByPatient[completed.PatientName].VisitWorkflowStatus);
+        Assert.Equal(1, appointmentsByPatient[completed.PatientName].VisitCount);
+        Assert.Equal(1, appointmentsByPatient[completed.PatientName].VisitNumber);
         Assert.Null(appointmentsByPatient[completed.PatientName].VisitNoteId);
         Assert.Equal("Completed", appointmentsByPatient[completedWithDraft.PatientName].VisitWorkflowStatus);
         Assert.Null(appointmentsByPatient[completedWithDraft.PatientName].VisitNoteId);
         Assert.Equal("Cancelled", appointmentsByPatient[cancelledWithDraft.PatientName].VisitWorkflowStatus);
+        Assert.Null(appointmentsByPatient[cancelledWithDraft.PatientName].VisitNumber);
         Assert.Null(appointmentsByPatient[cancelledWithDraft.PatientName].VisitNoteId);
         Assert.Equal("No Show", appointmentsByPatient[noShowWithSigned.PatientName].VisitWorkflowStatus);
         Assert.Null(appointmentsByPatient[noShowWithSigned.PatientName].VisitNoteId);
@@ -102,7 +150,7 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
             {
                 PatientId = seeded.PatientId,
                 ClinicianId = clinician.Id,
-                AppointmentType = "Initial Evaluation",
+                AppointmentType = "Re-Evaluation",
                 AppointmentDate = updatedLocalStart.Date,
                 AppointmentTime = updatedLocalStart.TimeOfDay,
                 DurationMinutes = 60,
@@ -112,17 +160,139 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var payload = await response.Content.ReadFromJsonAsync<AppointmentListItemResponse>();
         Assert.NotNull(payload);
-        Assert.Equal("Initial Evaluation", payload!.AppointmentType);
+        Assert.Equal("Re-evaluation", payload!.AppointmentType);
         Assert.Equal("Updated appointment notes", payload.Notes);
         Assert.Equal(updatedLocalStart.ToUniversalTime(), payload.StartTimeUtc);
         Assert.Equal(updatedLocalStart.ToUniversalTime().AddMinutes(60), payload.EndTimeUtc);
 
         db.ChangeTracker.Clear();
         var persisted = await db.Appointments.SingleAsync(appointment => appointment.Id == seeded.AppointmentId);
-        Assert.Equal(AppointmentType.InitialEvaluation, persisted.AppointmentType);
+        Assert.Equal(AppointmentType.ReEvaluation, persisted.AppointmentType);
         Assert.Equal("Updated appointment notes", persisted.Notes);
         Assert.Equal(updatedLocalStart.ToUniversalTime(), persisted.StartTimeUtc);
         Assert.Equal(updatedLocalStart.ToUniversalTime().AddMinutes(60), persisted.EndTimeUtc);
+    }
+
+    [Fact]
+    public async Task UpdateAppointmentType_ChangesOnlyType_AndRejectsStaleVersion()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinician = await db.Users.SingleAsync(user => user.Username == "integration-pt");
+        var seeded = SeedAppointmentCase(
+            db,
+            clinician.Id,
+            $"PATCH-{Guid.NewGuid():N}",
+            "Appointment",
+            new DateTime(2026, 8, 12, 14, 0, 0, DateTimeKind.Utc),
+            AppointmentStatus.Scheduled);
+        await db.SaveChangesAsync();
+
+        var before = await db.Appointments.AsNoTracking()
+            .SingleAsync(appointment => appointment.Id == seeded.AppointmentId);
+        var expectedVersion = before.LastModifiedUtc;
+
+        using var client = _factory.CreateClientWithRole(Roles.FrontDesk);
+        using var response = await client.PatchAsJsonAsync(
+            $"/api/v1/appointments/{seeded.AppointmentId:D}/appointment-type",
+            new UpdateAppointmentTypeRequest
+            {
+                AppointmentType = "Discharge",
+                ExpectedLastModifiedUtc = expectedVersion
+            });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<AppointmentListItemResponse>();
+        Assert.NotNull(payload);
+        Assert.Equal("Discharge", payload!.AppointmentType);
+        Assert.True(payload.LastModifiedUtc > expectedVersion);
+
+        db.ChangeTracker.Clear();
+        var after = await db.Appointments.AsNoTracking()
+            .SingleAsync(appointment => appointment.Id == seeded.AppointmentId);
+        Assert.Equal(AppointmentType.Discharge, after.AppointmentType);
+        Assert.Equal(before.PatientId, after.PatientId);
+        Assert.Equal(before.ClinicalId, after.ClinicalId);
+        Assert.Equal(before.StartTimeUtc, after.StartTimeUtc);
+        Assert.Equal(before.EndTimeUtc, after.EndTimeUtc);
+        Assert.Equal(before.Notes, after.Notes);
+        Assert.Equal(before.ClinicalVisitOrdinal, after.ClinicalVisitOrdinal);
+        var audit = await db.AuditLogs.AsNoTracking()
+            .SingleAsync(entry => entry.EventType == "AppointmentTypeChanged"
+                && entry.EntityId == seeded.AppointmentId);
+        Assert.Equal(nameof(Appointment), audit.EntityType);
+        Assert.DoesNotContain(seeded.PatientName, audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+
+        using var staleResponse = await client.PatchAsJsonAsync(
+            $"/api/v1/appointments/{seeded.AppointmentId:D}/appointment-type",
+            new UpdateAppointmentTypeRequest
+            {
+                AppointmentType = "Follow-up",
+                ExpectedLastModifiedUtc = expectedVersion
+            });
+
+        Assert.Equal(HttpStatusCode.Conflict, staleResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateAppointment_AssignsImmutablePatientScopedVisitOrdinals()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinician = await db.Users.SingleAsync(user => user.Username == "integration-pt");
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Ordinal",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1980, 1, 1),
+            ClinicId = clinician.ClinicId,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = clinician.Id,
+            SyncState = SyncState.Pending
+        };
+        db.Patients.Add(patient);
+        await db.SaveChangesAsync();
+
+        using var client = _factory.CreateClientWithRole(Roles.FrontDesk);
+        var first = await CreateAppointmentAsync(client, patient.Id, clinician.Id, new DateTime(2035, 8, 13, 9, 0, 0));
+        var second = await CreateAppointmentAsync(client, patient.Id, clinician.Id, new DateTime(2035, 8, 13, 11, 0, 0));
+
+        Assert.Equal(1, first.VisitNumber);
+        Assert.Equal(2, second.VisitNumber);
+
+        db.ChangeTracker.Clear();
+        var persisted = await db.Appointments.AsNoTracking()
+            .Where(appointment => appointment.PatientId == patient.Id)
+            .OrderBy(appointment => appointment.ClinicalVisitOrdinal)
+            .ToListAsync();
+        Assert.Collection(
+            persisted,
+            appointment => Assert.Equal(1, appointment.ClinicalVisitOrdinal),
+            appointment => Assert.Equal(2, appointment.ClinicalVisitOrdinal));
+
+        Assert.Throws<InvalidOperationException>(() => persisted[0].AssignClinicalVisitOrdinal(2));
+    }
+
+    private static async Task<AppointmentListItemResponse> CreateAppointmentAsync(
+        HttpClient client,
+        Guid patientId,
+        Guid clinicianId,
+        DateTime localStart)
+    {
+        using var response = await client.PostAsJsonAsync(
+            "/api/v1/appointments/",
+            new CreateAppointmentRequest
+            {
+                PatientId = patientId,
+                ClinicianId = clinicianId,
+                AppointmentType = "Follow-up",
+                AppointmentDate = localStart.Date,
+                AppointmentTime = localStart.TimeOfDay,
+                DurationMinutes = 45
+            });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        return (await response.Content.ReadFromJsonAsync<AppointmentListItemResponse>())!;
     }
 
     [Fact]

@@ -1,3 +1,5 @@
+@using PTDoc.Application.Appointments
+
 @* Appointment Filters Panel - Expandable Filter Controls *@
 
 <div class="filters-panel">
@@ -104,13 +106,9 @@
 
     private string? openDropdown = null;
 
-    private List<string> AppointmentTypes => new()
-    {
-        "Initial Evaluation",
-        "Follow Up",
-        "Re-Evaluation",
-        "Discharge"
-    };
+    private static readonly string[] AppointmentTypes = AppointmentTypeCatalog.All
+        .Select(appointmentType => appointmentType.DisplayName)
+        .ToArray();
 
     private List<string> IntakeStatuses => new()
     {

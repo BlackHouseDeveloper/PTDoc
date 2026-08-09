@@ -26,15 +26,18 @@ public sealed class NotificationsSectionTests : TestContext
         Assert.Contains("Notes", cut.Markup);
         Assert.Contains("Authorization", cut.Markup);
         Assert.Contains("Intake", cut.Markup);
-        Assert.Contains("Unsigned items", cut.Markup);
         Assert.Contains("dashboard-alerts-authorization", cut.Markup);
         Assert.Contains("High Priority", cut.Markup);
         Assert.Contains("Medium", cut.Markup);
         Assert.Contains("Emily Rodriguez", cut.Markup);
         Assert.Contains("ID: PT003", cut.Markup);
         Assert.Contains("Due:", cut.Markup);
+        Assert.Equal(3, cut.FindAll("[data-testid='dashboard-alert-group']").Count);
         Assert.All(cut.FindAll("[data-testid='dashboard-alert-group']"), group =>
             Assert.Equal("group", group.GetAttribute("role")));
+        Assert.Equal(
+            "dashboard-alerts-category-filter",
+            cut.Find("label").GetAttribute("for"));
 
         var navigation = Services.GetRequiredService<NavigationManager>();
         cut.Find("button[aria-label='Start for Michael Chen']").Click();
@@ -55,6 +58,41 @@ public sealed class NotificationsSectionTests : TestContext
         cut.Find("button[aria-label='Expand alerts']").Click();
 
         Assert.Equal(4, cut.FindAll("[data-testid='dashboard-alert-card']").Count);
+    }
+
+    [Fact]
+    public void NotificationsSection_FiltersByExplicitCategory_AndRestoresAllAlerts()
+    {
+        var cut = RenderComponent<NotificationsSection>(parameters => parameters
+            .Add(component => component.Alerts, CreateAlerts()));
+
+        Assert.Equal(4, cut.FindAll("[data-testid='dashboard-alert-card']").Count);
+
+        cut.Find("[data-testid='dashboard-alerts-category-filter']").Change("notes");
+
+        var noteAlerts = cut.FindAll("[data-testid='dashboard-alert-card']");
+        Assert.Equal(2, noteAlerts.Count);
+        Assert.All(noteAlerts, alert => Assert.Equal("notes", alert.GetAttribute("data-alert-category")));
+        Assert.Contains("Note Due Today", cut.Markup);
+        Assert.Contains("Unsigned Note", cut.Markup);
+        Assert.DoesNotContain("Authorization Expiring", cut.Markup);
+        Assert.Contains("1 Urgent", cut.Markup);
+
+        cut.Find("[data-testid='dashboard-alerts-category-filter']").Change("authorization");
+
+        var authorizationAlert = Assert.Single(cut.FindAll("[data-testid='dashboard-alert-card']"));
+        Assert.Equal("authorization", authorizationAlert.GetAttribute("data-alert-category"));
+        Assert.Contains("Authorization Expiring", cut.Markup);
+        Assert.DoesNotContain("Note Due Today", cut.Markup);
+
+        cut.Find("button[aria-label='Collapse alerts']").Click();
+        cut.Find("button[aria-label='Expand alerts']").Click();
+        Assert.Single(cut.FindAll("[data-testid='dashboard-alert-card']"));
+
+        cut.Find("[data-testid='dashboard-alerts-category-filter']").Change("all");
+
+        Assert.Equal(4, cut.FindAll("[data-testid='dashboard-alert-card']").Count);
+        Assert.Contains("3 Urgent", cut.Markup);
     }
 
     [Fact]
@@ -80,6 +118,25 @@ public sealed class NotificationsSectionTests : TestContext
         Assert.Empty(cut.FindAll("[data-testid='dashboard-alert-card']"));
     }
 
+    [Fact]
+    public void NotificationsSection_ShowsCategorySpecificEmptyState()
+    {
+        var intakeAlerts = CreateAlerts()
+            .Where(alert => alert.Category == DashboardAlertCategory.Intake)
+            .ToList();
+        var cut = RenderComponent<NotificationsSection>(parameters => parameters
+            .Add(component => component.Alerts, intakeAlerts));
+
+        cut.Find("[data-testid='dashboard-alerts-category-filter']").Change("notes");
+        Assert.Contains("No note alerts available.", cut.Markup);
+
+        cut.Find("[data-testid='dashboard-alerts-category-filter']").Change("authorization");
+        Assert.Contains("No authorization alerts available.", cut.Markup);
+
+        cut.Find("[data-testid='dashboard-alerts-category-filter']").Change("all");
+        Assert.Single(cut.FindAll("[data-testid='dashboard-alert-card']"));
+    }
+
     private static List<DashboardAlertItemResponse> CreateAlerts()
     {
         var patientId = Guid.NewGuid();
@@ -89,6 +146,7 @@ public sealed class NotificationsSectionTests : TestContext
             {
                 Id = "notesDueToday:appt-1",
                 Kind = "notesDueToday",
+                Category = DashboardAlertCategory.Notes,
                 Priority = "high",
                 Title = "Note Due Today",
                 Message = "Today's appointment needs a signed note.",
@@ -105,6 +163,7 @@ public sealed class NotificationsSectionTests : TestContext
             {
                 Id = "authorizationExpiration:patient-1",
                 Kind = "authorizationExpiration",
+                Category = DashboardAlertCategory.Authorization,
                 Priority = "medium",
                 Title = "Authorization Expiring",
                 Message = "Authorization coverage is nearing its end date.",
@@ -121,6 +180,7 @@ public sealed class NotificationsSectionTests : TestContext
             {
                 Id = "incompleteIntake:intake-1",
                 Kind = "incompleteIntake",
+                Category = DashboardAlertCategory.Intake,
                 Priority = "high",
                 Title = "Incomplete Intake",
                 Message = "Patient has not completed intake form.",
@@ -136,6 +196,7 @@ public sealed class NotificationsSectionTests : TestContext
             {
                 Id = "unsignedNote:note-1",
                 Kind = "unsignedNote",
+                Category = DashboardAlertCategory.Notes,
                 Priority = "medium",
                 Title = "Unsigned Note",
                 Message = "Daily note is due today.",

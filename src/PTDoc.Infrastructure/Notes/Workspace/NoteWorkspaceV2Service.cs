@@ -1,9 +1,11 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.NoteTemplates;
 using PTDoc.Application.Outcomes;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
@@ -27,9 +29,21 @@ public sealed class NoteWorkspaceV2Service(
     IIntakeBodyPartMapper intakeBodyPartMapper,
     IIntakeDraftCanonicalizer intakeDraftCanonicalizer,
     ICarryForwardService carryForwardService,
+    IWorkspaceReferenceCatalogService workspaceCatalogs,
     IAuditService? auditService = null,
-    IOverrideService? overrideService = null) : INoteWorkspaceV2Service
+    IOverrideService? overrideService = null,
+    INoteTemplateAdministrationService? noteTemplates = null) : INoteWorkspaceV2Service
 {
+    private static readonly HashSet<string> AllowedAssistanceLevels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Min Assist", "Mod Assist", "Max Assist", "Contact Guard", "Standby Assist", "Independent"
+    };
+
+    private static readonly HashSet<string> AllowedCueingValues = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Verbal", "Visual", "Tactile", "Demonstration", "None", "Verbal cueing", "Visual cueing", "Tactile cueing"
+    };
+
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -198,10 +212,41 @@ public sealed class NoteWorkspaceV2Service(
         var payload = request.Payload ?? new NoteWorkspaceV2Payload();
         payload.SchemaVersion = WorkspaceSchemaVersions.EvalReevalProgressV2;
         payload.NoteType = request.NoteType;
+        payload.Objective ??= new WorkspaceObjectiveV2();
         payload.Plan ??= new WorkspacePlanV2();
         payload.DailyTreatment ??= new WorkspaceDailyTreatmentV2();
         DryNeedlingBillingPolicy.Enforce(payload);
         NormalizeCptModifierSources(payload.Plan.SelectedCptCodes);
+
+        var interventionErrors = NormalizeAndValidateInterventions(payload);
+        if (interventionErrors.Count > 0)
+        {
+            return new NoteWorkspaceV2SaveResponse
+            {
+                IsValid = false,
+                Errors = interventionErrors
+            };
+        }
+
+        NoteTemplateVersionDto? resolvedTemplateVersion = null;
+        if (note?.TemplateVersionId is { } pinnedTemplateVersionId && noteTemplates is not null)
+        {
+            resolvedTemplateVersion = await noteTemplates.GetVersionAsync(pinnedTemplateVersionId, cancellationToken);
+        }
+        else if (note is null && noteTemplates is not null)
+        {
+            var templateVariant = request.IsReEvaluation
+                ? NoteTemplateVariant.ReEvaluation
+                : payload.DryNeedling is not null
+                    ? NoteTemplateVariant.DryNeedling
+                    : NoteTemplateVariant.Standard;
+            resolvedTemplateVersion = await noteTemplates.ResolveAsync(request.NoteType, templateVariant, cancellationToken);
+        }
+
+        if (note is null)
+        {
+            ApplyTemplateDefaults(resolvedTemplateVersion, payload);
+        }
 
         var scheduledVisits = await db.Appointments
             .Where(appointment => appointment.PatientId == request.PatientId && appointment.StartTimeUtc >= request.DateOfService.Date)
@@ -309,6 +354,14 @@ public sealed class NoteWorkspaceV2Service(
             return saveResponse;
         }
 
+        var templateErrors = ValidateTemplateRequirements(resolvedTemplateVersion, payload);
+        if (templateErrors.Count > 0)
+        {
+            saveResponse.IsValid = false;
+            saveResponse.Errors = saveResponse.Errors.Concat(templateErrors).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            return saveResponse;
+        }
+
         var overrideError = OverrideWorkflow.ValidateSubmission(validation, request.Override);
         if (!string.IsNullOrWhiteSpace(overrideError))
         {
@@ -350,6 +403,11 @@ public sealed class NoteWorkspaceV2Service(
             ClinicId = clinicId,
             CreatedUtc = now
         };
+
+        if (!note.TemplateVersionId.HasValue && resolvedTemplateVersion is not null)
+        {
+            note.TemplateVersionId = resolvedTemplateVersion.Id == Guid.Empty ? null : resolvedTemplateVersion.Id;
+        }
 
         note.PatientId = request.PatientId;
         if (request.AppointmentId.HasValue)
@@ -468,6 +526,29 @@ public sealed class NoteWorkspaceV2Service(
             ? null
             : draft.CurrentLevelOfFunction.Trim();
         var initialOutcomeMeasureSummary = BuildInitialOutcomeMeasureSummary(draft.InitialOutcomeMeasureReports);
+        var structuredFunctionalLimitations = structuredData.FunctionalLimitations
+            .Select(selection => new
+            {
+                Selection = selection,
+                BodyPart = Enum.TryParse<BodyPart>(selection.BodyPart, ignoreCase: true, out var parsed)
+                    ? parsed
+                    : BodyPart.Other
+            })
+            .Where(entry => entry.BodyPart != BodyPart.Other
+                && !string.IsNullOrWhiteSpace(entry.Selection.Category)
+                && !string.IsNullOrWhiteSpace(entry.Selection.Activity))
+            .Select(entry => new FunctionalLimitationEntryV2
+            {
+                Id = string.IsNullOrWhiteSpace(entry.Selection.Id)
+                    ? $"{entry.BodyPart}:{entry.Selection.Category.Trim()}:{entry.Selection.Activity.Trim()}"
+                    : entry.Selection.Id.Trim(),
+                BodyPart = entry.BodyPart,
+                Category = entry.Selection.Category.Trim(),
+                Description = entry.Selection.Activity.Trim(),
+                IsSourceBacked = true
+            })
+            .ToList();
+        var subjectiveIntake = structuredData.Subjective;
 
         var payload = new NoteWorkspaceV2Payload
         {
@@ -495,13 +576,31 @@ public sealed class NoteWorkspaceV2Service(
                 Comorbidities = comorbiditySelections.ToHashSet(StringComparer.OrdinalIgnoreCase),
                 AssistiveDevice = new AssistiveDeviceDetailsV2
                 {
-                    UsesAssistiveDevice = draft.UsesAssistiveDevices || assistiveDeviceSelections.Count > 0,
+                    UsesAssistiveDevice = structuredData.NoAssistiveDevices
+                        ? false
+                        : draft.UsesAssistiveDevices || assistiveDeviceSelections.Count > 0,
                     Devices = assistiveDeviceSelections.ToHashSet(StringComparer.OrdinalIgnoreCase)
                 },
-                TakingMedications = medicationEntries.Count > 0 ? true : null,
+                TakingMedications = structuredData.NoMedications
+                    ? false
+                    : medicationEntries.Count > 0 ? true : null,
                 Medications = medicationEntries,
+                OnsetDate = subjectiveIntake.OnsetDate,
+                OnsetOverAYearAgo = subjectiveIntake.OnsetOverAYearAgo,
+                CauseUnknown = subjectiveIntake.CauseUnknown,
+                KnownCause = subjectiveIntake.CauseUnknown ? null : subjectiveIntake.KnownCause,
+                PriorFunctionalLevel = subjectiveIntake.PriorFunctionalLevel.ToHashSet(StringComparer.OrdinalIgnoreCase),
                 CurrentLevelOfFunction = currentLevelOfFunction,
+                FunctionalLimitations = structuredFunctionalLimitations,
                 AdditionalFunctionalLimitations = functionalLimitations,
+                Imaging = new ImagingDetailsV2
+                {
+                    HasImaging = subjectiveIntake.HasImaging,
+                    Modalities = subjectiveIntake.ImagingModalities.ToHashSet(StringComparer.OrdinalIgnoreCase),
+                    OtherModality = subjectiveIntake.OtherImagingModality,
+                    PositiveFindings = null,
+                    Findings = subjectiveIntake.ImagingFindings
+                },
                 NarrativeContext = new SubjectNarrativeContextV2
                 {
                     ChiefComplaint = bodyPartLabels.Count == 0
@@ -511,6 +610,7 @@ public sealed class NoteWorkspaceV2Service(
                         ? null
                         : $"Intake pain descriptors: {string.Join(", ", painDescriptorLabels)}",
                     DifficultyExperienced = currentLevelOfFunction,
+                    MechanismOfInjury = subjectiveIntake.CauseUnknown ? "Patient reports cause is unknown." : subjectiveIntake.KnownCause,
                     PatientHistorySummary = string.IsNullOrWhiteSpace(draft.MedicalHistoryNotes)
                         ? null
                         : draft.MedicalHistoryNotes.Trim()
@@ -608,6 +708,222 @@ public sealed class NoteWorkspaceV2Service(
         foreach (var code in codes)
         {
             code.ModifierSource = ReferenceDataProvenanceNormalizer.NormalizeDocumentPath(code.ModifierSource);
+        }
+    }
+
+    private List<string> NormalizeAndValidateInterventions(NoteWorkspaceV2Payload payload)
+    {
+        var errors = new List<string>();
+        var catalog = workspaceCatalogs.GetInterventionLibraryCatalog();
+
+        foreach (var row in payload.Objective.ExerciseRows ?? [])
+        {
+            row.SuggestedExercise = row.SuggestedExercise?.Trim() ?? string.Empty;
+            row.ActualExercisePerformed = row.ActualExercisePerformed?.Trim() ?? string.Empty;
+            row.Notes = NormalizeOptional(row.Notes);
+            row.Category = NormalizeOptional(row.Category);
+            row.AssistanceLevel = NormalizeOptional(row.AssistanceLevel);
+            row.Cueing = NormalizeOptional(row.Cueing);
+
+            if (!string.IsNullOrWhiteSpace(row.SourceItemId))
+            {
+                var source = workspaceCatalogs.GetInterventionLibraryItem(row.SourceItemId ?? string.Empty);
+                if (source is null || source.Kind != InterventionKind.Exercise)
+                {
+                    errors.Add("A source-backed exercise references an unknown intervention-library item.");
+                    continue;
+                }
+
+                row.SourceItemId = source.Id;
+                row.SourceCatalogVersion = catalog.Version;
+                row.SuggestedExercise = source.Name;
+                row.ActualExercisePerformed = source.Name;
+                row.Category = source.Category;
+                row.InterventionRegion = source.Region;
+                row.IsSourceBacked = true;
+            }
+            else
+            {
+                row.SourceItemId = null;
+                row.SourceCatalogVersion = null;
+                row.IsSourceBacked = false;
+            }
+
+            var name = string.IsNullOrWhiteSpace(row.ActualExercisePerformed)
+                ? row.SuggestedExercise
+                : row.ActualExercisePerformed;
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                errors.Add("Exercise name is required.");
+            }
+            else if (name.Length > 200)
+            {
+                errors.Add("Exercise name cannot exceed 200 characters.");
+            }
+
+            ValidateLength(row.Notes, 2000, "Exercise notes", errors);
+            ValidatePrescription(row, errors);
+            ValidateClinicalOption(row.AssistanceLevel, AllowedAssistanceLevels, "Exercise assistance", errors);
+            ValidateClinicalOption(row.Cueing, AllowedCueingValues, "Exercise cueing", errors);
+
+            row.SetsRepsDuration = BuildLegacyDosage(row.Prescription, row.SetsRepsDuration);
+        }
+
+        foreach (var entry in payload.Plan.GeneralInterventions ?? [])
+        {
+            var isLegacyManualCategory = entry.Kind == InterventionKind.General &&
+                (string.Equals(entry.Category, "Manual", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(entry.Category, "Manual Work Technique", StringComparison.OrdinalIgnoreCase));
+            entry.Name = entry.Name?.Trim() ?? string.Empty;
+            entry.Category = NormalizeOptional(entry.Category);
+            entry.Notes = NormalizeOptional(entry.Notes);
+            entry.Response = NormalizeOptional(entry.Response);
+            entry.AssistanceLevel = NormalizeOptional(entry.AssistanceLevel);
+            entry.Cueing = NormalizeOptional(entry.Cueing);
+            entry.Kind = ResolveInterventionKind(entry.Kind, entry.Category);
+
+            if (!string.IsNullOrWhiteSpace(entry.SourceItemId))
+            {
+                var source = workspaceCatalogs.GetInterventionLibraryItem(entry.SourceItemId ?? string.Empty);
+                if (source is null || source.Kind != InterventionKind.ManualTechnique)
+                {
+                    errors.Add("A source-backed manual technique references an unknown intervention-library item.");
+                    continue;
+                }
+
+                entry.Kind = InterventionKind.ManualTechnique;
+                entry.SourceItemId = source.Id;
+                entry.SourceCatalogVersion = catalog.Version;
+                entry.Name = source.Name;
+                entry.Category = source.Category;
+                entry.InterventionRegion = source.Region;
+                entry.IsSourceBacked = true;
+            }
+            else
+            {
+                entry.SourceItemId = null;
+                entry.SourceCatalogVersion = null;
+                entry.IsSourceBacked = false;
+                if (entry.Kind == InterventionKind.ManualTechnique && !entry.InterventionRegion.HasValue)
+                {
+                    if (isLegacyManualCategory)
+                    {
+                        entry.InterventionRegion = InterventionRegion.General;
+                    }
+                    else
+                    {
+                        errors.Add("Body region is required for a custom manual technique.");
+                    }
+                }
+            }
+
+            if (entry.Kind == InterventionKind.ManualTechnique && string.IsNullOrWhiteSpace(entry.Name))
+            {
+                errors.Add("Technique name is required.");
+            }
+            else if (entry.Name.Length > 200)
+            {
+                errors.Add("Technique name cannot exceed 200 characters.");
+            }
+            ValidateLength(entry.Notes, 2000, "Technique notes", errors);
+            ValidateLength(entry.Response, 2000, "Technique response", errors);
+            if (entry.Kind == InterventionKind.ManualTechnique && entry.TimeMinutes is < 1 or > 1440)
+            {
+                errors.Add("Technique minutes must be between 1 and 1440.");
+            }
+            ValidateClinicalOption(entry.AssistanceLevel, AllowedAssistanceLevels, "Technique assistance", errors);
+            ValidateClinicalOption(entry.Cueing, AllowedCueingValues, "Technique cueing", errors);
+
+            if (!string.IsNullOrWhiteSpace(entry.CptCode) &&
+                !workspaceCatalogs.SearchCpt(entry.CptCode, 100).Any(item =>
+                    string.Equals(item.Code, entry.CptCode.Trim(), StringComparison.OrdinalIgnoreCase)))
+            {
+                errors.Add($"Technique CPT code '{entry.CptCode}' is not available in the current catalog.");
+            }
+        }
+
+        return errors.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static void ValidatePrescription(ExerciseRowV2 row, List<string> errors)
+    {
+        if (row.Prescription is null)
+        {
+            return;
+        }
+
+        if (row.Prescription.Sets is < 1 or > 999)
+        {
+            errors.Add("Exercise sets must be between 1 and 999.");
+        }
+        if (row.Prescription.Repetitions is < 1 or > 999)
+        {
+            errors.Add("Exercise repetitions must be between 1 and 999.");
+        }
+
+        row.Prescription.Frequency = NormalizeOptional(row.Prescription.Frequency);
+        if (row.Prescription.Frequency is { Length: > 50 })
+        {
+            errors.Add("Exercise frequency cannot exceed 50 characters.");
+        }
+        else if (!string.IsNullOrWhiteSpace(row.Prescription.Frequency) &&
+                 !row.Prescription.Frequency.Any(char.IsLetterOrDigit))
+        {
+            errors.Add("Exercise frequency must contain at least one letter or number.");
+        }
+    }
+
+    private static string? BuildLegacyDosage(ExercisePrescriptionV2? prescription, string? existing)
+    {
+        if (prescription is null ||
+            (!prescription.Sets.HasValue && !prescription.Repetitions.HasValue && string.IsNullOrWhiteSpace(prescription.Frequency)))
+        {
+            return NormalizeOptional(existing);
+        }
+
+        var values = new List<string>();
+        if (prescription.Sets.HasValue) values.Add($"{prescription.Sets.Value} sets");
+        if (prescription.Repetitions.HasValue) values.Add($"{prescription.Repetitions.Value} reps");
+        if (!string.IsNullOrWhiteSpace(prescription.Frequency)) values.Add(prescription.Frequency.Trim());
+        return string.Join("; ", values);
+    }
+
+    private static InterventionKind ResolveInterventionKind(InterventionKind kind, string? category) =>
+        kind != InterventionKind.General
+            ? kind
+            : string.Equals(category, "Manual", StringComparison.OrdinalIgnoreCase) ||
+              string.Equals(category, "Manual Work Technique", StringComparison.OrdinalIgnoreCase)
+                ? InterventionKind.ManualTechnique
+                : InterventionKind.General;
+
+    private static void NormalizeLegacyInterventionKinds(NoteWorkspaceV2Payload payload)
+    {
+        foreach (var entry in payload.Plan?.GeneralInterventions ?? [])
+        {
+            entry.Kind = ResolveInterventionKind(entry.Kind, entry.Category);
+        }
+    }
+
+    private static string? NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    private static void ValidateLength(string? value, int maximum, string label, List<string> errors)
+    {
+        if (value is { Length: > 0 } && value.Length > maximum)
+        {
+            errors.Add($"{label} cannot exceed {maximum} characters.");
+        }
+    }
+
+    private static void ValidateClinicalOption(
+        string? value,
+        IReadOnlySet<string> allowedValues,
+        string label,
+        List<string> errors)
+    {
+        if (!string.IsNullOrWhiteSpace(value) && !allowedValues.Contains(value.Trim()))
+        {
+            errors.Add($"{label} must use an approved option.");
         }
     }
 
@@ -840,86 +1156,14 @@ public sealed class NoteWorkspaceV2Service(
         foreach (var region in (draft.SelectedBodyRegion ?? string.Empty)
                      .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            if (TryMapRegionBodyPart(region, out var mapped))
+            var mapped = IntakeBodyRegionMapper.Map(region);
+            if (mapped != BodyPart.Other)
             {
                 return mapped;
             }
         }
 
         return BodyPart.Other;
-    }
-
-    private static bool TryMapRegionBodyPart(string regionKey, out BodyPart mapped)
-    {
-        if (regionKey.Contains("Neck", StringComparison.OrdinalIgnoreCase) || regionKey.Contains("Head", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Cervical;
-            return true;
-        }
-
-        if (regionKey.Contains("Upperback", StringComparison.OrdinalIgnoreCase)
-            || regionKey.Contains("Midback", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Thoracic;
-            return true;
-        }
-
-        if (regionKey.Contains("Lowerback", StringComparison.OrdinalIgnoreCase)
-            || regionKey.Contains("Pelvis", StringComparison.OrdinalIgnoreCase)
-            || regionKey.Contains("Gluteal", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Lumbar;
-            return true;
-        }
-
-        if (regionKey.Contains("Shoulder", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Shoulder;
-            return true;
-        }
-
-        if (regionKey.Contains("Arm", StringComparison.OrdinalIgnoreCase)
-            || regionKey.Contains("Forearm", StringComparison.OrdinalIgnoreCase)
-            || regionKey.Contains("Elbow", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Elbow;
-            return true;
-        }
-
-        if (regionKey.Contains("Hand", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Hand;
-            return true;
-        }
-
-        if (regionKey.Contains("Hip", StringComparison.OrdinalIgnoreCase)
-            || regionKey.Contains("Thigh", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Hip;
-            return true;
-        }
-
-        if (regionKey.Contains("Knee", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Knee;
-            return true;
-        }
-
-        if (regionKey.Contains("Calf", StringComparison.OrdinalIgnoreCase)
-            || regionKey.Contains("Ankle", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Ankle;
-            return true;
-        }
-
-        if (regionKey.Contains("Foot", StringComparison.OrdinalIgnoreCase))
-        {
-            mapped = BodyPart.Foot;
-            return true;
-        }
-
-        mapped = BodyPart.Other;
-        return false;
     }
 
     private static string HumanizeRegion(string rawValue)
@@ -984,6 +1228,7 @@ public sealed class NoteWorkspaceV2Service(
     {
         var deserialization = await DeserializePayloadAsync(note, cancellationToken);
         var payload = deserialization.Payload;
+        NormalizeLegacyInterventionKinds(payload);
         var dryNeedlingNormalized = DryNeedlingBillingPolicy.Enforce(payload);
         var hasPersistedDryNeedlingBilling = payload.DryNeedling is not null
             && (note.TotalTreatmentMinutes.GetValueOrDefault() != 0
@@ -1107,6 +1352,12 @@ public sealed class NoteWorkspaceV2Service(
             await db.SaveChangesAsync(cancellationToken);
         }
 
+        NoteTemplateVersionDto? templateVersion = null;
+        if (note.TemplateVersionId.HasValue && noteTemplates is not null)
+        {
+            templateVersion = await noteTemplates.GetVersionAsync(note.TemplateVersionId.Value, cancellationToken);
+        }
+
         return new NoteWorkspaceV2LoadResponse
         {
             NoteId = note.Id,
@@ -1117,6 +1368,7 @@ public sealed class NoteWorkspaceV2Service(
             IsReEvaluation = note.IsReEvaluation,
             NoteStatus = note.NoteStatus,
             IsSigned = note.SignatureHash is not null,
+            TemplateVersion = templateVersion,
             Payload = payload
         };
     }
@@ -1129,6 +1381,133 @@ public sealed class NoteWorkspaceV2Service(
 
         return totalMinutes > 0 ? totalMinutes : null;
     }
+
+    private static List<string> ValidateTemplateRequirements(NoteTemplateVersionDto? templateVersion, NoteWorkspaceV2Payload payload)
+    {
+        if (templateVersion is null || templateVersion.Id == Guid.Empty) return [];
+        var payloadJson = JsonSerializer.SerializeToElement(payload, SerializerOptions);
+        var errors = new List<string>();
+        foreach (var field in templateVersion.Schema.Sections.Where(section => section.IsVisible).SelectMany(section => section.Fields)
+                     .Where(field => field.IsVisible && field.IsRequired && ConditionsMatch(field.VisibilityConditions, payloadJson)))
+        {
+            if (!TryResolveJsonPath(payloadJson, field.BindingKey, out var value) || IsMissingTemplateValue(value))
+                errors.Add($"{field.Label} is required by the published documentation template.");
+        }
+        return errors;
+    }
+
+    private static void ApplyTemplateDefaults(NoteTemplateVersionDto? templateVersion, NoteWorkspaceV2Payload payload)
+    {
+        if (templateVersion is null || templateVersion.Id == Guid.Empty) return;
+        foreach (var field in templateVersion.Schema.Sections
+                     .Where(section => section.IsVisible)
+                     .SelectMany(section => section.Fields)
+                     .Where(field => field.IsVisible && !string.IsNullOrWhiteSpace(field.DefaultValue)))
+        {
+            TrySetDefaultValue(payload, field.BindingKey, field.DefaultValue!);
+        }
+    }
+
+    private static void TrySetDefaultValue(object root, string path, string defaultValue)
+    {
+        object current = root;
+        var segments = path.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        for (var index = 0; index < segments.Length; index++)
+        {
+            var property = current.GetType().GetProperties()
+                .FirstOrDefault(candidate => string.Equals(
+                    JsonNamingPolicy.CamelCase.ConvertName(candidate.Name),
+                    segments[index],
+                    StringComparison.OrdinalIgnoreCase));
+            if (property is null || !property.CanRead) return;
+
+            if (index < segments.Length - 1)
+            {
+                var nested = property.GetValue(current);
+                if (nested is null && property.CanWrite && property.PropertyType.GetConstructor(Type.EmptyTypes) is not null)
+                {
+                    nested = Activator.CreateInstance(property.PropertyType);
+                    property.SetValue(current, nested);
+                }
+                if (nested is null) return;
+                current = nested;
+                continue;
+            }
+
+            if (!property.CanWrite || !IsUnsetTemplateValue(property.GetValue(current))) return;
+            var targetType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+            try
+            {
+                object? converted = targetType == typeof(string)
+                    ? defaultValue
+                    : targetType == typeof(Guid)
+                        ? Guid.Parse(defaultValue)
+                        : targetType == typeof(DateTime)
+                            ? DateTime.Parse(defaultValue, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)
+                            : targetType.IsEnum
+                                ? Enum.Parse(targetType, defaultValue, ignoreCase: true)
+                                : typeof(System.Collections.IEnumerable).IsAssignableFrom(targetType)
+                                    ? JsonSerializer.Deserialize(defaultValue, targetType, SerializerOptions)
+                                    : Convert.ChangeType(defaultValue, targetType, CultureInfo.InvariantCulture);
+                property.SetValue(current, converted);
+            }
+            catch (FormatException) { }
+            catch (InvalidCastException) { }
+            catch (OverflowException) { }
+            catch (ArgumentException) { }
+            catch (JsonException) { }
+            return;
+        }
+    }
+
+    private static bool IsUnsetTemplateValue(object? value) => value switch
+    {
+        null => true,
+        string text => string.IsNullOrWhiteSpace(text),
+        System.Collections.ICollection collection => collection.Count == 0,
+        _ => value.Equals(Activator.CreateInstance(value.GetType()))
+    };
+
+    private static bool ConditionsMatch(IReadOnlyCollection<NoteTemplateConditionDefinition> conditions, JsonElement payload)
+    {
+        foreach (var condition in conditions)
+        {
+            if (!TryResolveJsonPath(payload, condition.SourceBindingKey, out var value)) return false;
+            var actual = value.ValueKind == JsonValueKind.String ? value.GetString() : value.ToString();
+            var expected = condition.ExpectedValue;
+            var matches = condition.Operator switch
+            {
+                NoteTemplateConditionOperator.Equals => string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase),
+                NoteTemplateConditionOperator.NotEquals => !string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase),
+                NoteTemplateConditionOperator.IsEmpty => IsMissingTemplateValue(value),
+                NoteTemplateConditionOperator.IsNotEmpty => !IsMissingTemplateValue(value),
+                NoteTemplateConditionOperator.Contains => actual?.Contains(expected ?? string.Empty, StringComparison.OrdinalIgnoreCase) == true,
+                _ => false
+            };
+            if (!matches) return false;
+        }
+        return true;
+    }
+
+    private static bool TryResolveJsonPath(JsonElement root, string path, out JsonElement value)
+    {
+        value = root;
+        foreach (var segment in path.Split('.', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (value.ValueKind != JsonValueKind.Object || !value.TryGetProperty(segment, out var next)) return false;
+            value = next;
+        }
+        return true;
+    }
+
+    private static bool IsMissingTemplateValue(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Null or JsonValueKind.Undefined => true,
+        JsonValueKind.String => string.IsNullOrWhiteSpace(value.GetString()),
+        JsonValueKind.Array => value.GetArrayLength() == 0,
+        JsonValueKind.False => true,
+        _ => false
+    };
 
     private async Task SyncObjectiveMetricsAsync(
         ClinicalNote note,

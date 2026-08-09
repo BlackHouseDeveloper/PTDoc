@@ -217,7 +217,8 @@ public sealed class DatabaseSeederQaFixtureTests : IDisposable
             intakeReferenceData,
             intakeBodyPartMapper,
             intakeDraftCanonicalizer,
-            carryForwardService);
+            carryForwardService,
+            catalogs);
     }
 
     private sealed class SeederIdentityContextAccessor : IIdentityContextAccessor

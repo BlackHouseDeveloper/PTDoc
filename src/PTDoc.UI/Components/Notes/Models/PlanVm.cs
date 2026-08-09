@@ -1,3 +1,5 @@
+using PTDoc.Application.Notes.Workspace;
+
 namespace PTDoc.UI.Components.Notes.Models;
 
 /// <summary>
@@ -42,6 +44,10 @@ public class PlanVm
 
 public sealed class GeneralInterventionEntry
 {
+    public InterventionKind Kind { get; set; }
+    public string? SourceItemId { get; set; }
+    public string? SourceCatalogVersion { get; set; }
+    public InterventionRegion? InterventionRegion { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Category { get; set; }
     public bool IsSourceBacked { get; set; }

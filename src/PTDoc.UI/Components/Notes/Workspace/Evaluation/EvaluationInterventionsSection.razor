@@ -10,6 +10,13 @@
 @inject ILogger<EvaluationInterventionsSection> Logger
 
 <section class="plan-tab" data-testid="evaluation-interventions-section" role="tabpanel" aria-label="Interventions section">
+    <InterventionLibrarySection Objective="Objective"
+                                ObjectiveChanged="ObjectiveChanged"
+                                Plan="Plan"
+                                PlanChanged="PlanChanged"
+                                IsReadOnly="IsReadOnly"
+                                SelectedBodyPart="@SelectedBodyPart" />
+
     @if (!string.IsNullOrWhiteSpace(_errorMessage))
     {
         <p class="pt-card__poc-placeholder" role="alert">@_errorMessage</p>
@@ -253,10 +260,13 @@
                                 <span class="pt-card__field-label">Performed</span>
                                 <input class="pt-card__search-input" value="@row.ActualExercisePerformed" disabled="@IsReadOnly" @oninput="e => UpdateExerciseRow(row, item => item.ActualExercisePerformed = e.Value?.ToString() ?? string.Empty)" />
                             </label>
-                            <label class="pt-card__field">
-                                <span class="pt-card__field-label">Sets / reps / duration</span>
-                                <input class="pt-card__search-input" value="@row.SetsRepsDuration" disabled="@IsReadOnly" @oninput="e => UpdateExerciseRow(row, item => item.SetsRepsDuration = e.Value?.ToString())" />
-                            </label>
+                            @if (row.Prescription is null)
+                            {
+                                <label class="pt-card__field">
+                                    <span class="pt-card__field-label">Legacy dosage</span>
+                                    <input class="pt-card__search-input" value="@row.SetsRepsDuration" disabled="@IsReadOnly" @oninput="e => UpdateExerciseRow(row, item => item.SetsRepsDuration = e.Value?.ToString())" />
+                                </label>
+                            }
                             <label class="pt-card__field">
                                 <span class="pt-card__field-label">CPT for this intervention</span>
                                 <select class="pt-card__select" value="@NormalizeCode(row.CptCode)" disabled="@IsReadOnly" @onchange="e => UpdateExerciseCptAsync(row, e.Value?.ToString())" data-testid="evaluation-exercise-cpt">
@@ -319,7 +329,7 @@
             <div class="pt-card__modifier-chip-row" data-testid="evaluation-general-intervention-options">
                 @foreach (var intervention in InterventionOptions)
                 {
-                    var isSelected = Plan.GeneralInterventions.Any(entry => string.Equals(entry.Name, intervention, StringComparison.OrdinalIgnoreCase));
+                    var isSelected = EditableGeneralInterventions.Any(entry => string.Equals(entry.Name, intervention, StringComparison.OrdinalIgnoreCase));
                     <button type="button" class="pt-card__modifier-chip @(isSelected ? "pt-card__modifier-chip--active" : "")" disabled="@IsReadOnly" @onclick="() => ToggleGeneralIntervention(intervention)">
                         @intervention
                     </button>
@@ -327,14 +337,14 @@
             </div>
         }
 
-        @if (Plan.GeneralInterventions.Count == 0)
+        @if (EditableGeneralInterventions.Count == 0)
         {
             <p class="pt-card__poc-placeholder">No general interventions documented yet.</p>
         }
         else
         {
             <div class="pt-card__editor-list">
-                @foreach (var intervention in Plan.GeneralInterventions)
+                @foreach (var intervention in EditableGeneralInterventions)
                 {
                     <div class="pt-card__editor-row" data-testid="evaluation-general-intervention-row">
                         <div class="pt-card__editor-row-header">
@@ -777,7 +787,7 @@
 
     private Task ToggleGeneralIntervention(string interventionName)
     {
-        var existing = Plan.GeneralInterventions.FirstOrDefault(entry => string.Equals(entry.Name, interventionName, StringComparison.OrdinalIgnoreCase));
+        var existing = EditableGeneralInterventions.FirstOrDefault(entry => string.Equals(entry.Name, interventionName, StringComparison.OrdinalIgnoreCase));
         if (existing is null)
         {
             Plan.GeneralInterventions.Add(new GeneralInterventionEntry
@@ -799,6 +809,12 @@
         Plan.GeneralInterventions.Add(new GeneralInterventionEntry());
         return PlanChanged.InvokeAsync(Plan);
     }
+
+    private IReadOnlyList<GeneralInterventionEntry> EditableGeneralInterventions => Plan.GeneralInterventions
+        .Where(entry => entry.Kind != InterventionKind.ManualTechnique &&
+                        !string.Equals(entry.Category, "Manual", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(entry.Category, "Manual Work Technique", StringComparison.OrdinalIgnoreCase))
+        .ToList();
 
     private Task RemoveGeneralIntervention(GeneralInterventionEntry intervention)
     {

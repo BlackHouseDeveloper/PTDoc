@@ -1,9 +1,11 @@
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Outcomes;
 using PTDoc.Application.ReferenceData;
+using PTDoc.Application.Providers;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Notes.Workspace;
@@ -25,6 +27,7 @@ public sealed class StructuredIntakeComponentsTests : TestContext
         Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
         Services.AddSingleton<IIntakeBodyPartMapper>(new IntakeBodyPartMapper(new IntakeReferenceDataCatalogService()));
         Services.AddSingleton<IOutcomeMeasureRegistry, OutcomeMeasureRegistry>();
+        Services.AddSingleton(new Mock<IProviderDirectoryService>().Object);
     }
 
     [Fact]
@@ -53,6 +56,123 @@ public sealed class StructuredIntakeComponentsTests : TestContext
         Assert.Contains("Hypertension (High Blood Pressure)", cut.Markup, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Lives alone", cut.Markup, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Single-Story Home: Bedroom and bathroom on main floor", cut.Markup, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void FunctionalLimitationsCard_UsesBodyRegionCatalogAndStoresMultipleStructuredSelections()
+    {
+        var state = new IntakeWizardState
+        {
+            SelectedBodyRegion = BodyRegion.KneeLeftFront.ToString(),
+            SelectedBodyRegions = [BodyRegion.KneeLeftFront]
+        };
+        var cut = RenderComponent<FunctionalLimitationsCard>(parameters => parameters
+            .Add(component => component.State, state));
+
+        Assert.Contains("Mobility &amp; Transfers", cut.Markup, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Self-Care / ADLs", cut.Markup, StringComparison.OrdinalIgnoreCase);
+
+        var chairRise = cut.FindAll("label")
+            .Single(label => label.TextContent.Contains("rise from chair", StringComparison.OrdinalIgnoreCase));
+        chairRise.QuerySelector("input")!.Change(true);
+        var stairs = cut.FindAll("label")
+            .Single(label => label.TextContent.Contains("flight of stairs", StringComparison.OrdinalIgnoreCase));
+        stairs.QuerySelector("input")!.Change(true);
+
+        Assert.Equal(2, state.StructuredData!.FunctionalLimitations.Count);
+        Assert.All(state.StructuredData.FunctionalLimitations, limitation => Assert.Equal("Knee", limitation.BodyPart));
+    }
+
+    [Fact]
+    public void MedicalHistoryCard_NoneSelectionsAreMutuallyExclusive()
+    {
+        var state = new IntakeWizardState();
+        var cut = RenderComponent<MedicalHistoryCard>(parameters => parameters
+            .Add(component => component.State, state));
+
+        var medication = cut.FindAll("button")
+            .First(button => button.TextContent.Contains("Lipitor / Atorvastatin", StringComparison.OrdinalIgnoreCase));
+        var medicationNone = cut.FindAll("button")
+            .First(button => string.Equals(button.TextContent.Trim(), "None", StringComparison.Ordinal));
+
+        medication.Click();
+        Assert.NotEmpty(state.StructuredData!.MedicationIds);
+
+        medicationNone = cut.FindAll("button")
+            .First(button => string.Equals(button.TextContent.Trim(), "None", StringComparison.Ordinal));
+        medicationNone.Click();
+        Assert.True(state.StructuredData.NoMedications);
+        Assert.Empty(state.StructuredData.MedicationIds);
+
+        medication = cut.FindAll("button")
+            .First(button => button.TextContent.Contains("Lipitor / Atorvastatin", StringComparison.OrdinalIgnoreCase));
+        medication.Click();
+        Assert.False(state.StructuredData.NoMedications);
+        Assert.NotEmpty(state.StructuredData.MedicationIds);
+    }
+
+    [Fact]
+    public void InsurancePayerCard_ProvidesReusableCarrierSuggestionsForPrimaryAndSecondaryPolicies()
+    {
+        var cut = RenderComponent<InsurancePayerCard>();
+
+        Assert.Equal("intake-primary-carriers", cut.Find("#intake-primary-insurance-company").GetAttribute("list"));
+        Assert.Equal("intake-secondary-carriers", cut.Find("#intake-secondary-insurance-company").GetAttribute("list"));
+        Assert.Contains(
+            cut.FindAll("#intake-primary-carriers option"),
+            option => option.GetAttribute("value") == "Blue Cross Blue Shield");
+    }
+
+    [Fact]
+    public void CareTeamCard_SamePhysicianShortcutCopiesPrimaryProviderWithoutCreatingANewRecord()
+    {
+        string? referringName = null;
+        string? referringPhone = null;
+        var cut = RenderComponent<CareTeamCard>(parameters => parameters
+            .Add(component => component.PrimaryDoctorName, "Dr. Taylor Reed")
+            .Add(component => component.PrimaryDoctorPhone, "555-0142")
+            .Add(component => component.ReferringDoctorNameChanged, EventCallback.Factory.Create<string?>(this, value => referringName = value))
+            .Add(component => component.ReferringDoctorPhoneChanged, EventCallback.Factory.Create<string?>(this, value => referringPhone = value)));
+
+        cut.Find(".intake-card__same-provider input").Change(true);
+
+        Assert.Equal("Dr. Taylor Reed", referringName);
+        Assert.Equal("555-0142", referringPhone);
+    }
+
+    [Fact]
+    public void ReviewStep_PhiRecipientSelectionReferencesAuthorizedContactAndCompletesSubmissionGate()
+    {
+        var contact = new AuthorizedContact
+        {
+            Id = "contact-jane",
+            Name = "Jane Smith",
+            PhoneNumber = "555-0100",
+            Relationship = "Spouse"
+        };
+        var state = new IntakeWizardState
+        {
+            TermsOfServiceAccepted = true,
+            ConsentPacket = new IntakeConsentPacket
+            {
+                HipaaAcknowledged = true,
+                TreatmentConsentAccepted = true,
+                FinalAttestationAccepted = true,
+                PhiReleaseAuthorized = true,
+                AuthorizedContacts = [contact]
+            }
+        };
+        var cut = RenderComponent<ReviewStep>(parameters => parameters
+            .Add(component => component.State, state));
+
+        Assert.True(cut.Find("[data-testid='submit-button']").HasAttribute("disabled"));
+        var recipient = cut.FindAll("label")
+            .Single(label => label.TextContent.Contains("Jane Smith", StringComparison.Ordinal));
+        recipient.QuerySelector("input")!.Change(true);
+
+        Assert.Equal("contact-jane", Assert.Single(state.ConsentPacket.PhiAuthorizedContactIds));
+        Assert.False(cut.Find("[data-testid='submit-button']").HasAttribute("disabled"));
+        Assert.Contains("Authorized recipients: Jane Smith", cut.Markup, StringComparison.Ordinal);
     }
 
     [Fact]

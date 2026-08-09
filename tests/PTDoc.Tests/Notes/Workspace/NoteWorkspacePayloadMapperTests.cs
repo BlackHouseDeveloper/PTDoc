@@ -719,6 +719,17 @@ public sealed class NoteWorkspacePayloadMapperTests
                         SuggestedExercise = "Heel slides",
                         ActualExercisePerformed = "Heel slides",
                         SetsRepsDuration = "2x10",
+                        SourceItemId = "exercise-heel-slide",
+                        SourceCatalogVersion = "test-v1",
+                        Category = "Range of Motion",
+                        InterventionRegion = InterventionRegion.Knee,
+                        Prescription = new ExercisePrescriptionEntry
+                        {
+                            Sets = 2,
+                            Repetitions = 10,
+                            Frequency = "daily"
+                        },
+                        Notes = "Pain-free range only",
                         CptCode = "97110",
                         CptDescription = "Exercise",
                         TimeMinutes = 15,
@@ -751,6 +762,10 @@ public sealed class NoteWorkspacePayloadMapperTests
                     {
                         Name = "Joint mobilization",
                         Category = "Manual therapy",
+                        Kind = InterventionKind.ManualTechnique,
+                        SourceItemId = "manual-patellar-mobilization",
+                        SourceCatalogVersion = "test-v1",
+                        InterventionRegion = InterventionRegion.Knee,
                         IsSourceBacked = true,
                         Notes = "Grade III",
                         CptCode = "97140",
@@ -800,6 +815,12 @@ public sealed class NoteWorkspacePayloadMapperTests
         Assert.Single(result.Objective.ExerciseRows);
         Assert.Equal("Heel slides", result.Objective.ExerciseRows[0].SuggestedExercise);
         Assert.Equal("97110", result.Objective.ExerciseRows[0].CptCode);
+        Assert.Equal("exercise-heel-slide", result.Objective.ExerciseRows[0].SourceItemId);
+        Assert.Equal(2, result.Objective.ExerciseRows[0].Prescription?.Sets);
+        Assert.Equal(10, result.Objective.ExerciseRows[0].Prescription?.Repetitions);
+        Assert.Equal("daily", result.Objective.ExerciseRows[0].Prescription?.Frequency);
+        Assert.Equal("2 sets; 10 reps; daily", result.Objective.ExerciseRows[0].SetsRepsDuration);
+        Assert.Equal("Pain-free range only", result.Objective.ExerciseRows[0].Notes);
         Assert.Equal("Min Assist", result.Objective.ExerciseRows[0].AssistanceLevel);
         Assert.Equal("Verbal cueing", result.Objective.ExerciseRows[0].Cueing);
         Assert.True(result.Objective.ExerciseRows[0].IncludeInHomeExerciseProgram);
@@ -810,6 +831,9 @@ public sealed class NoteWorkspacePayloadMapperTests
         Assert.Single(result.Plan.GeneralInterventions);
         Assert.Equal("Joint mobilization", result.Plan.GeneralInterventions[0].Name);
         Assert.Equal("97140", result.Plan.GeneralInterventions[0].CptCode);
+        Assert.Equal(InterventionKind.ManualTechnique, result.Plan.GeneralInterventions[0].Kind);
+        Assert.Equal("manual-patellar-mobilization", result.Plan.GeneralInterventions[0].SourceItemId);
+        Assert.Equal(InterventionRegion.Knee, result.Plan.GeneralInterventions[0].InterventionRegion);
         Assert.Equal("Contact Guard", result.Plan.GeneralInterventions[0].AssistanceLevel);
         Assert.Equal("Tactile cueing", result.Plan.GeneralInterventions[0].Cueing);
         Assert.Equal("Improved mobility", result.Plan.GeneralInterventions[0].Response);
@@ -887,6 +911,103 @@ public sealed class NoteWorkspacePayloadMapperTests
         Assert.Contains(result.Plan.SelectedCptCodes, code => code.Code == "97110" && code.Minutes == 12);
         Assert.Contains(result.Plan.SelectedCptCodes, code => code.Code == "97140" && code.Minutes == 20);
         Assert.Contains(result.Plan.SelectedCptCodes, code => code.Code == "97110" && code.Modifiers.Contains("GP"));
+    }
+
+    [Fact]
+    public void MapToUiPayload_RestoresStructuredExerciseAndManualTechniqueSnapshots()
+    {
+        var result = _mapper.MapToUiPayload(new NoteWorkspaceV2Payload
+        {
+            Objective = new WorkspaceObjectiveV2
+            {
+                ExerciseRows =
+                [
+                    new ExerciseRowV2
+                    {
+                        SourceItemId = "exercise-pendulum",
+                        SourceCatalogVersion = "2026-04-18",
+                        Category = "Range of Motion",
+                        InterventionRegion = InterventionRegion.Shoulder,
+                        SuggestedExercise = "Pendulum Exercise",
+                        ActualExercisePerformed = "Pendulum Exercise",
+                        Prescription = new ExercisePrescriptionV2 { Sets = 2, Repetitions = 10, Frequency = "daily" },
+                        Notes = "Pain-free range only",
+                        IsSourceBacked = true
+                    }
+                ]
+            },
+            Plan = new WorkspacePlanV2
+            {
+                GeneralInterventions =
+                [
+                    new GeneralInterventionEntryV2
+                    {
+                        Kind = InterventionKind.ManualTechnique,
+                        SourceItemId = "manual-glenohumeral-joint-mobilization",
+                        SourceCatalogVersion = "2026-04-18",
+                        InterventionRegion = InterventionRegion.Shoulder,
+                        Name = "Glenohumeral Joint Mobilization",
+                        Category = "Manual Work Technique",
+                        Notes = "Grade III",
+                        Response = "Improved mobility",
+                        IsSourceBacked = true
+                    }
+                ]
+            }
+        });
+
+        var exercise = Assert.Single(result.Objective.ExerciseRows);
+        Assert.Equal(2, exercise.Prescription?.Sets);
+        Assert.Equal(10, exercise.Prescription?.Repetitions);
+        Assert.Equal("daily", exercise.Prescription?.Frequency);
+        Assert.Equal("Pain-free range only", exercise.Notes);
+
+        var technique = Assert.Single(result.Plan.GeneralInterventions);
+        Assert.Equal(InterventionKind.ManualTechnique, technique.Kind);
+        Assert.Equal(InterventionRegion.Shoulder, technique.InterventionRegion);
+        Assert.Equal("Improved mobility", technique.Response);
+    }
+
+    [Fact]
+    public void MapToV2Payload_RemovingFinalExerciseAndInterventionPersistsEmptyCollections()
+    {
+        var original = new NoteWorkspaceV2Payload
+        {
+            Objective = new WorkspaceObjectiveV2
+            {
+                ClinicalObservationNotes = "Preserve this unrelated finding.",
+                ExerciseRows =
+                [
+                    new ExerciseRowV2
+                    {
+                        SuggestedExercise = "Pendulum Exercise",
+                        ActualExercisePerformed = "Pendulum Exercise"
+                    }
+                ]
+            },
+            Plan = new WorkspacePlanV2
+            {
+                FollowUpInstructions = "Preserve this unrelated plan instruction.",
+                GeneralInterventions =
+                [
+                    new GeneralInterventionEntryV2
+                    {
+                        Kind = InterventionKind.ManualTechnique,
+                        Name = "Glenohumeral Joint Mobilization"
+                    }
+                ]
+            }
+        };
+        var uiPayload = _mapper.MapToUiPayload(original);
+        uiPayload.Objective.ExerciseRows.Clear();
+        uiPayload.Plan.GeneralInterventions.Clear();
+
+        var result = _mapper.MapToV2Payload(uiPayload, NoteType.Evaluation);
+
+        Assert.Empty(result.Objective.ExerciseRows);
+        Assert.Empty(result.Plan.GeneralInterventions);
+        Assert.Equal("Preserve this unrelated finding.", result.Objective.ClinicalObservationNotes);
+        Assert.Equal("Preserve this unrelated plan instruction.", result.Plan.FollowUpInstructions);
     }
 
     [Fact]

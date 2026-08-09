@@ -59,6 +59,9 @@ builder.Services.AddScoped<IPatientChartStorageService, PatientChartStorageApiSe
 builder.Services.AddScoped<IIntegrationClientService, IntegrationClientApiService>();
 builder.Services.AddScoped<INoteService, NoteListApiService>();
 builder.Services.AddScoped<IAdminApprovalService, AdminApprovalApiService>();
+builder.Services.AddScoped<PTDoc.Application.Providers.IProviderDirectoryService, ProviderDirectoryApiService>();
+builder.Services.AddScoped<PTDoc.Application.Insurance.IInsurancePolicyService, InsurancePolicyApiService>();
+builder.Services.AddScoped<PTDoc.Application.NoteTemplates.INoteTemplateAdministrationService, NoteTemplateAdministrationApiService>();
 builder.Services.AddScoped<INotificationCenterService, HttpNotificationCenterService>();
 builder.Services.AddScoped<IDashboardAlertService, HttpDashboardAlertService>();
 builder.Services.AddScoped<INavigationBadgeService, HttpNavigationBadgeService>();
@@ -97,8 +100,33 @@ builder.Services.AddHttpClient("ServerAPI", (serviceProvider, client) =>
     .AddHttpMessageHandler<PublicOriginForwardingHandler>()
     .AddHttpMessageHandler<ApiAccessTokenForwardingHandler>();
 
+// Blazor's navigation and authentication-state services belong to the active circuit
+// scope, while IHttpClientFactory creates its own handler scopes. Build the UI-facing
+// outer authentication handler in the circuit scope, and retain the factory-managed
+// transport pipeline underneath it. The named ServerAPI client remains available to
+// request-based Web endpoints that already use it directly.
+builder.Services.AddHttpClient("ServerAPITransport", (serviceProvider, client) =>
+{
+    client.BaseAddress = serviceProvider
+        .GetRequiredService<ApiClusterAddressResolver>()
+        .ResolveApiClusterAddress();
+})
+    .AddHttpMessageHandler<PublicOriginForwardingHandler>();
+
 builder.Services.AddScoped(sp =>
-    sp.GetRequiredService<IHttpClientFactory>().CreateClient("ServerAPI"));
+{
+    var handler = sp.GetRequiredService<ApiAccessTokenForwardingHandler>();
+    handler.InnerHandler = sp
+        .GetRequiredService<IHttpMessageHandlerFactory>()
+        .CreateHandler("ServerAPITransport");
+
+    return new HttpClient(handler, disposeHandler: false)
+    {
+        BaseAddress = sp
+            .GetRequiredService<ApiClusterAddressResolver>()
+            .ResolveApiClusterAddress()
+    };
+});
 
 if (entraExternalIdOptions.Enabled)
 {
@@ -979,6 +1007,9 @@ static ClaimsPrincipal CreateWebPrincipal(WebPinLoginResponse loginResponse)
     if (!string.IsNullOrWhiteSpace(loginResponse.Token))
     {
         claims.Add(new Claim(PTDocClaimTypes.ApiAccessToken, loginResponse.Token));
+        claims.Add(new Claim(
+            PTDocClaimTypes.ApiAccessTokenExpiresAt,
+            new DateTimeOffset(DateTime.SpecifyKind(loginResponse.ExpiresAt, DateTimeKind.Utc)).ToString("O")));
     }
 
     if (loginResponse.ClinicId.HasValue)

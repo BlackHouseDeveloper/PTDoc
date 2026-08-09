@@ -24,6 +24,7 @@ public sealed class NoteWorkspaceApiService(
         PropertyNameCaseInsensitive = true
     };
     private readonly NoteWorkspacePayloadMapper _payloadMapper = new(intakeReferenceData, outcomeMeasureRegistry);
+    private InterventionLibraryCatalog? _interventionLibraryCatalog;
 
     public async Task<NoteWorkspaceLoadResult> LoadAsync(
         Guid patientId,
@@ -68,6 +69,7 @@ public sealed class NoteWorkspaceApiService(
             DateOfService = workspace.DateOfService,
             IsReEvaluation = workspace.IsReEvaluation,
             Status = workspace.NoteStatus,
+            TemplateVersion = workspace.TemplateVersion,
             Payload = _payloadMapper.MapToUiPayload(workspace.Payload)
         };
     }
@@ -230,6 +232,7 @@ public sealed class NoteWorkspaceApiService(
             LastModifiedUtc = saved.Workspace.LastModifiedUtc,
             IsReEvaluation = saved.Workspace.IsReEvaluation,
             Status = saved.Workspace.NoteStatus,
+            TemplateVersion = saved.Workspace.TemplateVersion,
             Errors = saved.Errors,
             Warnings = saved.Warnings,
             RequiresOverride = saved.RequiresOverride,
@@ -427,6 +430,30 @@ public sealed class NoteWorkspaceApiService(
 
         return await response.Content.ReadFromJsonAsync<BodyRegionCatalog>(SerializerOptions, cancellationToken)
             ?? new BodyRegionCatalog { BodyPart = bodyPart };
+    }
+
+    public async Task<InterventionLibraryCatalog> GetInterventionLibraryCatalogAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_interventionLibraryCatalog is not null)
+        {
+            return _interventionLibraryCatalog;
+        }
+
+        using var response = await httpClient.GetAsync(
+            "/api/v2/notes/workspace/catalogs/interventions",
+            cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(
+                await ApiErrorReader.ReadMessageAsync(response, cancellationToken) ?? "Unable to load the intervention library.",
+                inner: null,
+                response.StatusCode);
+        }
+
+        _interventionLibraryCatalog = await response.Content.ReadFromJsonAsync<InterventionLibraryCatalog>(SerializerOptions, cancellationToken)
+            ?? throw new InvalidOperationException("Intervention library response was empty.");
+        return _interventionLibraryCatalog;
     }
 
     public async Task<IReadOnlyList<CodeLookupEntry>> SearchCptAsync(

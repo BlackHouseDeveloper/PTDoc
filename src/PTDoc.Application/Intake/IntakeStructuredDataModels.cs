@@ -39,6 +39,75 @@ public sealed class IntakeStructuredDataDto
 
     [JsonPropertyName("houseLayoutOptionIds")]
     public List<string> HouseLayoutOptionIds { get; set; } = new();
+
+    [JsonPropertyName("noMedications")]
+    public bool NoMedications { get; set; }
+
+    [JsonPropertyName("noComorbidities")]
+    public bool NoComorbidities { get; set; }
+
+    [JsonPropertyName("noAssistiveDevices")]
+    public bool NoAssistiveDevices { get; set; }
+
+    [JsonPropertyName("functionalLimitations")]
+    public List<IntakeFunctionalLimitationSelectionDto> FunctionalLimitations { get; set; } = new();
+
+    [JsonPropertyName("subjective")]
+    public IntakeSubjectiveDataDto Subjective { get; set; } = new();
+
+    [JsonPropertyName("clinicalContext")]
+    public IntakeClinicalContextDto ClinicalContext { get; set; } = new();
+}
+
+public sealed class IntakeClinicalContextDto
+{
+    [JsonPropertyName("noteType")]
+    public string NoteType { get; set; } = "Evaluation";
+}
+
+public sealed class IntakeFunctionalLimitationSelectionDto
+{
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("bodyPart")]
+    public string BodyPart { get; set; } = string.Empty;
+
+    [JsonPropertyName("category")]
+    public string Category { get; set; } = string.Empty;
+
+    [JsonPropertyName("activity")]
+    public string Activity { get; set; } = string.Empty;
+}
+
+public sealed class IntakeSubjectiveDataDto
+{
+    [JsonPropertyName("priorFunctionalLevel")]
+    public List<string> PriorFunctionalLevel { get; set; } = new();
+
+    [JsonPropertyName("onsetDate")]
+    public DateTime? OnsetDate { get; set; }
+
+    [JsonPropertyName("onsetOverAYearAgo")]
+    public bool OnsetOverAYearAgo { get; set; }
+
+    [JsonPropertyName("causeUnknown")]
+    public bool CauseUnknown { get; set; }
+
+    [JsonPropertyName("knownCause")]
+    public string? KnownCause { get; set; }
+
+    [JsonPropertyName("hasImaging")]
+    public bool? HasImaging { get; set; }
+
+    [JsonPropertyName("imagingModalities")]
+    public List<string> ImagingModalities { get; set; } = new();
+
+    [JsonPropertyName("otherImagingModality")]
+    public string? OtherImagingModality { get; set; }
+
+    [JsonPropertyName("imagingFindings")]
+    public string? ImagingFindings { get; set; }
 }
 
 public sealed class IntakeBodyPartSelectionDto

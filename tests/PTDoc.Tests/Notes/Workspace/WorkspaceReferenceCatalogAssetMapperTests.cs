@@ -115,6 +115,32 @@ public sealed class WorkspaceReferenceCatalogAssetMapperTests
     }
 
     [Fact]
+    public void MapInterventionLibrary_RejectsDuplicateStableIds()
+    {
+        var asset = new WorkspaceReferenceCatalogAsset
+        {
+            Version = "test-v1",
+            InterventionLibrary = new WorkspaceInterventionLibraryAsset
+            {
+                Provenance = new ReferenceDataProvenance
+                {
+                    DocumentPath = "tests/fixtures/interventions.json",
+                    Version = "test-v1"
+                },
+                Items =
+                [
+                    InterventionAsset("duplicate", "Exercise", "Shoulder"),
+                    InterventionAsset("DUPLICATE", "ManualTechnique", "Shoulder")
+                ]
+            }
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(() => WorkspaceReferenceCatalogAssetMapper.MapInterventionLibrary(asset));
+
+        Assert.Contains("duplicate item id", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Map_FanOutClonesAvailabilityAndProvenancePerBodyPart()
     {
         var asset = CreateCompleteAsset();
@@ -220,6 +246,15 @@ public sealed class WorkspaceReferenceCatalogAssetMapperTests
     {
         IsAvailable = true,
         Notes = notes
+    };
+
+    private static WorkspaceInterventionLibraryItemAsset InterventionAsset(string id, string kind, string region) => new()
+    {
+        Id = id,
+        Kind = kind,
+        Name = $"{kind} item",
+        Category = "Test",
+        Region = region
     };
 
     private static WorkspaceCatalogSectionAsset MissingSection(string notes) => new()

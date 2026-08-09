@@ -13,6 +13,8 @@ public interface INoteWorkspaceV2Service
 public interface IWorkspaceReferenceCatalogService
 {
     BodyRegionCatalog GetBodyRegionCatalog(BodyPart bodyPart);
+    InterventionLibraryCatalog GetInterventionLibraryCatalog();
+    InterventionLibraryItem? GetInterventionLibraryItem(string itemId);
     IReadOnlyList<CodeLookupEntry> SearchIcd10(string? query, int take = 20);
     IReadOnlyList<CodeLookupEntry> SearchCpt(string? query, int take = 20);
 }

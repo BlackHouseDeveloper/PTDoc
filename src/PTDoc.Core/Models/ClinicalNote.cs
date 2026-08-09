@@ -22,6 +22,9 @@ public class ClinicalNote : ISyncTrackedEntity, ISignedEntity
     // Note type
     public NoteType NoteType { get; set; }
 
+    /// <summary>Immutable template version selected by the server when the note was created.</summary>
+    public Guid? TemplateVersionId { get; set; }
+
     // Re-evaluation flag — true when this Evaluation note represents a re-evaluation
     public bool IsReEvaluation { get; set; }
 
@@ -81,6 +84,7 @@ public class ClinicalNote : ISyncTrackedEntity, ISignedEntity
     public Clinic? Clinic { get; set; }
     public ICollection<ObjectiveMetric> ObjectiveMetrics { get; set; } = new List<ObjectiveMetric>();
     public ICollection<NoteTaxonomySelection> TaxonomySelections { get; set; } = new List<NoteTaxonomySelection>();
+    public NoteTemplateVersion? TemplateVersion { get; set; }
 }
 
 public enum NoteType

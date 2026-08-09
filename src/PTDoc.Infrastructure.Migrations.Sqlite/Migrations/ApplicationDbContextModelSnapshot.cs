@@ -39,10 +39,14 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<Guid>("ClinicalId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("ClinicalVisitOrdinal")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("EndTimeUtc")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("LastModifiedUtc")
+                        .IsConcurrencyToken()
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("ModifiedByUserId")
@@ -76,6 +80,13 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("StartTimeUtc");
 
                     b.HasIndex("ClinicalId", "StartTimeUtc");
+
+                    b.HasIndex("PatientId", "ClinicalVisitOrdinal")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Appointments_PatientId_ClinicalVisitOrdinal")
+                        .HasFilter("ClinicalVisitOrdinal IS NOT NULL");
+
+                    b.HasIndex("ClinicId", "PatientId", "ClinicalVisitOrdinal");
 
                     b.ToTable("Appointments");
                 });
@@ -326,6 +337,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<int>("SyncState")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid?>("TemplateVersionId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("TherapistNpi")
                         .HasMaxLength(10)
                         .HasColumnType("TEXT");
@@ -351,6 +365,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("PatientId");
 
                     b.HasIndex("SignedUtc");
+
+                    b.HasIndex("TemplateVersionId");
 
                     b.ToTable("ClinicalNotes");
                 });
@@ -574,6 +590,543 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("ExternalSystemMappings");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.FaxRecipient", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FaxNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("FaxTransmissionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderStatus")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RecipientName")
+                        .HasMaxLength(245)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FaxTransmissionId");
+
+                    b.ToTable("FaxRecipients", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.FaxStatusEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("FaxTransmissionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderStatus")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FaxTransmissionId", "OccurredAtUtc");
+
+                    b.ToTable("FaxStatusEvents", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.FaxTransmission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClientCorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CoverMessage")
+                        .HasMaxLength(9945)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CoverSubject")
+                        .HasMaxLength(1045)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DocumentContentType")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DocumentFileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DocumentHashSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("DocumentSizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DocumentStorageKey")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IncludeCoverSheet")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("IntegrationConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("OriginalTransmissionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("PatientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderFaxId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderStatus")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RequestedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("SourceClinicalNoteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("SourceDocumentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("SubmittedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PatientId");
+
+                    b.HasIndex("ProviderFaxId");
+
+                    b.HasIndex("ClinicId", "CreatedAtUtc");
+
+                    b.HasIndex("IntegrationConnectionId", "ClientCorrelationId")
+                        .IsUnique();
+
+                    b.ToTable("FaxTransmissions", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepPrescriptionExercise", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DescriptionOverride")
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Duration")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExternalExerciseId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Flip")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Frequency")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("HepProgramRevisionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Hold")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsHomeExercise")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Level")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Mirror")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Other")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Repetitions")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Rest")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sets")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Tempo")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Weight")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HepProgramRevisionId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("HepPrescriptionExercises", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepProgram", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("CurrentRevisionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("IntegrationConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastFailureCode")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastSyncedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastTrackingSyncAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderEpisodeId")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderProgramId")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("CurrentRevisionId");
+
+                    b.HasIndex("IntegrationConnectionId");
+
+                    b.HasIndex("PatientId", "UpdatedAtUtc");
+
+                    b.ToTable("HepPrograms", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepProgramRevision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("HepProgramId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderVersion")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("PublishedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateOnly?>("StartDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TherapistNotes")
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("HepProgramId", "Version")
+                        .IsUnique();
+
+                    b.ToTable("HepProgramRevisions", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepTrackingObservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ActivityAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExternalExerciseId")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("HepProgramId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ImportedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderObservationId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UnitOfMeasure")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HepProgramId", "ActivityAtUtc");
+
+                    b.HasIndex("HepProgramId", "ProviderObservationId")
+                        .IsUnique();
+
+                    b.ToTable("HepTrackingObservations", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.InboundFax", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("AssignedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("AssignedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("AssignedPatientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AssignmentReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DocumentContentType")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DocumentFileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DocumentHashSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("DocumentSizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DocumentStorageKey")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FromNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("IntegrationConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PageCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("PatientDocumentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderFaxId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderStatus")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ReceivedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SenderName")
+                        .HasMaxLength(245)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ToNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignedPatientId");
+
+                    b.HasIndex("PatientDocumentId");
+
+                    b.HasIndex("IntegrationConnectionId", "ProviderFaxId")
+                        .IsUnique();
+
+                    b.HasIndex("ClinicId", "Status", "ReceivedAtUtc");
+
+                    b.ToTable("InboundFaxes", (string)null);
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.IntakeForm", b =>
                 {
                     b.Property<Guid>("Id")
@@ -732,6 +1285,287 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("IntakeOtpChallenges");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationConflict", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConflictType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DetailsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("IntegrationConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("InternalEntityId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ResolvedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EntityType", "InternalEntityId");
+
+                    b.HasIndex("IntegrationConnectionId", "Status");
+
+                    b.ToTable("IntegrationConflicts", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationConnection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ComplianceApprovedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ComplianceApprovedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConfigurationJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("LastHealthCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastVerifiedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SecretReference")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WebhookTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsEnabled");
+
+                    b.HasIndex("ClinicId", "Provider")
+                        .IsUnique();
+
+                    b.ToTable("IntegrationConnections", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationExternalMapping", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("IntegrationConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("InternalEntityId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastSyncedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId");
+
+                    b.HasIndex("IntegrationConnectionId", "EntityType", "ExternalId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_IntExtMap_Conn_Entity_External");
+
+                    b.HasIndex("IntegrationConnectionId", "EntityType", "InternalEntityId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_IntExtMap_Conn_Entity_Internal");
+
+                    b.ToTable("IntegrationExternalMappings", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationOutboxItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("AggregateId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AggregateType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("IntegrationConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("JobType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LeaseExpiresAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LeaseOwner")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("MaxAttempts")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AggregateType", "AggregateId");
+
+                    b.HasIndex("IntegrationConnectionId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "NextAttemptAtUtc");
+
+                    b.ToTable("IntegrationOutboxItems", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationSyncCheckpoint", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Cursor")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("IntegrationConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastSuccessfulAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SyncType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IntegrationConnectionId", "SyncType")
+                        .IsUnique();
+
+                    b.ToTable("IntegrationSyncCheckpoints", (string)null);
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.LoginAttempt", b =>
                 {
                     b.Property<Guid>("Id")
@@ -821,6 +1655,118 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("CategoryId", "ItemId");
 
                     b.ToTable("NoteTaxonomySelections");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.NoteTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ActiveVersionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastModifiedUtc")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ModifiedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("NoteType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Variant")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActiveVersionId");
+
+                    b.HasIndex("ClinicId", "NoteType", "Variant")
+                        .IsUnique()
+                        .HasDatabaseName("UX_NoteTemplates_ClinicId_NoteType_Variant_Active")
+                        .HasFilter("IsArchived = 0");
+
+                    b.ToTable("NoteTemplates");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.NoteTemplateVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastModifiedUtc")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("NoteTemplateId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("PublishedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RetiredAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReviewComment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ReviewedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SchemaJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("SubmittedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("SubmittedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId", "Status");
+
+                    b.HasIndex("NoteTemplateId", "VersionNumber")
+                        .IsUnique();
+
+                    b.ToTable("NoteTemplateVersions");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.ObjectiveMetric", b =>
@@ -1186,6 +2132,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<long>("SizeBytes")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("StorageKey")
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("UploadedAtUtc")
                         .HasColumnType("TEXT");
 
@@ -1283,6 +2233,402 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("PatientId", "Status");
 
                     b.ToTable("PatientGoals");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.PatientInsuranceAuthorization", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("AuthorizationType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal?>("AuthorizedUnits")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("EndDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastModifiedUtc")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ModifiedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PatientInsurancePolicyId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ReauthorizationDueDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ReceivedDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReferenceNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("StartDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SyncState")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal?>("UsedUnits")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("VisitAlertThreshold")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("VisitLimitPeriod")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PatientId");
+
+                    b.HasIndex("ClinicId", "PatientId");
+
+                    b.HasIndex("PatientInsurancePolicyId", "IsArchived");
+
+                    b.ToTable("PatientInsuranceAuthorizations");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.PatientInsurancePolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AdjusterEmail")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AdjusterFax")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AdjusterName")
+                        .HasMaxLength(150)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AdjusterPhone")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CarrierDisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CarrierKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("CoinsurancePercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("CopayAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CoveragePriority")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal?>("DeductibleAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("DeductibleMet")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("EffectiveEndDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("EffectiveStartDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GroupNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastModifiedUtc")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MemberOrPolicyNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ModifiedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("OutOfPocketMaximum")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("OutOfPocketMet")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PayerType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PlanYearType")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SyncState")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId", "PatientId");
+
+                    b.HasIndex("PatientId", "CoveragePriority")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PatientInsurancePolicies_PatientId_CoveragePriority_Active")
+                        .HasFilter("IsArchived = 0 AND Status = 0");
+
+                    b.ToTable("PatientInsurancePolicies");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.PatientProviderRelationship", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("EffectiveEndDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("EffectiveStartDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastModifiedUtc")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ModifiedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ProviderDirectoryEntryId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SyncState")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProviderDirectoryEntryId");
+
+                    b.HasIndex("ClinicId", "ProviderDirectoryEntryId");
+
+                    b.HasIndex("PatientId", "Role", "IsArchived");
+
+                    b.ToTable("PatientProviderRelationships");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.ProcessedIntegrationWebhook", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("IntegrationConnectionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PayloadHashSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProviderMessageId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ReceivedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IntegrationConnectionId", "ProviderMessageId")
+                        .IsUnique();
+
+                    b.ToTable("ProcessedIntegrationWebhooks", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.ProviderDirectoryEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AddressLine1")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AddressLine2")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("City")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Credentials")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Fax")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastModifiedUtc")
+                        .IsConcurrencyToken()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ModifiedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Npi")
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OrganizationName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(30)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReviewReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ReviewedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ReviewedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Specialty")
+                        .HasMaxLength(150)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("State")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SubmissionSource")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("SubmittedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("SubmittedByUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SyncState")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TaxonomyCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ZipCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId", "Npi")
+                        .IsUnique()
+                        .HasFilter("Npi IS NOT NULL AND IsArchived = 0 AND Status = 1");
+
+                    b.HasIndex("ClinicId", "Status", "LastName", "FirstName");
+
+                    b.ToTable("ProviderDirectoryEntries");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.RuleOverride", b =>
@@ -1840,6 +3186,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("PTDoc.Core.Models.NoteTemplateVersion", "TemplateVersion")
+                        .WithMany()
+                        .HasForeignKey("TemplateVersionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Appointment");
 
                     b.Navigation("Clinic");
@@ -1847,6 +3198,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("ParentNote");
 
                     b.Navigation("Patient");
+
+                    b.Navigation("TemplateVersion");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.ExternalSystemMapping", b =>
@@ -1854,9 +3207,159 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasOne("PTDoc.Core.Models.Patient", "Patient")
                         .WithMany()
                         .HasForeignKey("InternalPatientId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.FaxRecipient", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.FaxTransmission", "FaxTransmission")
+                        .WithMany("Recipients")
+                        .HasForeignKey("FaxTransmissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FaxTransmission");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.FaxStatusEvent", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.FaxTransmission", "FaxTransmission")
+                        .WithMany("StatusEvents")
+                        .HasForeignKey("FaxTransmissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FaxTransmission");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.FaxTransmission", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.IntegrationConnection", "IntegrationConnection")
+                        .WithMany()
+                        .HasForeignKey("IntegrationConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Clinic");
+
+                    b.Navigation("IntegrationConnection");
+
+                    b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepPrescriptionExercise", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.HepProgramRevision", "HepProgramRevision")
+                        .WithMany("Exercises")
+                        .HasForeignKey("HepProgramRevisionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("HepProgramRevision");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepProgram", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.IntegrationConnection", "IntegrationConnection")
+                        .WithMany()
+                        .HasForeignKey("IntegrationConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("IntegrationConnection");
+
+                    b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepProgramRevision", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.HepProgram", "HepProgram")
+                        .WithMany("Revisions")
+                        .HasForeignKey("HepProgramId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("HepProgram");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepTrackingObservation", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.HepProgram", "HepProgram")
+                        .WithMany("TrackingObservations")
+                        .HasForeignKey("HepProgramId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("HepProgram");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.InboundFax", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Patient", "AssignedPatient")
+                        .WithMany()
+                        .HasForeignKey("AssignedPatientId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTDoc.Core.Models.IntegrationConnection", "IntegrationConnection")
+                        .WithMany()
+                        .HasForeignKey("IntegrationConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.PatientDocument", "PatientDocument")
+                        .WithMany()
+                        .HasForeignKey("PatientDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("AssignedPatient");
+
+                    b.Navigation("IntegrationConnection");
+
+                    b.Navigation("PatientDocument");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.IntakeForm", b =>
@@ -1877,6 +3380,69 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Patient");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationConflict", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.IntegrationConnection", "IntegrationConnection")
+                        .WithMany()
+                        .HasForeignKey("IntegrationConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("IntegrationConnection");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationConnection", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationExternalMapping", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.IntegrationConnection", "IntegrationConnection")
+                        .WithMany()
+                        .HasForeignKey("IntegrationConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+
+                    b.Navigation("IntegrationConnection");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationOutboxItem", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.IntegrationConnection", "IntegrationConnection")
+                        .WithMany()
+                        .HasForeignKey("IntegrationConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("IntegrationConnection");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationSyncCheckpoint", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.IntegrationConnection", "IntegrationConnection")
+                        .WithMany()
+                        .HasForeignKey("IntegrationConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("IntegrationConnection");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.NoteTaxonomySelection", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.ClinicalNote", "Note")
@@ -1886,6 +3452,41 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Note");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.NoteTemplate", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.NoteTemplateVersion", "ActiveVersion")
+                        .WithMany()
+                        .HasForeignKey("ActiveVersionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ActiveVersion");
+
+                    b.Navigation("Clinic");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.NoteTemplateVersion", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTDoc.Core.Models.NoteTemplate", "Template")
+                        .WithMany("Versions")
+                        .HasForeignKey("NoteTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+
+                    b.Navigation("Template");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.ObjectiveMetric", b =>
@@ -2020,6 +3621,97 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Patient");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.PatientInsuranceAuthorization", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTDoc.Core.Models.Patient", "Patient")
+                        .WithMany("InsuranceAuthorizations")
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.PatientInsurancePolicy", "Policy")
+                        .WithMany("Authorizations")
+                        .HasForeignKey("PatientInsurancePolicyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+
+                    b.Navigation("Patient");
+
+                    b.Navigation("Policy");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.PatientInsurancePolicy", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTDoc.Core.Models.Patient", "Patient")
+                        .WithMany("InsurancePolicies")
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+
+                    b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.PatientProviderRelationship", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTDoc.Core.Models.Patient", "Patient")
+                        .WithMany("ProviderRelationships")
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.ProviderDirectoryEntry", "Provider")
+                        .WithMany("PatientRelationships")
+                        .HasForeignKey("ProviderDirectoryEntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+
+                    b.Navigation("Patient");
+
+                    b.Navigation("Provider");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.ProcessedIntegrationWebhook", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.IntegrationConnection", "IntegrationConnection")
+                        .WithMany()
+                        .HasForeignKey("IntegrationConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("IntegrationConnection");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.ProviderDirectoryEntry", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Clinic");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.RuleOverride", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.ClinicalNote", "Note")
@@ -2122,6 +3814,30 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("TaxonomySelections");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.FaxTransmission", b =>
+                {
+                    b.Navigation("Recipients");
+
+                    b.Navigation("StatusEvents");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepProgram", b =>
+                {
+                    b.Navigation("Revisions");
+
+                    b.Navigation("TrackingObservations");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepProgramRevision", b =>
+                {
+                    b.Navigation("Exercises");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.NoteTemplate", b =>
+                {
+                    b.Navigation("Versions");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.Patient", b =>
                 {
                     b.Navigation("Appointments");
@@ -2132,15 +3848,29 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.Navigation("Documents");
 
+                    b.Navigation("InsuranceAuthorizations");
+
+                    b.Navigation("InsurancePolicies");
+
                     b.Navigation("IntakeForms");
+
+                    b.Navigation("ProviderRelationships");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.PatientInsurancePolicy", b =>
+                {
+                    b.Navigation("Authorizations");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.ProviderDirectoryEntry", b =>
+                {
+                    b.Navigation("PatientRelationships");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.User", b =>
                 {
                     b.Navigation("Sessions");
                 });
-#pragma warning disable 612, 618
-            ApplicationDbContext.ConfigureIntegrationSnapshotModels(modelBuilder);
 #pragma warning restore 612, 618
         }
     }

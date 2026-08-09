@@ -1388,7 +1388,7 @@ public static class NoteEndpoints
 
     // ─── Mapping helpers ──────────────────────────────────────────────────────
 
-    private static NoteResponse ToResponse(ClinicalNote n)
+    internal static NoteResponse ToResponse(ClinicalNote n)
     {
         var normalizedContentJson = NoteWriteService.NormalizeContentJson(
             n.NoteType,
@@ -1409,6 +1409,7 @@ public static class NoteEndpoints
             ParentNoteId = n.ParentNoteId,
             IsAddendum = n.IsAddendum,
             NoteType = n.NoteType,
+            TemplateVersionId = n.TemplateVersionId,
             IsReEvaluation = n.IsReEvaluation,
             NoteStatus = n.NoteStatus,
             ContentJson = normalizedContentJson,

@@ -76,6 +76,25 @@ public sealed class AppointmentApiService(HttpClient httpClient) : IAppointmentS
         return await response.Content.ReadFromJsonAsync<AppointmentListItemResponse>(SerializerOptions, cancellationToken);
     }
 
+    public async Task<AppointmentListItemResponse?> UpdateAppointmentTypeAsync(
+        Guid id,
+        UpdateAppointmentTypeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PatchAsJsonAsync(
+            $"/api/v1/appointments/{id}/appointment-type",
+            request,
+            cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        await EnsureSuccessStatusCodeAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<AppointmentListItemResponse>(SerializerOptions, cancellationToken);
+    }
+
     public async Task<AppointmentListItemResponse?> CheckInAsync(
         Guid id,
         CancellationToken cancellationToken = default)

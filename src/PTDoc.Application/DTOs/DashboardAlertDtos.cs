@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace PTDoc.Application.DTOs;
 
 public sealed class DashboardAlertsResponse
@@ -76,6 +78,7 @@ public sealed class DashboardAlertItemResponse
 {
     public string Id { get; set; } = string.Empty;
     public string Kind { get; set; } = string.Empty;
+    public DashboardAlertCategory Category { get; set; }
     public string Priority { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;
@@ -87,4 +90,13 @@ public sealed class DashboardAlertItemResponse
     public string TargetUrl { get; set; } = string.Empty;
     public string ActionLabel { get; set; } = string.Empty;
     public bool IsUrgent { get; set; }
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum DashboardAlertCategory
+{
+    Unknown = 0,
+    Notes,
+    Authorization,
+    Intake
 }

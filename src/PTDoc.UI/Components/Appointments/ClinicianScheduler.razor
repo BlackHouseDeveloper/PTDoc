@@ -69,6 +69,7 @@
                                                 <span>@appt.Time</span>
                                             </div>
                                             <div class="appointment-patient">@appt.PatientName</div>
+                                            <div class="appointment-type">@appt.AppointmentType</div>
                                             <span class="appointment-workflow-status @GetWorkflowStatusClass(GetEffectiveAppointmentStatusLabel(appt, SelectedDate))">
                                                 @GetWorkflowStatusShortLabel(GetEffectiveAppointmentStatusLabel(appt, SelectedDate))
                                             </span>
@@ -121,6 +122,7 @@
                                         </div>
                                         <div class="appointment-patient">@appt.PatientName</div>
                                         <div class="appointment-clinician">@appt.ClinicianName</div>
+                                        <div class="appointment-type">@appt.AppointmentType</div>
                                         <span class="appointment-workflow-status @GetWorkflowStatusClass(GetEffectiveAppointmentStatusLabel(appt, day.Date))">
                                             @GetWorkflowStatusShortLabel(GetEffectiveAppointmentStatusLabel(appt, day.Date))
                                         </span>
@@ -171,6 +173,7 @@
                                             <span>@appt.Time</span>
                                         </div>
                                         <div class="appointment-patient">@appt.PatientName</div>
+                                        <div class="appointment-type">@appt.AppointmentType</div>
                                         <span class="appointment-workflow-status @GetWorkflowStatusClass(GetEffectiveAppointmentStatusLabel(appt, day.Date))">
                                             @GetWorkflowStatusShortLabel(GetEffectiveAppointmentStatusLabel(appt, day.Date))
                                         </span>
@@ -418,7 +421,8 @@
             CanRecordCopay = appointment.CanRecordCopay,
             CopayStatusLabel = appointment.CopayStatusLabel,
             CopayActionUnavailableReason = appointment.CopayActionUnavailableReason,
-            Notes = appointment.Notes
+            Notes = appointment.Notes,
+            LastModifiedUtc = appointment.LastModifiedUtc
         };
     }
 
@@ -550,7 +554,8 @@
             CopayActionUnavailableReason = appointment.CopayActionUnavailableReason,
             StartMinute = (int)(localStartTime.TimeOfDay - new TimeSpan(localStartTime.Hour, localStartTime.Minute, 0)).TotalMinutes,
             DurationMinutes = durationMinutes,
-            Notes = appointment.Notes
+            Notes = appointment.Notes,
+            LastModifiedUtc = appointment.LastModifiedUtc
         };
     }
 
@@ -577,5 +582,6 @@
         public int StartMinute { get; init; }
         public int DurationMinutes { get; init; }
         public string Notes { get; init; } = string.Empty;
+        public DateTime LastModifiedUtc { get; init; }
     }
 }

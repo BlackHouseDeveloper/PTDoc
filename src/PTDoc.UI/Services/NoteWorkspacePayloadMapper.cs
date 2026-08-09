@@ -187,6 +187,17 @@ public sealed class NoteWorkspacePayloadMapper
                 ExerciseRows = payload.Objective.ExerciseRows
                     .Select(row => new ExerciseRowEntry
                     {
+                        SourceItemId = row.SourceItemId,
+                        SourceCatalogVersion = row.SourceCatalogVersion,
+                        Category = row.Category,
+                        InterventionRegion = row.InterventionRegion,
+                        Prescription = row.Prescription is null ? null : new ExercisePrescriptionEntry
+                        {
+                            Sets = row.Prescription.Sets,
+                            Repetitions = row.Prescription.Repetitions,
+                            Frequency = row.Prescription.Frequency
+                        },
+                        Notes = row.Notes,
                         SuggestedExercise = row.SuggestedExercise,
                         ActualExercisePerformed = row.ActualExercisePerformed,
                         SetsRepsDuration = row.SetsRepsDuration,
@@ -276,6 +287,13 @@ public sealed class NoteWorkspacePayloadMapper
                 GeneralInterventions = payload.Plan.GeneralInterventions
                     .Select(entry => new GeneralInterventionEntry
                     {
+                        Kind = ResolveInterventionKind(entry.Kind, entry.Category),
+                        SourceItemId = entry.SourceItemId,
+                        SourceCatalogVersion = entry.SourceCatalogVersion,
+                        InterventionRegion = entry.InterventionRegion ??
+                            (ResolveInterventionKind(entry.Kind, entry.Category) == InterventionKind.ManualTechnique
+                                ? InterventionRegion.General
+                                : null),
                         Name = entry.Name,
                         Category = entry.Category,
                         IsSourceBacked = entry.IsSourceBacked,
@@ -463,10 +481,7 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Objective.PalpationObservation.TenderMuscles = CloneSet(payload.Objective.TenderMuscles);
         preservedPayload.Objective.PalpationObservation.Other = TrimToNull(payload.Objective.PalpationComments);
         preservedPayload.Objective.PalpationObservation.IsNormal = payload.Objective.IsPalpationUnremarkable;
-        preservedPayload.Objective.ExerciseRows = MergeExerciseRows(
-            preservedPayload.Objective.ExerciseRows,
-            payload.Objective.ExerciseRows,
-            []);
+        preservedPayload.Objective.ExerciseRows = MapExerciseRows(payload.Objective.ExerciseRows);
 
         preservedPayload.Assessment.AssessmentNarrative = payload.Assessment.AssessmentNarrative;
         preservedPayload.Assessment.FindingsSummary = TrimToNull(payload.Assessment.FindingsSummary);
@@ -498,10 +513,7 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Plan.TreatmentFrequencyDaysPerWeek = ParseNumericRange(payload.Plan.TreatmentFrequency);
         preservedPayload.Plan.TreatmentDurationWeeks = ParseNumericRange(payload.Plan.TreatmentDuration);
         preservedPayload.Plan.TreatmentFocuses = CloneSet(payload.Plan.TreatmentFocuses);
-        preservedPayload.Plan.GeneralInterventions = MergeGeneralInterventions(
-            preservedPayload.Plan.GeneralInterventions,
-            payload.Plan.GeneralInterventions,
-            []);
+        preservedPayload.Plan.GeneralInterventions = MapGeneralInterventions(payload.Plan.GeneralInterventions);
         preservedPayload.Plan.SelectedCptCodes = MergePlannedCptCodes(
             preservedPayload.Plan.SelectedCptCodes,
             BuildVisibleCptCodes(payload.Plan, payload.Objective, noteType));
@@ -781,10 +793,7 @@ public sealed class NoteWorkspacePayloadMapper
             .ToList();
     }
 
-    private static List<ExerciseRowV2> MergeExerciseRows(
-        IReadOnlyCollection<ExerciseRowV2>? preservedEntries,
-        IEnumerable<ExerciseRowEntry> visibleRows,
-        IEnumerable<string> legacyExercises)
+    private static List<ExerciseRowV2> MapExerciseRows(IEnumerable<ExerciseRowEntry> visibleRows)
     {
         var rows = visibleRows
             .Where(row =>
@@ -792,9 +801,15 @@ public sealed class NoteWorkspacePayloadMapper
                 || !string.IsNullOrWhiteSpace(row.ActualExercisePerformed))
             .Select(row => new ExerciseRowV2
             {
+                SourceItemId = TrimToNull(row.SourceItemId),
+                SourceCatalogVersion = TrimToNull(row.SourceCatalogVersion),
+                Category = TrimToNull(row.Category),
+                InterventionRegion = row.InterventionRegion,
+                Prescription = MapPrescription(row.Prescription),
+                Notes = TrimToNull(row.Notes),
                 SuggestedExercise = row.SuggestedExercise?.Trim() ?? string.Empty,
                 ActualExercisePerformed = row.ActualExercisePerformed?.Trim() ?? string.Empty,
-                SetsRepsDuration = string.IsNullOrWhiteSpace(row.SetsRepsDuration) ? null : row.SetsRepsDuration.Trim(),
+                SetsRepsDuration = BuildLegacyDosage(row.Prescription, row.SetsRepsDuration),
                 ResistanceOrWeight = string.IsNullOrWhiteSpace(row.ResistanceOrWeight) ? null : row.ResistanceOrWeight.Trim(),
                 CptCode = string.IsNullOrWhiteSpace(row.CptCode) ? null : row.CptCode.Trim(),
                 CptDescription = string.IsNullOrWhiteSpace(row.CptDescription) ? null : row.CptDescription.Trim(),
@@ -807,42 +822,7 @@ public sealed class NoteWorkspacePayloadMapper
             })
             .ToList();
 
-        if (rows.Count > 0)
-        {
-            return rows;
-        }
-
-        var preserved = (preservedEntries ?? [])
-            .Where(row => !string.IsNullOrWhiteSpace(row.SuggestedExercise) || !string.IsNullOrWhiteSpace(row.ActualExercisePerformed))
-            .Select(row => new ExerciseRowV2
-            {
-                SuggestedExercise = row.SuggestedExercise,
-                ActualExercisePerformed = row.ActualExercisePerformed,
-                SetsRepsDuration = row.SetsRepsDuration,
-                ResistanceOrWeight = row.ResistanceOrWeight,
-                CptCode = row.CptCode,
-                CptDescription = row.CptDescription,
-                TimeMinutes = row.TimeMinutes,
-                AssistanceLevel = row.AssistanceLevel,
-                Cueing = row.Cueing,
-                IncludeInHomeExerciseProgram = row.IncludeInHomeExerciseProgram,
-                IsCheckedSuggestedExercise = row.IsCheckedSuggestedExercise,
-                IsSourceBacked = row.IsSourceBacked
-            })
-            .ToList();
-
-        if (preserved.Count > 0)
-        {
-            return preserved;
-        }
-
-        return legacyExercises
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => new ExerciseRowV2
-            {
-                ActualExercisePerformed = value.Trim()
-            })
-            .ToList();
+        return rows;
     }
 
     private static List<ObjectiveMetricInputV2> MergeObjectiveMetrics(
@@ -1002,15 +982,17 @@ public sealed class NoteWorkspacePayloadMapper
         };
     }
 
-    private static List<GeneralInterventionEntryV2> MergeGeneralInterventions(
-        IReadOnlyCollection<GeneralInterventionEntryV2>? preservedEntries,
-        IEnumerable<GeneralInterventionEntry> selectedEntries,
-        IEnumerable<string> legacyManualTechniques)
+    private static List<GeneralInterventionEntryV2> MapGeneralInterventions(
+        IEnumerable<GeneralInterventionEntry> selectedEntries)
     {
         var interventions = selectedEntries
             .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
             .Select(entry => new GeneralInterventionEntryV2
             {
+                Kind = ResolveInterventionKind(entry.Kind, entry.Category),
+                SourceItemId = TrimToNull(entry.SourceItemId),
+                SourceCatalogVersion = TrimToNull(entry.SourceCatalogVersion),
+                InterventionRegion = entry.InterventionRegion,
                 Name = entry.Name.Trim(),
                 Category = string.IsNullOrWhiteSpace(entry.Category) ? null : entry.Category.Trim(),
                 IsSourceBacked = entry.IsSourceBacked,
@@ -1025,43 +1007,56 @@ public sealed class NoteWorkspacePayloadMapper
             })
             .ToList();
 
-        if (interventions.Count > 0)
-        {
-            return interventions;
-        }
-
-        var preserved = (preservedEntries ?? [])
-            .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
-            .Select(entry => new GeneralInterventionEntryV2
-            {
-                Name = entry.Name,
-                Category = entry.Category,
-                IsSourceBacked = entry.IsSourceBacked,
-                Notes = entry.Notes,
-                CptCode = entry.CptCode,
-                CptDescription = entry.CptDescription,
-                TimeMinutes = entry.TimeMinutes,
-                AssistanceLevel = entry.AssistanceLevel,
-                Cueing = entry.Cueing,
-                Response = entry.Response,
-                IncludeInHomeExerciseProgram = entry.IncludeInHomeExerciseProgram
-            })
-            .ToList();
-
-        if (preserved.Count > 0)
-        {
-            return preserved;
-        }
-
-        return legacyManualTechniques
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => new GeneralInterventionEntryV2
-            {
-                Name = value.Trim(),
-                Category = "Manual"
-            })
-            .ToList();
+        return interventions;
     }
+
+    private static ExercisePrescriptionV2? MapPrescription(ExercisePrescriptionEntry? prescription)
+    {
+        if (prescription is null ||
+            (!prescription.Sets.HasValue && !prescription.Repetitions.HasValue && string.IsNullOrWhiteSpace(prescription.Frequency)))
+        {
+            return null;
+        }
+
+        return new ExercisePrescriptionV2
+        {
+            Sets = prescription.Sets,
+            Repetitions = prescription.Repetitions,
+            Frequency = TrimToNull(prescription.Frequency)
+        };
+    }
+
+    private static string? BuildLegacyDosage(ExercisePrescriptionEntry? prescription, string? existing)
+    {
+        if (prescription is null ||
+            (!prescription.Sets.HasValue && !prescription.Repetitions.HasValue && string.IsNullOrWhiteSpace(prescription.Frequency)))
+        {
+            return TrimToNull(existing);
+        }
+
+        var values = new List<string>();
+        if (prescription.Sets.HasValue)
+        {
+            values.Add($"{prescription.Sets.Value} sets");
+        }
+        if (prescription.Repetitions.HasValue)
+        {
+            values.Add($"{prescription.Repetitions.Value} reps");
+        }
+        if (!string.IsNullOrWhiteSpace(prescription.Frequency))
+        {
+            values.Add(prescription.Frequency.Trim());
+        }
+        return string.Join("; ", values);
+    }
+
+    private static InterventionKind ResolveInterventionKind(InterventionKind kind, string? category) =>
+        kind != InterventionKind.General
+            ? kind
+            : string.Equals(category, "Manual", StringComparison.OrdinalIgnoreCase) ||
+              string.Equals(category, "Manual Work Technique", StringComparison.OrdinalIgnoreCase)
+                ? InterventionKind.ManualTechnique
+                : InterventionKind.General;
 
     private static List<UiCptCodeEntry> BuildVisibleCptCodes(PlanVm plan, ObjectiveVm objective, NoteType noteType)
     {

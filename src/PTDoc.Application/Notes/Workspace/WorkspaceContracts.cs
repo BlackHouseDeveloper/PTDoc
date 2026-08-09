@@ -315,6 +315,12 @@ public sealed class SpecialTestResultV2
 
 public sealed class ExerciseRowV2
 {
+    public string? SourceItemId { get; set; }
+    public string? SourceCatalogVersion { get; set; }
+    public string? Category { get; set; }
+    public InterventionRegion? InterventionRegion { get; set; }
+    public ExercisePrescriptionV2? Prescription { get; set; }
+    public string? Notes { get; set; }
     public string SuggestedExercise { get; set; } = string.Empty;
     public string ActualExercisePerformed { get; set; } = string.Empty;
     public string? SetsRepsDuration { get; set; }
@@ -327,6 +333,33 @@ public sealed class ExerciseRowV2
     public bool IncludeInHomeExerciseProgram { get; set; }
     public bool IsCheckedSuggestedExercise { get; set; }
     public bool IsSourceBacked { get; set; }
+}
+
+public sealed class ExercisePrescriptionV2
+{
+    public int? Sets { get; set; }
+    public int? Repetitions { get; set; }
+    public string? Frequency { get; set; }
+}
+
+public enum InterventionKind
+{
+    General = 0,
+    Exercise = 1,
+    ManualTechnique = 2
+}
+
+public enum InterventionRegion
+{
+    General = 0,
+    Shoulder = 1,
+    Elbow = 2,
+    HandWrist = 3,
+    CervicalSpine = 4,
+    LumbarSpine = 5,
+    Hip = 6,
+    Knee = 7,
+    AnkleFoot = 8
 }
 
 public sealed class GaitObservationV2
@@ -440,6 +473,10 @@ public sealed class PlannedCptCodeV2
 
 public sealed class GeneralInterventionEntryV2
 {
+    public InterventionKind Kind { get; set; }
+    public string? SourceItemId { get; set; }
+    public string? SourceCatalogVersion { get; set; }
+    public InterventionRegion? InterventionRegion { get; set; }
     public string Name { get; set; } = string.Empty;
     public string? Category { get; set; }
     public bool IsSourceBacked { get; set; }
@@ -510,6 +547,7 @@ public sealed class NoteWorkspaceV2LoadResponse
     public bool IsReEvaluation { get; set; }
     public NoteStatus NoteStatus { get; set; }
     public bool IsSigned { get; set; }
+    public PTDoc.Application.NoteTemplates.NoteTemplateVersionDto? TemplateVersion { get; set; }
     public NoteWorkspaceV2Payload Payload { get; set; } = new();
 }
 
@@ -564,6 +602,25 @@ public sealed class BodyRegionCatalog
     public List<string> TreatmentInterventionOptions { get; set; } = new();
     public List<string> MmtGradeOptions { get; set; } = new();
     public List<string> JointMobilityGradeOptions { get; set; } = new();
+}
+
+public sealed class InterventionLibraryCatalog
+{
+    public string Version { get; set; } = string.Empty;
+    public ReferenceDataProvenance? Provenance { get; set; }
+    public List<InterventionLibraryItem> Items { get; set; } = new();
+}
+
+public sealed class InterventionLibraryItem
+{
+    public string Id { get; set; } = string.Empty;
+    public InterventionKind Kind { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Category { get; set; } = string.Empty;
+    public InterventionRegion Region { get; set; }
+    public List<string> SearchAliases { get; set; } = new();
+    public ExercisePrescriptionV2? DefaultPrescription { get; set; }
+    public bool IsSelectable { get; set; } = true;
 }
 
 public sealed class CatalogCategory

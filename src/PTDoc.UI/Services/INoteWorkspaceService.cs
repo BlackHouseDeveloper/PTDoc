@@ -2,6 +2,7 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Pdf;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.NoteTemplates;
 using PTDoc.Core.Models;
 using PTDoc.UI.Components.Notes.Models;
 
@@ -23,6 +24,7 @@ public interface INoteWorkspaceService
     Task<NoteWorkspaceDocumentHierarchyResult> GetDocumentHierarchyAsync(Guid noteId, CancellationToken cancellationToken = default);
     Task<NoteWorkspacePdfExportResult> ExportPdfAsync(Guid noteId, CancellationToken cancellationToken = default);
     Task<BodyRegionCatalog> GetBodyRegionCatalogAsync(BodyPart bodyPart, CancellationToken cancellationToken = default);
+    Task<InterventionLibraryCatalog> GetInterventionLibraryCatalogAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CodeLookupEntry>> SearchCptAsync(string? query, int take = 20, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CodeLookupEntry>> SearchIcd10Async(string? query, int take = 20, CancellationToken cancellationToken = default);
 }
@@ -52,6 +54,7 @@ public sealed class NoteWorkspaceLoadResult
     public DateTime DateOfService { get; init; }
     public bool IsReEvaluation { get; init; }
     public NoteStatus Status { get; init; } = NoteStatus.Draft;
+    public NoteTemplateVersionDto? TemplateVersion { get; init; }
     public bool IsSubmitted => Status != NoteStatus.Draft;
     public NoteWorkspacePayload Payload { get; init; } = new();
 }
@@ -84,6 +87,7 @@ public sealed class NoteWorkspaceSaveResult
     public int? LocalDraftId { get; init; }
     public bool IsReEvaluation { get; init; }
     public NoteStatus Status { get; init; } = NoteStatus.Draft;
+    public NoteTemplateVersionDto? TemplateVersion { get; init; }
     public bool IsSubmitted => Status != NoteStatus.Draft;
     public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();

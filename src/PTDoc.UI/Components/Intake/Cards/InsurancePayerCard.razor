@@ -1,10 +1,19 @@
+@using PTDoc.Application.ReferenceData
+@inject IIntakeReferenceDataCatalogService IntakeReferenceData
+
 <section class="intake-card">
     <h2>Insurance &amp; Payer Information</h2>
     <p class="intake-card__subtext">Please provide your insurance information (optional):</p>
 
     <div class="intake-card__form-grid">
         <label for="intake-primary-insurance-company">Primary Insurance Company Name
-            <input id="intake-primary-insurance-company" class="form-control" value="@InsuranceCompanyName" @oninput="(args) => InsuranceCompanyNameChanged.InvokeAsync(args.Value?.ToString())" placeholder="e.g., Blue Cross Blue Shield" />
+            <input id="intake-primary-insurance-company" class="form-control" list="intake-primary-carriers" autocomplete="off" value="@InsuranceCompanyName" @oninput="(args) => InsuranceCompanyNameChanged.InvokeAsync(args.Value?.ToString())" placeholder="Search or enter insurance carrier" />
+            <datalist id="intake-primary-carriers">
+                @foreach (var carrier in IntakeReferenceData.SearchInsuranceCarriers(InsuranceCompanyName))
+                {
+                    <option value="@carrier.Label"></option>
+                }
+            </datalist>
         </label>
 
         <label for="intake-primary-member-id">Primary Member ID / Policy Number
@@ -44,7 +53,13 @@
 
     <div class="intake-card__form-grid">
         <label for="intake-secondary-insurance-company">Secondary Insurance Company
-            <input id="intake-secondary-insurance-company" class="form-control" value="@SecondaryInsuranceCompanyName" @oninput="(args) => SecondaryInsuranceCompanyNameChanged.InvokeAsync(args.Value?.ToString())" placeholder="Secondary insurance company" />
+            <input id="intake-secondary-insurance-company" class="form-control" list="intake-secondary-carriers" autocomplete="off" value="@SecondaryInsuranceCompanyName" @oninput="(args) => SecondaryInsuranceCompanyNameChanged.InvokeAsync(args.Value?.ToString())" placeholder="Search or enter secondary carrier" />
+            <datalist id="intake-secondary-carriers">
+                @foreach (var carrier in IntakeReferenceData.SearchInsuranceCarriers(SecondaryInsuranceCompanyName))
+                {
+                    <option value="@carrier.Label"></option>
+                }
+            </datalist>
         </label>
 
         <label for="intake-secondary-member-id">Secondary Member ID / Policy Number

@@ -1,0 +1,171 @@
+@using System.Globalization
+@using PTDoc.Application.DTOs
+
+<article class="appointment-card @(IsCritical ? "appointment-card--critical" : string.Empty)"
+         aria-labelledby="@CardTitleId"
+         data-appointment-id="@Appointment.Id">
+    <header class="appointment-card__patient-header">
+        <div class="appointment-card__identity">
+            <svg class="appointment-card__patient-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path d="M11.75 2.5H5.5A1.5 1.5 0 0 0 4 4v12a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 16 16V6.75L11.75 2.5Z" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M11.5 2.75V7h4.25M7.25 10h5.5M7.25 13h5.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <div class="appointment-card__identity-text">
+                <h3 id="@CardTitleId">@Appointment.PatientName</h3>
+                <p>ID: @PatientIdentifier</p>
+            </div>
+        </div>
+        <StatusBadge Text="@EffectiveStatus"
+                     Variant="@AppointmentStatusVariant"
+                     AdditionalClasses="@(IsScheduled ? "appointment-card__badge--scheduled" : string.Empty)" />
+    </header>
+
+    <div class="appointment-card__schedule">
+        <div class="appointment-card__time-group">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.75" />
+                <path d="M10 5.75V10l3 1.75" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <time datetime="@LocalStartDateTimeValue">@LocalStart.ToString("h:mm tt", CultureInfo.InvariantCulture)</time>
+            <span class="appointment-card__duration">(@DurationMinutes min)</span>
+        </div>
+        <span class="appointment-card__type">@Appointment.AppointmentType</span>
+    </div>
+
+    <div class="appointment-card__metrics" aria-label="Appointment metrics">
+        @if (Appointment.ProgressNoteDueDate.HasValue)
+        {
+            <span>PN Due: <strong class="appointment-card__due-date">@Appointment.ProgressNoteDueDate.Value.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)</strong></span>
+        }
+        <span>Visits: <strong class="appointment-card__visit-count">@Appointment.VisitCount</strong></span>
+    </div>
+
+    <p class="appointment-card__description">@Description</p>
+
+    <div class="appointment-card__intake">
+        <span>Intake:</span>
+        <StatusBadge Text="@IntakeStatus" Variant="@IntakeStatusVariant" />
+        @if (IsCritical)
+        {
+            <span class="appointment-card__warning" role="status">
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <path d="M8.7 3.15 2.15 14.5A1 1 0 0 0 3.02 16h13.96a1 1 0 0 0 .87-1.5L11.3 3.15a1.5 1.5 0 0 0-2.6 0Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+                    <path d="M10 7v3.75M10 13.5h.01" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
+                </svg>
+                Action Required
+            </span>
+        }
+    </div>
+
+    <footer class="appointment-card__actions">
+        @if (CanStartNote)
+        {
+            <button type="button"
+                    class="appointment-card__action appointment-card__action--primary"
+                    @onclick="() => RequestAction(DashboardAppointmentAction.StartNote)"
+                    aria-label="Start note for @Appointment.PatientName">
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.75" />
+                    <path d="m8.5 7 4 3-4 3V7Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+                </svg>
+                Start Note
+            </button>
+            <button type="button"
+                    class="appointment-card__action appointment-card__action--quiet"
+                    @onclick="() => RequestAction(DashboardAppointmentAction.Details)"
+                    aria-label="View details for @Appointment.PatientName">Details</button>
+        }
+        else if (CanCheckIn)
+        {
+            <button type="button"
+                    class="appointment-card__action appointment-card__action--check-in"
+                    @onclick="() => RequestAction(DashboardAppointmentAction.CheckIn)"
+                    aria-label="Check in @Appointment.PatientName">Check In</button>
+            <button type="button"
+                    class="appointment-card__action appointment-card__action--quiet"
+                    @onclick="() => RequestAction(DashboardAppointmentAction.Details)"
+                    aria-label="View details for @Appointment.PatientName">Details</button>
+            <button type="button"
+                    class="appointment-card__action appointment-card__action--quiet appointment-card__action--icon"
+                    @onclick="() => RequestAction(DashboardAppointmentAction.Reschedule)"
+                    aria-label="Reschedule appointment for @Appointment.PatientName">
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <path d="M11.25 4.25 15.75 8.75M5.5 14.5l1-3L13.9 4.1a1.4 1.4 0 0 1 2 0 1.4 1.4 0 0 1 0 2L8.5 13.5l-3 1Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M15 11.5V16H4V5h4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                Reschedule
+            </button>
+            <button type="button"
+                    class="appointment-card__action appointment-card__action--cancel"
+                    disabled
+                    title="Appointment cancellation is not available yet"
+                    aria-describedby="@CancelDescriptionId">
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <path d="m6 6 8 8M14 6l-8 8" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
+                </svg>
+                Cancel
+            </button>
+            <span id="@CancelDescriptionId" class="sr-only">Appointment cancellation is not available yet.</span>
+        }
+        else
+        {
+            <button type="button"
+                    class="appointment-card__action appointment-card__action--quiet appointment-card__action--details-only"
+                    @onclick="() => RequestAction(DashboardAppointmentAction.Details)"
+                    aria-label="View details for @Appointment.PatientName">Details</button>
+        }
+    </footer>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public AppointmentListItemResponse Appointment { get; set; } = new();
+    [Parameter] public EventCallback<DashboardAppointmentAction> OnAction { get; set; }
+
+    private string CardTitleId => $"appointment-{Appointment.Id:N}-title";
+    private string CancelDescriptionId => $"appointment-{Appointment.Id:N}-cancel-description";
+    private DateTime LocalStart => ToLocalTime(Appointment.StartTimeUtc);
+    private string LocalStartDateTimeValue => LocalStart.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture);
+    private int DurationMinutes => Math.Max(1, (int)Math.Round((ToLocalTime(Appointment.EndTimeUtc) - LocalStart).TotalMinutes));
+    private string PatientIdentifier => string.IsNullOrWhiteSpace(Appointment.MedicalRecordNumber)
+        ? Appointment.PatientRecordId.ToString("N")[..8].ToUpperInvariant()
+        : Appointment.MedicalRecordNumber.Trim();
+    private string Description => string.IsNullOrWhiteSpace(Appointment.Notes)
+        ? $"{Appointment.AppointmentType} appointment"
+        : Appointment.Notes.Trim();
+    private string IntakeStatus => string.IsNullOrWhiteSpace(Appointment.IntakeStatus) ? "Missing" : Appointment.IntakeStatus;
+    private string EffectiveStatus => string.IsNullOrWhiteSpace(Appointment.VisitWorkflowStatus)
+        ? Appointment.AppointmentStatus
+        : Appointment.VisitWorkflowStatus;
+    private bool IsScheduled => string.Equals(EffectiveStatus, "Scheduled", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(EffectiveStatus, "Confirmed", StringComparison.OrdinalIgnoreCase);
+    private bool CanCheckIn => IsScheduled;
+    private bool CanStartNote => string.Equals(EffectiveStatus, "Checked In", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(EffectiveStatus, "In Progress", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(EffectiveStatus, "Note Started", StringComparison.OrdinalIgnoreCase);
+    private bool IsCritical => string.Equals(IntakeStatus, "Missing", StringComparison.OrdinalIgnoreCase);
+    private BadgeVariant AppointmentStatusVariant => EffectiveStatus.ToLowerInvariant() switch
+    {
+        "completed" => BadgeVariant.Success,
+        "note started" => BadgeVariant.Primary,
+        _ when IsScheduled => BadgeVariant.Default,
+        _ => BadgeVariant.Info
+    };
+    private BadgeVariant IntakeStatusVariant => IntakeStatus.ToLowerInvariant() switch
+    {
+        "completed" or "complete" => BadgeVariant.Success,
+        "in progress" => BadgeVariant.Warning,
+        "missing" => BadgeVariant.Destructive,
+        _ => BadgeVariant.Default
+    };
+
+    private Task RequestAction(DashboardAppointmentAction action) => OnAction.InvokeAsync(action);
+
+    private static DateTime ToLocalTime(DateTime utcTime)
+    {
+        var normalizedUtc = utcTime.Kind == DateTimeKind.Utc
+            ? utcTime
+            : DateTime.SpecifyKind(utcTime, DateTimeKind.Utc);
+
+        return normalizedUtc.ToLocalTime();
+    }
+}

@@ -10,19 +10,30 @@ public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
 
     private readonly ITokenStore tokenStore;
     private readonly ITokenService tokenService;
+    private readonly IUserService userService;
 
-    public AuthenticatedHttpMessageHandler(ITokenStore tokenStore, ITokenService tokenService)
+    public AuthenticatedHttpMessageHandler(
+        ITokenStore tokenStore,
+        ITokenService tokenService,
+        IUserService userService)
     {
         this.tokenStore = tokenStore;
         this.tokenService = tokenService;
+        this.userService = userService;
     }
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var original = await CloneHttpRequestMessageAsync(request, cancellationToken);
 
-        var tokens = await tokenStore.GetAsync(cancellationToken);
-        tokens = await EnsureFreshTokenAsync(tokens, cancellationToken);
+        var storedTokens = await tokenStore.GetAsync(cancellationToken);
+        var tokens = await EnsureFreshTokenAsync(storedTokens, cancellationToken);
+
+        if (storedTokens is not null && tokens is null)
+        {
+            await userService.LogoutAsync(cancellationToken);
+            return CreateUnauthorizedResponse(request);
+        }
 
         if (tokens is not null)
         {
@@ -31,12 +42,16 @@ public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
 
         var response = await base.SendAsync(request, cancellationToken);
 
-        if (response.StatusCode != HttpStatusCode.Unauthorized || tokens is null)
+        if (response.StatusCode != HttpStatusCode.Unauthorized)
         {
             return response;
         }
 
-        response.Dispose();
+        if (tokens is null)
+        {
+            await userService.LogoutAsync(cancellationToken);
+            return response;
+        }
 
         var refreshed = await tokenService.RefreshAsync(
             new RefreshTokenRequest(tokens.RefreshToken),
@@ -44,14 +59,21 @@ public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
 
         if (refreshed is null)
         {
-            await tokenStore.ClearAsync(cancellationToken);
-            return await base.SendAsync(original, cancellationToken);
+            await userService.LogoutAsync(cancellationToken);
+            return response;
         }
 
         await tokenStore.SaveAsync(refreshed, cancellationToken);
 
+        response.Dispose();
         original.Headers.Authorization = new AuthenticationHeaderValue("Bearer", refreshed.AccessToken);
-        return await base.SendAsync(original, cancellationToken);
+        var retryResponse = await base.SendAsync(original, cancellationToken);
+        if (retryResponse.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            await userService.LogoutAsync(cancellationToken);
+        }
+
+        return retryResponse;
     }
 
     private async Task<TokenResponse?> EnsureFreshTokenAsync(TokenResponse? tokens, CancellationToken cancellationToken)
@@ -69,7 +91,6 @@ public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
         var refreshed = await tokenService.RefreshAsync(new RefreshTokenRequest(tokens.RefreshToken), cancellationToken);
         if (refreshed is null)
         {
-            await tokenStore.ClearAsync(cancellationToken);
             return null;
         }
 
@@ -102,4 +123,9 @@ public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
         clone.Version = request.Version;
         return clone;
     }
+
+    private static HttpResponseMessage CreateUnauthorizedResponse(HttpRequestMessage request) => new(HttpStatusCode.Unauthorized)
+    {
+        RequestMessage = request
+    };
 }

@@ -138,6 +138,58 @@ test.describe('PTDoc responsive UI QA', () => {
     await expectNoRelevantConsoleErrors(page);
   });
 
+  test('expanded navigation preserves balanced vertical space at 1280x720', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await authenticateIfNeeded(page);
+    await gotoAppRoute(page, '/');
+    await expectPageReady(page, /Dashboard/i);
+
+    const sidebar = page.locator('.sidebar').first();
+    const toggle = page.locator('button.menu-toggle').first();
+    if (await sidebar.evaluate(element => element.classList.contains('closed'))) {
+      await toggle.click();
+    }
+
+    await expect(page.locator('.sidebar:not(.closed) .ptdoc-nav-brand')).toBeVisible();
+    const proportions = await page.locator('.ptdoc-nav-container').evaluate(container => {
+      const element = container as HTMLElement;
+      const brand = element.querySelector<HTMLElement>('.ptdoc-nav-brand');
+      const scrollable = element.querySelector<HTMLElement>('.ptdoc-nav-scrollable');
+      const footer = element.querySelector<HTMLElement>('.ptdoc-nav-footer');
+      if (!brand || !scrollable || !footer) {
+        throw new Error('Expanded navigation sections were not rendered.');
+      }
+
+      const containerHeight = element.getBoundingClientRect().height;
+      const brandHeight = brand.getBoundingClientRect().height;
+      const scrollableHeight = scrollable.getBoundingClientRect().height;
+      const footerHeight = footer.getBoundingClientRect().height;
+      return {
+        brand: brandHeight / containerHeight,
+        scrollable: scrollableHeight / containerHeight,
+        footer: footerHeight / containerHeight,
+        spacing: (containerHeight - brandHeight - scrollableHeight - footerHeight) / containerHeight,
+        scrollableOverflowY: getComputedStyle(scrollable).overflowY,
+        scrollableClientHeight: scrollable.clientHeight,
+        scrollableScrollHeight: scrollable.scrollHeight
+      };
+    });
+
+    expect(proportions.brand).toBeGreaterThanOrEqual(0.25);
+    expect(proportions.brand).toBeLessThanOrEqual(0.36);
+    expect(proportions.scrollable).toBeGreaterThanOrEqual(0.45);
+    expect(proportions.scrollable).toBeLessThanOrEqual(0.58);
+    expect(proportions.footer).toBeGreaterThanOrEqual(0.07);
+    expect(proportions.footer).toBeLessThanOrEqual(0.15);
+    expect(proportions.spacing).toBeGreaterThanOrEqual(0.04);
+    expect(proportions.spacing).toBeLessThanOrEqual(0.16);
+    expect(proportions.scrollableOverflowY).toMatch(/auto|scroll/);
+    expect(proportions.scrollableScrollHeight).toBeGreaterThanOrEqual(proportions.scrollableClientHeight);
+    await expectSidebarControlsNotClipped(page);
+    await expectNoDocumentHorizontalOverflow(page);
+    await expectNoRelevantConsoleErrors(page);
+  });
+
   test('viewport diagnostics query override can disable a previously enabled overlay', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await authenticateIfNeeded(page);

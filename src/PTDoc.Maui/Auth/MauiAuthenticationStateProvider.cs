@@ -65,6 +65,13 @@ public sealed class MauiAuthenticationStateProvider : AuthenticationStateProvide
             }
 
             var principal = JwtClaimParser.CreatePrincipal(tokens.AccessToken);
+            if (principal.Identity?.IsAuthenticated != true)
+            {
+                logger.LogWarning("Stored access token could not be parsed - clearing tokens");
+                await tokenStore.ClearAsync();
+                return AnonymousState;
+            }
+
             logger.LogInformation("Stored authentication tokens are valid.");
             return new AuthenticationState(principal);
         }
@@ -78,8 +85,14 @@ public sealed class MauiAuthenticationStateProvider : AuthenticationStateProvide
 
     public async Task NotifyUserAuthenticationAsync(TokenResponse tokens)
     {
-        await tokenStore.SaveAsync(tokens);
         var principal = JwtClaimParser.CreatePrincipal(tokens.AccessToken);
+        if (principal.Identity?.IsAuthenticated != true)
+        {
+            await NotifyUserLogoutAsync();
+            return;
+        }
+
+        await tokenStore.SaveAsync(tokens);
         NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(principal)));
     }
 

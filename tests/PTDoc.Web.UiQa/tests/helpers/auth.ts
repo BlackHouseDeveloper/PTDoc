@@ -18,6 +18,15 @@ export async function authenticateIfNeeded(page: Page) {
     throw new Error('Login form is visible, but PTDOC_UI_QA_USERNAME/PTDOC_UI_QA_PIN are not set and PTDOC_UI_QA_STORAGE_STATE did not provide an authenticated session. Set credentials or provide a valid storage-state file.');
   }
 
+  await authenticateAs(page, username, pin);
+}
+
+export async function authenticateAs(page: Page, username: string, pin: string) {
+  attachConsoleCapture(page);
+  await page.context().clearCookies();
+  await page.goto('/login');
+  await page.waitForLoadState('domcontentloaded');
+
   const loginResponse = await page.request.post('/auth/login', {
     form: {
       username,
@@ -37,6 +46,7 @@ export async function authenticateIfNeeded(page: Page) {
   await page.waitForLoadState('domcontentloaded');
   await waitForAppInteractive(page);
 
+  const usernameInput = page.locator('#username, input[name="username"], input[autocomplete="username"]').first();
   const loginStillVisible = await usernameInput.isVisible().catch(() => false);
   if (loginStillVisible) {
     const authAlert = await page.locator('.auth-alert').textContent().catch(() => null);

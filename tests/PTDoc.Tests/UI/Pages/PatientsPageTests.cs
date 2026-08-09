@@ -491,7 +491,7 @@ public sealed class PatientsPageTests : TestContext
         cut.Find("#phone").Change("555-0111");
         cut.Find("#dob").Change("1986-03-04");
         cut.FindAll("button")
-            .Single(button => button.TextContent.Contains("Add Patient + Send Intake", StringComparison.Ordinal))
+            .Single(button => button.TextContent.Contains("Add Patient and Send Intake", StringComparison.Ordinal))
             .Click();
 
         cut.WaitForAssertion(() =>

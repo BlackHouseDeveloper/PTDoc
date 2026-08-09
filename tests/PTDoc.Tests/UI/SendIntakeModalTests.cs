@@ -254,6 +254,7 @@ public sealed class SendIntakeModalTests : TestContext
         var cut = RenderComponent<SendIntakeModal>(parameters => parameters
             .Add(component => component.IsOpen, true)
             .Add(component => component.InitialPatientId, patientId.ToString("D"))
+            .Add(component => component.FailureHeading, "Patient was added, but the intake could not be sent.")
             .Add(component => component.AvailablePatients, new List<SendIntakeModal.PatientOption>
             {
                 CreatePatientOption(patientId, email: "alex.patient@example.com")
@@ -264,6 +265,10 @@ public sealed class SendIntakeModalTests : TestContext
 
         cut.WaitForAssertion(() =>
         {
+            Assert.Contains(
+                "Patient was added, but the intake could not be sent.",
+                cut.Find("[data-testid='send-intake-error']").TextContent,
+                StringComparison.Ordinal);
             Assert.Contains("Unable to send the intake email.", cut.Find("[data-testid='send-intake-error']").TextContent, StringComparison.Ordinal);
             Assert.DoesNotContain("Email delivery is not configured.", cut.Find("[data-testid='send-intake-error']").TextContent, StringComparison.Ordinal);
             Assert.Contains("Send Intake Form", cut.Markup, StringComparison.Ordinal);

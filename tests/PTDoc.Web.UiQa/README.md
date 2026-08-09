@@ -23,6 +23,43 @@ npm run test:responsive
 
 `PTDOC_WEB_BASE_URL` defaults to `http://localhost:5145`.
 
+## Isolated Branch Live-Unblock Harness
+
+The `branch-live-unblock` suite is a serial localhost verification harness for the
+fixture- and failure-dependent checks in `docs/BRANCH_LIVE_VERIFICATION_CHECKLIST.md`.
+It never uses an existing localhost host or the tracked database. The runner:
+
+- copies `src/PTDoc.Api/PTDoc.db` into a temporary directory;
+- allocates isolated loopback ports for API, fault proxy, and Web;
+- uses the existing Development null email/SMS senders and communication diagnostics;
+- forwards Web API traffic through a nonce-protected, route-allowlisted fault proxy;
+- writes sanitized evidence under `output/playwright/branch-live-verification/`;
+- stops only its own processes and removes the disposable database in `finally`.
+
+Run the lightweight infrastructure tests first:
+
+```bash
+npm run test:branch-live-harness
+```
+
+After the application has been built and its focused tests pass, supply the seeded
+local PIN out of band and run:
+
+```bash
+PTDOC_UI_QA_PIN=<local-seeded-pin> npm run test:branch-live-unblock -- --headed
+```
+
+Optional role overrides use the existing `PTDOC_UI_QA_ADMIN_USERNAME`,
+`PTDOC_UI_QA_PT_USERNAME`, and `PTDOC_UI_QA_PTA_USERNAME` variables. The runner
+creates its own synthetic patients, unsigned note drafts, appointments, providers,
+policies, intakes, and templates in the disposable database. Do not source the
+hosted-beta `.env` for this command.
+
+The fault controller binds to loopback, requires a per-run nonce, matches exact
+methods and paths, consumes bounded one-shot rules, and cannot target arbitrary
+endpoints. It emits no request headers or bodies. Retained process logs redact
+tokens, PIN-like query values, email addresses, and phone numbers.
+
 ## Hosted Beta E2E Gate
 
 Run the deployed-beta gate only against the hosted beta site:

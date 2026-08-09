@@ -253,6 +253,51 @@
   }
 }
 
+/* Expanded desktop navigation uses intentional vertical proportions instead of
+   allowing the brand and footer to consume the scrollable region's space. */
+@media (min-width: 1200px) {
+  .ptdoc-nav-container {
+    gap: clamp(var(--spacing-3), 2vh, var(--spacing-6));
+  }
+
+  .ptdoc-nav-brand {
+    display: flex;
+    flex: 3 1 30%;
+    flex-direction: column;
+    min-height: min-content;
+  }
+
+  .ptdoc-nav-brand > .navbar-brand-container {
+    flex: 1;
+    justify-content: space-between;
+  }
+
+  .ptdoc-nav-scrollable {
+    flex: 5 1 50%;
+  }
+
+  .ptdoc-nav-footer {
+    display: flex;
+    flex: 1 1 10%;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-height: calc(var(--touch-target-mobile) + var(--spacing-4) + 1px);
+  }
+}
+
+/* Preserve all brand controls while tightening only their surrounding rhythm on
+   shorter desktop displays. The 40px controls reuse the desktop touch token. */
+@media (min-width: 1200px) and (max-height: 820px) {
+  .ptdoc-nav-container {
+    padding: var(--spacing-3);
+    gap: var(--spacing-3);
+  }
+
+  .ptdoc-nav-brand {
+    padding-bottom: var(--spacing-2);
+  }
+}
+
 /* Print styles */
 @media print {
   .ptdoc-nav-container {

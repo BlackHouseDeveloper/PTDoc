@@ -60,7 +60,8 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             intakeReferenceData,
             intakeBodyPartMapper,
             intakeDraftCanonicalizer,
-            carryForwardService);
+            carryForwardService,
+            catalogs);
     }
 
     [Fact]
@@ -864,6 +865,111 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveAsync_RejectsUnknownSourceAndInvalidStructuredInterventionValues()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Intervention",
+            LastName = "Validation",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+
+        var result = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            DateOfService = new DateTime(2026, 4, 3),
+            NoteType = NoteType.Evaluation,
+            Payload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Evaluation,
+                Objective = new WorkspaceObjectiveV2
+                {
+                    ExerciseRows =
+                    [
+                        new ExerciseRowV2
+                        {
+                            SourceItemId = "unknown-exercise",
+                            IsSourceBacked = true,
+                            Prescription = new ExercisePrescriptionV2 { Sets = 1000, Frequency = "---" }
+                        }
+                    ]
+                },
+                Plan = new WorkspacePlanV2
+                {
+                    GeneralInterventions =
+                    [
+                        new GeneralInterventionEntryV2
+                        {
+                            Kind = InterventionKind.ManualTechnique,
+                            Name = "Custom mobilization"
+                        }
+                    ]
+                }
+            }
+        });
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("unknown intervention-library item", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.Errors, error => error.Contains("Body region is required", StringComparison.OrdinalIgnoreCase));
+        Assert.Null(result.Workspace);
+        Assert.Empty(_context.ClinicalNotes);
+    }
+
+    [Fact]
+    public async Task SaveAsync_CanonicalizesKnownSourceBackedInterventionSnapshot()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Catalog",
+            LastName = "Snapshot",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+
+        var result = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            DateOfService = new DateTime(2026, 4, 4),
+            NoteType = NoteType.Evaluation,
+            Payload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Evaluation,
+                Objective = new WorkspaceObjectiveV2
+                {
+                    ExerciseRows =
+                    [
+                        new ExerciseRowV2
+                        {
+                            SourceItemId = "exercise-pendulum-swings",
+                            SuggestedExercise = "Untrusted display text",
+                            ActualExercisePerformed = "Untrusted display text",
+                            Category = "Untrusted category",
+                            InterventionRegion = InterventionRegion.Knee,
+                            IsSourceBacked = true,
+                            Prescription = new ExercisePrescriptionV2 { Sets = 2, Repetitions = 10, Frequency = "daily" }
+                        }
+                    ]
+                }
+            }
+        });
+
+        Assert.True(result.IsValid);
+        var exercise = Assert.Single(result.Workspace!.Payload.Objective.ExerciseRows);
+        Assert.Equal("Pendulum Exercise", exercise.SuggestedExercise);
+        Assert.Equal("Pendulum Exercise", exercise.ActualExercisePerformed);
+        Assert.Equal("Range of Motion", exercise.Category);
+        Assert.Equal(InterventionRegion.Shoulder, exercise.InterventionRegion);
+        Assert.Equal("2 sets; 10 reps; daily", exercise.SetsRepsDuration);
+    }
+
+    [Fact]
     public async Task SaveAsync_RejectsUnknownOutcomeMeasureType()
     {
         var patient = new Patient
@@ -1033,6 +1139,25 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
                 SchemaVersion = "2026-03-30",
                 MedicationIds = ["zestril-lisinopril"],
                 PainDescriptorIds = ["aching"],
+                FunctionalLimitations =
+                [
+                    new IntakeFunctionalLimitationSelectionDto
+                    {
+                        Id = "knee-mobility-chair-rise",
+                        BodyPart = "Knee",
+                        Category = "Mobility & Transfers",
+                        Activity = "Unable to rise from chair without pushing off with hands"
+                    }
+                ],
+                Subjective = new IntakeSubjectiveDataDto
+                {
+                    PriorFunctionalLevel = ["Independent"],
+                    OnsetDate = new DateTime(2026, 3, 15),
+                    KnownCause = "Twisted knee stepping off a curb.",
+                    HasImaging = true,
+                    ImagingModalities = ["MRI"],
+                    ImagingFindings = "Meniscus tear reported."
+                },
                 BodyPartSelections =
                 [
                     new IntakeBodyPartSelectionDto
@@ -1089,6 +1214,16 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             "Can perform household tasks with pacing; requires seated breaks for community walking.",
             seed.Payload.Subjective.CurrentLevelOfFunction);
         Assert.Equal("Difficulty walking longer than 10 minutes.", seed.Payload.Subjective.AdditionalFunctionalLimitations);
+        var seededLimitation = Assert.Single(seed.Payload.Subjective.FunctionalLimitations);
+        Assert.Equal(BodyPart.Knee, seededLimitation.BodyPart);
+        Assert.Equal("Mobility & Transfers", seededLimitation.Category);
+        Assert.Equal("Unable to rise from chair without pushing off with hands", seededLimitation.Description);
+        Assert.Contains("Independent", seed.Payload.Subjective.PriorFunctionalLevel);
+        Assert.Equal(new DateTime(2026, 3, 15), seed.Payload.Subjective.OnsetDate);
+        Assert.Equal("Twisted knee stepping off a curb.", seed.Payload.Subjective.KnownCause);
+        Assert.True(seed.Payload.Subjective.Imaging.HasImaging);
+        Assert.Contains("MRI", seed.Payload.Subjective.Imaging.Modalities);
+        Assert.Equal("Meniscus tear reported.", seed.Payload.Subjective.Imaging.Findings);
         Assert.Equal("Difficulty walking longer than 10 minutes.", seed.Payload.Assessment.FunctionalLimitationsSummary);
         Assert.Contains("Left leg", seed.Payload.Subjective.Locations);
         Assert.Equal(BodyPart.Knee, seed.Payload.Objective.PrimaryBodyPart);

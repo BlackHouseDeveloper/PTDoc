@@ -1,0 +1,114 @@
+.insurance-policies {
+    display: grid;
+    gap: var(--spacing-4);
+}
+
+.insurance-policies > section {
+    display: grid;
+    gap: var(--spacing-2);
+}
+
+.insurance-policies > section > h3,
+.insurance-policies__editor h3 {
+    margin: 0;
+}
+
+.insurance-policies__header,
+.insurance-policies__card,
+.insurance-policies__actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-3);
+}
+
+.insurance-policies__header p {
+    margin: 0;
+    color: var(--muted-foreground);
+}
+
+.insurance-policies__list {
+    display: grid;
+    gap: var(--spacing-2);
+}
+
+.insurance-policies__card {
+    padding: var(--spacing-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--card);
+}
+
+.insurance-policies__card--history {
+    background: var(--muted);
+}
+
+.insurance-policies__card > div:first-child {
+    display: grid;
+    gap: var(--spacing-1);
+}
+
+.insurance-policies__card span {
+    color: var(--muted-foreground);
+}
+
+.insurance-policies__state {
+    padding: var(--spacing-4);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md);
+    color: var(--muted-foreground);
+}
+
+.insurance-policies__state--error {
+    border-color: var(--destructive);
+    color: var(--destructive);
+}
+
+.insurance-policies__editor {
+    display: grid;
+    gap: var(--spacing-3);
+    padding: var(--spacing-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--muted);
+}
+
+.insurance-policies__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-3);
+}
+
+.insurance-policies label {
+    display: grid;
+    gap: var(--spacing-2);
+}
+
+.insurance-policies__full {
+    grid-column: 1 / -1;
+}
+
+.insurance-policies__full textarea {
+    min-height: 6rem;
+    resize: vertical;
+}
+
+.insurance-policies__editor > .insurance-policies__actions {
+    justify-content: flex-end;
+}
+
+@media (max-width: 700px) {
+    .insurance-policies__header,
+    .insurance-policies__card {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .insurance-policies__grid {
+        grid-template-columns: 1fr;
+    }
+
+    .insurance-policies__actions {
+        flex-wrap: wrap;
+    }
+}

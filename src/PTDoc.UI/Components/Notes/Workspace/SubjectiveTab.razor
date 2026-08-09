@@ -756,19 +756,9 @@
         "Morning", "Afternoon", "Evening", "Night", "Varies"
     ];
 
-    private static readonly string[] ImagingModalityOptions =
-    [
-        "X-ray", "MRI", "CT", "Ultrasound", "Other"
-    ];
+    private static readonly IReadOnlyList<string> ImagingModalityOptions = PatientReportedSubjectiveCatalog.ImagingModalities;
 
-    private static readonly string[] _functionalLevels =
-    [
-        "Independent",
-        "Independent with assistive device (e.g., walker, cane, grab bars, bed rail)",
-        "Required assistance with transfers (e.g., sit-to-stand, sit-to-supine, supine-to-sit)",
-        "Required verbal cues or supervision",
-        "Dependent for mobility or self-care"
-    ];
+    private static readonly IReadOnlyList<string> _functionalLevels = PatientReportedSubjectiveCatalog.PriorFunctionalLevels;
 
     private static readonly string[] _employmentStatuses =
     [

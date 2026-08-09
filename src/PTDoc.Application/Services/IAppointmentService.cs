@@ -46,6 +46,14 @@ public interface IAppointmentService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Updates only the appointment type and returns the canonical scheduling projection.
+    /// </summary>
+    Task<AppointmentListItemResponse?> UpdateAppointmentTypeAsync(
+        Guid id,
+        UpdateAppointmentTypeRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Marks an appointment as checked in and returns the updated scheduling projection, or null if not found.
     /// </summary>
     Task<AppointmentListItemResponse?> CheckInAsync(

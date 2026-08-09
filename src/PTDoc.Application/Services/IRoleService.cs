@@ -100,6 +100,14 @@ public static class AuthorizationPolicies
 
     /// <summary>Export clinical notes as PDF — PT, PTA, Admin only. Owner and Billing are read-only per role matrix.</summary>
     public const string NoteExport = "NoteExport";
+    public const string ProviderDirectorySearch = "ProviderDirectorySearch";
+    public const string ProviderDirectoryRead = "ProviderDirectoryRead";
+    public const string ProviderDirectorySubmit = "ProviderDirectorySubmit";
+    public const string ProviderDirectoryAdmin = "ProviderDirectoryAdmin";
+    public const string InsurancePolicyRead = "InsurancePolicyRead";
+    public const string InsurancePolicyWrite = "InsurancePolicyWrite";
+    public const string NoteTemplateDraftManage = "NoteTemplateDraftManage";
+    public const string NoteTemplateClinicalPublish = "NoteTemplateClinicalPublish";
 
     /// <summary>
     /// Registers all PTDoc RBAC policies on <paramref name="options"/>.
@@ -187,5 +195,22 @@ public static class AuthorizationPolicies
         // Owner and Billing are read-only for clinical notes and may not trigger PDF export.
         options.AddPolicy(NoteExport,
             p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
+
+        options.AddPolicy(ProviderDirectorySearch,
+            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Owner, Roles.FrontDesk, Roles.PracticeManager, Roles.Patient));
+        options.AddPolicy(ProviderDirectoryRead,
+            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Owner, Roles.FrontDesk, Roles.PracticeManager));
+        options.AddPolicy(ProviderDirectorySubmit,
+            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.FrontDesk, Roles.PracticeManager));
+        options.AddPolicy(ProviderDirectoryAdmin,
+            p => p.RequireRole(Roles.Admin, Roles.Owner));
+        options.AddPolicy(InsurancePolicyRead,
+            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin, Roles.Owner, Roles.FrontDesk, Roles.Billing));
+        options.AddPolicy(InsurancePolicyWrite,
+            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
+        options.AddPolicy(NoteTemplateDraftManage,
+            p => p.RequireRole(Roles.Admin, Roles.Owner));
+        options.AddPolicy(NoteTemplateClinicalPublish,
+            p => p.RequireRole(Roles.PT));
     }
 }

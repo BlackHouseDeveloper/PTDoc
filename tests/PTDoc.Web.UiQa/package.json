@@ -8,6 +8,8 @@
     "test": "playwright test",
     "test:audit-remediation": "playwright test tests/audit-remediation.spec.ts",
     "test:beta-e2e": "playwright test tests/beta-e2e.spec.ts",
+    "test:branch-live-harness": "node --test tools/*.test.mjs",
+    "test:branch-live-unblock": "node tools/run-branch-live-unblock.mjs",
     "test:patient-documents": "playwright test tests/patient-documents.spec.ts",
     "test:responsive": "playwright test tests/responsive.spec.ts"
   },

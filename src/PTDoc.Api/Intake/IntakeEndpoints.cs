@@ -10,6 +10,7 @@ using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Services;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -489,6 +490,10 @@ public static class IntakeEndpoints
             intake.SubmittedAt.Value,
             intake.LastModifiedUtc);
         ApplySubmittedIntakePatientFields(intake);
+        if (intake.Patient is not null)
+        {
+            await IntakeDomainProjection.UpsertAsync(db, intake.Patient, intake.ResponseJson, intake.ModifiedByUserId, cancellationToken);
+        }
 
         await db.SaveChangesAsync(cancellationToken);
         await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, cancellationToken);

@@ -206,6 +206,7 @@ public static class PatientEndpoints
         };
 
         db.Patients.Add(patient);
+        await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, patient.PayerInfoJson, patient.ReferringPhysician, patient.PhysicianNpi, userId, cancellationToken);
         await integrations.QueuePatientSynchronizationAsync(patient.Id, userId, patient.LastModifiedUtc, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
 
@@ -343,6 +344,11 @@ public static class PatientEndpoints
         patient.LastModifiedUtc = DateTime.UtcNow;
         patient.ModifiedByUserId = identityContext.GetCurrentUserId();
         patient.SyncState = SyncState.Pending;
+
+        if (request.PayerInfoJson is not null || request.ReferringPhysician is not null || request.PhysicianNpi is not null)
+        {
+            await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, patient.PayerInfoJson, patient.ReferringPhysician, patient.PhysicianNpi, patient.ModifiedByUserId, cancellationToken);
+        }
 
         await integrations.QueuePatientSynchronizationAsync(patient.Id, patient.ModifiedByUserId, patient.LastModifiedUtc, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);

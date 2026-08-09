@@ -18,6 +18,7 @@ public sealed class WebUserService : IUserService
     private readonly EntraExternalIdOptions entraExternalIdOptions;
     private readonly SignupApiClient signupApiClient;
     private readonly PasswordResetApiClient passwordResetApiClient;
+    private int logoutTriggered;
 
     public WebUserService(
         IJSRuntime jsRuntime,
@@ -198,6 +199,11 @@ public sealed class WebUserService : IUserService
 
     public Task LogoutAsync(CancellationToken cancellationToken = default)
     {
+        if (Interlocked.Exchange(ref logoutTriggered, 1) != 0)
+        {
+            return Task.CompletedTask;
+        }
+
         navigationManager.NavigateTo("/auth/logout", forceLoad: true);
         return Task.CompletedTask;
     }

@@ -1,0 +1,204 @@
+.template-admin {
+    display: grid;
+    gap: var(--spacing-6);
+}
+
+.template-admin__header,
+.template-admin__editor-header,
+.template-admin__section-heading,
+.template-admin__row,
+.template-admin__actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-3);
+}
+
+.template-admin h2 {
+    margin: 0 0 var(--spacing-3);
+    font-size: var(--text-lg);
+}
+
+.template-admin p,
+.template-admin small {
+    color: var(--muted-foreground);
+}
+
+.template-admin__create,
+.template-admin__editor {
+    display: grid;
+    gap: var(--spacing-4);
+    padding: var(--spacing-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--card);
+}
+
+.template-admin__form-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: var(--spacing-3);
+}
+
+.template-admin label,
+.template-admin__list,
+.template-admin__preview,
+.template-admin__fields,
+.template-admin__validation {
+    display: grid;
+}
+
+.template-admin label {
+    gap: var(--spacing-2);
+}
+
+.template-admin__list {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+.template-admin__row {
+    width: 100%;
+    padding: var(--spacing-4);
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--card);
+    color: var(--foreground);
+    text-align: left;
+}
+
+.template-admin__row:last-child {
+    border-bottom: 0;
+}
+
+.template-admin__row--button {
+    cursor: pointer;
+}
+
+.template-admin__row--button:hover,
+.template-admin__row--button:focus-visible {
+    background: var(--muted);
+}
+
+.template-admin__row span:first-child,
+.template-admin__section-heading > div,
+.template-admin__field > span {
+    display: grid;
+    gap: var(--spacing-1);
+}
+
+.template-admin__badge {
+    padding: var(--spacing-1) var(--spacing-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: var(--text-sm);
+}
+
+.template-admin__preview,
+.template-admin__fields {
+    gap: var(--spacing-3);
+}
+
+.template-admin__section {
+    display: grid;
+    gap: var(--spacing-3);
+    padding: var(--spacing-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--muted);
+}
+
+.template-admin__field {
+    display: grid;
+    grid-template-columns: 2fr 2fr 1fr auto auto;
+    align-items: end;
+    gap: var(--spacing-2);
+    padding: var(--spacing-3);
+    border-radius: var(--radius-md);
+    background: var(--card);
+}
+
+.template-admin__nested {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: 2fr 2fr auto;
+    align-items: end;
+    gap: var(--spacing-2);
+    padding: var(--spacing-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+.template-admin__nested > strong {
+    grid-column: 1 / -1;
+}
+
+.template-admin__check {
+    display: flex !important;
+    align-items: center;
+    gap: var(--spacing-2) !important;
+    min-height: 44px;
+}
+
+.template-admin__empty,
+.template-admin__state,
+.template-admin__validation {
+    padding: var(--spacing-4);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-md);
+    color: var(--muted-foreground);
+}
+
+.template-admin__validation {
+    gap: var(--spacing-2);
+}
+
+.template-admin__validation-error,
+.template-admin__state--error {
+    color: var(--destructive);
+}
+
+.template-admin__state--error {
+    border-color: var(--destructive);
+}
+
+.template-admin__actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+.template-admin__comment {
+    flex: 1 1 20rem;
+}
+
+.template-admin__comment textarea {
+    min-height: 5rem;
+}
+
+@media (max-width: 900px) {
+    .template-admin__form-grid,
+    .template-admin__field,
+    .template-admin__nested {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .template-admin__form-grid,
+    .template-admin__field,
+    .template-admin__nested {
+        grid-template-columns: 1fr;
+    }
+
+    .template-admin__header,
+    .template-admin__editor-header,
+    .template-admin__section-heading {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .template-admin__actions .btn {
+        width: 100%;
+    }
+}

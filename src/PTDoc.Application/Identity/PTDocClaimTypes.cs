@@ -9,6 +9,7 @@ public static class PTDocClaimTypes
     public const string ExternalSubject = "ptdoc_external_subject";
     public const string AuthenticationType = "ptdoc_auth_type";
     public const string ApiAccessToken = "ptdoc_api_access_token";
+    public const string ApiAccessTokenExpiresAt = "ptdoc_api_access_token_expires_at";
 
     public static IEnumerable<string> InternalUserIdAliases()
     {

@@ -31,6 +31,15 @@ public sealed class UpdateAppointmentRequest
 }
 
 /// <summary>
+/// Narrow request for changing only an appointment's scheduling type.
+/// </summary>
+public sealed class UpdateAppointmentTypeRequest
+{
+    public string AppointmentType { get; set; } = string.Empty;
+    public DateTime ExpectedLastModifiedUtc { get; set; }
+}
+
+/// <summary>
 /// Lightweight appointment projection for scheduling UIs.
 /// Times are returned in UTC and converted to local display time by the client.
 /// </summary>
@@ -50,6 +59,22 @@ public sealed class AppointmentListItemResponse
     public Guid? VisitNoteId { get; set; }
     public string IntakeStatus { get; set; } = string.Empty;
     public string Notes { get; set; } = string.Empty;
+    /// <summary>
+    /// Concurrency value to send with narrow appointment mutations.
+    /// </summary>
+    public DateTime LastModifiedUtc { get; set; }
+    /// <summary>
+    /// Count of attended appointments for the patient through this appointment's start time.
+    /// </summary>
+    public int VisitCount { get; set; }
+    /// <summary>
+    /// Optional clinically computed progress-note due date. Null when no authoritative due date is available.
+    /// </summary>
+    public DateTime? ProgressNoteDueDate { get; set; }
+    /// <summary>
+    /// One-based clinical visit sequence for this appointment. Null for cancelled and no-show appointments.
+    /// </summary>
+    public int? VisitNumber { get; set; }
     public decimal? CopayAmount { get; set; }
     public string CopayStatusLabel { get; set; } = "Copay not configured";
     public bool CanRecordCopay { get; set; }

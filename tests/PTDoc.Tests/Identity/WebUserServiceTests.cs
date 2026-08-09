@@ -68,6 +68,20 @@ public sealed class WebUserServiceTests
         Assert.Equal("Microsoft", service.IdentityProviderDisplayName);
     }
 
+    [Fact]
+    public async Task LogoutAsync_UsesExistingLogoutEndpointOnlyOnce()
+    {
+        var navigationManager = CreateNavigationManager();
+        var service = CreateService(new RecordingJsRuntime(), navigationManager, externalIdentityEnabled: false);
+
+        await service.LogoutAsync();
+        await service.LogoutAsync();
+
+        Assert.Equal("https://localhost/auth/logout", navigationManager.Uri);
+        Assert.Equal(1, navigationManager.NavigationCount);
+        Assert.True(navigationManager.LastForceLoad);
+    }
+
     private static WebUserService CreateService(
         IJSRuntime jsRuntime,
         NavigationManager navigationManager,
@@ -115,6 +129,10 @@ public sealed class WebUserServiceTests
 
     private sealed class TestNavigationManager : NavigationManager
     {
+        public int NavigationCount { get; private set; }
+
+        public bool LastForceLoad { get; private set; }
+
         public void InitializeForTest(string baseUri, string uri)
         {
             Initialize(baseUri, uri);
@@ -122,6 +140,8 @@ public sealed class WebUserServiceTests
 
         protected override void NavigateToCore(string uri, bool forceLoad)
         {
+            NavigationCount++;
+            LastForceLoad = forceLoad;
             Uri = ToAbsoluteUri(uri).ToString();
         }
     }

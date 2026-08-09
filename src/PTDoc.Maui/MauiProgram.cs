@@ -64,6 +64,9 @@ public static class MauiProgram
         builder.Services.AddScoped<INoteDraftLocalPersistenceService, MauiNoteDraftLocalPersistenceService>();
         builder.Services.AddTransient<DraftAutosaveService>();
         builder.Services.AddScoped<IAdminApprovalService, AdminApprovalApiService>();
+        builder.Services.AddScoped<PTDoc.Application.Providers.IProviderDirectoryService, ProviderDirectoryApiService>();
+        builder.Services.AddScoped<PTDoc.Application.Insurance.IInsurancePolicyService, InsurancePolicyApiService>();
+        builder.Services.AddScoped<PTDoc.Application.NoteTemplates.INoteTemplateAdministrationService, NoteTemplateAdministrationApiService>();
         builder.Services.AddScoped<INotificationCenterService, HttpNotificationCenterService>();
         builder.Services.AddScoped<IDashboardAlertService, HttpDashboardAlertService>();
         builder.Services.AddScoped<INavigationBadgeService, HttpNavigationBadgeService>();
