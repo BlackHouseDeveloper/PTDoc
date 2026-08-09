@@ -24,6 +24,7 @@ public interface INoteWorkspaceService
     Task<NoteWorkspaceDocumentHierarchyResult> GetDocumentHierarchyAsync(Guid noteId, CancellationToken cancellationToken = default);
     Task<NoteWorkspacePdfExportResult> ExportPdfAsync(Guid noteId, CancellationToken cancellationToken = default);
     Task<BodyRegionCatalog> GetBodyRegionCatalogAsync(BodyPart bodyPart, CancellationToken cancellationToken = default);
+    Task<InterventionLibraryCatalog> GetInterventionLibraryCatalogAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CodeLookupEntry>> SearchCptAsync(string? query, int take = 20, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<CodeLookupEntry>> SearchIcd10Async(string? query, int take = 20, CancellationToken cancellationToken = default);
 }

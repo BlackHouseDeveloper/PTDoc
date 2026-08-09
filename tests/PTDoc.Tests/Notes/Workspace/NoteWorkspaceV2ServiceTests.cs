@@ -60,7 +60,8 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             intakeReferenceData,
             intakeBodyPartMapper,
             intakeDraftCanonicalizer,
-            carryForwardService);
+            carryForwardService,
+            catalogs);
     }
 
     [Fact]
@@ -861,6 +862,111 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Contains(result.Errors, error => error.Contains("VAS", StringComparison.OrdinalIgnoreCase));
         Assert.Null(result.Workspace);
         Assert.Empty(_context.OutcomeMeasureResults);
+    }
+
+    [Fact]
+    public async Task SaveAsync_RejectsUnknownSourceAndInvalidStructuredInterventionValues()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Intervention",
+            LastName = "Validation",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+
+        var result = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            DateOfService = new DateTime(2026, 4, 3),
+            NoteType = NoteType.Evaluation,
+            Payload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Evaluation,
+                Objective = new WorkspaceObjectiveV2
+                {
+                    ExerciseRows =
+                    [
+                        new ExerciseRowV2
+                        {
+                            SourceItemId = "unknown-exercise",
+                            IsSourceBacked = true,
+                            Prescription = new ExercisePrescriptionV2 { Sets = 1000, Frequency = "---" }
+                        }
+                    ]
+                },
+                Plan = new WorkspacePlanV2
+                {
+                    GeneralInterventions =
+                    [
+                        new GeneralInterventionEntryV2
+                        {
+                            Kind = InterventionKind.ManualTechnique,
+                            Name = "Custom mobilization"
+                        }
+                    ]
+                }
+            }
+        });
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.Contains("unknown intervention-library item", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result.Errors, error => error.Contains("Body region is required", StringComparison.OrdinalIgnoreCase));
+        Assert.Null(result.Workspace);
+        Assert.Empty(_context.ClinicalNotes);
+    }
+
+    [Fact]
+    public async Task SaveAsync_CanonicalizesKnownSourceBackedInterventionSnapshot()
+    {
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Catalog",
+            LastName = "Snapshot",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = Guid.NewGuid()
+        };
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+
+        var result = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            DateOfService = new DateTime(2026, 4, 4),
+            NoteType = NoteType.Evaluation,
+            Payload = new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.Evaluation,
+                Objective = new WorkspaceObjectiveV2
+                {
+                    ExerciseRows =
+                    [
+                        new ExerciseRowV2
+                        {
+                            SourceItemId = "exercise-pendulum-swings",
+                            SuggestedExercise = "Untrusted display text",
+                            ActualExercisePerformed = "Untrusted display text",
+                            Category = "Untrusted category",
+                            InterventionRegion = InterventionRegion.Knee,
+                            IsSourceBacked = true,
+                            Prescription = new ExercisePrescriptionV2 { Sets = 2, Repetitions = 10, Frequency = "daily" }
+                        }
+                    ]
+                }
+            }
+        });
+
+        Assert.True(result.IsValid);
+        var exercise = Assert.Single(result.Workspace!.Payload.Objective.ExerciseRows);
+        Assert.Equal("Pendulum swings", exercise.SuggestedExercise);
+        Assert.Equal("Pendulum swings", exercise.ActualExercisePerformed);
+        Assert.Equal("Range of Motion", exercise.Category);
+        Assert.Equal(InterventionRegion.Shoulder, exercise.InterventionRegion);
+        Assert.Equal("2 sets; 10 reps; daily", exercise.SetsRepsDuration);
     }
 
     [Fact]

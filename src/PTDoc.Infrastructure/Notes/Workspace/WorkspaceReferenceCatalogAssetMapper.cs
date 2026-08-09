@@ -6,6 +6,62 @@ namespace PTDoc.Infrastructure.Notes.Workspace;
 
 internal static class WorkspaceReferenceCatalogAssetMapper
 {
+    public static InterventionLibraryCatalog MapInterventionLibrary(WorkspaceReferenceCatalogAsset asset)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+
+        if (string.IsNullOrWhiteSpace(asset.Version) ||
+            asset.InterventionLibrary is null ||
+            string.IsNullOrWhiteSpace(asset.InterventionLibrary.Provenance?.DocumentPath) ||
+            string.IsNullOrWhiteSpace(asset.InterventionLibrary.Provenance.Version) ||
+            asset.InterventionLibrary.Items is not { Count: > 0 })
+        {
+            throw new InvalidOperationException("Workspace reference catalog asset is missing intervention-library metadata.");
+        }
+
+        var items = new List<InterventionLibraryItem>(asset.InterventionLibrary.Items.Count);
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var source in asset.InterventionLibrary.Items)
+        {
+            var id = source.Id?.Trim();
+            var name = source.Name?.Trim();
+            var category = source.Category?.Trim();
+            if (string.IsNullOrWhiteSpace(id) || !ids.Add(id))
+            {
+                throw new InvalidOperationException($"Workspace intervention library contains a missing or duplicate item id '{source.Id}'.");
+            }
+
+            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(category) ||
+                !Enum.TryParse<InterventionKind>(source.Kind, ignoreCase: true, out var kind) ||
+                kind == InterventionKind.General ||
+                !Enum.TryParse<InterventionRegion>(source.Region, ignoreCase: true, out var region))
+            {
+                throw new InvalidOperationException($"Workspace intervention library item '{id}' has invalid required metadata.");
+            }
+
+            items.Add(new InterventionLibraryItem
+            {
+                Id = id,
+                Kind = kind,
+                Name = name,
+                Category = category,
+                Region = region,
+                SearchAliases = (source.SearchAliases ?? [])
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Select(value => value.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+            });
+        }
+
+        return new InterventionLibraryCatalog
+        {
+            Version = asset.Version.Trim(),
+            Provenance = WorkspaceCatalogCloneHelpers.CloneProvenance(asset.InterventionLibrary.Provenance),
+            Items = items
+        };
+    }
+
     public static IReadOnlyDictionary<BodyPart, BodyRegionCatalog> Map(WorkspaceReferenceCatalogAsset asset)
     {
         ArgumentNullException.ThrowIfNull(asset);

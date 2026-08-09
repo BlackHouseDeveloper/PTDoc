@@ -113,6 +113,40 @@ public sealed class EvaluationInterventionsSectionTests : TestContext
     }
 
     [Fact]
+    public void TypedManualTechniques_RenderOnlyInDedicatedManualTechniqueCards()
+    {
+        var plan = new PlanVm
+        {
+            GeneralInterventions =
+            [
+                new GeneralInterventionEntry
+                {
+                    Kind = InterventionKind.ManualTechnique,
+                    Name = "Glenohumeral Joint Mobilization",
+                    Category = "Manual Work Technique",
+                    InterventionRegion = InterventionRegion.Shoulder
+                },
+                new GeneralInterventionEntry
+                {
+                    Kind = InterventionKind.General,
+                    Name = "Patient education"
+                }
+            ]
+        };
+
+        var cut = RenderComponent<EvaluationInterventionsSection>(parameters => parameters
+            .Add(component => component.Objective, new ObjectiveVm())
+            .Add(component => component.Plan, plan)
+            .Add(component => component.IsReadOnly, false));
+
+        var manualCard = Assert.Single(cut.FindAll("[data-testid='manual-technique-card']"));
+        Assert.Contains("Glenohumeral Joint Mobilization", manualCard.TextContent, StringComparison.Ordinal);
+        var legacyEditor = Assert.Single(cut.FindAll("[data-testid='evaluation-general-intervention-row']"));
+        Assert.Contains("Patient education", legacyEditor.TextContent, StringComparison.Ordinal);
+        Assert.DoesNotContain("Glenohumeral Joint Mobilization", legacyEditor.TextContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RemoveCptCode_ClearsInterventionRowsReferencingRemovedCode()
     {
         var objective = new ObjectiveVm

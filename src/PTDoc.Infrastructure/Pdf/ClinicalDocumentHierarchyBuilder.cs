@@ -1465,7 +1465,20 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         {
             values.Add("HEP linked");
         }
-        AddIfPresent(values, row.SetsRepsDuration, "Dosage");
+        if (row.Prescription is not null &&
+            (row.Prescription.Sets.HasValue || row.Prescription.Repetitions.HasValue || !string.IsNullOrWhiteSpace(row.Prescription.Frequency)))
+        {
+            AddIfPresent(values, row.Prescription.Sets?.ToString(CultureInfo.InvariantCulture), "Sets");
+            AddIfPresent(values, row.Prescription.Repetitions?.ToString(CultureInfo.InvariantCulture), "Reps");
+            AddIfPresent(values, row.Prescription.Frequency, "Frequency");
+        }
+        else
+        {
+            AddIfPresent(values, row.SetsRepsDuration, "Dosage");
+        }
+        AddIfPresent(values, row.Category, "Category");
+        AddIfPresent(values, row.InterventionRegion?.ToString(), "Region");
+        AddIfPresent(values, row.Notes, "Notes");
         AddIfPresent(values, row.ResistanceOrWeight, "Resistance");
         AddIfPresent(values, row.TimeMinutes?.ToString(CultureInfo.InvariantCulture), "Minutes");
         AddIfPresent(values, row.CptDescription, "Description");
@@ -1491,6 +1504,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         }
         AddIfPresent(values, entry.Cueing, "Cueing");
         AddIfPresent(values, entry.Category, "Category");
+        AddIfPresent(values, entry.InterventionRegion?.ToString(), "Region");
         AddIfPresent(values, entry.CptDescription, "Description");
         AddIfPresent(values, entry.TimeMinutes?.ToString(CultureInfo.InvariantCulture), "Minutes");
         AddIfPresent(values, entry.Notes, "Notes");

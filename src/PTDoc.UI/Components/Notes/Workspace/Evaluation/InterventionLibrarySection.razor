@@ -1,5 +1,6 @@
 @namespace PTDoc.UI.Components.Notes.Workspace.Evaluation
 @using Microsoft.JSInterop
+@using PTDoc.Application.Notes.Workspace
 @using PTDoc.UI.Components.Notes.Models
 @implements IAsyncDisposable
 @inject IJSRuntime JS
@@ -10,7 +11,7 @@
             <div class="intervention-module__identity">
                 <img src="_content/PTDoc.UI/images/notes/interventions/exercise.svg" alt="" aria-hidden="true" />
                 <h3 id="intervention-exercises-title">Exercises</h3>
-                <span class="intervention-count" data-testid="exercise-count">@FormatCount(Objective.ExerciseRows.Count, "exercise")</span>
+                <span class="intervention-count" data-testid="exercise-count">@FormatCount(NamedExercises.Count, "exercise")</span>
             </div>
             @if (!IsReadOnly)
             {
@@ -21,7 +22,7 @@
             }
         </header>
 
-        @if (Objective.ExerciseRows.Count == 0)
+        @if (NamedExercises.Count == 0)
         {
             <div class="intervention-empty" role="status" data-testid="exercise-empty-state">
                 <img src="_content/PTDoc.UI/images/notes/interventions/info.svg" alt="" aria-hidden="true" />
@@ -31,10 +32,12 @@
         else
         {
             <div class="exercise-card-list" data-testid="exercise-card-list">
-                @foreach (var exercise in Objective.ExerciseRows)
+                @foreach (var exercise in NamedExercises)
                 {
                     var details = GetExerciseDetails(exercise);
                     var isExpanded = !_collapsedExercises.Contains(exercise);
+                    var hasStructuredPrescription = exercise.Prescription is not null;
+                    var prescription = GetPrescription(exercise);
                     <article @key="exercise" class="exercise-card" data-testid="exercise-prescription-card">
                         <div class="exercise-card__header">
                             <div class="exercise-card__identity">
@@ -42,6 +45,10 @@
                                 <div class="exercise-card__metadata">
                                     <span class="exercise-card__category">@details.Category</span>
                                     <span>@details.Region</span>
+                                    @if (exercise.IsSourceBacked)
+                                    {
+                                        <span>Source-backed</span>
+                                    }
                                 </div>
                             </div>
                             <div class="exercise-card__actions">
@@ -60,7 +67,7 @@
                                 </button>
                                 @if (!IsReadOnly)
                                 {
-                                    <button type="button" class="intervention-icon-button" aria-label="Remove @GetExerciseTitle(exercise)" @onclick="() => RemoveExerciseAsync(exercise)">
+                                    <button type="button" class="intervention-icon-button intervention-icon-button--danger" aria-label="Remove @GetExerciseTitle(exercise)" @onclick="() => RemoveExerciseAsync(exercise)">
                                         <img src="_content/PTDoc.UI/images/notes/interventions/remove.svg" alt="" aria-hidden="true" />
                                     </button>
                                 }
@@ -69,36 +76,40 @@
 
                         @if (isExpanded)
                         {
-                            var prescription = GetPrescription(exercise);
                             <div class="exercise-prescription" data-testid="exercise-prescription-fields">
                                 <label>
                                     <span>Sets</span>
-                                    <input type="text" aria-label="Sets for @GetExerciseTitle(exercise)" @bind="prescription.Sets" @bind:event="oninput" disabled="@IsReadOnly" />
+                                    <input type="number" min="1" max="999" value="@prescription.Sets" aria-label="Sets for @GetExerciseTitle(exercise)" aria-invalid="@(GetExerciseError(exercise, "Sets") is not null)" aria-describedby="@($"sets-error-{Objective.ExerciseRows.IndexOf(exercise)}")" disabled="@IsReadOnly" @onchange="e => UpdateSetsAsync(exercise, e.Value)" />
+                                    @if (GetExerciseError(exercise, "Sets") is { } setsError) { <small id="@($"sets-error-{Objective.ExerciseRows.IndexOf(exercise)}")" class="intervention-field-error">@setsError</small> }
                                 </label>
                                 <label>
                                     <span>Reps</span>
-                                    <input type="text" aria-label="Reps for @GetExerciseTitle(exercise)" @bind="prescription.Reps" @bind:event="oninput" disabled="@IsReadOnly" />
+                                    <input type="number" min="1" max="999" value="@prescription.Repetitions" aria-label="Reps for @GetExerciseTitle(exercise)" aria-invalid="@(GetExerciseError(exercise, "Reps") is not null)" aria-describedby="@($"reps-error-{Objective.ExerciseRows.IndexOf(exercise)}")" disabled="@IsReadOnly" @onchange="e => UpdateRepetitionsAsync(exercise, e.Value)" />
+                                    @if (GetExerciseError(exercise, "Reps") is { } repsError) { <small id="@($"reps-error-{Objective.ExerciseRows.IndexOf(exercise)}")" class="intervention-field-error">@repsError</small> }
                                 </label>
                                 <label>
                                     <span>Frequency</span>
-                                    <input type="text" aria-label="Frequency for @GetExerciseTitle(exercise)" @bind="prescription.Frequency" @bind:event="oninput" disabled="@IsReadOnly" />
+                                    <input type="text" maxlength="50" value="@prescription.Frequency" aria-label="Frequency for @GetExerciseTitle(exercise)" aria-invalid="@(GetExerciseError(exercise, "Frequency") is not null)" aria-describedby="@($"frequency-error-{Objective.ExerciseRows.IndexOf(exercise)}")" disabled="@IsReadOnly" @oninput="e => UpdateFrequencyAsync(exercise, e.Value)" />
+                                    @if (GetExerciseError(exercise, "Frequency") is { } frequencyError) { <small id="@($"frequency-error-{Objective.ExerciseRows.IndexOf(exercise)}")" class="intervention-field-error">@frequencyError</small> }
                                 </label>
                             </div>
+
+                            @if (!hasStructuredPrescription && !string.IsNullOrWhiteSpace(exercise.SetsRepsDuration))
+                            {
+                                <p class="intervention-legacy-dosage"><strong>Legacy dosage:</strong> @exercise.SetsRepsDuration</p>
+                            }
+
+                            <label class="intervention-full-field">
+                                <span>Notes (Optional)</span>
+                                <textarea maxlength="2000" value="@exercise.Notes" disabled="@IsReadOnly" @oninput="e => UpdateExerciseNotesAsync(exercise, e.Value)"></textarea>
+                            </label>
 
                             <div class="exercise-hep-row">
                                 <span class="exercise-hep-row__label">
                                     <img src="_content/PTDoc.UI/images/notes/interventions/home.svg" alt="" aria-hidden="true" />
                                     Include in Home Exercise Program
                                 </span>
-                                <button type="button"
-                                        class="exercise-hep-toggle @(exercise.IncludeInHomeExerciseProgram ? "exercise-hep-toggle--selected" : "")"
-                                        role="switch"
-                                        aria-checked="@exercise.IncludeInHomeExerciseProgram"
-                                        aria-label="Include @GetExerciseTitle(exercise) in Home Exercise Program"
-                                        disabled="@IsReadOnly"
-                                        @onclick="() => ToggleHepAsync(exercise)">
-                                    <span></span>
-                                </button>
+                                <button type="button" class="exercise-hep-toggle @(exercise.IncludeInHomeExerciseProgram ? "exercise-hep-toggle--selected" : "")" role="switch" aria-checked="@exercise.IncludeInHomeExerciseProgram" aria-label="Include @GetExerciseTitle(exercise) in Home Exercise Program" disabled="@IsReadOnly" @onclick="() => ToggleExerciseHepAsync(exercise)"><span></span></button>
                             </div>
                         }
                     </article>
@@ -112,7 +123,7 @@
             <div class="intervention-module__identity">
                 <img src="_content/PTDoc.UI/images/notes/interventions/technique.svg" alt="" aria-hidden="true" />
                 <h3 id="intervention-techniques-title">Manual Work Techniques</h3>
-                <span class="intervention-count" data-testid="technique-count">@FormatCount(ManualTechniqueCount, "technique")</span>
+                <span class="intervention-count" data-testid="technique-count">@FormatCount(ManualTechniques.Count, "technique")</span>
             </div>
             @if (!IsReadOnly)
             {
@@ -123,11 +134,55 @@
             }
         </header>
 
-        @if (ManualTechniqueCount == 0)
+        @if (ManualTechniques.Count == 0)
         {
             <div class="intervention-empty" role="status" data-testid="technique-empty-state">
                 <img src="_content/PTDoc.UI/images/notes/interventions/info.svg" alt="" aria-hidden="true" />
                 <span>No manual techniques added yet. Click "Add Technique" to get started.</span>
+            </div>
+        }
+        else
+        {
+            <div class="exercise-card-list" data-testid="technique-card-list">
+                @foreach (var technique in ManualTechniques)
+                {
+                    var isExpanded = !_collapsedTechniques.Contains(technique);
+                    <article @key="technique" class="exercise-card" data-testid="manual-technique-card">
+                        <div class="exercise-card__header">
+                            <div class="exercise-card__identity">
+                                <h4>@technique.Name</h4>
+                                <div class="exercise-card__metadata">
+                                    <span class="exercise-card__category">@(technique.Category ?? "Manual Work Technique")</span>
+                                    <span>@(technique.InterventionRegion.HasValue ? GetRegionLabel(technique.InterventionRegion.Value) : "General")</span>
+                                    @if (technique.IsSourceBacked) { <span>Source-backed</span> }
+                                </div>
+                            </div>
+                            <div class="exercise-card__actions">
+                                @if (!IsReadOnly)
+                                {
+                                    <button type="button" class="intervention-icon-button" aria-label="Duplicate @technique.Name" @onclick="() => DuplicateTechniqueAsync(technique)"><img src="_content/PTDoc.UI/images/notes/interventions/duplicate.svg" alt="" aria-hidden="true" /></button>
+                                }
+                                <button type="button" class="intervention-icon-button exercise-card__collapse @(isExpanded ? "" : "exercise-card__collapse--collapsed")" aria-label="@(isExpanded ? $"Collapse {technique.Name}" : $"Expand {technique.Name}")" aria-expanded="@isExpanded" @onclick="() => ToggleTechnique(technique)"><img src="_content/PTDoc.UI/images/notes/interventions/chevron-down.svg" alt="" aria-hidden="true" /></button>
+                                @if (!IsReadOnly)
+                                {
+                                    <button type="button" class="intervention-icon-button intervention-icon-button--danger" aria-label="Remove @technique.Name" @onclick="() => RemoveTechniqueAsync(technique)"><img src="_content/PTDoc.UI/images/notes/interventions/remove.svg" alt="" aria-hidden="true" /></button>
+                                }
+                            </div>
+                        </div>
+                        @if (isExpanded)
+                        {
+                            <div class="technique-detail-grid">
+                                <label class="intervention-full-field technique-detail-grid__full"><span>Notes</span><textarea maxlength="2000" value="@technique.Notes" disabled="@IsReadOnly" @oninput="e => UpdateTechniqueAsync(technique, item => item.Notes = e.Value?.ToString())"></textarea></label>
+                                <label><span>CPT</span><select value="@technique.CptCode" disabled="@IsReadOnly" @onfocus="EnsureManualCptOptionsAsync" @onchange="e => UpdateTechniqueCptAsync(technique, e.Value)"><option value="">No CPT selected</option>@if (!string.IsNullOrWhiteSpace(technique.CptCode) && !_manualCptOptions.Any(option => string.Equals(option.Code, technique.CptCode, StringComparison.OrdinalIgnoreCase))) { <option value="@technique.CptCode">@technique.CptCode - @technique.CptDescription</option> }@foreach (var option in _manualCptOptions) { <option value="@option.Code">@option.Code - @option.Description</option> }</select></label>
+                                <label><span>Minutes</span><input type="number" min="1" max="1440" value="@technique.TimeMinutes" aria-invalid="@_techniqueMinutesErrors.ContainsKey(technique)" aria-describedby="@(_techniqueMinutesErrors.ContainsKey(technique) ? GetTechniqueMinutesErrorId(technique) : null)" disabled="@IsReadOnly" @onchange="e => UpdateTechniqueMinutesAsync(technique, e.Value)" />@if (_techniqueMinutesErrors.GetValueOrDefault(technique) is { } minutesError) { <small id="@GetTechniqueMinutesErrorId(technique)" class="intervention-field-error" role="alert">@minutesError</small> }</label>
+                                <label><span>Assistance</span><select value="@technique.AssistanceLevel" disabled="@IsReadOnly" @onchange="e => UpdateTechniqueAsync(technique, item => item.AssistanceLevel = e.Value?.ToString())"><option value="">None documented</option>@foreach (var option in AssistanceLevelOptions) { <option value="@option">@option</option> }</select></label>
+                                <label><span>Cueing</span><select value="@technique.Cueing" disabled="@IsReadOnly" @onchange="e => UpdateTechniqueAsync(technique, item => item.Cueing = e.Value?.ToString())"><option value="">None documented</option>@foreach (var option in CueingOptions) { <option value="@option">@option</option> }</select></label>
+                                <label class="intervention-full-field technique-detail-grid__full"><span>Response</span><textarea maxlength="2000" value="@technique.Response" disabled="@IsReadOnly" @oninput="e => UpdateTechniqueAsync(technique, item => item.Response = e.Value?.ToString())"></textarea></label>
+                            </div>
+                            <div class="exercise-hep-row"><span class="exercise-hep-row__label"><img src="_content/PTDoc.UI/images/notes/interventions/home.svg" alt="" aria-hidden="true" />Include in Home Exercise Program</span><button type="button" class="exercise-hep-toggle @(technique.IncludeInHomeExerciseProgram ? "exercise-hep-toggle--selected" : "")" role="switch" aria-checked="@technique.IncludeInHomeExerciseProgram" aria-label="Include @technique.Name in Home Exercise Program" disabled="@IsReadOnly" @onclick="() => ToggleTechniqueHepAsync(technique)"><span></span></button></div>
+                        }
+                    </article>
+                }
             </div>
         }
     </section>
@@ -136,122 +191,84 @@
 @if (_dialogKind != InterventionDialogKind.None)
 {
     <div class="intervention-dialog-backdrop" data-testid="intervention-dialog-backdrop">
-        <section id="@_modalId"
-                 class="intervention-dialog"
-                 role="dialog"
-                 aria-modal="true"
-                 aria-labelledby="intervention-dialog-title"
-                 aria-describedby="intervention-dialog-description"
-                 tabindex="-1">
+        <section id="@_modalId" class="intervention-dialog" role="dialog" aria-modal="true" aria-labelledby="intervention-dialog-title" aria-describedby="intervention-dialog-description" tabindex="-1">
             <header class="intervention-dialog__header">
-                <img class="intervention-dialog__icon"
-                     src="@(_dialogKind == InterventionDialogKind.Exercise ? "_content/PTDoc.UI/images/notes/interventions/exercise.svg" : "_content/PTDoc.UI/images/notes/interventions/technique.svg")"
-                     alt=""
-                     aria-hidden="true" />
-                <div>
-                    <h3 id="intervention-dialog-title">@DialogTitle</h3>
-                    <p id="intervention-dialog-description">@DialogDescription</p>
-                </div>
-                <button type="button" class="intervention-dialog__close" aria-label="Close @DialogTitle" @onclick="CloseDialogAsync">
-                    <img src="_content/PTDoc.UI/images/notes/interventions/close.svg" alt="" aria-hidden="true" />
-                </button>
+                <img class="intervention-dialog__icon" src="@(_dialogKind == InterventionDialogKind.Exercise ? "_content/PTDoc.UI/images/notes/interventions/exercise.svg" : "_content/PTDoc.UI/images/notes/interventions/technique.svg")" alt="" aria-hidden="true" />
+                <div><h3 id="intervention-dialog-title">@DialogTitle</h3><p id="intervention-dialog-description">@DialogDescription</p></div>
+                <button type="button" class="intervention-dialog__close" aria-label="Close @DialogTitle" @onclick="CloseDialogAsync"><img src="_content/PTDoc.UI/images/notes/interventions/close.svg" alt="" aria-hidden="true" /></button>
             </header>
 
             @if (_dialogKind == InterventionDialogKind.Exercise)
             {
-                <div class="intervention-tabs" role="tablist" aria-label="Exercise source">
-                    <button type="button" role="tab" aria-selected="@(_exerciseMode == DialogMode.Library)" class="@GetTabClass(_exerciseMode == DialogMode.Library)" @onclick="() => _exerciseMode = DialogMode.Library">Exercise Library</button>
-                    <button type="button" role="tab" aria-selected="@(_exerciseMode == DialogMode.Custom)" class="@GetTabClass(_exerciseMode == DialogMode.Custom)" @onclick="() => _exerciseMode = DialogMode.Custom">Custom Exercise</button>
+                <div class="intervention-tabs" role="tablist" aria-label="Exercise source" @onkeydown="HandleExerciseTabKeyAsync">
+                    <button @ref="_exerciseLibraryTab" id="exercise-library-tab" type="button" role="tab" aria-selected="@(_exerciseMode == DialogMode.Library ? "true" : "false")" aria-controls="exercise-library-panel" tabindex="@(_exerciseMode == DialogMode.Library ? 0 : -1)" class="@GetTabClass(_exerciseMode == DialogMode.Library)" @onclick="() => SetExerciseModeAsync(DialogMode.Library)">Exercise Library</button>
+                    <button @ref="_exerciseCustomTab" id="exercise-custom-tab" type="button" role="tab" aria-selected="@(_exerciseMode == DialogMode.Custom ? "true" : "false")" aria-controls="custom-exercise-panel" tabindex="@(_exerciseMode == DialogMode.Custom ? 0 : -1)" class="@GetTabClass(_exerciseMode == DialogMode.Custom)" @onclick="() => SetExerciseModeAsync(DialogMode.Custom)">Custom Exercise</button>
                 </div>
-
                 @if (_exerciseMode == DialogMode.Library)
                 {
-                    <div class="intervention-dialog__body" role="tabpanel" data-testid="exercise-library-panel">
-                        <label class="intervention-search">
-                            <span class="visually-hidden">Search exercises</span>
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M7.333 12.667A5.333 5.333 0 1 0 7.333 2a5.333 5.333 0 0 0 0 10.667ZM14 14l-2.9-2.9" stroke="currentColor" stroke-width="1.333" stroke-linecap="round" stroke-linejoin="round" /></svg>
-                            <input type="search" placeholder="Search exercises..." @bind="_exerciseSearchQuery" @bind:event="oninput" data-testid="exercise-search" />
-                        </label>
-                        <div class="intervention-region-filters" role="group" aria-label="Body region">
-                            @foreach (var region in Regions)
-                            {
-                                <button @key="region"
-                                        type="button"
-                                        class="@GetRegionFilterClass(_exerciseRegion == region)"
-                                        aria-pressed="@(_exerciseRegion == region ? "true" : "false")"
-                                        @onclick="() => SelectExerciseRegion(region)">@region</button>
-                            }
-                        </div>
-                        <div class="intervention-results" data-testid="exercise-library-results">
-                            @foreach (var exercise in FilteredExercises)
-                            {
-                                <div @key="exercise.Name" class="intervention-result" data-testid="exercise-library-result">
-                                    <div>
-                                        <h4>@exercise.Name</h4>
-                                        <p><span>@exercise.Category</span><span>@exercise.Region</span></p>
-                                    </div>
-                                    <button type="button" @onclick="() => AddLibraryExerciseAsync(exercise)">Add</button>
-                                </div>
-                            }
-                        </div>
+                    <div id="exercise-library-panel" class="intervention-dialog__body" role="tabpanel" aria-labelledby="exercise-library-tab" data-testid="exercise-library-panel">
+                        @if (_isCatalogLoading) { <div class="intervention-state" role="status" aria-live="polite">Loading intervention library…</div> }
+                        else if (_catalogError is not null) { <div class="intervention-state intervention-state--error" role="alert"><span>@_catalogError</span><button type="button" @onclick="() => EnsureCatalogAsync(true)">Retry</button></div> }
+                        else
+                        {
+                            <label class="intervention-search"><span class="visually-hidden">Search exercises</span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M7.333 12.667A5.333 5.333 0 1 0 7.333 2a5.333 5.333 0 0 0 0 10.667ZM14 14l-2.9-2.9" stroke="currentColor" stroke-width="1.333" stroke-linecap="round" stroke-linejoin="round" /></svg><input type="search" placeholder="Search exercises..." @bind="_exerciseSearchQuery" @bind:event="oninput" data-testid="exercise-search" /></label>
+                            <div class="intervention-region-filters" role="group" aria-label="Body region">@foreach (var region in Regions) { <button @key="region.Label" type="button" class="@GetRegionFilterClass(_exerciseRegion == region.Region)" aria-pressed="@(_exerciseRegion == region.Region ? "true" : "false")" @onclick="() => _exerciseRegion = region.Region">@region.Label</button> }</div>
+                            <div class="intervention-result-count" role="status" aria-live="polite">@FormatCount(FilteredExercises.Count(), "result")</div>
+                            <div class="intervention-results" data-testid="exercise-library-results">
+                                @foreach (var exercise in FilteredExercises) { <div @key="exercise.Id" class="intervention-result" data-testid="exercise-library-result"><div><h4>@exercise.Name</h4><p><span>@exercise.Category</span><span>@GetRegionLabel(exercise.Region)</span></p></div><button type="button" @onclick="() => AddLibraryExerciseAsync(exercise)">Add</button></div> }
+                                @if (!FilteredExercises.Any()) { <div class="intervention-state" role="status"><span>No exercises match your search and filters.</span><button type="button" @onclick="() => { _exerciseSearchQuery = string.Empty; _exerciseRegion = null; }">Clear filters</button></div> }
+                            </div>
+                        }
                     </div>
                 }
                 else
                 {
-                    <div class="intervention-dialog__body custom-exercise-form" role="tabpanel" data-testid="custom-exercise-panel">
-                        <label>
-                            <span>Exercise Name *</span>
-                            <input type="text" placeholder="e.g., Resistance Band Exercises" @bind="_customExerciseName" @bind:event="oninput" />
-                        </label>
-                        <label>
-                            <span>Notes (Optional)</span>
-                            <input type="text" placeholder="Special instructions or modifications..." @bind="_customExerciseNotes" @bind:event="oninput" />
-                        </label>
-                        <button type="button" class="intervention-primary-action custom-exercise-form__submit" @onclick="AddCustomExerciseAsync">
-                            <img src="_content/PTDoc.UI/images/notes/interventions/add.svg" alt="" aria-hidden="true" />
-                            Add Custom Exercise
-                        </button>
+                    <div id="custom-exercise-panel" class="intervention-dialog__body custom-exercise-form" role="tabpanel" aria-labelledby="exercise-custom-tab" data-testid="custom-exercise-panel">
+                        <label><span>Exercise Name *</span><input type="text" maxlength="200" placeholder="e.g., Resistance Band Exercises" @bind="_customExerciseName" @bind:event="oninput" aria-invalid="@_customExerciseErrors.ContainsKey(nameof(_customExerciseName))" aria-describedby="@(_customExerciseErrors.ContainsKey(nameof(_customExerciseName)) ? "custom-exercise-name-error" : null)" />@if (_customExerciseErrors.GetValueOrDefault(nameof(_customExerciseName)) is { } nameError) { <small id="custom-exercise-name-error" class="intervention-field-error" role="alert">@nameError</small> }</label>
+                        <label><span>Notes (Optional)</span><textarea maxlength="2000" placeholder="Special instructions or modifications..." @bind="_customExerciseNotes" @bind:event="oninput" aria-invalid="@_customExerciseErrors.ContainsKey(nameof(_customExerciseNotes))" aria-describedby="@(_customExerciseErrors.ContainsKey(nameof(_customExerciseNotes)) ? "custom-exercise-notes-error" : null)"></textarea>@if (_customExerciseErrors.GetValueOrDefault(nameof(_customExerciseNotes)) is { } notesError) { <small id="custom-exercise-notes-error" class="intervention-field-error" role="alert">@notesError</small> }</label>
+                        <button type="button" class="intervention-primary-action custom-exercise-form__submit" @onclick="AddCustomExerciseAsync"><img src="_content/PTDoc.UI/images/notes/interventions/add.svg" alt="" aria-hidden="true" />Add Custom Exercise</button>
                     </div>
                 }
             }
             else
             {
-                <div class="intervention-tabs" role="tablist" aria-label="Manual technique source">
-                    <button type="button" role="tab" aria-selected="@(_techniqueMode == DialogMode.Library)" class="@GetTabClass(_techniqueMode == DialogMode.Library)" @onclick="() => _techniqueMode = DialogMode.Library">Technique Library</button>
-                    <button type="button" role="tab" aria-selected="@(_techniqueMode == DialogMode.Custom)" class="@GetTabClass(_techniqueMode == DialogMode.Custom)" @onclick="() => _techniqueMode = DialogMode.Custom">Custom Technique</button>
+                <div class="intervention-tabs" role="tablist" aria-label="Manual technique source" @onkeydown="HandleTechniqueTabKeyAsync">
+                    <button @ref="_techniqueLibraryTab" id="technique-library-tab" type="button" role="tab" aria-selected="@(_techniqueMode == DialogMode.Library ? "true" : "false")" aria-controls="technique-library-panel" tabindex="@(_techniqueMode == DialogMode.Library ? 0 : -1)" class="@GetTabClass(_techniqueMode == DialogMode.Library)" @onclick="() => SetTechniqueModeAsync(DialogMode.Library)">Technique Library</button>
+                    <button @ref="_techniqueCustomTab" id="technique-custom-tab" type="button" role="tab" aria-selected="@(_techniqueMode == DialogMode.Custom ? "true" : "false")" aria-controls="custom-technique-panel" tabindex="@(_techniqueMode == DialogMode.Custom ? 0 : -1)" class="@GetTabClass(_techniqueMode == DialogMode.Custom)" @onclick="() => SetTechniqueModeAsync(DialogMode.Custom)">Custom Technique</button>
                 </div>
-
                 @if (_techniqueMode == DialogMode.Library)
                 {
-                    <div class="intervention-dialog__body" role="tabpanel" data-testid="technique-library-panel">
-                        <div class="intervention-region-filters" role="group" aria-label="Body region">
-                            @foreach (var region in Regions)
-                            {
-                                <button @key="region"
-                                        type="button"
-                                        class="@GetRegionFilterClass(_techniqueRegion == region)"
-                                        aria-pressed="@(_techniqueRegion == region ? "true" : "false")"
-                                        @onclick="() => SelectTechniqueRegion(region)">@region</button>
-                            }
-                        </div>
-                        <div class="intervention-results" data-testid="technique-library-results">
-                            @foreach (var technique in FilteredTechniques)
-                            {
-                                <div @key="technique.Name" class="intervention-result" data-testid="technique-library-result">
-                                    <div>
-                                        <h4>@technique.Name</h4>
-                                        <p>@technique.Region</p>
-                                    </div>
-                                    <button type="button" @onclick="() => AddLibraryTechniqueAsync(technique)">Add</button>
-                                </div>
-                            }
-                        </div>
+                    <div id="technique-library-panel" class="intervention-dialog__body" role="tabpanel" aria-labelledby="technique-library-tab" data-testid="technique-library-panel">
+                        @if (_isCatalogLoading) { <div class="intervention-state" role="status" aria-live="polite">Loading intervention library…</div> }
+                        else if (_catalogError is not null) { <div class="intervention-state intervention-state--error" role="alert"><span>@_catalogError</span><button type="button" @onclick="() => EnsureCatalogAsync(true)">Retry</button></div> }
+                        else
+                        {
+                            <div class="intervention-region-filters" role="group" aria-label="Body region">@foreach (var region in Regions) { <button @key="region.Label" type="button" class="@GetRegionFilterClass(_techniqueRegion == region.Region)" aria-pressed="@(_techniqueRegion == region.Region ? "true" : "false")" @onclick="() => _techniqueRegion = region.Region">@region.Label</button> }</div>
+                            <div class="intervention-result-count" role="status" aria-live="polite">@FormatCount(FilteredTechniques.Count(), "result")</div>
+                            <div class="intervention-results" data-testid="technique-library-results">
+                                @foreach (var technique in FilteredTechniques) { <div @key="technique.Id" class="intervention-result" data-testid="technique-library-result"><div><h4>@technique.Name</h4><p>@GetRegionLabel(technique.Region)</p></div><button type="button" @onclick="() => AddLibraryTechniqueAsync(technique)">Add</button></div> }
+                                @if (!FilteredTechniques.Any()) { <div class="intervention-state" role="status"><span>No manual techniques match the selected body region.</span><button type="button" @onclick="() => _techniqueRegion = null">Show all techniques</button></div> }
+                            </div>
+                        }
                     </div>
                 }
                 else
                 {
-                    @* TODO: Custom Technique fields and actions require product/design requirements. *@
-                    <div class="intervention-dialog__body" role="tabpanel" data-testid="custom-technique-panel"></div>
+                    <div id="custom-technique-panel" class="intervention-dialog__body custom-exercise-form" role="tabpanel" aria-labelledby="technique-custom-tab" data-testid="custom-technique-panel">
+                        <label><span>Technique Name *</span><input @ref="_customTechniqueNameInput" type="text" maxlength="200" @bind="_customTechnique.Name" @bind:event="oninput" aria-invalid="@_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Name))" aria-describedby="@(_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Name)) ? "custom-technique-name-error" : null)" />@if (_customTechniqueErrors.GetValueOrDefault(nameof(_customTechnique.Name)) is { } nameError) { <small id="custom-technique-name-error" class="intervention-field-error" role="alert">@nameError</small> }</label>
+                        <label><span>Body Region *</span><select @ref="_customTechniqueRegionInput" @bind="_customTechnique.Region" aria-invalid="@_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Region))" aria-describedby="@(_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Region)) ? "custom-technique-region-error" : null)"><option value="">Select body region</option>@foreach (var region in Regions.Where(item => item.Region.HasValue)) { <option value="@region.Region">@region.Label</option> }</select>@if (_customTechniqueErrors.GetValueOrDefault(nameof(_customTechnique.Region)) is { } regionError) { <small id="custom-technique-region-error" class="intervention-field-error" role="alert">@regionError</small> }</label>
+                        <label><span>Notes (Optional)</span><textarea @ref="_customTechniqueNotesInput" maxlength="2000" @bind="_customTechnique.Notes" @bind:event="oninput" aria-invalid="@_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Notes))" aria-describedby="@(_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Notes)) ? "custom-technique-notes-error" : null)"></textarea>@if (_customTechniqueErrors.GetValueOrDefault(nameof(_customTechnique.Notes)) is { } notesError) { <small id="custom-technique-notes-error" class="intervention-field-error" role="alert">@notesError</small> }</label>
+                        <div class="technique-detail-grid">
+                            <label><span>CPT</span><select @bind="_customTechnique.CptCode" disabled="@_isCptLoading"><option value="">No CPT selected</option>@foreach (var option in _manualCptOptions) { <option value="@option.Code">@option.Code - @option.Description</option> }</select></label>
+                            <label><span>Minutes</span><input @ref="_customTechniqueMinutesInput" type="number" min="1" max="1440" @bind="_customTechnique.Minutes" aria-invalid="@_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Minutes))" aria-describedby="@(_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Minutes)) ? "custom-technique-minutes-error" : null)" />@if (_customTechniqueErrors.GetValueOrDefault(nameof(_customTechnique.Minutes)) is { } minutesError) { <small id="custom-technique-minutes-error" class="intervention-field-error" role="alert">@minutesError</small> }</label>
+                            <label><span>Assistance</span><select @bind="_customTechnique.AssistanceLevel"><option value="">None documented</option>@foreach (var option in AssistanceLevelOptions) { <option value="@option">@option</option> }</select></label>
+                            <label><span>Cueing</span><select @bind="_customTechnique.Cueing"><option value="">None documented</option>@foreach (var option in CueingOptions) { <option value="@option">@option</option> }</select></label>
+                        </div>
+                        @if (_isCptLoading) { <small role="status">Loading CPT options…</small> } else if (_cptError is not null) { <small class="intervention-field-error" role="alert">@_cptError</small> }
+                        <label><span>Response</span><textarea @ref="_customTechniqueResponseInput" maxlength="2000" @bind="_customTechnique.Response" @bind:event="oninput" aria-invalid="@_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Response))" aria-describedby="@(_customTechniqueErrors.ContainsKey(nameof(_customTechnique.Response)) ? "custom-technique-response-error" : null)"></textarea>@if (_customTechniqueErrors.GetValueOrDefault(nameof(_customTechnique.Response)) is { } responseError) { <small id="custom-technique-response-error" class="intervention-field-error" role="alert">@responseError</small> }</label>
+                        <label class="intervention-checkbox"><input type="checkbox" @bind="_customTechnique.IncludeInHomeExerciseProgram" />Include in Home Exercise Program</label>
+                        <button type="button" class="intervention-primary-action custom-exercise-form__submit" @onclick="AddCustomTechniqueAsync"><img src="_content/PTDoc.UI/images/notes/interventions/add.svg" alt="" aria-hidden="true" />Add Custom Technique</button>
+                    </div>
                 }
             }
         </section>

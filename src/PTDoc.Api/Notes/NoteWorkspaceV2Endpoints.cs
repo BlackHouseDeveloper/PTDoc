@@ -39,6 +39,11 @@ public static class NoteWorkspaceV2Endpoints
             .WithName("GetNoteWorkspaceV2BodyRegionCatalog")
             .WithSummary("Get source-backed reference data for a body region");
 
+        group.MapGet("/catalogs/interventions", GetInterventionLibraryCatalog)
+            .RequireAuthorization(AuthorizationPolicies.ClinicalStaff)
+            .WithName("GetNoteWorkspaceV2InterventionLibraryCatalog")
+            .WithSummary("Get the source-backed exercise and manual-technique library");
+
         group.MapGet("/lookup/icd10", SearchIcd10)
             .RequireAuthorization(AuthorizationPolicies.ClinicalStaff)
             .WithName("SearchNoteWorkspaceV2Icd10")
@@ -192,6 +197,9 @@ public static class NoteWorkspaceV2Endpoints
 
         return Results.Ok(catalogs.GetBodyRegionCatalog(bodyPart));
     }
+
+    private static IResult GetInterventionLibraryCatalog(IWorkspaceReferenceCatalogService catalogs) =>
+        Results.Ok(catalogs.GetInterventionLibraryCatalog());
 
     private static IResult SearchIcd10(
         [FromQuery(Name = "q")] string? query,

@@ -888,7 +888,7 @@ public class DailyNoteService : IDailyNoteService
                 .Select(row => new ExerciseEntryDto
                 {
                     ExerciseName = FirstNonEmpty(row.ActualExercisePerformed, row.SuggestedExercise) ?? string.Empty,
-                    Notes = row.SetsRepsDuration
+                    Notes = BuildExerciseCompatibilityNotes(row)
                 })
                 .Where(item => !string.IsNullOrWhiteSpace(item.ExerciseName))
                 .ToList(),
@@ -1071,6 +1071,21 @@ public class DailyNoteService : IDailyNoteService
         {
             Name = ((TreatmentTarget)treatmentTarget).ToString()
         };
+    }
+
+    private static string? BuildExerciseCompatibilityNotes(ExerciseRowV2 row)
+    {
+        if (row.Prescription is null)
+        {
+            return row.SetsRepsDuration;
+        }
+
+        var parts = new List<string>();
+        if (row.Prescription.Sets.HasValue) parts.Add($"{row.Prescription.Sets.Value} sets");
+        if (row.Prescription.Repetitions.HasValue) parts.Add($"{row.Prescription.Repetitions.Value} reps");
+        if (!string.IsNullOrWhiteSpace(row.Prescription.Frequency)) parts.Add(row.Prescription.Frequency.Trim());
+        if (!string.IsNullOrWhiteSpace(row.Notes)) parts.Add(row.Notes.Trim());
+        return parts.Count == 0 ? row.SetsRepsDuration : string.Join("; ", parts);
     }
 
     private static int? MapGeneralInterventionTarget(GeneralInterventionEntryV2 entry)

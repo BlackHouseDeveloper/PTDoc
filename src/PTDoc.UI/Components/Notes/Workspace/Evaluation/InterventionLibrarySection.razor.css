@@ -110,6 +110,11 @@
 .exercise-hep-toggle:focus-visible,
 .intervention-search:focus-within,
 .custom-exercise-form input:focus-visible,
+.custom-exercise-form textarea:focus-visible,
+.custom-exercise-form select:focus-visible,
+.technique-detail-grid input:focus-visible,
+.technique-detail-grid textarea:focus-visible,
+.technique-detail-grid select:focus-visible,
 .exercise-prescription input:focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
@@ -226,7 +231,9 @@
 }
 
 .exercise-prescription label,
-.custom-exercise-form label {
+.custom-exercise-form label,
+.intervention-full-field,
+.technique-detail-grid label {
     display: grid;
     gap: var(--spacing-2);
     min-width: 0;
@@ -237,6 +244,12 @@
 
 .exercise-prescription input,
 .custom-exercise-form input,
+.custom-exercise-form textarea,
+.custom-exercise-form select,
+.intervention-full-field textarea,
+.technique-detail-grid input,
+.technique-detail-grid textarea,
+.technique-detail-grid select,
 .intervention-search input {
     width: 100%;
     min-width: 0;
@@ -248,6 +261,59 @@
     background: var(--surface-input);
     border: 1px solid var(--border-input);
     border-radius: var(--radius-sm);
+}
+
+.custom-exercise-form textarea,
+.intervention-full-field textarea,
+.technique-detail-grid textarea {
+    min-height: 88px;
+    resize: vertical;
+}
+
+.intervention-full-field {
+    display: grid;
+    gap: var(--spacing-2);
+    color: var(--text-primary);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+}
+
+.intervention-field-error {
+    color: var(--status-destructive-foreground);
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-normal);
+}
+
+.intervention-legacy-dosage {
+    margin: 0;
+    padding: var(--spacing-3);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    background: var(--surface-subtle);
+    border-radius: var(--radius-sm);
+}
+
+.technique-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-4);
+}
+
+.technique-detail-grid__full {
+    grid-column: 1 / -1;
+}
+
+.intervention-checkbox {
+    display: flex !important;
+    grid-template-columns: none;
+    align-items: center;
+    min-height: var(--touch-target-mobile);
+    gap: var(--spacing-2) !important;
+}
+
+.intervention-checkbox input {
+    width: 20px;
+    min-height: 20px;
 }
 
 .exercise-prescription input {
@@ -458,6 +524,41 @@
     min-height: 0;
 }
 
+.intervention-result-count {
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+}
+
+.intervention-state {
+    display: grid;
+    justify-items: center;
+    padding: var(--spacing-6) var(--spacing-4);
+    gap: var(--spacing-3);
+    color: var(--text-secondary);
+    text-align: center;
+    background: var(--surface-subtle);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+.intervention-state--error {
+    color: var(--status-destructive-foreground);
+    background: rgba(var(--destructive-rgb), 0.08);
+    border-color: rgba(var(--destructive-rgb), 0.3);
+}
+
+.intervention-state button {
+    min-height: var(--touch-target-mobile);
+    padding: var(--spacing-2) var(--spacing-4);
+    color: var(--primary);
+    font: inherit;
+    font-weight: var(--font-weight-medium);
+    background: var(--card);
+    border: 1px solid var(--primary);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+}
+
 .intervention-result {
     min-height: 68px;
     padding: var(--spacing-3);
@@ -529,6 +630,14 @@
 
     .exercise-prescription {
         grid-template-columns: 1fr;
+    }
+
+    .technique-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .technique-detail-grid__full {
+        grid-column: auto;
     }
 
     .exercise-card__header {

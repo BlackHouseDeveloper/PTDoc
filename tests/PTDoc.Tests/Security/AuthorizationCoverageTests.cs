@@ -294,6 +294,7 @@ public class AuthorizationCoverageTests
         new("GET",  "/api/v2/notes/workspace/{patientId:guid}/{noteId:guid}", AuthorizationPolicies.NoteRead),
         new("POST", "/api/v2/notes/workspace/", AuthorizationPolicies.NoteWrite),
         new("GET",  "/api/v2/notes/workspace/catalogs/body-regions/{bodyPart}", AuthorizationPolicies.ClinicalStaff),
+        new("GET",  "/api/v2/notes/workspace/catalogs/interventions", AuthorizationPolicies.ClinicalStaff),
         new("GET",  "/api/v2/notes/workspace/lookup/icd10", AuthorizationPolicies.ClinicalStaff),
         new("GET",  "/api/v2/notes/workspace/lookup/cpt", AuthorizationPolicies.ClinicalStaff),
 

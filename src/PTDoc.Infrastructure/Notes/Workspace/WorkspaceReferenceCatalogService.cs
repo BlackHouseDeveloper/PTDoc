@@ -19,6 +19,12 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
     private static readonly Lazy<IReadOnlyDictionary<BodyPart, BodyRegionCatalog>> Catalogs =
         new(() => WorkspaceReferenceCatalogAssetMapper.Map(WorkspaceCatalogAsset.Value));
 
+    private static readonly Lazy<InterventionLibraryCatalog> InterventionLibrary =
+        new(() => WorkspaceReferenceCatalogAssetMapper.MapInterventionLibrary(WorkspaceCatalogAsset.Value));
+
+    private static readonly Lazy<IReadOnlyDictionary<string, InterventionLibraryItem>> InterventionItemsById =
+        new(() => InterventionLibrary.Value.Items.ToDictionary(item => item.Id, StringComparer.OrdinalIgnoreCase));
+
     private static readonly Lazy<WorkspaceLookupReferenceDataAsset> LookupCatalog =
         new(() => EmbeddedJsonResourceLoader.LoadFromApplicationAssembly<WorkspaceLookupReferenceDataAsset>(WorkspaceLookupResourceName));
 
@@ -50,6 +56,25 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
 
     public IReadOnlyList<CodeLookupEntry> SearchIcd10(string? query, int take = 20) =>
         SearchCodes(SourceIcd10Codes.Value, query, take);
+
+    public InterventionLibraryCatalog GetInterventionLibraryCatalog() => new()
+    {
+        Version = InterventionLibrary.Value.Version,
+        Provenance = WorkspaceCatalogCloneHelpers.CloneProvenance(InterventionLibrary.Value.Provenance),
+        Items = InterventionLibrary.Value.Items.Select(CloneInterventionItem).ToList()
+    };
+
+    public InterventionLibraryItem? GetInterventionLibraryItem(string itemId)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+        {
+            return null;
+        }
+
+        return InterventionItemsById.Value.TryGetValue(itemId.Trim(), out var item)
+            ? CloneInterventionItem(item)
+            : null;
+    }
 
     public IReadOnlyList<CodeLookupEntry> SearchCpt(string? query, int take = 20) =>
         SearchCodes(SourceCptCodes.Value, query, take);
@@ -203,6 +228,16 @@ public sealed class WorkspaceReferenceCatalogService(IOutcomeMeasureRegistry out
         public List<string> SearchTerms { get; init; } = new();
         public int SourceOrder { get; init; }
     }
+
+    private static InterventionLibraryItem CloneInterventionItem(InterventionLibraryItem item) => new()
+    {
+        Id = item.Id,
+        Kind = item.Kind,
+        Name = item.Name,
+        Category = item.Category,
+        Region = item.Region,
+        SearchAliases = item.SearchAliases.ToList()
+    };
 
     private static BodyRegionCatalog CloneForBodyPart(BodyRegionCatalog source, BodyPart bodyPart) => new()
     {

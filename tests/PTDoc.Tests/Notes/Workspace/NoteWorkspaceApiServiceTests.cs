@@ -1117,6 +1117,45 @@ public sealed class NoteWorkspaceApiServiceTests
     }
 
     [Fact]
+    public async Task GetInterventionLibraryCatalogAsync_UsesV2EndpointAndCachesSuccessfulResponse()
+    {
+        var requestCount = 0;
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            requestCount++;
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("/api/v2/notes/workspace/catalogs/interventions", request.RequestUri!.AbsolutePath);
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new InterventionLibraryCatalog
+            {
+                Version = "test-v1",
+                Provenance = new ReferenceDataProvenance
+                {
+                    DocumentPath = "tests/fixtures/interventions.json",
+                    Version = "test-v1"
+                },
+                Items =
+                [
+                    new InterventionLibraryItem
+                    {
+                        Id = "exercise-test",
+                        Kind = InterventionKind.Exercise,
+                        Name = "Test exercise",
+                        Category = "Strengthening",
+                        Region = InterventionRegion.Shoulder
+                    }
+                ]
+            }, JsonOptions));
+        });
+
+        var service = CreateService(handler);
+        var first = await service.GetInterventionLibraryCatalogAsync();
+        var second = await service.GetInterventionLibraryCatalogAsync();
+
+        Assert.Same(first, second);
+        Assert.Equal(1, requestCount);
+    }
+
+    [Fact]
     public async Task GetBodyRegionCatalogAsync_PreservesAvailabilityAndProvenanceFields()
     {
         var handler = new StubHttpMessageHandler(request =>

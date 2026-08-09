@@ -1,5 +1,7 @@
 using PTDoc.Core.Models;
 
+using PTDoc.Application.Notes.Workspace;
+
 namespace PTDoc.UI.Components.Notes.Models;
 
 /// <summary>
@@ -58,6 +60,12 @@ public sealed class SpecialTestEntry
 
 public sealed class ExerciseRowEntry
 {
+    public string? SourceItemId { get; set; }
+    public string? SourceCatalogVersion { get; set; }
+    public string? Category { get; set; }
+    public InterventionRegion? InterventionRegion { get; set; }
+    public ExercisePrescriptionEntry? Prescription { get; set; }
+    public string? Notes { get; set; }
     public string SuggestedExercise { get; set; } = string.Empty;
     public string ActualExercisePerformed { get; set; } = string.Empty;
     public string? SetsRepsDuration { get; set; }
@@ -70,6 +78,13 @@ public sealed class ExerciseRowEntry
     public bool IncludeInHomeExerciseProgram { get; set; }
     public bool IsCheckedSuggestedExercise { get; set; }
     public bool IsSourceBacked { get; set; }
+}
+
+public sealed class ExercisePrescriptionEntry
+{
+    public int? Sets { get; set; }
+    public int? Repetitions { get; set; }
+    public string? Frequency { get; set; }
 }
 
 public class OutcomeMeasureEntry

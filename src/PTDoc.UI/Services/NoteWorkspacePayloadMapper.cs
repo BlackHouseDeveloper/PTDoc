@@ -187,6 +187,17 @@ public sealed class NoteWorkspacePayloadMapper
                 ExerciseRows = payload.Objective.ExerciseRows
                     .Select(row => new ExerciseRowEntry
                     {
+                        SourceItemId = row.SourceItemId,
+                        SourceCatalogVersion = row.SourceCatalogVersion,
+                        Category = row.Category,
+                        InterventionRegion = row.InterventionRegion,
+                        Prescription = row.Prescription is null ? null : new ExercisePrescriptionEntry
+                        {
+                            Sets = row.Prescription.Sets,
+                            Repetitions = row.Prescription.Repetitions,
+                            Frequency = row.Prescription.Frequency
+                        },
+                        Notes = row.Notes,
                         SuggestedExercise = row.SuggestedExercise,
                         ActualExercisePerformed = row.ActualExercisePerformed,
                         SetsRepsDuration = row.SetsRepsDuration,
@@ -276,6 +287,13 @@ public sealed class NoteWorkspacePayloadMapper
                 GeneralInterventions = payload.Plan.GeneralInterventions
                     .Select(entry => new GeneralInterventionEntry
                     {
+                        Kind = ResolveInterventionKind(entry.Kind, entry.Category),
+                        SourceItemId = entry.SourceItemId,
+                        SourceCatalogVersion = entry.SourceCatalogVersion,
+                        InterventionRegion = entry.InterventionRegion ??
+                            (ResolveInterventionKind(entry.Kind, entry.Category) == InterventionKind.ManualTechnique
+                                ? InterventionRegion.General
+                                : null),
                         Name = entry.Name,
                         Category = entry.Category,
                         IsSourceBacked = entry.IsSourceBacked,
@@ -792,9 +810,15 @@ public sealed class NoteWorkspacePayloadMapper
                 || !string.IsNullOrWhiteSpace(row.ActualExercisePerformed))
             .Select(row => new ExerciseRowV2
             {
+                SourceItemId = TrimToNull(row.SourceItemId),
+                SourceCatalogVersion = TrimToNull(row.SourceCatalogVersion),
+                Category = TrimToNull(row.Category),
+                InterventionRegion = row.InterventionRegion,
+                Prescription = MapPrescription(row.Prescription),
+                Notes = TrimToNull(row.Notes),
                 SuggestedExercise = row.SuggestedExercise?.Trim() ?? string.Empty,
                 ActualExercisePerformed = row.ActualExercisePerformed?.Trim() ?? string.Empty,
-                SetsRepsDuration = string.IsNullOrWhiteSpace(row.SetsRepsDuration) ? null : row.SetsRepsDuration.Trim(),
+                SetsRepsDuration = BuildLegacyDosage(row.Prescription, row.SetsRepsDuration),
                 ResistanceOrWeight = string.IsNullOrWhiteSpace(row.ResistanceOrWeight) ? null : row.ResistanceOrWeight.Trim(),
                 CptCode = string.IsNullOrWhiteSpace(row.CptCode) ? null : row.CptCode.Trim(),
                 CptDescription = string.IsNullOrWhiteSpace(row.CptDescription) ? null : row.CptDescription.Trim(),
@@ -816,6 +840,12 @@ public sealed class NoteWorkspacePayloadMapper
             .Where(row => !string.IsNullOrWhiteSpace(row.SuggestedExercise) || !string.IsNullOrWhiteSpace(row.ActualExercisePerformed))
             .Select(row => new ExerciseRowV2
             {
+                SourceItemId = row.SourceItemId,
+                SourceCatalogVersion = row.SourceCatalogVersion,
+                Category = row.Category,
+                InterventionRegion = row.InterventionRegion,
+                Prescription = ClonePrescription(row.Prescription),
+                Notes = row.Notes,
                 SuggestedExercise = row.SuggestedExercise,
                 ActualExercisePerformed = row.ActualExercisePerformed,
                 SetsRepsDuration = row.SetsRepsDuration,
@@ -1011,6 +1041,10 @@ public sealed class NoteWorkspacePayloadMapper
             .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
             .Select(entry => new GeneralInterventionEntryV2
             {
+                Kind = ResolveInterventionKind(entry.Kind, entry.Category),
+                SourceItemId = TrimToNull(entry.SourceItemId),
+                SourceCatalogVersion = TrimToNull(entry.SourceCatalogVersion),
+                InterventionRegion = entry.InterventionRegion,
                 Name = entry.Name.Trim(),
                 Category = string.IsNullOrWhiteSpace(entry.Category) ? null : entry.Category.Trim(),
                 IsSourceBacked = entry.IsSourceBacked,
@@ -1034,6 +1068,10 @@ public sealed class NoteWorkspacePayloadMapper
             .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
             .Select(entry => new GeneralInterventionEntryV2
             {
+                Kind = ResolveInterventionKind(entry.Kind, entry.Category),
+                SourceItemId = entry.SourceItemId,
+                SourceCatalogVersion = entry.SourceCatalogVersion,
+                InterventionRegion = entry.InterventionRegion,
                 Name = entry.Name,
                 Category = entry.Category,
                 IsSourceBacked = entry.IsSourceBacked,
@@ -1058,10 +1096,70 @@ public sealed class NoteWorkspacePayloadMapper
             .Select(value => new GeneralInterventionEntryV2
             {
                 Name = value.Trim(),
-                Category = "Manual"
+                Category = "Manual",
+                Kind = InterventionKind.ManualTechnique,
+                InterventionRegion = InterventionRegion.General
             })
             .ToList();
     }
+
+    private static ExercisePrescriptionV2? MapPrescription(ExercisePrescriptionEntry? prescription)
+    {
+        if (prescription is null ||
+            (!prescription.Sets.HasValue && !prescription.Repetitions.HasValue && string.IsNullOrWhiteSpace(prescription.Frequency)))
+        {
+            return null;
+        }
+
+        return new ExercisePrescriptionV2
+        {
+            Sets = prescription.Sets,
+            Repetitions = prescription.Repetitions,
+            Frequency = TrimToNull(prescription.Frequency)
+        };
+    }
+
+    private static string? BuildLegacyDosage(ExercisePrescriptionEntry? prescription, string? existing)
+    {
+        if (prescription is null ||
+            (!prescription.Sets.HasValue && !prescription.Repetitions.HasValue && string.IsNullOrWhiteSpace(prescription.Frequency)))
+        {
+            return TrimToNull(existing);
+        }
+
+        var values = new List<string>();
+        if (prescription.Sets.HasValue)
+        {
+            values.Add($"{prescription.Sets.Value} sets");
+        }
+        if (prescription.Repetitions.HasValue)
+        {
+            values.Add($"{prescription.Repetitions.Value} reps");
+        }
+        if (!string.IsNullOrWhiteSpace(prescription.Frequency))
+        {
+            values.Add(prescription.Frequency.Trim());
+        }
+        return string.Join("; ", values);
+    }
+
+    private static ExercisePrescriptionV2? ClonePrescription(ExercisePrescriptionV2? prescription) =>
+        prescription is null
+            ? null
+            : new ExercisePrescriptionV2
+            {
+                Sets = prescription.Sets,
+                Repetitions = prescription.Repetitions,
+                Frequency = prescription.Frequency
+            };
+
+    private static InterventionKind ResolveInterventionKind(InterventionKind kind, string? category) =>
+        kind != InterventionKind.General
+            ? kind
+            : string.Equals(category, "Manual", StringComparison.OrdinalIgnoreCase) ||
+              string.Equals(category, "Manual Work Technique", StringComparison.OrdinalIgnoreCase)
+                ? InterventionKind.ManualTechnique
+                : InterventionKind.General;
 
     private static List<UiCptCodeEntry> BuildVisibleCptCodes(PlanVm plan, ObjectiveVm objective, NoteType noteType)
     {

@@ -26,6 +26,37 @@ public sealed class WorkspaceReferenceCatalogServiceTests
         new WorkspaceReferenceCatalogService(new OutcomeMeasureRegistry());
 
     [Fact]
+    public void GetInterventionLibraryCatalog_ReturnsStableValidatedSourceBackedEntries()
+    {
+        var catalog = _catalogs.GetInterventionLibraryCatalog();
+
+        Assert.False(string.IsNullOrWhiteSpace(catalog.Version));
+        Assert.NotNull(catalog.Provenance);
+        Assert.False(string.IsNullOrWhiteSpace(catalog.Provenance.DocumentPath));
+        Assert.NotEmpty(catalog.Items);
+        Assert.Equal(catalog.Items.Count, catalog.Items.Select(item => item.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.All(catalog.Items, item =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(item.Id));
+            Assert.False(string.IsNullOrWhiteSpace(item.Name));
+            Assert.NotEqual(InterventionKind.General, item.Kind);
+        });
+
+        var shoulder = _catalogs.GetBodyRegionCatalog(BodyPart.Shoulder);
+        Assert.All(
+            catalog.Items.Where(item => item.Kind == InterventionKind.Exercise),
+            item => Assert.Contains(item.Name, shoulder.ExerciseOptions));
+        Assert.All(
+            catalog.Items.Where(item => item.Kind == InterventionKind.ManualTechnique),
+            item => Assert.Contains(item.Name, shoulder.TreatmentInterventionOptions));
+
+        var first = catalog.Items[0];
+        var resolved = _catalogs.GetInterventionLibraryItem(first.Id.ToUpperInvariant());
+        Assert.NotNull(resolved);
+        Assert.Equal(first.Id, resolved.Id);
+    }
+
+    [Fact]
     public void GetBodyRegionCatalog_Shoulder_UsesAssetBackedReferenceDataAndRegistryBackedOutcomeMetadata()
     {
         var catalog = _catalogs.GetBodyRegionCatalog(BodyPart.Shoulder);

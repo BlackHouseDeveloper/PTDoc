@@ -615,6 +615,12 @@ builder.Services.AddScoped<ICredentialValidator, LegacyApiCredentialValidator>()
 
 var app = builder.Build();
 
+// Fail fast if the governed intervention catalog contains invalid IDs, kinds,
+// regions, names, or provenance instead of deferring the error to note authoring.
+_ = app.Services
+    .GetRequiredService<IWorkspaceReferenceCatalogService>()
+    .GetInterventionLibraryCatalog();
+
 // Sprint G: Safe exception handling — never expose stack traces or internal details to clients.
 // Returns a generic JSON error response for all unhandled exceptions.
 app.UseExceptionHandler(errorApp =>
