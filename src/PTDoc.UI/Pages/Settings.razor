@@ -14,7 +14,15 @@
             OnSectionSelected="HandleSectionSelected" />
 
         <main class="settings-main-content" aria-live="polite">
-            @if (activeSection == "providers")
+            @if (activeSection == "roles-permissions")
+            {
+                <RolesPermissionsSettings />
+            }
+            else if (activeSection == "scheduling")
+            {
+                <SchedulingVisitTypesSettings />
+            }
+            else if (activeSection == "providers")
             {
                 <ProviderDirectorySettingsPanel />
             }
@@ -53,7 +61,7 @@
 </div>
 
 @code {
-    private string activeSection = "approvals";
+    private string activeSection = "roles-permissions";
     private bool isClinicalApproverOnly;
 
     [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
@@ -83,6 +91,7 @@
 
     private static string GetSectionTitle(string sectionKey) => sectionKey switch
     {
+        "roles-permissions" => "Roles & Permissions",
         "scheduling" => "Scheduling & Visit Types",
         "documentation" => "Documentation and Compliance",
         "providers" => "Provider Directory",
@@ -94,7 +103,6 @@
 
     private static string GetDeferredDescription(string sectionKey) => sectionKey switch
     {
-        "scheduling" => "This settings area is deferred until the scheduling contract is defined and available for UI integration.",
         "documentation" => "This settings area is deferred until documentation controls are exposed by the backend.",
         "billing" => "This settings area is deferred until billing and coding preferences are available through an existing API contract.",
         "ai-outcomes" => "This settings area is deferred until AI and outcome-measure preferences are backed by a dedicated service contract.",

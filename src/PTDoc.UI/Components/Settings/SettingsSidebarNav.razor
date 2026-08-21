@@ -21,7 +21,7 @@
 
 @code {
     [Parameter]
-    public string ActiveSection { get; set; } = "approvals";
+    public string ActiveSection { get; set; } = "roles-permissions";
 
     [Parameter]
     public EventCallback<string> OnSectionSelected { get; set; }
@@ -31,6 +31,7 @@
 
     private static readonly IReadOnlyList<SettingsNavItem> navItems =
     [
+        new("roles-permissions", "Roles & Permissions", "Manage roles, access levels, and security policies"),
         new("scheduling", "Scheduling & Visit Types", "Manage appointment cadence and visit templates"),
         new("providers", "Provider Directory", "Review and manage external providers"),
         new("documentation", "Documentation and Compliance", "Configure charting standards and compliance defaults"),

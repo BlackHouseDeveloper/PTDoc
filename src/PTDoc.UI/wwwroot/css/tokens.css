@@ -187,6 +187,46 @@
   --success-box-bg: rgba(var(--primary-rgb), 0.1);
   --success-box-border: rgba(var(--primary-rgb), 0.2);
 
+  /* Roles & Permissions settings surfaces */
+  --settings-panel-border: rgba(var(--primary-rgb), 0.2);
+  --settings-guidance-bg: #faf5ff;
+  --settings-guidance-border: #e9d5ff;
+  --settings-guidance-foreground: #6b21a8;
+  --settings-clone-bg: #eff6ff;
+  --settings-clone-border: #bedbff;
+  --settings-clone-foreground: #1e3a8a;
+  --settings-clone-muted: #1d4ed8;
+  --settings-clone-button-bg: #93c5fd;
+  --settings-summary-bg: #f0fdf4;
+  --settings-summary-border: #bbf7d0;
+  --settings-summary-foreground: #14532d;
+  --settings-compliance-bg: #fff7ed;
+  --settings-compliance-border: #ffd6a8;
+  --settings-compliance-foreground: #7c2d12;
+  --settings-compliance-muted: #9a3412;
+  --settings-action-bar-bg: rgba(38, 38, 38, 0.95);
+  --settings-action-bar-foreground: #e5e5e5;
+  --settings-scheduling-neutral-icon-filter: none;
+  --settings-scheduling-muted-icon-filter: none;
+  --settings-scheduling-panel-border: var(--border);
+  --settings-scheduling-active-tab-bg: var(--card);
+  --settings-scheduling-action-bar-bg: rgba(255, 255, 255, 0.95);
+  --settings-scheduling-action-bar-foreground: var(--foreground);
+  --settings-scheduling-action-icon-filter: brightness(0);
+  --settings-scheduling-content-max-width: 61rem;
+  --settings-scheduling-item-min-height: 4.75rem;
+  --settings-scheduling-row-min-height: 5rem;
+  --settings-scheduling-clinic-hours-min-height: 14.875rem;
+  --settings-scheduling-quick-row-min-height: 4.625rem;
+  --settings-role-owner: #a855f7;
+  --settings-role-manager: #3b82f6;
+  --settings-role-pt: #22c55e;
+  --settings-role-pta: #14b8a6;
+  --settings-role-aide: #eab308;
+  --settings-role-front-desk: #f97316;
+  --settings-role-billing: #6366f1;
+  --settings-role-patient: #64748b;
+
   /* Dashboard Plan of Care Card Tokens */
   --poc-card-title-width: 12rem;
 }
@@ -262,6 +302,12 @@
 
   --ai-output-text: #e5e5e5;
   --ai-output-background: #2a2a2a;
+  --settings-scheduling-neutral-icon-filter: brightness(0) invert(1);
+  --settings-scheduling-muted-icon-filter: brightness(0) invert(1);
+  --settings-scheduling-active-tab-bg: transparent;
+  --settings-scheduling-action-bar-bg: rgba(38, 38, 38, 0.95);
+  --settings-scheduling-action-bar-foreground: #e5e5e5;
+  --settings-scheduling-action-icon-filter: none;
 }
 
 /* Action Button Tokens */
