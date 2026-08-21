@@ -123,7 +123,7 @@ jobs:
         docker exec ${{ job.services.sqlserver.id }} \
           /opt/mssql-tools18/bin/sqlcmd \
           -S localhost -U sa -P 'CI_Strong!Passw0rd' -C \
-          -Q "IF DB_ID('PTDoc_CI') IS NULL CREATE DATABASE PTDoc_CI;"
+          -Q "IF DB_ID('PTDoc_CI') IS NULL CREATE DATABASE PTDoc_CI; ALTER DATABASE PTDoc_CI SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE;"
 
     - name: Restore local .NET tools (pinned dotnet-ef)
       run: dotnet tool restore

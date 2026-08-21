@@ -723,6 +723,49 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 AS
                 BEGIN
                     SET NOCOUNT ON;
+
+                    DECLARE @LockResult int;
+                    DECLARE @ClinicianId uniqueidentifier;
+                    DECLARE @LockResource nvarchar(255);
+                    DECLARE overlap_lock_cursor CURSOR LOCAL FAST_FORWARD FOR
+                        SELECT DISTINCT i.[ClinicalId]
+                        FROM inserted i
+                        LEFT JOIN deleted d ON d.[Id] = i.[Id]
+                        WHERE i.[Status] NOT IN (5, 6)
+                          AND (
+                                d.[Id] IS NULL
+                                OR i.[ClinicalId] <> d.[ClinicalId]
+                                OR i.[StartTimeUtc] <> d.[StartTimeUtc]
+                                OR i.[EndTimeUtc] <> d.[EndTimeUtc]
+                                OR (CASE WHEN i.[Status] IN (5, 6) THEN 0 ELSE 1 END)
+                                    <> (CASE WHEN d.[Status] IN (5, 6) THEN 0 ELSE 1 END)
+                                OR i.[AuthorizedOverlap] <> d.[AuthorizedOverlap]
+                            )
+                        ORDER BY i.[ClinicalId];
+
+                    OPEN overlap_lock_cursor;
+                    FETCH NEXT FROM overlap_lock_cursor INTO @ClinicianId;
+                    WHILE @@FETCH_STATUS = 0
+                    BEGIN
+                        SET @LockResource = N'PTDoc:AppointmentOverlap:' + CONVERT(nvarchar(36), @ClinicianId);
+                        EXEC @LockResult = sys.sp_getapplock
+                            @Resource = @LockResource,
+                            @LockMode = 'Exclusive',
+                            @LockOwner = 'Transaction',
+                            @LockTimeout = 10000;
+
+                        IF @LockResult < 0
+                        BEGIN
+                            CLOSE overlap_lock_cursor;
+                            DEALLOCATE overlap_lock_cursor;
+                            THROW 51001, 'APPOINTMENT_OVERBOOKING_LOCK: unable to serialize clinician appointment validation', 1;
+                        END
+
+                        FETCH NEXT FROM overlap_lock_cursor INTO @ClinicianId;
+                    END
+                    CLOSE overlap_lock_cursor;
+                    DEALLOCATE overlap_lock_cursor;
+
                     IF EXISTS (
                         SELECT 1 FROM inserted i
                         LEFT JOIN deleted d ON d.[Id] = i.[Id]

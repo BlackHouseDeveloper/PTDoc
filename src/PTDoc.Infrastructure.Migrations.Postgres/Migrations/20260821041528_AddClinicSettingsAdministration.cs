@@ -724,7 +724,16 @@ namespace PTDoc.Infrastructure.Data.Migrations
                        AND NEW."AuthorizedOverlap" IS NOT DISTINCT FROM OLD."AuthorizedOverlap" THEN
                         RETURN NEW;
                     END IF;
-                    IF NEW."Status" IN (5, 6) OR NEW."AuthorizedOverlap" THEN
+                    IF NEW."Status" IN (5, 6) THEN
+                        RETURN NEW;
+                    END IF;
+
+                    -- Serialize active scheduling writes for a clinician before checking the
+                    -- appointment table. The transaction-scoped lock makes a waiter take a
+                    -- fresh statement snapshot after the preceding writer commits.
+                    PERFORM pg_advisory_xact_lock(hashtextextended(NEW."ClinicalId"::text, 0));
+
+                    IF NEW."AuthorizedOverlap" THEN
                         RETURN NEW;
                     END IF;
                     IF EXISTS (

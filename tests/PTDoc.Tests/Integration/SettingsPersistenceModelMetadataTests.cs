@@ -88,6 +88,16 @@ public sealed class SettingsPersistenceModelMetadataTests
         Assert.Contains("WHEN 3 THEN 're-evaluation'", migrationSql, StringComparison.Ordinal);
         Assert.Contains("IN (0, 1, 2, 3)", migrationSql, StringComparison.Ordinal);
 
+        if (activeProvider == "Npgsql.EntityFrameworkCore.PostgreSQL")
+        {
+            Assert.Contains("pg_advisory_xact_lock", migrationSql, StringComparison.Ordinal);
+        }
+        else if (activeProvider == "Microsoft.EntityFrameworkCore.SqlServer")
+        {
+            Assert.Contains("sys.sp_getapplock", migrationSql, StringComparison.Ordinal);
+            Assert.Contains("@LockOwner = 'Transaction'", migrationSql, StringComparison.Ordinal);
+        }
+
         if (activeProvider == "Microsoft.EntityFrameworkCore.Sqlite")
         {
             Assert.Contains(

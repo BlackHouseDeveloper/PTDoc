@@ -309,6 +309,109 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
             exception.GetBaseException().Message,
             StringComparison.Ordinal);
         context.Entry(unauthorizedOverlap).State = EntityState.Detached;
+
+        if (!context.Database.IsSqlite())
+        {
+            await AssertConcurrentAppointmentOverlapRejectedAsync(
+                context,
+                clinicId,
+                patientId,
+                clinicianId,
+                existingAppointment.EndTimeUtc.AddHours(4));
+        }
+    }
+
+    private static async Task AssertConcurrentAppointmentOverlapRejectedAsync(
+        ApplicationDbContext context,
+        Guid clinicId,
+        Guid patientId,
+        Guid clinicianId,
+        DateTime startTimeUtc)
+    {
+        await using var firstContext = CreateSiblingProviderContext(context);
+        await using var secondContext = CreateSiblingProviderContext(context);
+        await using var firstTransaction = await firstContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        await using var secondTransaction = await secondContext.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+
+        var firstAppointment = CreateConcurrentAppointment(
+            clinicId,
+            patientId,
+            clinicianId,
+            startTimeUtc,
+            startTimeUtc.AddMinutes(45));
+        var secondAppointment = CreateConcurrentAppointment(
+            clinicId,
+            patientId,
+            clinicianId,
+            startTimeUtc.AddMinutes(15),
+            startTimeUtc.AddHours(1));
+
+        firstContext.Appointments.Add(firstAppointment);
+        await firstContext.SaveChangesAsync();
+
+        secondContext.Appointments.Add(secondAppointment);
+        var secondSave = secondContext.SaveChangesAsync();
+
+        // The second write must remain blocked until the first transaction releases
+        // its clinician-scoped lock. Without serialization, it can validate against
+        // an MVCC/snapshot view that does not contain the first appointment.
+        var prematureCompletion = await Task.WhenAny(secondSave, Task.Delay(TimeSpan.FromSeconds(1)));
+        Assert.NotSame(secondSave, prematureCompletion);
+        await firstTransaction.CommitAsync();
+
+        var exception = await Assert.ThrowsAsync<DbUpdateException>(() => secondSave);
+        Assert.Contains(
+            "APPOINTMENT_OVERBOOKING",
+            exception.GetBaseException().Message,
+            StringComparison.Ordinal);
+    }
+
+    private static ApplicationDbContext CreateSiblingProviderContext(ApplicationDbContext context)
+    {
+        var connectionString = context.Database.GetConnectionString()
+            ?? throw new InvalidOperationException("The configured database provider has no connection string.");
+        var optionsBuilder = new DbContextOptionsBuilder<ApplicationDbContext>();
+
+        if (context.Database.IsSqlServer())
+        {
+            optionsBuilder.UseSqlServer(
+                connectionString,
+                builder => builder.MigrationsAssembly("PTDoc.Infrastructure.Migrations.SqlServer"));
+        }
+        else if (context.Database.IsNpgsql())
+        {
+            optionsBuilder.UseNpgsql(
+                connectionString,
+                builder => builder.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Postgres"));
+        }
+        else
+        {
+            throw new InvalidOperationException("Concurrent overlap verification requires SQL Server or PostgreSQL.");
+        }
+
+        return new ApplicationDbContext(optionsBuilder.Options);
+    }
+
+    private static Appointment CreateConcurrentAppointment(
+        Guid clinicId,
+        Guid patientId,
+        Guid clinicianId,
+        DateTime startTimeUtc,
+        DateTime endTimeUtc)
+    {
+        return new Appointment
+        {
+            PatientId = patientId,
+            ClinicalId = clinicianId,
+            ClinicId = clinicId,
+            StartTimeUtc = startTimeUtc,
+            EndTimeUtc = endTimeUtc,
+            AppointmentType = AppointmentType.FollowUp,
+            Status = AppointmentStatus.Scheduled,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = clinicianId,
+            SyncState = SyncState.Pending
+        };
     }
 
     private static async Task<Guid> AssertReminderDispatchClinicBoundaryAsync(
