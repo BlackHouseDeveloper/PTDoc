@@ -3442,11 +3442,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("PTDoc.Core.Models.User", null)
-                        .WithMany()
-                        .HasForeignKey("ClinicianId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.Navigation("Clinic");
                 });
 
@@ -3985,6 +3980,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasForeignKey("ClinicId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("ClinicianId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Clinic");
                 });
