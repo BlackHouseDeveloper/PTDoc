@@ -1,6 +1,7 @@
 import { expect, Page, test } from '@playwright/test';
 import {
   attachConsoleCapture,
+  authenticateAs,
   authenticateIfNeeded,
   expectNoRelevantConsoleErrors,
   waitForAppInteractive
@@ -31,7 +32,14 @@ const routeCases: RouteCase[] = [
   { name: 'dashboard', path: '/', titlePattern: /Dashboard/i },
   { name: 'appointments', path: '/appointments', titlePattern: /Appointments/i },
   { name: 'intake', path: '/intake', titlePattern: /Intake/i },
-  { name: 'notes', path: '/notes', titlePattern: /Notes/i }
+  { name: 'notes', path: '/notes', titlePattern: /Notes/i },
+  { name: 'settings', path: '/settings', titlePattern: /Settings/i }
+];
+
+const settingsViewports: ViewportCase[] = [
+  { name: 'roles-900px-breakpoint', width: 900, height: 900 },
+  { name: 'shared-767px-breakpoint', width: 767, height: 900 },
+  { name: 'shared-520px-breakpoint', width: 520, height: 844 }
 ];
 
 const noteWorkspacePath = process.env.PTDOC_UI_QA_NOTE_WORKSPACE_PATH;
@@ -114,6 +122,58 @@ test.describe('PTDoc responsive UI QA', () => {
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoRelevantConsoleErrors(page);
   });
+
+  for (const theme of ['light', 'dark'] as const) {
+    for (const viewport of settingsViewports) {
+      test(`settings tabs are usable at ${viewport.name} in ${theme} mode`, async ({ page }) => {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await authenticateForSettings(page);
+        await setTheme(page, theme);
+        await gotoAppRoute(page, '/settings');
+
+        await expect(page.getByRole('heading', { name: 'Roles & Permissions', exact: true })).toBeVisible();
+        const rolePermissionsTab = page.getByRole('tab', { name: 'Role Permissions' });
+        const securitySettingsTab = page.getByRole('tab', { name: 'Security Settings' });
+        await expect(rolePermissionsTab).toHaveAttribute('aria-selected', 'true');
+        await securitySettingsTab.click();
+        await expect(securitySettingsTab).toHaveAttribute('aria-selected', 'true');
+        await rolePermissionsTab.click();
+
+        const permissionLevel = page.getByRole('radio', { name: 'View Clinical Notes: View' });
+        await permissionLevel.scrollIntoViewIfNeeded();
+        await permissionLevel.focus();
+        const permissionScrollBefore = await page.evaluate(() => window.scrollY);
+        await permissionLevel.press('End');
+        await expect(permissionLevel).toHaveAttribute('aria-checked', 'true');
+        const permissionScrollAfter = await page.evaluate(() => window.scrollY);
+        expect(Math.abs(permissionScrollAfter - permissionScrollBefore)).toBeLessThanOrEqual(1);
+
+        await page.getByRole('button', { name: /Scheduling & Visit Types/i }).click();
+        await expect(page.getByRole('heading', { name: 'Scheduling & Visit Types', exact: true })).toBeVisible();
+
+        const visitTypesTab = page.getByRole('tab', { name: 'Visit Types' });
+        const scheduleBlocksTab = page.getByRole('tab', { name: 'Schedule Blocks' });
+        const clinicHoursTab = page.getByRole('tab', { name: 'Clinic Hours' });
+        await scheduleBlocksTab.click();
+        await expect(scheduleBlocksTab).toHaveAttribute('aria-selected', 'true');
+        await expect.poll(() => scheduleBlocksTab.evaluate(element => getComputedStyle(element).borderTopColor))
+          .not.toBe('rgba(0, 0, 0, 0)');
+
+        await visitTypesTab.click();
+        await visitTypesTab.scrollIntoViewIfNeeded();
+        await visitTypesTab.focus();
+        const tabScrollBefore = await page.evaluate(() => window.scrollY);
+        await visitTypesTab.press('End');
+        await expect(clinicHoursTab).toHaveAttribute('aria-selected', 'true');
+        const tabScrollAfter = await page.evaluate(() => window.scrollY);
+        expect(Math.abs(tabScrollAfter - tabScrollBefore)).toBeLessThanOrEqual(1);
+
+        await expectNoFrameworkOverlay(page);
+        await expectNoDocumentHorizontalOverflow(page);
+        await expectNoRelevantConsoleErrors(page);
+      });
+    }
+  }
 
   test('desktop sidebar collapses to an icon rail without clipping controls', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
@@ -246,6 +306,17 @@ async function gotoAppRoute(page: Page, path: string) {
   await page.goto(`${path}${separator}ptdocViewportDiagnostics=1`);
   await page.waitForLoadState('domcontentloaded');
   await waitForAppInteractive(page);
+}
+
+async function authenticateForSettings(page: Page) {
+  const adminUsername = process.env.PTDOC_UI_QA_ADMIN_USERNAME;
+  const adminPin = process.env.PTDOC_UI_QA_ADMIN_PIN ?? process.env.PTDOC_UI_QA_PIN;
+  if (adminUsername && adminPin) {
+    await authenticateAs(page, adminUsername, adminPin);
+    return;
+  }
+
+  await authenticateIfNeeded(page);
 }
 
 async function setTheme(page: Page, theme: 'light' | 'dark') {

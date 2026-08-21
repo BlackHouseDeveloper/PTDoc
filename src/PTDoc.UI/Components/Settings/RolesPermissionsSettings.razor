@@ -1,4 +1,7 @@
-<section class="roles-permissions" aria-labelledby="roles-permissions-title">
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<section class="roles-permissions" aria-labelledby="roles-permissions-title" @ref="_root">
     <header class="roles-permissions__header">
         <img src="_content/PTDoc.UI/images/settings/role-selector.svg" alt="" aria-hidden="true" />
         <div>
@@ -177,13 +180,13 @@
             <section class="permission-summary" aria-labelledby="permission-summary-title">
                 <header class="permission-summary__header">
                     <img src="_content/PTDoc.UI/images/settings/summary.svg" alt="" aria-hidden="true" />
-                    <h2 id="permission-summary-title">Permission Summary for PT / DPT</h2>
+                    <h2 id="permission-summary-title">Permission Summary for @_selectedRole</h2>
                 </header>
                 <div class="permission-summary__metrics">
-                    <div><strong>2</strong><span>Full Access</span></div>
-                    <div><strong>7</strong><span>Edit Access</span></div>
-                    <div><strong>6</strong><span>View Only</span></div>
-                    <div><strong>15</strong><span>No Access</span></div>
+                    <div><strong>@CountPermissionLevel("Full")</strong><span>Full Access</span></div>
+                    <div><strong>@CountPermissionLevel("Edit")</strong><span>Edit Access</span></div>
+                    <div><strong>@CountPermissionLevel("View")</strong><span>View Only</span></div>
+                    <div><strong>@CountPermissionLevel("None")</strong><span>No Access</span></div>
                 </div>
             </section>
 
@@ -280,8 +283,10 @@
 
 @code {
     private SettingsTab _activeTab = SettingsTab.RolePermissions;
+    private ElementReference _root;
     private ElementReference _rolePermissionsTab;
     private ElementReference _securitySettingsTab;
+    private IJSObjectReference? _keyboardModule;
     private string _selectedRole = "PT / DPT";
     private string _cloneSourceRole = string.Empty;
     private bool _requireMfa = true;
@@ -292,6 +297,7 @@
     private string _autoLockoutTime = string.Empty;
     private string _passwordExpiration = string.Empty;
     private string _minimumPasswordLength = "8";
+    private SecuritySettingsSnapshot _savedSecuritySettings = SecuritySettingsSnapshot.Default;
 
     private static readonly IReadOnlyList<RoleDefinition> Roles =
     [
@@ -305,7 +311,35 @@
         new("Patient", "Patient portal access only", "role-card__dot--patient")
     ];
 
-    private readonly IReadOnlyList<PermissionCategory> _permissionCategories = CreatePermissionCategories();
+    private readonly Dictionary<string, IReadOnlyList<PermissionCategory>> _permissionCategoriesByRole =
+        Roles.ToDictionary(role => role.Name, _ => CreatePermissionCategories(), StringComparer.Ordinal);
+
+    private IReadOnlyList<PermissionCategory> _permissionCategories = Array.Empty<PermissionCategory>();
+
+    protected override void OnInitialized()
+    {
+        _permissionCategories = _permissionCategoriesByRole[_selectedRole];
+        _savedSecuritySettings = CaptureSecuritySettings();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            _keyboardModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/settings-keyboard.js");
+            await _keyboardModule.InvokeVoidAsync("attachKeyboardGuards", _root);
+        }
+        catch (Exception)
+        {
+            // Blazor handlers still provide selection when interop is unavailable during
+            // prerender, component tests, or circuit teardown.
+        }
+    }
 
     private void SelectTab(SettingsTab tab)
     {
@@ -347,17 +381,20 @@
     private void SelectRole(string roleName)
     {
         _selectedRole = roleName;
+        _permissionCategories = _permissionCategoriesByRole[roleName];
         _cloneSourceRole = string.Empty;
         // TODO: Load role list from application data source.
-        // TODO: Load permissions for selected role.
     }
 
     private static void SetPermissionLevel(PermissionDefinition permission, string level)
     {
         permission.SelectedLevel = level;
         // TODO: Persist permission changes.
-        // TODO: Calculate permission-summary counts dynamically when role data is connected.
     }
+
+    private int CountPermissionLevel(string level) => _permissionCategories
+        .SelectMany(category => category.Permissions)
+        .Count(permission => permission.SelectedLevel == level);
 
     private static async Task HandlePermissionLevelKeyDownAsync(
         KeyboardEventArgs eventArgs,
@@ -415,16 +452,17 @@
 
     private void ResetSecuritySettings()
     {
-        // TODO: Determine security default values for Reset to Default.
+        ApplySecuritySettings(SecuritySettingsSnapshot.Default);
     }
 
     private void CancelSecurityChanges()
     {
-        // TODO: Implement Cancel/dirty-state behavior.
+        ApplySecuritySettings(_savedSecuritySettings);
     }
 
     private void SaveSecurityChanges()
     {
+        _savedSecuritySettings = CaptureSecuritySettings();
         // TODO: Load security policy values from the application data source.
         // TODO: Persist security toggle changes.
         // TODO: Persist security input values.
@@ -432,6 +470,28 @@
         // TODO: Implement Save Changes persistence.
         // TODO: Connect actual audit/compliance behavior.
         // TODO: Apply application-standard loading/error/success states when backend integration is introduced.
+    }
+
+    private SecuritySettingsSnapshot CaptureSecuritySettings() => new(
+        _requireMfa,
+        _requirePinChange,
+        _allowRoleCustomization,
+        _enableAuditLog,
+        _restrictScheduleAccess,
+        _autoLockoutTime,
+        _passwordExpiration,
+        _minimumPasswordLength);
+
+    private void ApplySecuritySettings(SecuritySettingsSnapshot settings)
+    {
+        _requireMfa = settings.RequireMfa;
+        _requirePinChange = settings.RequirePinChange;
+        _allowRoleCustomization = settings.AllowRoleCustomization;
+        _enableAuditLog = settings.EnableAuditLog;
+        _restrictScheduleAccess = settings.RestrictScheduleAccess;
+        _autoLockoutTime = settings.AutoLockoutTime;
+        _passwordExpiration = settings.PasswordExpiration;
+        _minimumPasswordLength = settings.MinimumPasswordLength;
     }
 
     private RenderFragment QuickAdminTools() => @<text>
@@ -568,6 +628,27 @@
 
     private sealed record RoleDefinition(string Name, string Description, string DotClass);
 
+    private sealed record SecuritySettingsSnapshot(
+        bool RequireMfa,
+        bool RequirePinChange,
+        bool AllowRoleCustomization,
+        bool EnableAuditLog,
+        bool RestrictScheduleAccess,
+        string AutoLockoutTime,
+        string PasswordExpiration,
+        string MinimumPasswordLength)
+    {
+        public static SecuritySettingsSnapshot Default { get; } = new(
+            true,
+            true,
+            true,
+            true,
+            false,
+            string.Empty,
+            string.Empty,
+            "8");
+    }
+
     private sealed record PermissionCategory(
         string TitleId,
         string Title,
@@ -601,5 +682,23 @@
             1 => SecondLevelButton,
             _ => throw new ArgumentOutOfRangeException(nameof(index), index, null)
         };
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_keyboardModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _keyboardModule.InvokeVoidAsync("detachKeyboardGuards", _root);
+            await _keyboardModule.DisposeAsync();
+        }
+        catch
+        {
+            // Ignore interop disposal failures during circuit teardown.
+        }
     }
 }

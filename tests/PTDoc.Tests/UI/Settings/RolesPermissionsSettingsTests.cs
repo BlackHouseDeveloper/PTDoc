@@ -26,31 +26,43 @@ public sealed class RolesPermissionsSettingsTests : TestContext
         Assert.Equal("true", cut.Find("button[aria-label=\"Edit Others' Notes: View\"]").GetAttribute("aria-checked"));
         Assert.Equal("true", cut.Find("button[aria-label='Sign/Submit Notes: Full']").GetAttribute("aria-checked"));
         Assert.Equal("true", cut.Find("button[aria-label='Delete Notes: None']").GetAttribute("aria-checked"));
-        Assert.Contains("2", cut.Find(".permission-summary__metrics").TextContent, StringComparison.Ordinal);
-        Assert.Contains("7", cut.Find(".permission-summary__metrics").TextContent, StringComparison.Ordinal);
-        Assert.Contains("6", cut.Find(".permission-summary__metrics").TextContent, StringComparison.Ordinal);
-        Assert.Contains("15", cut.Find(".permission-summary__metrics").TextContent, StringComparison.Ordinal);
+        Assert.Equal(
+            ["2", "9", "7", "12"],
+            cut.FindAll(".permission-summary__metrics strong").Select(metric => metric.TextContent).ToArray());
     }
 
     [Fact]
-    public void PermissionAndRoleSelections_UpdateVisibleUiState()
+    public void PermissionAndRoleSelections_KeepIndependentRoleStateAndSummary()
     {
         var cut = RenderComponent<RolesPermissionsSettings>();
 
         cut.Find("button[aria-label='View Clinical Notes: None']").Click();
+        Assert.Contains("Permission Summary for PT / DPT", cut.Markup, StringComparison.Ordinal);
+        Assert.Equal(
+            ["2", "9", "6", "13"],
+            cut.FindAll(".permission-summary__metrics strong").Select(metric => metric.TextContent).ToArray());
+
         cut.FindAll(".role-card")
             .Single(button => button.TextContent.Contains("Practice Manager", StringComparison.Ordinal))
             .Click();
 
-        Assert.Equal("true", cut.Find("button[aria-label='View Clinical Notes: None']").GetAttribute("aria-checked"));
-        Assert.Equal("0", cut.Find("button[aria-label='View Clinical Notes: None']").GetAttribute("tabindex"));
-        Assert.Equal("-1", cut.Find("button[aria-label='View Clinical Notes: View']").GetAttribute("tabindex"));
+        Assert.Equal("false", cut.Find("button[aria-label='View Clinical Notes: None']").GetAttribute("aria-checked"));
+        Assert.Equal("-1", cut.Find("button[aria-label='View Clinical Notes: None']").GetAttribute("tabindex"));
+        Assert.Equal("0", cut.Find("button[aria-label='View Clinical Notes: View']").GetAttribute("tabindex"));
         Assert.Equal(
             "true",
             cut.FindAll(".role-card")
                 .Single(button => button.TextContent.Contains("Practice Manager", StringComparison.Ordinal))
                 .GetAttribute("aria-pressed"));
         Assert.Contains("Copy permissions from another role to Practice Manager", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Permission Summary for Practice Manager", cut.Markup, StringComparison.Ordinal);
+
+        cut.FindAll(".role-card")
+            .Single(button => button.TextContent.Contains("PT / DPT", StringComparison.Ordinal))
+            .Click();
+
+        Assert.Equal("true", cut.Find("button[aria-label='View Clinical Notes: None']").GetAttribute("aria-checked"));
+        Assert.Contains("Permission Summary for PT / DPT", cut.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -76,6 +88,44 @@ public sealed class RolesPermissionsSettingsTests : TestContext
 
         Assert.Equal("true", cut.Find("button[aria-label='Restrict Schedule Access']").GetAttribute("aria-checked"));
         Assert.Null(cut.Find("#roles-settings-panel").GetAttribute("tabindex"));
+    }
+
+    [Fact]
+    public void SecurityActions_ResetDefaultsAndCancelToLastSavedSnapshot()
+    {
+        var cut = RenderComponent<RolesPermissionsSettings>();
+        cut.Find("#security-settings-tab").Click();
+
+        cut.Find("button[aria-label='Restrict Schedule Access']").Click();
+        cut.Find("#auto-lockout-time").Input("30");
+        cut.FindAll(".security-action-bar button")
+            .Single(button => button.TextContent.Contains("Cancel", StringComparison.Ordinal))
+            .Click();
+
+        Assert.Equal("false", cut.Find("button[aria-label='Restrict Schedule Access']").GetAttribute("aria-checked"));
+        Assert.Equal(string.Empty, cut.Find("#auto-lockout-time").GetAttribute("value"));
+
+        cut.Find("button[aria-label='Restrict Schedule Access']").Click();
+        cut.Find("#auto-lockout-time").Input("30");
+        cut.FindAll(".security-action-bar button")
+            .Single(button => button.TextContent.Contains("Save Changes", StringComparison.Ordinal))
+            .Click();
+
+        cut.Find("button[aria-label='Restrict Schedule Access']").Click();
+        cut.Find("#auto-lockout-time").Input("45");
+        cut.FindAll(".security-action-bar button")
+            .Single(button => button.TextContent.Contains("Cancel", StringComparison.Ordinal))
+            .Click();
+
+        Assert.Equal("true", cut.Find("button[aria-label='Restrict Schedule Access']").GetAttribute("aria-checked"));
+        Assert.Equal("30", cut.Find("#auto-lockout-time").GetAttribute("value"));
+
+        cut.FindAll(".security-action-bar button")
+            .Single(button => button.TextContent.Contains("Reset to Default", StringComparison.Ordinal))
+            .Click();
+
+        Assert.Equal("false", cut.Find("button[aria-label='Restrict Schedule Access']").GetAttribute("aria-checked"));
+        Assert.Equal(string.Empty, cut.Find("#auto-lockout-time").GetAttribute("value"));
     }
 
     [Fact]

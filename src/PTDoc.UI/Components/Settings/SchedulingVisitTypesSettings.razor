@@ -1,4 +1,7 @@
-<section class="scheduling-settings" aria-labelledby="scheduling-settings-title">
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<section class="scheduling-settings" aria-labelledby="scheduling-settings-title" @ref="_root">
     <header class="scheduling-settings__page-header">
         <img src="_content/PTDoc.UI/images/settings/scheduling.svg" alt="" aria-hidden="true" />
         <div>
@@ -108,10 +111,12 @@
 
 @code {
     private SchedulingTab _activeTab = SchedulingTab.VisitTypes;
+    private ElementReference _root;
     private ElementReference _visitTypesTab;
     private ElementReference _scheduleBlocksTab;
     private ElementReference _calendarBehaviorTab;
     private ElementReference _clinicHoursTab;
+    private IJSObjectReference? _keyboardModule;
     private string _defaultAppointmentDuration = "45 minutes";
     private string _bufferTime = "15 minutes";
     private string _defaultClinicianView = "Week View";
@@ -165,6 +170,25 @@
     private static readonly IReadOnlyList<string> ClinicianViewOptions = ["Day View", "Week View", "Month View"];
     private static readonly IReadOnlyList<string> AdminViewOptions = ["All-Day View", "Week View", "Month View"];
     private static readonly IReadOnlyList<string> ReminderTimingOptions = ["12 hours before", "24 hours before", "48 hours before"];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            _keyboardModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/settings-keyboard.js");
+            await _keyboardModule.InvokeVoidAsync("attachKeyboardGuards", _root);
+        }
+        catch (Exception)
+        {
+            // Blazor handlers still provide selection when interop is unavailable during
+            // prerender, component tests, or circuit teardown.
+        }
+    }
 
     private void SelectTab(SchedulingTab tab) => _activeTab = tab;
 
@@ -437,4 +461,22 @@
         string TabId);
 
     private sealed record ScheduledItem(string Name, string Duration, string? Badge = null);
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_keyboardModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _keyboardModule.InvokeVoidAsync("detachKeyboardGuards", _root);
+            await _keyboardModule.DisposeAsync();
+        }
+        catch
+        {
+            // Ignore interop disposal failures during circuit teardown.
+        }
+    }
 }

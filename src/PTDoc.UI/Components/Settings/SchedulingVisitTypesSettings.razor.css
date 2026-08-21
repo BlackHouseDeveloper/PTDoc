@@ -66,6 +66,7 @@
 }
 
 .scheduling-settings__tab.is-active {
+    border-color: var(--ring);
     background: var(--settings-scheduling-active-tab-bg);
     box-shadow: var(--shadow-sm);
 }
