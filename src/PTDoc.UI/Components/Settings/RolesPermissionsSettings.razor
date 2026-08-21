@@ -271,6 +271,9 @@
             @QuickAdminTools()
 
             <div class="security-action-bar" aria-label="Security settings actions">
+                <p id="security-preview-status" class="security-action-bar__preview-status" role="status" aria-live="polite">
+                    @_securityPreviewStatus
+                </p>
                 <button type="button" @onclick="ResetSecuritySettings">
                     <img src="_content/PTDoc.UI/images/settings/reset.svg" alt="" aria-hidden="true" />
                     <span>Reset to Default</span>
@@ -279,9 +282,9 @@
                     <img src="_content/PTDoc.UI/images/settings/cancel.svg" alt="" aria-hidden="true" />
                     <span>Cancel</span>
                 </button>
-                <button type="button" class="security-action-bar__save" @onclick="SaveSecurityChanges">
+                <button type="button" class="security-action-bar__save" aria-describedby="security-preview-status" @onclick="SaveSecurityPreview">
                     <img src="_content/PTDoc.UI/images/settings/save.svg" alt="" aria-hidden="true" />
-                    <span>Save Changes</span>
+                    <span>Save Preview</span>
                 </button>
             </div>
         </div>
@@ -304,6 +307,7 @@
     private string _autoLockoutTime = string.Empty;
     private string _passwordExpiration = string.Empty;
     private string _minimumPasswordLength = "8";
+    private string _securityPreviewStatus = "Preview only: security changes and the Cancel baseline remain on this page and are not persisted.";
     private SecuritySettingsSnapshot _savedSecuritySettings = SecuritySettingsSnapshot.Default;
 
     private static readonly IReadOnlyList<RoleDefinition> Roles =
@@ -460,21 +464,24 @@
     private void ResetSecuritySettings()
     {
         ApplySecuritySettings(SecuritySettingsSnapshot.Default);
+        _securityPreviewStatus = "Canonical security defaults applied to this preview. Changes are not persisted.";
     }
 
     private void CancelSecurityChanges()
     {
         ApplySecuritySettings(_savedSecuritySettings);
+        _securityPreviewStatus = "The last saved security preview was restored. Changes are not persisted.";
     }
 
-    private void SaveSecurityChanges()
+    private void SaveSecurityPreview()
     {
         _savedSecuritySettings = CaptureSecuritySettings();
+        _securityPreviewStatus = "Security preview baseline updated on this page. Changes are not persisted.";
         // TODO: Load security policy values from the application data source.
         // TODO: Persist security toggle changes.
         // TODO: Persist security input values.
         // TODO: Define security-input validation rules.
-        // TODO: Implement Save Changes persistence.
+        // TODO: Implement security settings persistence.
         // TODO: Connect actual audit/compliance behavior.
         // TODO: Apply application-standard loading/error/success states when backend integration is introduced.
     }

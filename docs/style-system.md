@@ -46,6 +46,7 @@ Current Settings aliases:
 
 | Token | Usage |
 | --- | --- |
+| `--settings-roles-content-max-width` | Maximum width of the Roles and Permissions settings surface. |
 | `--settings-panel-border` | Shared border emphasis for Roles and Permissions panels. |
 | `--settings-guidance-bg` | Permission-guidance callout background. |
 | `--settings-guidance-border` | Permission-guidance callout border. |

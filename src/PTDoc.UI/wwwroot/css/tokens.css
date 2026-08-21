@@ -188,6 +188,7 @@
   --success-box-border: rgba(var(--primary-rgb), 0.2);
 
   /* Roles & Permissions settings surfaces */
+  --settings-roles-content-max-width: 60.3125rem;
   --settings-panel-border: rgba(var(--primary-rgb), 0.2);
   --settings-guidance-bg: #faf5ff;
   --settings-guidance-border: #e9d5ff;

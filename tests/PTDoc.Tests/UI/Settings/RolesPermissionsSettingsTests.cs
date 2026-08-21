@@ -71,7 +71,13 @@ public sealed class RolesPermissionsSettingsTests : TestContext
         Assert.Equal(string.Empty, cut.Find("#auto-lockout-time").GetAttribute("value"));
         Assert.Equal(string.Empty, cut.Find("#password-expiration").GetAttribute("value"));
         Assert.Equal("8", cut.Find("#minimum-password-length").GetAttribute("value"));
-        Assert.Contains("Save Changes", cut.Find(".security-action-bar").TextContent, StringComparison.Ordinal);
+        Assert.Contains("Save Preview", cut.Find(".security-action-bar").TextContent, StringComparison.Ordinal);
+        Assert.Contains("are not persisted", cut.Find("#security-preview-status").TextContent, StringComparison.Ordinal);
+        Assert.Equal(
+            "security-preview-status",
+            cut.FindAll(".security-action-bar button")
+                .Single(button => button.TextContent.Contains("Save Preview", StringComparison.Ordinal))
+                .GetAttribute("aria-describedby"));
 
         cut.Find("button[aria-label='Restrict Schedule Access']").Click();
 
@@ -97,8 +103,9 @@ public sealed class RolesPermissionsSettingsTests : TestContext
         cut.Find("button[aria-label='Restrict Schedule Access']").Click();
         cut.Find("#auto-lockout-time").Input("30");
         cut.FindAll(".security-action-bar button")
-            .Single(button => button.TextContent.Contains("Save Changes", StringComparison.Ordinal))
+            .Single(button => button.TextContent.Contains("Save Preview", StringComparison.Ordinal))
             .Click();
+        Assert.Contains("Security preview baseline updated", cut.Find("#security-preview-status").TextContent, StringComparison.Ordinal);
 
         cut.Find("button[aria-label='Restrict Schedule Access']").Click();
         cut.Find("#auto-lockout-time").Input("45");
@@ -108,6 +115,7 @@ public sealed class RolesPermissionsSettingsTests : TestContext
 
         Assert.Equal("true", cut.Find("button[aria-label='Restrict Schedule Access']").GetAttribute("aria-checked"));
         Assert.Equal("30", cut.Find("#auto-lockout-time").GetAttribute("value"));
+        Assert.Contains("last saved security preview was restored", cut.Find("#security-preview-status").TextContent, StringComparison.Ordinal);
 
         cut.FindAll(".security-action-bar button")
             .Single(button => button.TextContent.Contains("Reset to Default", StringComparison.Ordinal))
@@ -115,6 +123,7 @@ public sealed class RolesPermissionsSettingsTests : TestContext
 
         Assert.Equal("false", cut.Find("button[aria-label='Restrict Schedule Access']").GetAttribute("aria-checked"));
         Assert.Equal(string.Empty, cut.Find("#auto-lockout-time").GetAttribute("value"));
+        Assert.Contains("Canonical security defaults applied", cut.Find("#security-preview-status").TextContent, StringComparison.Ordinal);
     }
 
     [Fact]
