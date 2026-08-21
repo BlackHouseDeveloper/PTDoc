@@ -198,6 +198,9 @@ The same migration:
 - binds each reminder dispatch to an appointment through `(ClinicId, AppointmentId)`, backed by a
   temporary unique `(ClinicId, Id)` appointment index while legacy appointment clinic IDs remain
   nullable, so reminder processing cannot cross clinic boundaries;
+- binds optional clinician schedule blocks through `(ClinicId, ClinicianId)`, backed by the same
+  temporary clinic-qualified index pattern on legacy nullable user clinic IDs, so block rules cannot
+  retain orphaned or cross-clinic clinician references;
 - leaves `Appointments.AppointmentType` in place for the dual-read/write compatibility release.
 
 Apply schema changes before enabling the related API/UI paths. Do not make `VisitTypeId` required or
@@ -206,7 +209,10 @@ remove the legacy field until Web and MAUI have completed the compatibility rele
 The SQLite provider performs an explicit transactional `Appointments` rebuild while foreign-key
 enforcement is temporarily disabled, re-enables enforcement immediately afterward, and then
 recreates the overlap triggers. Migration validation must run `PRAGMA foreign_key_check` and verify
-both insert/update overlap triggers after upgrade and downgrade.
+both insert/update overlap triggers after upgrade and downgrade. Current provider overlap guards
+always validate inserts, but update validation runs only when clinician, interval, active/cancelled
+semantics, or the explicit authorization marker changes; ordinary note and metadata updates must
+remain writable after an approved double booking.
 
 ### Environment Variables — Runtime API
 

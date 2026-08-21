@@ -224,7 +224,8 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
         Assert.Equal(note.Id, savedOverride.NoteId);
 
         await AssertAppointmentOverlapGuardAsync(context, clinic.Id, patient.Id, user.Id, appointment);
-        await AssertReminderDispatchClinicBoundaryAsync(context, clinic.Id, appointment);
+        var otherClinicId = await AssertReminderDispatchClinicBoundaryAsync(context, clinic.Id, appointment);
+        await AssertScheduleBlockClinicianBoundaryAsync(context, clinic.Id, otherClinicId, user.Id);
     }
 
     private static async Task AssertAppointmentOverlapGuardAsync(
@@ -279,6 +280,14 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
 
         Assert.True(await context.Appointments.AnyAsync(row => row.Id == authorizedOverlap.Id));
 
+        var originalAppointment = await context.Appointments.SingleAsync(row => row.Id == existingAppointment.Id);
+        originalAppointment.Notes = "Provider smoke non-scheduling update after approved overlap";
+        await context.SaveChangesAsync();
+
+        Assert.Equal(
+            "Provider smoke non-scheduling update after approved overlap",
+            originalAppointment.Notes);
+
         var unauthorizedOverlap = new Appointment
         {
             PatientId = patientId,
@@ -302,7 +311,7 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
         context.Entry(unauthorizedOverlap).State = EntityState.Detached;
     }
 
-    private static async Task AssertReminderDispatchClinicBoundaryAsync(
+    private static async Task<Guid> AssertReminderDispatchClinicBoundaryAsync(
         ApplicationDbContext context,
         Guid appointmentClinicId,
         Appointment appointment)
@@ -324,6 +333,8 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
 
         await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
         context.Entry(crossClinicDispatch).State = EntityState.Detached;
+
+        return otherClinic.Id;
     }
 
     private static AppointmentReminderDispatch CreateReminderDispatch(
@@ -343,6 +354,54 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
             IdempotencyKey = $"provider-smoke-{idempotencySuffix}-{Guid.NewGuid():N}",
             Status = ReminderDispatchStatus.Pending,
             EligibleAtUtc = now,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now
+        };
+    }
+
+    private static async Task AssertScheduleBlockClinicianBoundaryAsync(
+        ApplicationDbContext context,
+        Guid clinicianClinicId,
+        Guid otherClinicId,
+        Guid clinicianId)
+    {
+        var validBlock = CreateScheduleBlock(clinicianClinicId, clinicianId, "valid");
+        context.ScheduleBlockRules.Add(validBlock);
+        await context.SaveChangesAsync();
+
+        var orphanedBlock = CreateScheduleBlock(clinicianClinicId, Guid.NewGuid(), "orphaned");
+        context.ScheduleBlockRules.Add(orphanedBlock);
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+        context.Entry(orphanedBlock).State = EntityState.Detached;
+
+        var crossClinicBlock = CreateScheduleBlock(otherClinicId, clinicianId, "cross-clinic");
+        context.ScheduleBlockRules.Add(crossClinicBlock);
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+        context.Entry(crossClinicBlock).State = EntityState.Detached;
+    }
+
+    private static ScheduleBlockRule CreateScheduleBlock(
+        Guid clinicId,
+        Guid clinicianId,
+        string nameSuffix)
+    {
+        var now = DateTime.UtcNow;
+        return new ScheduleBlockRule
+        {
+            ClinicId = clinicId,
+            ClinicianId = clinicianId,
+            Name = $"Provider smoke {nameSuffix} block",
+            ReasonCode = "provider-smoke",
+            Weekdays = WeekdayFlags.Monday,
+            StartLocalTime = new TimeOnly(12, 0),
+            EndLocalTime = new TimeOnly(13, 0),
+            EffectiveStartDate = new DateOnly(2026, 8, 24),
+            IsRecurring = true,
+            IsActive = true,
+            Version = 1,
+            UpdatedByUserId = clinicianId,
             CreatedAtUtc = now,
             UpdatedAtUtc = now
         };

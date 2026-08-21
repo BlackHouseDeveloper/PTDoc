@@ -67,6 +67,12 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 columns: new[] { "ClinicId", "Id" },
                 unique: true);
 
+            migrationBuilder.CreateIndex(
+                name: "UX_Users_ClinicId_Id_ScheduleBlock",
+                table: "Users",
+                columns: new[] { "ClinicId", "Id" },
+                unique: true);
+
             migrationBuilder.CreateTable(
                 name: "AppointmentReminderDispatches",
                 columns: table => new
@@ -305,6 +311,12 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         principalTable: "Clinics",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_ScheduleBlockRules_Users_ClinicId_ClinicianId",
+                        columns: x => new { x.ClinicId, x.ClinicianId },
+                        principalTable: "Users",
+                        principalColumns: new[] { "ClinicId", "Id" },
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -536,6 +548,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_ScheduleBlockRules_ClinicianId",
+                table: "ScheduleBlockRules",
+                column: "ClinicianId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_ScheduleBlockRules_ClinicId_ClinicianId",
                 table: "ScheduleBlockRules",
                 columns: new[] { "ClinicId", "ClinicianId" });
@@ -708,9 +725,19 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     SET NOCOUNT ON;
                     IF EXISTS (
                         SELECT 1 FROM inserted i
+                        LEFT JOIN deleted d ON d.[Id] = i.[Id]
                         INNER JOIN [dbo].[Appointments] existing
                             ON existing.[ClinicalId] = i.[ClinicalId] AND existing.[Id] <> i.[Id]
-                        WHERE i.[Status] NOT IN (5, 6) AND i.[AuthorizedOverlap] = 0
+                        WHERE (
+                                d.[Id] IS NULL
+                                OR i.[ClinicalId] <> d.[ClinicalId]
+                                OR i.[StartTimeUtc] <> d.[StartTimeUtc]
+                                OR i.[EndTimeUtc] <> d.[EndTimeUtc]
+                                OR (CASE WHEN i.[Status] IN (5, 6) THEN 0 ELSE 1 END)
+                                    <> (CASE WHEN d.[Status] IN (5, 6) THEN 0 ELSE 1 END)
+                                OR i.[AuthorizedOverlap] <> d.[AuthorizedOverlap]
+                            )
+                          AND i.[Status] NOT IN (5, 6) AND i.[AuthorizedOverlap] = 0
                           AND existing.[Status] NOT IN (5, 6)
                           AND existing.[StartTimeUtc] < i.[EndTimeUtc]
                           AND i.[StartTimeUtc] < existing.[EndTimeUtc])
@@ -789,6 +816,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "ScheduleBlockRules");
+
+            migrationBuilder.DropIndex(
+                name: "UX_Users_ClinicId_Id_ScheduleBlock",
+                table: "Users");
 
             migrationBuilder.DropTable(
                 name: "SchedulingPreferences");

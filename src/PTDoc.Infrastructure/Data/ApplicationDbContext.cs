@@ -1125,10 +1125,14 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.ClinicId, e.IsActive });
             entity.HasIndex(e => new { e.ClinicId, e.ClinicianId });
+            entity.HasIndex(e => e.ClinicianId);
             entity.Property(e => e.Name).HasMaxLength(160).IsRequired();
             entity.Property(e => e.ReasonCode).HasMaxLength(80).IsRequired();
             entity.Property(e => e.Version).IsConcurrencyToken();
             entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Cascade);
+            // User.ClinicId is nullable for legacy rows, so provider migrations strengthen this
+            // optional EF relationship to (ClinicId, ClinicianId) at the database boundary.
+            entity.HasOne<User>().WithMany().HasForeignKey(e => e.ClinicianId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<AppointmentReminderDispatch>(entity =>

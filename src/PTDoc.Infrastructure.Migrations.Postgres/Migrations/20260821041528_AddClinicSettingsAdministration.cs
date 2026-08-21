@@ -67,6 +67,12 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 columns: new[] { "ClinicId", "Id" },
                 unique: true);
 
+            migrationBuilder.CreateIndex(
+                name: "UX_Users_ClinicId_Id_ScheduleBlock",
+                table: "Users",
+                columns: new[] { "ClinicId", "Id" },
+                unique: true);
+
             migrationBuilder.CreateTable(
                 name: "AppointmentReminderDispatches",
                 columns: table => new
@@ -305,6 +311,12 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         principalTable: "Clinics",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_ScheduleBlockRules_Users_ClinicId_ClinicianId",
+                        columns: x => new { x.ClinicId, x.ClinicianId },
+                        principalTable: "Users",
+                        principalColumns: new[] { "ClinicId", "Id" },
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -536,6 +548,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_ScheduleBlockRules_ClinicianId",
+                table: "ScheduleBlockRules",
+                column: "ClinicianId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_ScheduleBlockRules_ClinicId_ClinicianId",
                 table: "ScheduleBlockRules",
                 columns: new[] { "ClinicId", "ClinicianId" });
@@ -699,6 +716,14 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 RETURNS trigger
                 AS $$
                 BEGIN
+                    IF TG_OP = 'UPDATE'
+                       AND NEW."ClinicalId" IS NOT DISTINCT FROM OLD."ClinicalId"
+                       AND NEW."StartTimeUtc" IS NOT DISTINCT FROM OLD."StartTimeUtc"
+                       AND NEW."EndTimeUtc" IS NOT DISTINCT FROM OLD."EndTimeUtc"
+                       AND (NEW."Status" IN (5, 6)) = (OLD."Status" IN (5, 6))
+                       AND NEW."AuthorizedOverlap" IS NOT DISTINCT FROM OLD."AuthorizedOverlap" THEN
+                        RETURN NEW;
+                    END IF;
                     IF NEW."Status" IN (5, 6) OR NEW."AuthorizedOverlap" THEN
                         RETURN NEW;
                     END IF;
@@ -780,6 +805,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "ScheduleBlockRules");
+
+            migrationBuilder.DropIndex(
+                name: "UX_Users_ClinicId_Id_ScheduleBlock",
+                table: "Users");
 
             migrationBuilder.DropTable(
                 name: "SchedulingPreferences");

@@ -67,6 +67,12 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 columns: new[] { "ClinicId", "Id" },
                 unique: true);
 
+            migrationBuilder.CreateIndex(
+                name: "UX_Users_ClinicId_Id_ScheduleBlock",
+                table: "Users",
+                columns: new[] { "ClinicId", "Id" },
+                unique: true);
+
             migrationBuilder.CreateTable(
                 name: "AppointmentReminderDispatches",
                 columns: table => new
@@ -305,6 +311,12 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         principalTable: "Clinics",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_ScheduleBlockRules_Users_ClinicId_ClinicianId",
+                        columns: x => new { x.ClinicId, x.ClinicianId },
+                        principalTable: "Users",
+                        principalColumns: new[] { "ClinicId", "Id" },
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -534,6 +546,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 table: "RoleCapabilityPermissions",
                 columns: new[] { "ClinicId", "RoleKey", "CapabilityKey" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ScheduleBlockRules_ClinicianId",
+                table: "ScheduleBlockRules",
+                column: "ClinicianId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ScheduleBlockRules_ClinicId_ClinicianId",
@@ -788,6 +805,13 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 BEFORE UPDATE ON "Appointments"
                 FOR EACH ROW
                 WHEN NEW."Status" NOT IN (5, 6) AND NEW."AuthorizedOverlap" = 0
+                     AND (
+                         NEW."ClinicalId" IS NOT OLD."ClinicalId"
+                         OR NEW."StartTimeUtc" IS NOT OLD."StartTimeUtc"
+                         OR NEW."EndTimeUtc" IS NOT OLD."EndTimeUtc"
+                         OR (NEW."Status" IN (5, 6)) IS NOT (OLD."Status" IN (5, 6))
+                         OR NEW."AuthorizedOverlap" IS NOT OLD."AuthorizedOverlap"
+                     )
                 BEGIN
                     SELECT RAISE(ABORT, 'APPOINTMENT_OVERBOOKING: clinician already has an overlapping appointment')
                     WHERE EXISTS (
@@ -879,6 +903,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "ScheduleBlockRules");
+
+            migrationBuilder.DropIndex(
+                name: "UX_Users_ClinicId_Id_ScheduleBlock",
+                table: "Users");
 
             migrationBuilder.DropTable(
                 name: "SchedulingPreferences");

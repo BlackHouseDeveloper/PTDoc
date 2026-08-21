@@ -41,6 +41,12 @@ public sealed class SettingsPersistenceModelMetadataTests
             new[] { nameof(VisitType.ClinicId), nameof(VisitType.Id) });
         AssertForeignKey(
             context.Model,
+            typeof(ScheduleBlockRule),
+            typeof(User),
+            new[] { nameof(ScheduleBlockRule.ClinicianId) },
+            new[] { nameof(User.Id) });
+        AssertForeignKey(
+            context.Model,
             typeof(KioskEnrollmentCode),
             typeof(Clinic),
             new[] { nameof(KioskEnrollmentCode.ClinicId) },
@@ -114,6 +120,20 @@ public sealed class SettingsPersistenceModelMetadataTests
             migrationBuilder.Operations.OfType<CreateIndexOperation>(),
             index => index.Table == "Appointments"
                 && index.Name == "UX_Appointments_ClinicId_Id_ReminderDispatch"
+                && index.IsUnique
+                && index.Columns.SequenceEqual(new[] { "ClinicId", "Id" }));
+
+        var scheduleBlockRules = FindCreateTable(migrationBuilder, "ScheduleBlockRules");
+        Assert.Contains(
+            scheduleBlockRules.ForeignKeys,
+            foreignKey => foreignKey.PrincipalTable == "Users"
+                && foreignKey.Columns.SequenceEqual(new[] { "ClinicId", "ClinicianId" })
+                && foreignKey.PrincipalColumns is not null
+                && foreignKey.PrincipalColumns.SequenceEqual(new[] { "ClinicId", "Id" }));
+        Assert.Contains(
+            migrationBuilder.Operations.OfType<CreateIndexOperation>(),
+            index => index.Table == "Users"
+                && index.Name == "UX_Users_ClinicId_Id_ScheduleBlock"
                 && index.IsUnique
                 && index.Columns.SequenceEqual(new[] { "ClinicId", "Id" }));
 

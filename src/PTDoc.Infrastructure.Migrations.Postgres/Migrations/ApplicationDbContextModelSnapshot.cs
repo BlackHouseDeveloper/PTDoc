@@ -2671,6 +2671,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ClinicianId");
+
                     b.HasIndex("ClinicId", "ClinicianId");
 
                     b.HasIndex("ClinicId", "IsActive");
@@ -3434,6 +3436,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasForeignKey("ClinicId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("ClinicianId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Clinic");
                 });
