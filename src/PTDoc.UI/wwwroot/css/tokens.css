@@ -206,6 +206,7 @@
   --settings-compliance-muted: #9a3412;
   --settings-action-bar-bg: rgba(38, 38, 38, 0.95);
   --settings-action-bar-foreground: #e5e5e5;
+  --settings-save-icon-filter: brightness(0) invert(1);
   --settings-scheduling-neutral-icon-filter: none;
   --settings-scheduling-muted-icon-filter: none;
   --settings-scheduling-panel-border: var(--border);
@@ -317,6 +318,7 @@
   --settings-compliance-border: #c2410c;
   --settings-compliance-foreground: #ffedd5;
   --settings-compliance-muted: #fdba74;
+  --settings-save-icon-filter: none;
   --settings-scheduling-neutral-icon-filter: brightness(0) invert(1);
   --settings-scheduling-muted-icon-filter: brightness(0) invert(1);
   --settings-scheduling-active-tab-bg: transparent;

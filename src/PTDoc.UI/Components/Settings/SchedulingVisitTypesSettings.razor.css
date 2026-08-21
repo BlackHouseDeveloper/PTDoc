@@ -434,6 +434,10 @@
     color: var(--primary-foreground);
 }
 
+.scheduling-settings__action-bar .scheduling-settings__save-action img {
+    filter: var(--settings-save-icon-filter);
+}
+
 .scheduling-settings button:hover,
 .scheduling-settings select:hover,
 .scheduling-settings input:hover {

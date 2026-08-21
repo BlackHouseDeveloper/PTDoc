@@ -635,6 +635,10 @@
     color: var(--primary-foreground);
 }
 
+.security-action-bar .security-action-bar__save img {
+    filter: var(--settings-save-icon-filter);
+}
+
 .roles-permissions button:hover,
 .roles-permissions select:hover,
 .roles-permissions input:hover {

@@ -22,6 +22,7 @@ public sealed class SchedulingVisitTypesSettingsTests : TestContext
         Assert.All(
             cut.FindAll(".scheduling-settings__tab").Where(tab => tab.GetAttribute("id") != "visit-types-tab"),
             tab => Assert.Equal("-1", tab.GetAttribute("tabindex")));
+        Assert.Null(cut.Find("#scheduling-settings-panel").GetAttribute("tabindex"));
         Assert.Contains("Initial Evaluation", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Requires Intake", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Consultation (Non-Billable)", cut.Markup, StringComparison.Ordinal);

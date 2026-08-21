@@ -44,8 +44,7 @@
             id="roles-settings-panel"
             class="roles-permissions__tabpanel"
             role="tabpanel"
-            aria-labelledby="role-permissions-tab"
-            tabindex="0">
+            aria-labelledby="role-permissions-tab">
             <aside class="permission-guidance" aria-labelledby="permission-guidance-title">
                 <img class="permission-guidance__icon" src="_content/PTDoc.UI/images/settings/guidance-info.svg" alt="" aria-hidden="true" />
                 <div>
@@ -140,17 +139,32 @@
                                     <p>@permission.Description</p>
                                 </div>
                                 <div class="permission-row__options" role="radiogroup" aria-label="@($"{permission.Name} permission")">
-                                    @foreach (var level in permission.AvailableLevels)
-                                    {
+                                    @{
+                                        var firstLevel = permission.AvailableLevels[0];
+                                        var secondLevel = permission.AvailableLevels[1];
                                         <button
+                                            @ref="permission.FirstLevelButton"
                                             type="button"
-                                            class="permission-level @(permission.SelectedLevel == level ? "is-selected" : string.Empty)"
+                                            class="permission-level @(permission.SelectedLevel == firstLevel ? "is-selected" : string.Empty)"
                                             role="radio"
-                                            aria-checked="@(permission.SelectedLevel == level ? "true" : "false")"
-                                            aria-label="@($"{permission.Name}: {level}")"
-                                            tabindex="@(permission.SelectedLevel == level ? "0" : "-1")"
-                                            @onclick="() => SetPermissionLevel(permission, level)">
-                                            @level
+                                            aria-checked="@(permission.SelectedLevel == firstLevel ? "true" : "false")"
+                                            aria-label="@($"{permission.Name}: {firstLevel}")"
+                                            tabindex="@(permission.SelectedLevel == firstLevel ? "0" : "-1")"
+                                            @onclick="() => SetPermissionLevel(permission, firstLevel)"
+                                            @onkeydown="eventArgs => HandlePermissionLevelKeyDownAsync(eventArgs, permission, 0)">
+                                            @firstLevel
+                                        </button>
+                                        <button
+                                            @ref="permission.SecondLevelButton"
+                                            type="button"
+                                            class="permission-level @(permission.SelectedLevel == secondLevel ? "is-selected" : string.Empty)"
+                                            role="radio"
+                                            aria-checked="@(permission.SelectedLevel == secondLevel ? "true" : "false")"
+                                            aria-label="@($"{permission.Name}: {secondLevel}")"
+                                            tabindex="@(permission.SelectedLevel == secondLevel ? "0" : "-1")"
+                                            @onclick="() => SetPermissionLevel(permission, secondLevel)"
+                                            @onkeydown="eventArgs => HandlePermissionLevelKeyDownAsync(eventArgs, permission, 1)">
+                                            @secondLevel
                                         </button>
                                     }
                                 </div>
@@ -182,8 +196,7 @@
             id="roles-settings-panel"
             class="roles-permissions__tabpanel"
             role="tabpanel"
-            aria-labelledby="security-settings-tab"
-            tabindex="0">
+            aria-labelledby="security-settings-tab">
             <section class="settings-panel security-card" aria-labelledby="security-requirements-title">
                 <header class="settings-panel__header">
                     <div class="settings-panel__title">
@@ -344,6 +357,29 @@
         permission.SelectedLevel = level;
         // TODO: Persist permission changes.
         // TODO: Calculate permission-summary counts dynamically when role data is connected.
+    }
+
+    private static async Task HandlePermissionLevelKeyDownAsync(
+        KeyboardEventArgs eventArgs,
+        PermissionDefinition permission,
+        int currentIndex)
+    {
+        var targetIndex = eventArgs.Key switch
+        {
+            "ArrowRight" or "ArrowDown" => (currentIndex + 1) % permission.AvailableLevels.Count,
+            "ArrowLeft" or "ArrowUp" => (currentIndex - 1 + permission.AvailableLevels.Count) % permission.AvailableLevels.Count,
+            "Home" => 0,
+            "End" => permission.AvailableLevels.Count - 1,
+            _ => -1
+        };
+
+        if (targetIndex < 0)
+        {
+            return;
+        }
+
+        SetPermissionLevel(permission, permission.AvailableLevels[targetIndex]);
+        await permission.GetLevelButton(targetIndex).FocusAsync();
     }
 
     private void ClonePermissions()
@@ -554,5 +590,16 @@
         public IReadOnlyList<string> AvailableLevels { get; } = availableLevels;
 
         public bool IsRecommended { get; } = isRecommended;
+
+        public ElementReference FirstLevelButton { get; set; }
+
+        public ElementReference SecondLevelButton { get; set; }
+
+        public ElementReference GetLevelButton(int index) => index switch
+        {
+            0 => FirstLevelButton,
+            1 => SecondLevelButton,
+            _ => throw new ArgumentOutOfRangeException(nameof(index), index, null)
+        };
     }
 }

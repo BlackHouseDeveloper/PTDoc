@@ -22,6 +22,7 @@ public sealed class RolesPermissionsSettingsTests : TestContext
         Assert.Equal("-1", cut.Find("button[aria-label='View Clinical Notes: None']").GetAttribute("tabindex"));
         Assert.Equal("0", cut.Find("#role-permissions-tab").GetAttribute("tabindex"));
         Assert.Equal("-1", cut.Find("#security-settings-tab").GetAttribute("tabindex"));
+        Assert.Null(cut.Find("#roles-settings-panel").GetAttribute("tabindex"));
         Assert.Equal("true", cut.Find("button[aria-label=\"Edit Others' Notes: View\"]").GetAttribute("aria-checked"));
         Assert.Equal("true", cut.Find("button[aria-label='Sign/Submit Notes: Full']").GetAttribute("aria-checked"));
         Assert.Equal("true", cut.Find("button[aria-label='Delete Notes: None']").GetAttribute("aria-checked"));
@@ -74,6 +75,30 @@ public sealed class RolesPermissionsSettingsTests : TestContext
         cut.Find("button[aria-label='Restrict Schedule Access']").Click();
 
         Assert.Equal("true", cut.Find("button[aria-label='Restrict Schedule Access']").GetAttribute("aria-checked"));
+        Assert.Null(cut.Find("#roles-settings-panel").GetAttribute("tabindex"));
+    }
+
+    [Fact]
+    public void PermissionLevels_SupportStandardRadioGroupKeyboardNavigation()
+    {
+        var cut = RenderComponent<RolesPermissionsSettings>();
+
+        cut.Find("button[aria-label='View Clinical Notes: View']").KeyDown("ArrowLeft");
+
+        Assert.Equal("true", cut.Find("button[aria-label='View Clinical Notes: None']").GetAttribute("aria-checked"));
+        Assert.Equal("0", cut.Find("button[aria-label='View Clinical Notes: None']").GetAttribute("tabindex"));
+
+        cut.Find("button[aria-label='View Clinical Notes: None']").KeyDown("ArrowDown");
+
+        Assert.Equal("true", cut.Find("button[aria-label='View Clinical Notes: View']").GetAttribute("aria-checked"));
+
+        cut.Find("button[aria-label='View Clinical Notes: View']").KeyDown("Home");
+
+        Assert.Equal("true", cut.Find("button[aria-label='View Clinical Notes: None']").GetAttribute("aria-checked"));
+
+        cut.Find("button[aria-label='View Clinical Notes: None']").KeyDown("End");
+
+        Assert.Equal("true", cut.Find("button[aria-label='View Clinical Notes: View']").GetAttribute("aria-checked"));
     }
 
     [Fact]
