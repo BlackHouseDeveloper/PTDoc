@@ -4,7 +4,10 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using PTDoc.Application.Services;
+using PTDoc.Application.Settings;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using Xunit;
@@ -14,6 +17,7 @@ namespace PTDoc.Tests.Integration;
 [Trait("Category", "DatabaseProvider")]
 public sealed class DatabaseProviderSmokeTests : IDisposable
 {
+    private const string PreviousSettingsMigration = "20260809010000_AddClinicalVisitOrdinal";
     private const string MigrationsAlreadyAppliedVariable = "CI_DB_MIGRATIONS_ALREADY_APPLIED";
     private const string ProviderVariable = "DB_PROVIDER";
     private SqliteConnection? _sqliteConnection;
@@ -28,8 +32,197 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
             await context.Database.MigrateAsync();
         }
 
+        if (!context.Database.IsSqlite())
+        {
+            await AssertProviderDowngradeAndExistingClinicSeedParityAsync(context);
+        }
+
         await AssertSchemaQueryableAsync(context);
         await AssertCrudRoundTripAsync(context);
+    }
+
+    private static async Task AssertProviderDowngradeAndExistingClinicSeedParityAsync(
+        ApplicationDbContext context)
+    {
+        var migrator = context.GetService<IMigrator>();
+        await migrator.MigrateAsync(PreviousSettingsMigration);
+        await AssertLegacySettingsSchemaAsync(context);
+
+        var clinicId = Guid.NewGuid();
+        var clinicName = $"Migration parity {clinicId:N}";
+        var clinicSlug = $"migration-parity-{clinicId:N}";
+        if (context.Database.IsSqlServer())
+        {
+            await context.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO [Clinics] ([Id], [Name], [Slug], [IsActive], [CreatedAt])
+                VALUES ({clinicId}, {clinicName}, {clinicSlug}, {true}, {DateTime.UtcNow});
+                """);
+        }
+        else
+        {
+            await context.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO "Clinics" ("Id", "Name", "Slug", "IsActive", "CreatedAt")
+                VALUES ({clinicId}, {clinicName}, {clinicSlug}, {true}, {DateTime.UtcNow});
+                """);
+        }
+
+        await migrator.MigrateAsync();
+        context.ChangeTracker.Clear();
+        await AssertExistingClinicSeedParityAsync(context, clinicId);
+    }
+
+    private static async Task AssertLegacySettingsSchemaAsync(ApplicationDbContext context)
+    {
+        var connection = context.Database.GetDbConnection();
+        var shouldClose = connection.State != ConnectionState.Open;
+        if (shouldClose)
+        {
+            await connection.OpenAsync();
+        }
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = context.Database.IsSqlServer()
+                ? """
+                  SELECT CASE WHEN
+                      COL_LENGTH('dbo.Appointments', 'AuthorizedOverlap') IS NULL
+                      AND COL_LENGTH('dbo.Appointments', 'VisitTypeId') IS NULL
+                      AND OBJECT_ID(N'[dbo].[VisitTypes]', N'U') IS NULL
+                      AND OBJECT_ID(N'[dbo].[TR_Appointments_PreventOverlap]', N'TR') IS NOT NULL
+                      AND CHARINDEX('AuthorizedOverlap', OBJECT_DEFINITION(OBJECT_ID(N'[dbo].[TR_Appointments_PreventOverlap]'))) = 0
+                  THEN 1 ELSE 0 END;
+                  """
+                : """
+                  SELECT CASE WHEN
+                      NOT EXISTS (
+                          SELECT 1 FROM information_schema.columns
+                          WHERE table_name = 'Appointments' AND column_name IN ('AuthorizedOverlap', 'VisitTypeId'))
+                      AND to_regclass('"VisitTypes"') IS NULL
+                      AND EXISTS (
+                          SELECT 1 FROM pg_trigger
+                          WHERE tgname = 'TR_Appointments_PreventOverlap' AND NOT tgisinternal)
+                      AND NOT EXISTS (
+                          SELECT 1 FROM pg_proc
+                          WHERE proname = 'PreventAppointmentOverlap'
+                            AND pg_get_functiondef(oid) LIKE '%AuthorizedOverlap%')
+                  THEN 1 ELSE 0 END;
+                  """;
+            Assert.Equal(1, Convert.ToInt32(await command.ExecuteScalarAsync()));
+        }
+        finally
+        {
+            if (shouldClose)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    internal static async Task AssertExistingClinicSeedParityAsync(
+        ApplicationDbContext context,
+        Guid clinicId)
+    {
+        var clinic = await context.Clinics.AsNoTracking().SingleAsync(row => row.Id == clinicId);
+        Assert.Equal("America/Los_Angeles", clinic.TimeZoneId);
+        Assert.Equal(1, clinic.Version);
+
+        var visitTypes = await context.VisitTypes.AsNoTracking()
+            .Where(row => row.ClinicId == clinicId)
+            .OrderBy(row => row.DisplayOrder)
+            .ToListAsync();
+        Assert.Equal(SchedulingDefaults.VisitTypes.Count, visitTypes.Count);
+        foreach (var expected in SchedulingDefaults.VisitTypes)
+        {
+            var actual = Assert.Single(visitTypes, row => row.Code == expected.Code);
+            Assert.Equal(expected.Name, actual.Name);
+            Assert.Equal(expected.DurationMinutes, actual.DurationMinutes);
+            Assert.Equal(expected.RequiresIntake, actual.RequiresIntake);
+            Assert.Equal(expected.PtaAllowed, actual.PtaAllowed);
+            Assert.Equal(expected.IsBillable, actual.IsBillable);
+            Assert.Equal(expected.DisplayOrder, actual.DisplayOrder);
+            Assert.True(actual.IsActive);
+            Assert.Equal(1, actual.Version);
+        }
+
+        var hours = await context.ClinicBusinessHours.AsNoTracking()
+            .Where(row => row.ClinicId == clinicId)
+            .ToListAsync();
+        Assert.Equal(SchedulingDefaults.WeeklyHours.Count, hours.Count);
+        foreach (var expected in SchedulingDefaults.WeeklyHours)
+        {
+            var actual = Assert.Single(hours, row => row.DayOfWeek == expected.Day);
+            Assert.Equal(expected.IsOpen, actual.IsOpen);
+            Assert.Equal(expected.IsOpen ? new TimeOnly(8, 0) : null, actual.StartLocalTime);
+            Assert.Equal(expected.IsOpen ? new TimeOnly(17, 0) : null, actual.EndLocalTime);
+            Assert.Equal(expected.IsOpen ? new TimeOnly(12, 0) : null, actual.LunchStartLocalTime);
+            Assert.Equal(expected.IsOpen ? new TimeOnly(13, 0) : null, actual.LunchEndLocalTime);
+            Assert.Equal(1, actual.Version);
+        }
+
+        var permissions = await context.RoleCapabilityPermissions.AsNoTracking()
+            .Where(row => row.ClinicId == clinicId)
+            .ToListAsync();
+        Assert.Equal(
+            RolePermissionCatalog.Roles.Count * RolePermissionCatalog.Capabilities.Count,
+            permissions.Count);
+        foreach (var role in RolePermissionCatalog.Roles)
+        {
+            foreach (var capability in RolePermissionCatalog.Capabilities)
+            {
+                var actual = Assert.Single(
+                    permissions,
+                    row => row.RoleKey == role.Key && row.CapabilityKey == capability.Key);
+                Assert.Equal(RolePermissionCatalog.GetCanonicalLevel(role.Key, capability.Key), actual.Level);
+                Assert.Equal(RolePermissionCatalog.GetLockedMinimum(role.Key, capability.Key), actual.LockedMinimum);
+                Assert.Equal(1, actual.Version);
+            }
+        }
+
+        var security = await context.ClinicSecurityPolicies.AsNoTracking()
+            .SingleAsync(row => row.ClinicId == clinicId);
+        var expectedSecurity = new ClinicSecurityPolicy();
+        Assert.Equal(expectedSecurity.MfaEnforcementMode, security.MfaEnforcementMode);
+        Assert.Equal(expectedSecurity.MfaEffectiveAtUtc, security.MfaEffectiveAtUtc);
+        Assert.Equal(expectedSecurity.RequirePinChangeOnFirstLogin, security.RequirePinChangeOnFirstLogin);
+        Assert.Equal(expectedSecurity.MinimumPinLength, security.MinimumPinLength);
+        Assert.Equal(expectedSecurity.SessionInactivityMinutes, security.SessionInactivityMinutes);
+        Assert.Equal(expectedSecurity.AllowRoleCustomization, security.AllowRoleCustomization);
+        Assert.Equal(expectedSecurity.RestrictCliniciansToOwnSchedules, security.RestrictCliniciansToOwnSchedules);
+        Assert.Equal(expectedSecurity.AuthorizationMode, security.AuthorizationMode);
+        Assert.Equal(expectedSecurity.Version, security.Version);
+
+        var scheduling = await context.SchedulingPreferences.AsNoTracking()
+            .SingleAsync(row => row.ClinicId == clinicId);
+        var expectedScheduling = new SchedulingPreferences();
+        Assert.Equal(expectedScheduling.DefaultAppointmentDurationMinutes, scheduling.DefaultAppointmentDurationMinutes);
+        Assert.Equal(expectedScheduling.AppointmentBufferMinutes, scheduling.AppointmentBufferMinutes);
+        Assert.Equal(expectedScheduling.AllowDoubleBooking, scheduling.AllowDoubleBooking);
+        Assert.Equal(expectedScheduling.AutoConfirmAppointments, scheduling.AutoConfirmAppointments);
+        Assert.Equal(expectedScheduling.EnableClickToCreate, scheduling.EnableClickToCreate);
+        Assert.Equal(expectedScheduling.ShowIntakeStatus, scheduling.ShowIntakeStatus);
+        Assert.Equal(expectedScheduling.AllowCancelFromWeekView, scheduling.AllowCancelFromWeekView);
+        Assert.Equal(expectedScheduling.AllowRescheduleFromWeekView, scheduling.AllowRescheduleFromWeekView);
+        Assert.Equal(expectedScheduling.DefaultClinicianView, scheduling.DefaultClinicianView);
+        Assert.Equal(expectedScheduling.DefaultAdminView, scheduling.DefaultAdminView);
+        Assert.Equal(expectedScheduling.IntakeSentColor, scheduling.IntakeSentColor);
+        Assert.Equal(expectedScheduling.IntakeIncompleteColor, scheduling.IntakeIncompleteColor);
+        Assert.Equal(expectedScheduling.IntakeCompleteColor, scheduling.IntakeCompleteColor);
+        Assert.Equal(expectedScheduling.SendAppointmentReminders, scheduling.SendAppointmentReminders);
+        Assert.Equal(expectedScheduling.ReminderLeadHours, scheduling.ReminderLeadHours);
+        Assert.Equal(expectedScheduling.Version, scheduling.Version);
+
+        var autoCheckIn = await context.AutoCheckInPolicies.AsNoTracking()
+            .SingleAsync(row => row.ClinicId == clinicId);
+        var expectedAutoCheckIn = new AutoCheckInPolicy();
+        Assert.Equal(expectedAutoCheckIn.IsEnabled, autoCheckIn.IsEnabled);
+        Assert.Equal(expectedAutoCheckIn.LeadHours, autoCheckIn.LeadHours);
+        Assert.Equal(expectedAutoCheckIn.EnableEmail, autoCheckIn.EnableEmail);
+        Assert.Equal(expectedAutoCheckIn.EnableSms, autoCheckIn.EnableSms);
+        Assert.Equal(expectedAutoCheckIn.TemplateKey, autoCheckIn.TemplateKey);
+        Assert.Equal(expectedAutoCheckIn.MaxAttempts, autoCheckIn.MaxAttempts);
+        Assert.Equal(expectedAutoCheckIn.EligibleVisitTypeIdsJson, autoCheckIn.EligibleVisitTypeIdsJson);
+        Assert.Equal(expectedAutoCheckIn.Version, autoCheckIn.Version);
     }
 
     private static bool ShouldApplyRuntimeMigrations()

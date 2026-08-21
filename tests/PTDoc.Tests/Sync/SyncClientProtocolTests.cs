@@ -461,6 +461,68 @@ public class SyncClientProtocolTests
     }
 
     [Fact]
+    public async Task ReceiveClientPushAsync_RescheduleClearsStaleVisitTypeAndOverlapAuthorization()
+    {
+        var context = CreateInMemoryContext();
+        var patient = new Patient
+        {
+            FirstName = "Offline",
+            LastName = "Reschedule",
+            DateOfBirth = new DateTime(1990, 6, 15),
+            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-10),
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        var originalStart = new DateTime(2026, 8, 25, 16, 0, 0, DateTimeKind.Utc);
+        var appointment = new Appointment
+        {
+            PatientId = patient.Id,
+            ClinicalId = Guid.NewGuid(),
+            StartTimeUtc = originalStart,
+            EndTimeUtc = originalStart.AddMinutes(45),
+            AppointmentType = AppointmentType.FollowUp,
+            VisitTypeId = Guid.NewGuid(),
+            AuthorizedOverlap = true,
+            Status = AppointmentStatus.Scheduled,
+            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-5),
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Synced
+        };
+        context.AddRange(patient, appointment);
+        await context.SaveChangesAsync();
+
+        var updatedStart = originalStart.AddHours(2);
+        var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var response = await syncEngine.ReceiveClientPushAsync(new ClientSyncPushRequest
+        {
+            Items =
+            [
+                new ClientSyncPushItem
+                {
+                    EntityType = "Appointment",
+                    ServerId = appointment.Id,
+                    LocalId = 17,
+                    OperationId = Guid.NewGuid(),
+                    Operation = "Update",
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        startTimeUtc = updatedStart,
+                        endTimeUtc = updatedStart.AddMinutes(60),
+                        appointmentType = (int)AppointmentType.ReEvaluation,
+                        status = (int)AppointmentStatus.Scheduled
+                    }),
+                    LastModifiedUtc = DateTime.UtcNow
+                }
+            ]
+        });
+
+        Assert.Equal(1, response.AcceptedCount);
+        Assert.Null(appointment.VisitTypeId);
+        Assert.False(appointment.AuthorizedOverlap);
+        Assert.Equal(AppointmentType.ReEvaluation, appointment.AppointmentType);
+        Assert.Equal(updatedStart, appointment.StartTimeUtc);
+    }
+
+    [Fact]
     public async Task ReceiveClientPushAsync_DryNeedlingNote_CannotPersistBillableCptData()
     {
         var context = CreateInMemoryContext();

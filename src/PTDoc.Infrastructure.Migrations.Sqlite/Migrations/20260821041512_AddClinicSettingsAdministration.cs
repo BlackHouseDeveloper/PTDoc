@@ -43,7 +43,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 table: "Clinics",
                 type: "INTEGER",
                 nullable: false,
-                defaultValue: 0L);
+                defaultValue: 1L);
 
             migrationBuilder.AddColumn<bool>(
                 name: "AuthorizedOverlap",
@@ -727,9 +727,20 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             migrationBuilder.Sql("""DROP TRIGGER IF EXISTS "TR_Appointments_PreventOverlap_Insert";""");
             migrationBuilder.Sql("""DROP TRIGGER IF EXISTS "TR_Appointments_PreventOverlap_Update";""");
-            migrationBuilder.Sql("PRAGMA foreign_keys = OFF;", suppressTransaction: true);
             migrationBuilder.Sql(
                 """
+                PRAGMA defer_foreign_keys = ON;
+
+                CREATE TEMP TABLE "__ptdoc_AppointmentPaymentTransactions_backup" AS
+                    SELECT * FROM "AppointmentPaymentTransactions";
+                DELETE FROM "AppointmentPaymentTransactions";
+
+                CREATE TEMP TABLE "__ptdoc_ClinicalNoteAppointmentLinks_backup" AS
+                    SELECT "Id", "AppointmentId"
+                    FROM "ClinicalNotes"
+                    WHERE "AppointmentId" IS NOT NULL;
+                UPDATE "ClinicalNotes" SET "AppointmentId" = NULL WHERE "AppointmentId" IS NOT NULL;
+
                 CREATE TABLE "__temp_Appointments" (
                     "Id" TEXT NOT NULL CONSTRAINT "PK_Appointments" PRIMARY KEY,
                     "LastModifiedUtc" TEXT NOT NULL,
@@ -779,8 +790,22 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     WHERE "ClinicalVisitOrdinal" IS NOT NULL;
                 CREATE INDEX "IX_Appointments_ClinicId_PatientId_ClinicalVisitOrdinal"
                     ON "Appointments" ("ClinicId", "PatientId", "ClinicalVisitOrdinal");
+
+                UPDATE "ClinicalNotes"
+                SET "AppointmentId" = (
+                    SELECT backup."AppointmentId"
+                    FROM "__ptdoc_ClinicalNoteAppointmentLinks_backup" backup
+                    WHERE backup."Id" = "ClinicalNotes"."Id")
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM "__ptdoc_ClinicalNoteAppointmentLinks_backup" backup
+                    WHERE backup."Id" = "ClinicalNotes"."Id");
+                INSERT INTO "AppointmentPaymentTransactions"
+                    SELECT * FROM "__ptdoc_AppointmentPaymentTransactions_backup";
+
+                DROP TABLE "__ptdoc_ClinicalNoteAppointmentLinks_backup";
+                DROP TABLE "__ptdoc_AppointmentPaymentTransactions_backup";
                 """);
-            migrationBuilder.Sql("PRAGMA foreign_keys = ON;", suppressTransaction: true);
 
             migrationBuilder.Sql(
                 """
@@ -834,9 +859,23 @@ namespace PTDoc.Infrastructure.Data.Migrations
             migrationBuilder.DropTable(
                 name: "AppointmentReminderDispatches");
 
-            migrationBuilder.Sql("PRAGMA foreign_keys = OFF;", suppressTransaction: true);
+            migrationBuilder.DropTable(
+                name: "KioskCheckInTokens");
+
             migrationBuilder.Sql(
                 """
+                PRAGMA defer_foreign_keys = ON;
+
+                CREATE TEMP TABLE "__ptdoc_AppointmentPaymentTransactions_backup" AS
+                    SELECT * FROM "AppointmentPaymentTransactions";
+                DELETE FROM "AppointmentPaymentTransactions";
+
+                CREATE TEMP TABLE "__ptdoc_ClinicalNoteAppointmentLinks_backup" AS
+                    SELECT "Id", "AppointmentId"
+                    FROM "ClinicalNotes"
+                    WHERE "AppointmentId" IS NOT NULL;
+                UPDATE "ClinicalNotes" SET "AppointmentId" = NULL WHERE "AppointmentId" IS NOT NULL;
+
                 CREATE TABLE "__temp_Appointments" (
                     "Id" TEXT NOT NULL CONSTRAINT "PK_Appointments" PRIMARY KEY,
                     "LastModifiedUtc" TEXT NOT NULL,
@@ -880,8 +919,22 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     WHERE "ClinicalVisitOrdinal" IS NOT NULL;
                 CREATE INDEX "IX_Appointments_ClinicId_PatientId_ClinicalVisitOrdinal"
                     ON "Appointments" ("ClinicId", "PatientId", "ClinicalVisitOrdinal");
+
+                UPDATE "ClinicalNotes"
+                SET "AppointmentId" = (
+                    SELECT backup."AppointmentId"
+                    FROM "__ptdoc_ClinicalNoteAppointmentLinks_backup" backup
+                    WHERE backup."Id" = "ClinicalNotes"."Id")
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM "__ptdoc_ClinicalNoteAppointmentLinks_backup" backup
+                    WHERE backup."Id" = "ClinicalNotes"."Id");
+                INSERT INTO "AppointmentPaymentTransactions"
+                    SELECT * FROM "__ptdoc_AppointmentPaymentTransactions_backup";
+
+                DROP TABLE "__ptdoc_ClinicalNoteAppointmentLinks_backup";
+                DROP TABLE "__ptdoc_AppointmentPaymentTransactions_backup";
                 """);
-            migrationBuilder.Sql("PRAGMA foreign_keys = ON;", suppressTransaction: true);
 
             migrationBuilder.DropTable(
                 name: "AutoCheckInPolicies");
@@ -891,9 +944,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "ClinicSecurityPolicies");
-
-            migrationBuilder.DropTable(
-                name: "KioskCheckInTokens");
 
             migrationBuilder.DropTable(
                 name: "KioskEnrollmentCodes");

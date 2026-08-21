@@ -64,10 +64,18 @@ public static class RolePermissionCatalog
         new(CapabilityKey.IntegrationsManage, "Manage Integrations", "Configure third-party integrations", true)
     ];
 
-    public static PermissionLevel GetCanonicalLevel(string roleKey, CapabilityKey capability) =>
-        CanonicalLevels.TryGetValue((NormalizeRole(roleKey), capability), out var level)
+    public static PermissionLevel GetCanonicalLevel(string roleKey, CapabilityKey capability)
+    {
+        var definition = Capabilities.FirstOrDefault(candidate => candidate.Key == capability);
+        if (definition is null || !definition.IsSupported)
+        {
+            return PermissionLevel.None;
+        }
+
+        return CanonicalLevels.TryGetValue((NormalizeRole(roleKey), capability), out var level)
             ? level
             : PermissionLevel.None;
+    }
 
     public static PermissionLevel GetLockedMinimum(string roleKey, CapabilityKey capability)
     {

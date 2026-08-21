@@ -206,13 +206,19 @@ The same migration:
 Apply schema changes before enabling the related API/UI paths. Do not make `VisitTypeId` required or
 remove the legacy field until Web and MAUI have completed the compatibility release.
 
-The SQLite provider performs an explicit transactional `Appointments` rebuild while foreign-key
-enforcement is temporarily disabled, re-enables enforcement immediately afterward, and then
-recreates the overlap triggers. Migration validation must run `PRAGMA foreign_key_check` and verify
-both insert/update overlap triggers after upgrade and downgrade. Current provider overlap guards
+The SQLite provider performs an explicit transactional `Appointments` rebuild with deferred
+foreign-key checking. Existing payment rows and clinical-note appointment links are staged and
+restored inside that same transaction before the overlap triggers are recreated; no migration
+phase suppresses the EF transaction. Migration validation must run `PRAGMA foreign_key_check`,
+verify linked data, and verify both insert/update overlap triggers after upgrade and downgrade.
+Current provider overlap guards
 always validate inserts, but update validation runs only when clinician, interval, active/cancelled
 semantics, or the explicit authorization marker changes; ordinary note and metadata updates must
-remain writable after an approved double booking.
+remain writable after an approved double booking. The shared persistence boundary clears an existing
+authorization marker whenever clinician or interval fields change unless the scheduling workflow
+explicitly supplies a replacement authorization in that same write. It also clears `VisitTypeId`
+when legacy appointment type or clinic fields change without an explicitly updated stable ID, so
+compatibility writers fail safely instead of retaining mismatched references.
 
 ### Environment Variables — Runtime API
 

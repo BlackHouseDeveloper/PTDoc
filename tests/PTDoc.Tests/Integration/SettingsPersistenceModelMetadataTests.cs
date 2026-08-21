@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using PTDoc.Application.Services;
+using PTDoc.Application.Settings;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 
@@ -21,6 +23,63 @@ public sealed class SettingsPersistenceModelMetadataTests
         { "PTDoc.Infrastructure.Migrations.SqlServer", "Microsoft.EntityFrameworkCore.SqlServer" },
         { "PTDoc.Infrastructure.Migrations.Postgres", "Npgsql.EntityFrameworkCore.PostgreSQL" }
     };
+
+    [Theory]
+    [InlineData(Roles.PT, CapabilityKey.StaffMessagesSend)]
+    [InlineData(Roles.Owner, CapabilityKey.FinancialReportsView)]
+    [InlineData(Roles.Billing, CapabilityKey.BillingReportsView)]
+    public void CanonicalPermissionFallback_RejectsUnsupportedCapabilities(
+        string role,
+        CapabilityKey capability)
+    {
+        Assert.False(RolePermissionCatalog.FindCapability(capability).IsSupported);
+        Assert.Equal(PermissionLevel.None, RolePermissionCatalog.GetCanonicalLevel(role, capability));
+    }
+
+    [Fact]
+    public async Task AppointmentCompatibilityNormalization_ClearsStaleTypeAndOverlapAuthorization()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .Options;
+        await using var context = new ApplicationDbContext(options);
+        var appointment = new Appointment
+        {
+            PatientId = Guid.NewGuid(),
+            ClinicalId = Guid.NewGuid(),
+            ClinicId = Guid.NewGuid(),
+            StartTimeUtc = new DateTime(2026, 8, 25, 16, 0, 0, DateTimeKind.Utc),
+            EndTimeUtc = new DateTime(2026, 8, 25, 17, 0, 0, DateTimeKind.Utc),
+            AppointmentType = AppointmentType.FollowUp,
+            VisitTypeId = Guid.NewGuid(),
+            AuthorizedOverlap = true,
+            Status = AppointmentStatus.Scheduled,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = Guid.NewGuid(),
+            SyncState = SyncState.Pending
+        };
+        context.Appointments.Add(appointment);
+        await context.SaveChangesAsync();
+
+        appointment.AppointmentType = AppointmentType.ReEvaluation;
+        appointment.StartTimeUtc = appointment.StartTimeUtc.AddHours(1);
+        appointment.EndTimeUtc = appointment.EndTimeUtc.AddHours(1);
+        await context.SaveChangesAsync();
+
+        Assert.Null(appointment.VisitTypeId);
+        Assert.False(appointment.AuthorizedOverlap);
+
+        var replacementVisitTypeId = Guid.NewGuid();
+        appointment.AppointmentType = AppointmentType.Discharge;
+        appointment.VisitTypeId = replacementVisitTypeId;
+        appointment.StartTimeUtc = appointment.StartTimeUtc.AddHours(1);
+        appointment.EndTimeUtc = appointment.EndTimeUtc.AddHours(1);
+        appointment.AuthorizedOverlap = true;
+        await context.SaveChangesAsync();
+
+        Assert.Equal(replacementVisitTypeId, appointment.VisitTypeId);
+        Assert.True(appointment.AuthorizedOverlap);
+    }
 
     [Fact]
     public void SettingsRelationships_EnforceClinicScopedReferences()
@@ -78,9 +137,13 @@ public sealed class SettingsPersistenceModelMetadataTests
         var migration = Activator.CreateInstance(migrationType)!;
         var migrationBuilder = new MigrationBuilder(activeProvider);
         var upMethod = migrationType.GetMethod("Up", BindingFlags.Instance | BindingFlags.NonPublic);
+        var downMethod = migrationType.GetMethod("Down", BindingFlags.Instance | BindingFlags.NonPublic);
 
         Assert.NotNull(upMethod);
+        Assert.NotNull(downMethod);
         upMethod!.Invoke(migration, new object[] { migrationBuilder });
+        var downMigrationBuilder = new MigrationBuilder(activeProvider);
+        downMethod!.Invoke(migration, new object[] { downMigrationBuilder });
 
         var migrationSql = string.Join(
             Environment.NewLine,
@@ -100,6 +163,16 @@ public sealed class SettingsPersistenceModelMetadataTests
 
         if (activeProvider == "Microsoft.EntityFrameworkCore.Sqlite")
         {
+            Assert.DoesNotContain(
+                migrationBuilder.Operations.Concat(downMigrationBuilder.Operations).OfType<SqlOperation>(),
+                operation => operation.SuppressTransaction);
+            Assert.Contains("PRAGMA defer_foreign_keys = ON", migrationSql, StringComparison.Ordinal);
+            Assert.Contains(
+                "PRAGMA defer_foreign_keys = ON",
+                string.Join(
+                    Environment.NewLine,
+                    downMigrationBuilder.Operations.OfType<SqlOperation>().Select(operation => operation.Sql)),
+                StringComparison.Ordinal);
             Assert.Contains(
                 "FOREIGN KEY (\"ClinicId\", \"VisitTypeId\") REFERENCES \"VisitTypes\" (\"ClinicId\", \"Id\")",
                 migrationSql,
@@ -214,11 +287,46 @@ public sealed class SettingsPersistenceModelMetadataTests
             includeAuthorizedOverlap: false,
             appointmentType: (int)AppointmentType.ReEvaluation);
 
+        var linkedNote = new ClinicalNote
+        {
+            PatientId = patientId,
+            AppointmentId = existingAppointmentId,
+            ClinicId = clinicId,
+            NoteType = NoteType.Daily,
+            NoteStatus = NoteStatus.Draft,
+            ContentJson = "{}",
+            CptCodesJson = "[]",
+            DateOfService = existingStart.Date,
+            CreatedUtc = existingStart,
+            LastModifiedUtc = existingStart,
+            ModifiedByUserId = clinicianId,
+            SyncState = SyncState.Pending
+        };
+        var linkedPayment = new AppointmentPaymentTransaction
+        {
+            AppointmentId = existingAppointmentId,
+            PatientId = patientId,
+            Amount = 25m,
+            Status = AppointmentPaymentStatus.Succeeded,
+            Processor = "MigrationTest",
+            TransactionId = $"migration-{Guid.NewGuid():N}",
+            CreatedAtUtc = existingStart,
+            ProcessedAtUtc = existingStart
+        };
+        context.AddRange(linkedNote, linkedPayment);
+        await context.SaveChangesAsync();
+
         await migrator.MigrateAsync();
 
         await AssertNoSqliteForeignKeyViolationsAsync(connection);
         await AssertSqliteOverlapTriggersAsync(connection, expectAuthorizedOverlap: true);
         await AssertReEvaluationBackfilledAsync(connection, existingAppointmentId);
+        await AssertAppointmentDependentsPreservedAsync(
+            context,
+            existingAppointmentId,
+            linkedNote.Id,
+            linkedPayment.Id);
+        await DatabaseProviderSmokeTests.AssertExistingClinicSeedParityAsync(context, clinicId);
         await AssertOverlappingInsertRejectedAsync(
             connection,
             patientId,
@@ -248,6 +356,11 @@ public sealed class SettingsPersistenceModelMetadataTests
 
         await AssertNoSqliteForeignKeyViolationsAsync(connection);
         await AssertSqliteOverlapTriggersAsync(connection, expectAuthorizedOverlap: false);
+        await AssertAppointmentDependentsPreservedAsync(
+            context,
+            existingAppointmentId,
+            linkedNote.Id,
+            linkedPayment.Id);
         await AssertOverlappingInsertRejectedAsync(
             connection,
             patientId,
@@ -256,6 +369,15 @@ public sealed class SettingsPersistenceModelMetadataTests
             existingStart,
             existingEnd,
             includeAuthorizedOverlap: false);
+
+        await migrator.MigrateAsync();
+        await AssertNoSqliteForeignKeyViolationsAsync(connection);
+        await AssertSqliteOverlapTriggersAsync(connection, expectAuthorizedOverlap: true);
+        await AssertAppointmentDependentsPreservedAsync(
+            context,
+            existingAppointmentId,
+            linkedNote.Id,
+            linkedPayment.Id);
     }
 
     [Fact]
@@ -364,6 +486,27 @@ public sealed class SettingsPersistenceModelMetadataTests
         await using var reader = await checkCommand.ExecuteReaderAsync();
 
         Assert.False(await reader.ReadAsync());
+    }
+
+    private static async Task AssertAppointmentDependentsPreservedAsync(
+        ApplicationDbContext context,
+        Guid appointmentId,
+        Guid noteId,
+        Guid paymentId)
+    {
+        context.ChangeTracker.Clear();
+        Assert.Equal(
+            appointmentId,
+            await context.ClinicalNotes.AsNoTracking()
+                .Where(row => row.Id == noteId)
+                .Select(row => row.AppointmentId)
+                .SingleAsync());
+        Assert.Equal(
+            appointmentId,
+            await context.AppointmentPaymentTransactions.AsNoTracking()
+                .Where(row => row.Id == paymentId)
+                .Select(row => row.AppointmentId)
+                .SingleAsync());
     }
 
     private static async Task AssertSqliteOverlapTriggersAsync(

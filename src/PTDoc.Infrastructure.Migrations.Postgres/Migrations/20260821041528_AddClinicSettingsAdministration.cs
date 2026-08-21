@@ -43,7 +43,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 table: "Clinics",
                 type: "bigint",
                 nullable: false,
-                defaultValue: 0L);
+                defaultValue: 1L);
 
             migrationBuilder.AddColumn<bool>(
                 name: "AuthorizedOverlap",

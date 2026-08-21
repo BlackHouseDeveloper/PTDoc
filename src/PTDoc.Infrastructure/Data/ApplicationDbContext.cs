@@ -109,6 +109,7 @@ public class ApplicationDbContext : DbContext
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         SeedTrackedClinicSettings();
+        NormalizeTrackedAppointments();
         NormalizeTrackedUsers();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
@@ -116,6 +117,7 @@ public class ApplicationDbContext : DbContext
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         SeedTrackedClinicSettings();
+        NormalizeTrackedAppointments();
         NormalizeTrackedUsers();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
@@ -1296,6 +1298,31 @@ public class ApplicationDbContext : DbContext
                     LockedMinimum = RolePermissionCatalog.GetLockedMinimum(role.Key, capability.Key),
                     UpdatedByUserId = actorUserId
                 });
+        }
+    }
+
+    private void NormalizeTrackedAppointments()
+    {
+        foreach (var entry in ChangeTracker.Entries<Appointment>()
+                     .Where(candidate => candidate.State == EntityState.Modified))
+        {
+            var visitTypeId = entry.Property(appointment => appointment.VisitTypeId);
+            var legacyTypeChanged = entry.Property(appointment => appointment.AppointmentType).IsModified;
+            var clinicChanged = entry.Property(appointment => appointment.ClinicId).IsModified;
+            if ((legacyTypeChanged || clinicChanged) && !visitTypeId.IsModified)
+            {
+                entry.Entity.VisitTypeId = null;
+            }
+
+            var schedulingFieldsChanged =
+                entry.Property(appointment => appointment.ClinicalId).IsModified ||
+                entry.Property(appointment => appointment.StartTimeUtc).IsModified ||
+                entry.Property(appointment => appointment.EndTimeUtc).IsModified;
+            var overlapAuthorization = entry.Property(appointment => appointment.AuthorizedOverlap);
+            if (schedulingFieldsChanged && entry.Entity.AuthorizedOverlap && !overlapAuthorization.IsModified)
+            {
+                entry.Entity.AuthorizedOverlap = false;
+            }
         }
     }
 
