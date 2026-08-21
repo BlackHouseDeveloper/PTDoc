@@ -180,7 +180,8 @@ public class ApplicationDbContext : DbContext
 
             entity.HasOne(e => e.VisitType)
                 .WithMany()
-                .HasForeignKey(e => e.VisitTypeId)
+                .HasForeignKey(e => new { e.ClinicId, e.VisitTypeId })
+                .HasPrincipalKey(e => new { e.ClinicId, e.Id })
                 .OnDelete(DeleteBehavior.Restrict);
 
             // SQL Server's optimized OUTPUT-based DML is incompatible with the
@@ -1089,6 +1090,7 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<VisitType>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasAlternateKey(e => new { e.ClinicId, e.Id });
             entity.HasIndex(e => new { e.ClinicId, e.Code }).IsUnique();
             entity.HasIndex(e => new { e.ClinicId, e.IsActive, e.DisplayOrder });
             entity.Property(e => e.Code).HasMaxLength(80).IsRequired();
@@ -1153,6 +1155,7 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<KioskStation>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasAlternateKey(e => new { e.ClinicId, e.Id });
             entity.HasIndex(e => new { e.ClinicId, e.Name }).IsUnique();
             entity.Property(e => e.Name).HasMaxLength(120).IsRequired();
             entity.Property(e => e.DeviceCredentialHash).HasMaxLength(256).IsRequired();
@@ -1165,7 +1168,12 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.CodeHash).IsUnique();
             entity.Property(e => e.CodeHash).HasMaxLength(256).IsRequired();
-            entity.HasOne(e => e.KioskStation).WithMany().HasForeignKey(e => e.KioskStationId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.KioskStation)
+                .WithMany()
+                .HasForeignKey(e => new { e.ClinicId, e.KioskStationId })
+                .HasPrincipalKey(e => new { e.ClinicId, e.Id })
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<KioskCheckInToken>(entity =>
@@ -1173,6 +1181,7 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.TokenHash).IsUnique();
             entity.Property(e => e.TokenHash).HasMaxLength(256).IsRequired();
+            entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.Appointment).WithMany().HasForeignKey(e => e.AppointmentId).OnDelete(DeleteBehavior.Cascade);
         });
     }

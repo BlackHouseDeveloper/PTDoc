@@ -315,6 +315,7 @@ public class KioskEnrollmentCode
     public DateTime ExpiresAtUtc { get; set; }
     public DateTime? ConsumedAtUtc { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public Clinic? Clinic { get; set; }
     public KioskStation? KioskStation { get; set; }
 }
 
@@ -327,5 +328,6 @@ public class KioskCheckInToken
     public DateTime ExpiresAtUtc { get; set; }
     public DateTime? ConsumedAtUtc { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public Clinic? Clinic { get; set; }
     public Appointment? Appointment { get; set; }
 }

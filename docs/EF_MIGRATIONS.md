@@ -190,8 +190,11 @@ The same migration:
   Auto Check-In, and kiosk tables;
 - seeds every existing clinic with 270 role-capability rows, 12 visit types, seven business-hour
   rows, and canonical security/scheduling/Auto Check-In policies;
-- adds nullable `Appointments.VisitTypeId` and backfills the three known values from the legacy
-  `Appointments.AppointmentType` column;
+- adds nullable `Appointments.VisitTypeId` and backfills all four known values (initial evaluation,
+  follow-up, discharge, and re-evaluation) from the legacy `Appointments.AppointmentType` column;
+- binds appointment visit-type references and kiosk enrollment-code station references through
+  clinic-qualified composite foreign keys, while kiosk enrollment codes and check-in tokens also
+  carry direct clinic foreign keys;
 - leaves `Appointments.AppointmentType` in place for the dual-read/write compatibility release.
 
 Apply schema changes before enabling the related API/UI paths. Do not make `VisitTypeId` required or

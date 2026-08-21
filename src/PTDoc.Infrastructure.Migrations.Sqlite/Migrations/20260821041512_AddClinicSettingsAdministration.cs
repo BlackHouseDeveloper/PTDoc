@@ -204,6 +204,12 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         principalTable: "Appointments",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_KioskCheckInTokens_Clinics_ClinicId",
+                        column: x => x.ClinicId,
+                        principalTable: "Clinics",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -225,6 +231,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_KioskStations", x => x.Id);
+                    table.UniqueConstraint("AK_KioskStations_ClinicId_Id", x => new { x.ClinicId, x.Id });
                     table.ForeignKey(
                         name: "FK_KioskStations_Clinics_ClinicId",
                         column: x => x.ClinicId,
@@ -377,6 +384,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_VisitTypes", x => x.Id);
+                    table.UniqueConstraint("AK_VisitTypes_ClinicId_Id", x => new { x.ClinicId, x.Id });
                     table.ForeignKey(
                         name: "FK_VisitTypes_Clinics_ClinicId",
                         column: x => x.ClinicId,
@@ -401,10 +409,16 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 {
                     table.PrimaryKey("PK_KioskEnrollmentCodes", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_KioskEnrollmentCodes_KioskStations_KioskStationId",
-                        column: x => x.KioskStationId,
-                        principalTable: "KioskStations",
+                        name: "FK_KioskEnrollmentCodes_Clinics_ClinicId",
+                        column: x => x.ClinicId,
+                        principalTable: "Clinics",
                         principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_KioskEnrollmentCodes_KioskStations_ClinicId_KioskStationId",
+                        columns: x => new { x.ClinicId, x.KioskStationId },
+                        principalTable: "KioskStations",
+                        principalColumns: new[] { "ClinicId", "Id" },
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -430,9 +444,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_Appointments_VisitTypeId",
+                name: "IX_Appointments_ClinicId_VisitTypeId",
                 table: "Appointments",
-                column: "VisitTypeId");
+                columns: new[] { "ClinicId", "VisitTypeId" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_AppointmentReminderDispatches_AppointmentId",
@@ -479,6 +493,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 column: "AppointmentId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_KioskCheckInTokens_ClinicId",
+                table: "KioskCheckInTokens",
+                column: "ClinicId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_KioskCheckInTokens_TokenHash",
                 table: "KioskCheckInTokens",
                 column: "TokenHash",
@@ -491,9 +510,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_KioskEnrollmentCodes_KioskStationId",
+                name: "IX_KioskEnrollmentCodes_ClinicId_KioskStationId",
                 table: "KioskEnrollmentCodes",
-                column: "KioskStationId");
+                columns: new[] { "ClinicId", "KioskStationId" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_KioskStations_ClinicId_Name",
@@ -675,8 +694,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                           WHEN 0 THEN 'initial-evaluation'
                           WHEN 1 THEN 'follow-up'
                           WHEN 2 THEN 'discharge'
+                          WHEN 3 THEN 're-evaluation'
                       END)
-                WHERE "VisitTypeId" IS NULL AND "AppointmentType" IN (0, 1, 2);
+                WHERE "VisitTypeId" IS NULL AND "AppointmentType" IN (0, 1, 2, 3);
                 """);
 
             migrationBuilder.Sql("""DROP TRIGGER IF EXISTS "TR_Appointments_PreventOverlap_Insert";""");
@@ -717,11 +737,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 """);
 
             migrationBuilder.AddForeignKey(
-                name: "FK_Appointments_VisitTypes_VisitTypeId",
+                name: "FK_Appointments_VisitTypes_ClinicId_VisitTypeId",
                 table: "Appointments",
-                column: "VisitTypeId",
+                columns: new[] { "ClinicId", "VisitTypeId" },
                 principalTable: "VisitTypes",
-                principalColumn: "Id",
+                principalColumns: new[] { "ClinicId", "Id" },
                 onDelete: ReferentialAction.Restrict);
         }
 
@@ -762,7 +782,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 """);
 
             migrationBuilder.DropForeignKey(
-                name: "FK_Appointments_VisitTypes_VisitTypeId",
+                name: "FK_Appointments_VisitTypes_ClinicId_VisitTypeId",
                 table: "Appointments");
 
             migrationBuilder.DropTable(
@@ -805,7 +825,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 name: "UserMfaCredentials");
 
             migrationBuilder.DropIndex(
-                name: "IX_Appointments_VisitTypeId",
+                name: "IX_Appointments_ClinicId_VisitTypeId",
                 table: "Appointments");
 
             migrationBuilder.DropColumn(

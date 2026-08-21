@@ -90,7 +90,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasIndex("StartTimeUtc");
 
-                    b.HasIndex("VisitTypeId");
+                    b.HasIndex("ClinicId", "VisitTypeId");
 
                     b.HasIndex("ClinicalId", "StartTimeUtc");
 
@@ -1839,6 +1839,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasIndex("AppointmentId");
 
+                    b.HasIndex("ClinicId");
+
                     b.HasIndex("TokenHash")
                         .IsUnique();
 
@@ -1876,7 +1878,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("CodeHash")
                         .IsUnique();
 
-                    b.HasIndex("KioskStationId");
+                    b.HasIndex("ClinicId", "KioskStationId");
 
                     b.ToTable("KioskEnrollmentCodes");
                 });
@@ -1923,6 +1925,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
+
+                    b.HasAlternateKey("ClinicId", "Id");
 
                     b.HasIndex("ClinicId", "Name")
                         .IsUnique();
@@ -3349,6 +3353,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasAlternateKey("ClinicId", "Id");
+
                     b.HasIndex("ClinicId", "Code")
                         .IsUnique();
 
@@ -3372,7 +3378,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasOne("PTDoc.Core.Models.VisitType", "VisitType")
                         .WithMany()
-                        .HasForeignKey("VisitTypeId")
+                        .HasForeignKey("ClinicId", "VisitTypeId")
+                        .HasPrincipalKey("ClinicId", "Id")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Clinic");
@@ -3734,16 +3741,33 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("Appointment");
+
+                    b.Navigation("Clinic");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.KioskEnrollmentCode", b =>
                 {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("PTDoc.Core.Models.KioskStation", "KioskStation")
                         .WithMany()
-                        .HasForeignKey("KioskStationId")
+                        .HasForeignKey("ClinicId", "KioskStationId")
+                        .HasPrincipalKey("ClinicId", "Id")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Clinic");
 
                     b.Navigation("KioskStation");
                 });

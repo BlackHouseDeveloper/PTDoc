@@ -50,6 +50,8 @@ Appointment visit-type migration is release-oriented:
 
 Visit types referenced historically are soft-deactivated. Authorized double booking is persisted explicitly so provider-specific database overlap guards can distinguish approved overlap from accidental or concurrent conflicts.
 
+Tenant identity is part of the persisted relationship boundary: appointments reference visit types by `(ClinicId, VisitTypeId)`, and kiosk enrollment codes reference stations by `(ClinicId, KioskStationId)`. Enrollment codes and check-in tokens also have direct clinic foreign keys. While the legacy nullable appointment clinic field remains during compatibility, kiosk token issuance and consumption must resolve the linked appointment inside the same clinic before accepting the relationship.
+
 Provider migrations `20260821041512_AddClinicSettingsAdministration` (SQLite),
 `20260821041521_AddClinicSettingsAdministration` (SQL Server), and
 `20260821041528_AddClinicSettingsAdministration` (PostgreSQL) add the settings/authentication
