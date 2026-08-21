@@ -147,6 +147,27 @@
     height: var(--spacing-4);
 }
 
+.scheduling-panel__add > span {
+    display: flex;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--spacing-1);
+}
+
+.scheduling-panel__add small,
+.scheduled-item__availability {
+    font-size: var(--text-xs);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-tight);
+}
+
+.scheduling-panel__add:disabled,
+.scheduled-item__actions button:disabled,
+.quick-admin-tools__row:disabled {
+    border-style: dashed;
+    cursor: not-allowed;
+}
+
 .scheduled-item-list,
 .calendar-setting-list,
 .quick-admin-tools__items {
@@ -191,6 +212,12 @@
     flex-wrap: wrap;
     gap: var(--spacing-4);
     margin-top: var(--spacing-1);
+}
+
+.scheduled-item__availability {
+    display: block;
+    margin-top: var(--spacing-2);
+    color: var(--muted-foreground);
 }
 
 .scheduled-item__duration {

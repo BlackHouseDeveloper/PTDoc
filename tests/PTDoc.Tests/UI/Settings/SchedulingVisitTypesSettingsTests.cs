@@ -29,6 +29,11 @@ public sealed class SchedulingVisitTypesSettingsTests : TestContext
         Assert.Contains("Auto Check-In Messaging", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Save Preview", cut.Find(".scheduling-settings__action-bar").TextContent, StringComparison.Ordinal);
         Assert.Contains("are not persisted", cut.Find("#scheduling-preview-status").TextContent, StringComparison.Ordinal);
+        Assert.True(cut.Find(".scheduling-panel__add").HasAttribute("disabled"));
+        Assert.All(cut.FindAll(".scheduled-item__actions button"), button => Assert.True(button.HasAttribute("disabled")));
+        Assert.All(cut.FindAll(".quick-admin-tools__row"), button => Assert.True(button.HasAttribute("disabled")));
+        Assert.Contains("Edit and delete are unavailable in this preview", cut.Markup, StringComparison.Ordinal);
+        Assert.Equal(2, cut.FindAll(".quick-admin-tools__copy small").Count(item => item.TextContent.Contains("Preview unavailable", StringComparison.Ordinal)));
         Assert.Equal(
             "scheduling-preview-status",
             FindAction(cut, "Save Preview").GetAttribute("aria-describedby"));

@@ -51,6 +51,9 @@ public sealed class RolesPermissionsSettingsTests : TestContext
         Assert.True(cut.Find("#clone-role-select").HasAttribute("disabled"));
         Assert.True(cut.Find(".clone-permissions button").HasAttribute("disabled"));
         Assert.Contains("only documented permission baseline", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("remain local to this page and are not persisted", cut.Markup, StringComparison.Ordinal);
+        Assert.All(cut.FindAll(".quick-admin__items > button"), button => Assert.True(button.HasAttribute("disabled")));
+        Assert.Equal(2, cut.FindAll(".quick-admin__items small").Count(item => item.TextContent.Contains("Preview unavailable", StringComparison.Ordinal)));
         Assert.Contains("Permission Summary for PT / DPT", cut.Markup, StringComparison.Ordinal);
     }
 
@@ -83,6 +86,11 @@ public sealed class RolesPermissionsSettingsTests : TestContext
 
         Assert.Equal("true", cut.Find("button[aria-label='Restrict Schedule Access']").GetAttribute("aria-checked"));
         Assert.Null(cut.Find("#roles-settings-panel").GetAttribute("tabindex"));
+
+        cut.Find(".manage-roles-row").Click();
+
+        Assert.Equal("true", cut.Find("#role-permissions-tab").GetAttribute("aria-selected"));
+        Assert.Equal("0", cut.Find("#role-permissions-tab").GetAttribute("tabindex"));
     }
 
     [Fact]

@@ -196,7 +196,7 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     align-items: center;
     gap: var(--spacing-3);
-    min-height: 6.5rem;
+    min-height: var(--settings-roles-row-min-height);
     border: 2px solid var(--settings-panel-border);
     border-radius: var(--radius-lg);
     background: transparent;
@@ -263,7 +263,7 @@
 
 .clone-permissions {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) minmax(17rem, auto);
+    grid-template-columns: auto minmax(0, 1fr) minmax(var(--settings-roles-clone-actions-min-width), auto);
     align-items: center;
     gap: var(--spacing-3);
     border: 1px solid var(--settings-clone-border);
@@ -343,7 +343,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--spacing-4);
-    min-height: 6.5rem;
+    min-height: var(--settings-roles-row-min-height);
 }
 
 .permission-row__copy {
@@ -525,7 +525,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--spacing-4);
-    min-height: 4.875rem;
+    min-height: var(--settings-roles-manage-row-min-height);
     border: 1px solid var(--settings-clone-border);
     background: var(--settings-clone-bg);
     padding: var(--spacing-4);
@@ -605,7 +605,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--spacing-4);
-    min-height: 4.125rem;
+    min-height: var(--settings-roles-quick-row-min-height);
     border: 1px solid transparent;
     border-radius: var(--radius-md);
     background: transparent;
@@ -614,6 +614,11 @@
     font: inherit;
     text-align: left;
     cursor: pointer;
+}
+
+.quick-admin__items > button:disabled {
+    border-style: dashed;
+    cursor: not-allowed;
 }
 
 .quick-admin__icon {

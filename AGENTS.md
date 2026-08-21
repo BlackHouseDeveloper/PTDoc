@@ -91,7 +91,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - Run the focused audit-remediation browser checks: `PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> npm run test:audit-remediation`
 - Enable the viewport diagnostics overlay during a local Web run: `PTDOC_DEVELOPER_MODE=true dotnet run --project src/PTDoc.Web --urls http://localhost:5145`
 - Manual GitHub Actions browser run: use workflow `UI Responsive QA`; use `http://localhost:5145` to let the workflow boot local hosts, or point it at a deployed environment, with repo secrets `PTDOC_UI_QA_USERNAME`, `PTDOC_UI_QA_PIN`, `PTDOC_UI_QA_ADMIN_USERNAME`, and `PTDOC_UI_QA_ADMIN_PIN`, plus optional repo variable `PTDOC_UI_QA_NOTE_WORKSPACE_PATH`. Set `upload_artifacts=true` to upload the Playwright report, traces, screenshots, and temporary app logs even when the run passes.
-- Optional authenticated-session alternative: set `PTDOC_UI_QA_STORAGE_STATE` to a Playwright storage-state JSON file instead of credentials.
+- Optional authenticated-session alternative: set `PTDOC_UI_QA_STORAGE_STATE` to a Playwright storage-state JSON file instead of credentials; responsive Settings coverage requires that stored session to have Admin/Owner access.
 - Optional patient-chart override for the upload QA: set `PTDOC_UI_QA_PATIENT_CHART_PATH=/patient/<patient-id>` when a different seeded patient should be used.
 - Optional hosted-beta Admin and Patient overrides: set `PTDOC_UI_QA_ADMIN_USERNAME` and `PTDOC_UI_QA_ADMIN_PIN`, plus `PTDOC_UI_QA_PATIENT_USERNAME` and `PTDOC_UI_QA_PATIENT_PIN`, only when the seeded beta fixtures differ from the documented defaults.
 - Optional PT-role override for audit-remediation note-entry coverage: set `PTDOC_UI_QA_PT_USERNAME` and `PTDOC_UI_QA_PT_PIN`.
@@ -137,10 +137,10 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - `BetaAccess__SeedLockTimeoutSeconds`: bounds Beta startup seed lock waits before the app reports `SkippedLockContention`.
 - `PTDOC_WEB_BASE_URL`: overrides the Playwright browser QA base URL and defaults to `http://localhost:5145`.
 - `PTDOC_UI_QA_USERNAME` and `PTDOC_UI_QA_PIN`: credentials used by the browser QA suite when a route requires sign-in.
-- `PTDOC_UI_QA_STORAGE_STATE`: Playwright storage-state file used instead of credentials for browser QA.
+- `PTDOC_UI_QA_STORAGE_STATE`: Playwright storage-state file used instead of credentials for browser QA; it must represent an Admin/Owner-capable session when running responsive Settings coverage.
 - `PTDOC_UI_QA_REQUIRE_FULL_FIXTURES`: when `true`, requires the complete hosted-beta credential/path fixture set and turns runtime fixture gaps into failures instead of skips.
 - `PTDOC_UI_QA_PATIENT_CHART_PATH`: optional patient-chart route used by the focused patient-document upload Playwright check.
-- `PTDOC_UI_QA_ADMIN_USERNAME` and `PTDOC_UI_QA_ADMIN_PIN`: explicit Admin/Owner-capable credentials required by responsive Settings coverage; other suites may use them as hosted-beta role overrides. The shared `PTDOC_UI_QA_PIN` is accepted when the Admin PIN matches it.
+- `PTDOC_UI_QA_ADMIN_USERNAME` and `PTDOC_UI_QA_ADMIN_PIN`: explicit Admin/Owner-capable credentials used by responsive Settings coverage when an authenticated Admin/Owner `PTDOC_UI_QA_STORAGE_STATE` is not supplied; other suites may use them as hosted-beta role overrides. The shared `PTDOC_UI_QA_PIN` is accepted when the Admin PIN matches it.
 - `PTDOC_UI_QA_PT_USERNAME` and `PTDOC_UI_QA_PT_PIN`: optional PT-role credentials used by the audit-remediation Playwright coverage for Start New Note flows.
 - `PTDOC_UI_QA_PTA_USERNAME` and `PTDOC_UI_QA_PTA_PIN`: optional PTA-role credentials used by the audit-remediation Playwright coverage for View/PDF Tools flows.
 - `PTDOC_UI_QA_PATIENT_USERNAME` and `PTDOC_UI_QA_PATIENT_PIN`: optional hosted-beta Patient-role overrides used by `tests/PTDoc.Web.UiQa` when the seeded beta fixtures differ from the documented defaults.

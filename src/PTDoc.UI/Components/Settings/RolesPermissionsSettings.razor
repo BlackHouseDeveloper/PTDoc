@@ -79,7 +79,7 @@
                 </header>
 
                 <p class="role-selector__notice" role="note">
-                    PT / DPT is the only documented permission baseline in this UI preview. Other roles remain visible for reference and cannot be configured until authoritative role-specific matrices are connected.
+                    PT / DPT is the only documented permission baseline in this UI preview. Permission selections and the live summary remain local to this page and are not persisted. Other roles remain visible for reference and cannot be configured until authoritative role-specific matrices are connected.
                 </p>
 
                 <div class="role-selector__grid">
@@ -235,7 +235,7 @@
                 <div class="security-card__rows security-card__rows--compact">
                     @SecurityToggle("Allow Role Customization", "Enable admins to customize permissions for clinical roles", _allowRoleCustomization, ToggleRoleCustomization)
                     @SecurityToggle("Enable Audit Log", "Track all permission changes and role assignments", _enableAuditLog, ToggleAuditLog)
-                    <button type="button" class="manage-roles-row" @onclick="GoToRoles">
+                    <button type="button" class="manage-roles-row" @onclick="GoToRolesAsync">
                         <span class="manage-roles-row__copy">
                             <img src="_content/PTDoc.UI/images/settings/manage-roles.svg" alt="" aria-hidden="true" />
                             <span>
@@ -446,19 +446,10 @@
 
     private void ToggleScheduleAccess() => _restrictScheduleAccess = !_restrictScheduleAccess;
 
-    private void GoToRoles()
+    private async Task GoToRolesAsync()
     {
-        // TODO: Connect Go to Roles navigation.
-    }
-
-    private void OpenAutoCheckInMessaging()
-    {
-        // TODO: Connect Auto Check-In Messaging navigation.
-    }
-
-    private void OpenKioskCheckIn()
-    {
-        // TODO: Connect Kiosk Check-In navigation.
+        SelectTab(SettingsTab.RolePermissions);
+        await _rolePermissionsTab.FocusAsync();
     }
 
     private void ResetSecuritySettings()
@@ -515,17 +506,17 @@
                 <p>Additional administrative features and settings</p>
             </header>
             <div class="quick-admin__items">
-                <button type="button" @onclick="OpenAutoCheckInMessaging">
+                <button type="button" disabled>
                     <span class="quick-admin__copy">
                         <span class="quick-admin__icon"><img src="_content/PTDoc.UI/images/settings/quick-message.svg" alt="" aria-hidden="true" /></span>
-                        <span><strong>Auto Check-In Messaging</strong><small>Configure automated intake form delivery</small></span>
+                        <span><strong>Auto Check-In Messaging</strong><small>Configure automated intake form delivery · Preview unavailable</small></span>
                     </span>
                     <img class="quick-admin__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
                 </button>
-                <button type="button" @onclick="OpenKioskCheckIn">
+                <button type="button" disabled>
                     <span class="quick-admin__copy">
                         <span class="quick-admin__icon"><img src="_content/PTDoc.UI/images/settings/quick-kiosk.svg" alt="" aria-hidden="true" /></span>
-                        <span><strong>Kiosk Check-In</strong><small>Set up and manage kiosk check-in stations</small></span>
+                        <span><strong>Kiosk Check-In</strong><small>Set up and manage kiosk check-in stations · Preview unavailable</small></span>
                     </span>
                     <img class="quick-admin__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
                 </button>

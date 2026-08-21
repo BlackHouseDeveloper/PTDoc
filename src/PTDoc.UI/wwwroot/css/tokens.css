@@ -189,6 +189,10 @@
 
   /* Roles & Permissions settings surfaces */
   --settings-roles-content-max-width: 60.3125rem;
+  --settings-roles-row-min-height: 6.5rem;
+  --settings-roles-clone-actions-min-width: 17rem;
+  --settings-roles-manage-row-min-height: 4.875rem;
+  --settings-roles-quick-row-min-height: 4.125rem;
   --settings-panel-border: rgba(var(--primary-rgb), 0.2);
   --settings-guidance-bg: #faf5ff;
   --settings-guidance-border: #e9d5ff;

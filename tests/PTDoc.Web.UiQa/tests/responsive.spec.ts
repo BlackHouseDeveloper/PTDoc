@@ -323,6 +323,11 @@ async function gotoAppRoute(page: Page, path: string) {
 }
 
 async function authenticateForSettings(page: Page) {
+  if (process.env.PTDOC_UI_QA_STORAGE_STATE?.trim()) {
+    await authenticateIfNeeded(page);
+    return;
+  }
+
   const adminUsername = process.env.PTDOC_UI_QA_ADMIN_USERNAME?.trim();
   const adminPin = (process.env.PTDOC_UI_QA_ADMIN_PIN ?? process.env.PTDOC_UI_QA_PIN)?.trim();
   if (!adminUsername || !adminPin) {

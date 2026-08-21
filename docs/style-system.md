@@ -47,6 +47,10 @@ Current Settings aliases:
 | Token | Usage |
 | --- | --- |
 | `--settings-roles-content-max-width` | Maximum width of the Roles and Permissions settings surface. |
+| `--settings-roles-row-min-height` | Shared minimum height of role cards and permission rows. |
+| `--settings-roles-clone-actions-min-width` | Minimum width of the clone-permissions action column. |
+| `--settings-roles-manage-row-min-height` | Minimum height of the Manage Individual Roles row. |
+| `--settings-roles-quick-row-min-height` | Minimum height of Roles Quick Admin rows. |
 | `--settings-panel-border` | Shared border emphasis for Roles and Permissions panels. |
 | `--settings-guidance-bg` | Permission-guidance callout background. |
 | `--settings-guidance-border` | Permission-guidance callout border. |

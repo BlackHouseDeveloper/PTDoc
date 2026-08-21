@@ -238,7 +238,7 @@
     };
 
     private RenderFragment VisitTypesPanel() => @<section class="scheduling-panel" aria-labelledby="visit-types-heading">
-        @PanelHeader("visit-types-heading", "Visit Types", "Configure appointment types and durations", "_content/PTDoc.UI/images/settings/scheduling.svg", "Add Visit Type", OpenAddVisitType)
+        @PanelHeader("visit-types-heading", "Visit Types", "Configure appointment types and durations", "_content/PTDoc.UI/images/settings/scheduling.svg", "Add Visit Type")
         <div class="scheduled-item-list">
             @foreach (var item in VisitTypes)
             {
@@ -248,7 +248,7 @@
     </section>;
 
     private RenderFragment ScheduleBlocksPanel() => @<section class="scheduling-panel" aria-labelledby="schedule-blocks-heading">
-        @PanelHeader("schedule-blocks-heading", "Schedule Blocks", "Configure schedule blocks for admin, lunch, meetings, etc.", "_content/PTDoc.UI/images/settings/scheduling-blocks.svg", "Add Schedule Block", OpenAddScheduleBlock)
+        @PanelHeader("schedule-blocks-heading", "Schedule Blocks", "Configure schedule blocks for admin, lunch, meetings, etc.", "_content/PTDoc.UI/images/settings/scheduling-blocks.svg", "Add Schedule Block")
         <div class="scheduled-item-list">
             @foreach (var item in ScheduleBlocks)
             {
@@ -304,7 +304,7 @@
         </section>
     </text>;
 
-    private RenderFragment PanelHeader(string id, string title, string description, string iconPath, string? actionLabel = null, Action? action = null) => @<header class="scheduling-panel__header">
+    private RenderFragment PanelHeader(string id, string title, string description, string iconPath, string? actionLabel = null) => @<header class="scheduling-panel__header">
         <div class="scheduling-panel__heading">
             <div class="scheduling-panel__title">
                 <img src="@iconPath" alt="" aria-hidden="true" />
@@ -312,11 +312,11 @@
             </div>
             <p>@description</p>
         </div>
-        @if (actionLabel is not null && action is not null)
+        @if (actionLabel is not null)
         {
-            <button type="button" class="scheduling-panel__add" @onclick="action">
+            <button type="button" class="scheduling-panel__add" disabled>
                 <img src="_content/PTDoc.UI/images/settings/scheduling-add.svg" alt="" aria-hidden="true" />
-                <span>@actionLabel</span>
+                <span><strong>@actionLabel</strong><small>Preview unavailable</small></span>
             </button>
         }
     </header>;
@@ -334,12 +334,13 @@
                     <span class="scheduled-item__badge">@item.Badge</span>
                 }
             </div>
+            <small class="scheduled-item__availability">Edit and delete are unavailable in this preview.</small>
         </div>
         <div class="scheduled-item__actions">
-            <button type="button" aria-label="Edit @item.Name @itemType" @onclick="() => EditScheduledItem(item)">
+            <button type="button" aria-label="Edit @item.Name @itemType (preview unavailable)" disabled>
                 <img src="_content/PTDoc.UI/images/settings/scheduling-edit.svg" alt="" aria-hidden="true" />
             </button>
-            <button type="button" aria-label="Delete @item.Name @itemType" @onclick="() => DeleteScheduledItem(item)">
+            <button type="button" aria-label="Delete @item.Name @itemType (preview unavailable)" disabled>
                 <img src="_content/PTDoc.UI/images/settings/scheduling-delete.svg" alt="" aria-hidden="true" />
             </button>
         </div>
@@ -387,15 +388,15 @@
             </div>
         </header>
         <div class="quick-admin-tools__items">
-            @QuickAdminRow("Auto Check-In Messaging", "Configure automated intake form delivery", "_content/PTDoc.UI/images/settings/quick-message.svg", OpenAutoCheckInMessaging)
-            @QuickAdminRow("Kiosk Check-In", "Set up and manage kiosk check-in stations", "_content/PTDoc.UI/images/settings/quick-kiosk.svg", OpenKioskCheckIn)
+            @QuickAdminRow("Auto Check-In Messaging", "Configure automated intake form delivery", "_content/PTDoc.UI/images/settings/quick-message.svg")
+            @QuickAdminRow("Kiosk Check-In", "Set up and manage kiosk check-in stations", "_content/PTDoc.UI/images/settings/quick-kiosk.svg")
         </div>
     </section>;
 
-    private RenderFragment QuickAdminRow(string label, string description, string iconPath, Action action) => @<button type="button" class="quick-admin-tools__row" @onclick="action">
+    private RenderFragment QuickAdminRow(string label, string description, string iconPath) => @<button type="button" class="quick-admin-tools__row" disabled>
         <span class="quick-admin-tools__copy">
             <span class="quick-admin-tools__icon"><img src="@iconPath" alt="" aria-hidden="true" /></span>
-            <span><strong>@label</strong><small>@description</small></span>
+            <span><strong>@label</strong><small>@description · Preview unavailable</small></span>
         </span>
         <img class="quick-admin-tools__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
     </button>;
@@ -455,36 +456,6 @@
         _allowCancelFromWeekView = settings.AllowCancelFromWeekView;
         _allowRescheduleFromWeekView = settings.AllowRescheduleFromWeekView;
         _sendAppointmentReminders = settings.SendAppointmentReminders;
-    }
-
-    private void OpenAddVisitType()
-    {
-        // TODO: Connect the visible action to the product-standard visit-type editor.
-    }
-
-    private void OpenAddScheduleBlock()
-    {
-        // TODO: Connect the visible action to the product-standard schedule-block editor.
-    }
-
-    private void EditScheduledItem(ScheduledItem item)
-    {
-        // TODO: Connect row editing once the scheduling settings contract is available.
-    }
-
-    private void DeleteScheduledItem(ScheduledItem item)
-    {
-        // TODO: Connect row deletion once product-standard confirmation behavior is defined.
-    }
-
-    private void OpenAutoCheckInMessaging()
-    {
-        // TODO: Connect Auto Check-In Messaging navigation.
-    }
-
-    private void OpenKioskCheckIn()
-    {
-        // TODO: Connect Kiosk Check-In navigation.
     }
 
     private enum SchedulingTab

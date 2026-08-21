@@ -37,10 +37,11 @@ PTDOC_UI_QA_ADMIN_PIN=<admin-pin> \
 npm run test:responsive
 ```
 
-The Settings matrix requires the explicit Admin/Owner-capable fixture. If its PIN
-matches the generic fixture, `PTDOC_UI_QA_ADMIN_PIN` may be omitted and the shared
-`PTDOC_UI_QA_PIN` is used. Generic credentials are never assumed to have Settings
-access.
+The Settings matrix requires an Admin/Owner-capable fixture. Supply either an
+authenticated `PTDOC_UI_QA_STORAGE_STATE`, or the explicit Admin credentials. If
+the Admin PIN matches the generic fixture, `PTDOC_UI_QA_ADMIN_PIN` may be omitted
+and the shared `PTDOC_UI_QA_PIN` is used. Generic credentials are never assumed to
+have Settings access, and the Settings assertions reject a non-Admin storage state.
 
 Never commit credentials or generated Playwright storage-state files. If a route requires login and neither credentials nor a valid storage-state file establishes a session, the suite fails fast instead of reporting skipped tests.
 
