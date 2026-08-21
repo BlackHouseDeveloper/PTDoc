@@ -1,0 +1,143 @@
+@using PTDoc.Application.Settings
+@inject IServiceProvider Services
+@inject NavigationManager Navigation
+
+<section class="quick-settings" aria-labelledby="auto-check-in-title" aria-busy="@_isBusy">
+    <button type="button" class="quick-settings__back" @onclick="BackToSettings">← Back to Settings</button>
+    <header>
+        <h1 id="auto-check-in-title">Auto Check-In Messaging</h1>
+        <p>Configure consent-aware automated intake delivery for eligible appointments.</p>
+    </header>
+
+    @if (_statusMessage is not null)
+    {
+        <p class="quick-settings__status @(_statusIsError ? "is-error" : string.Empty)" role="@(_statusIsError ? "alert" : "status")">@_statusMessage</p>
+    }
+    @if (!_canMutate)
+    {
+        <p class="quick-settings__status" role="status">Owner access is read-only. An Administrator must change Auto Check-In configuration.</p>
+    }
+
+    <div class="quick-settings__panel">
+        <label><input type="checkbox" checked="@_isEnabled" @onchange="e => _isEnabled = ParseBool(e.Value)" disabled="@ControlsDisabled" /> Enable automated intake delivery</label>
+        <label>Lead time (hours)<input type="number" min="1" max="168" @bind="_leadHours" disabled="@ControlsDisabled" /></label>
+        <fieldset>
+            <legend>Consented channels</legend>
+            <label><input type="checkbox" checked="@_enableEmail" @onchange="e => _enableEmail = ParseBool(e.Value)" disabled="@ControlsDisabled" /> Email</label>
+            <label><input type="checkbox" checked="@_enableSms" @onchange="e => _enableSms = ParseBool(e.Value)" disabled="@ControlsDisabled" /> SMS</label>
+        </fieldset>
+        <label>Template key<input @bind="_templateKey" disabled="@ControlsDisabled" /></label>
+        <label>Maximum attempts<input type="number" min="1" max="10" @bind="_maxAttempts" disabled="@ControlsDisabled" /></label>
+        <fieldset>
+            <legend>Visit types requiring intake</legend>
+            @foreach (var visitType in _visitTypes)
+            {
+                <label>
+                    <input type="checkbox" checked="@_eligibleVisitTypeIds.Contains(visitType.Id)" @onchange="e => ToggleVisitType(visitType.Id, ParseBool(e.Value))" disabled="@ControlsDisabled" />
+                    @visitType.Name
+                </label>
+            }
+        </fieldset>
+    </div>
+
+    <footer class="quick-settings__actions">
+        <button type="button" @onclick="Cancel" disabled="@_isBusy">Cancel</button>
+        <button type="button" class="quick-settings__primary" @onclick="Save" disabled="@ControlsDisabled">Save Changes</button>
+    </footer>
+</section>
+
+@code {
+    private IAutoCheckInAdministrationService? _policyService;
+    private ISchedulingAdministrationService? _schedulingService;
+    private IReadOnlyList<VisitTypeDto> _visitTypes = [];
+    private HashSet<Guid> _eligibleVisitTypeIds = [];
+    private bool _isEnabled;
+    private bool _enableEmail = true;
+    private bool _enableSms = true;
+    private int _leadHours = 24;
+    private int _maxAttempts = 3;
+    private string _templateKey = "default-intake-invite";
+    private long _version;
+    private bool _isBusy;
+    private bool _canMutate = true;
+    private bool _statusIsError;
+    private string? _statusMessage;
+    private AutoCheckInPolicyDto _snapshot = new(false, 24, true, true, "default-intake-invite", 3, [], 0);
+    private bool ControlsDisabled => _isBusy || !_canMutate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Services.GetService(typeof(Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider))
+            is Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider authenticationStateProvider)
+        {
+            var authenticationState = await authenticationStateProvider.GetAuthenticationStateAsync();
+            _canMutate = authenticationState.User.IsInRole(PTDoc.Application.Services.Roles.Admin);
+        }
+
+        _policyService = Services.GetService(typeof(IAutoCheckInAdministrationService)) as IAutoCheckInAdministrationService;
+        _schedulingService = Services.GetService(typeof(ISchedulingAdministrationService)) as ISchedulingAdministrationService;
+        if (_policyService is null || _schedulingService is null) return;
+        _isBusy = true;
+        try
+        {
+            var policyTask = _policyService.GetAsync(Guid.Empty);
+            var visitsTask = _schedulingService.GetVisitTypesAsync(Guid.Empty, false);
+            await Task.WhenAll(policyTask, visitsTask);
+            _visitTypes = (await visitsTask).Where(item => item.RequiresIntake).ToArray();
+            Apply(await policyTask);
+        }
+        catch (Exception)
+        {
+            ShowStatus("Auto Check-In settings could not be loaded.", true);
+        }
+        finally { _isBusy = false; }
+    }
+
+    private async Task Save()
+    {
+        if (_policyService is null || !_canMutate) return;
+        _isBusy = true;
+        try
+        {
+            var result = await _policyService.UpdateAsync(Guid.Empty,
+                new UpdateAutoCheckInPolicyRequest(_isEnabled, _leadHours, _enableEmail, _enableSms,
+                    _templateKey, _maxAttempts, _eligibleVisitTypeIds.ToArray(), _version),
+                Guid.Empty, string.Empty);
+            if (!result.Succeeded || result.Value is null)
+            {
+                var message = result.ValidationErrors?.Values.SelectMany(value => value).FirstOrDefault()
+                    ?? (result.Status == SettingsOperationStatus.Conflict ? "Settings changed in another session. Reload before retrying." : "Auto Check-In settings could not be saved.");
+                ShowStatus(message, true);
+                return;
+            }
+            Apply(result.Value);
+            ShowStatus("Auto Check-In policy saved.", false);
+        }
+        catch (Exception) { ShowStatus("Auto Check-In settings could not be saved. Your draft remains available.", true); }
+        finally { _isBusy = false; }
+    }
+
+    private void Cancel() => Apply(_snapshot);
+
+    private void Apply(AutoCheckInPolicyDto policy)
+    {
+        _isEnabled = policy.IsEnabled;
+        _leadHours = policy.LeadHours;
+        _enableEmail = policy.EnableEmail;
+        _enableSms = policy.EnableSms;
+        _templateKey = policy.TemplateKey;
+        _maxAttempts = policy.MaxAttempts;
+        _eligibleVisitTypeIds = policy.EligibleVisitTypeIds.ToHashSet();
+        _version = policy.Version;
+        _snapshot = policy;
+    }
+
+    private void ToggleVisitType(Guid id, bool selected)
+    {
+        if (selected) _eligibleVisitTypeIds.Add(id); else _eligibleVisitTypeIds.Remove(id);
+    }
+
+    private void ShowStatus(string message, bool error) { _statusMessage = message; _statusIsError = error; }
+    private void BackToSettings() => Navigation.NavigateTo("/settings");
+    private static bool ParseBool(object? value) => value is bool result ? result : bool.TryParse(value?.ToString(), out var parsed) && parsed;
+}

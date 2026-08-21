@@ -59,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added - Settings services and API layer
 
+- **Connected Settings and authentication UI review slice** — Wired the verified Roles, Security, Scheduling, Documentation, Auto Check-In, and Kiosk surfaces to the administration contracts, added appointment visit-type catalog consumption, and completed Web PIN/MFA step-up interactions with loading, validation, conflict, retry, and read-only states. Reason: presentation behavior and visual assets remain independently reviewable from persistence and server enforcement in the stacked delivery sequence.
 - **Settings services and API review slice** — Connected the persisted Settings aggregates to clinic-scoped administration services, dynamic authorization, PIN/TOTP step-up authentication, appointment availability, reminders, Auto Check-In, kiosk workflows, API endpoints, and focused server-side regression coverage. Reason: security-sensitive workflow logic is isolated from the generated persistence artifacts so it can be reviewed as a dedicated stacked change.
 
 ### Fixed - Settings persistence review follow-up
