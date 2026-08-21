@@ -1,0 +1,274 @@
+@using PTDoc.Application.Settings
+@inject IServiceProvider Services
+@inject NavigationManager Navigation
+
+<section class="kiosk-admin" aria-labelledby="kiosk-admin-title" aria-busy="@_isBusy">
+    <button type="button" class="kiosk-admin__back" @onclick="BackToSettings">← Back to Settings</button>
+    <header><h1 id="kiosk-admin-title">Kiosk Check-In</h1><p>Enroll, rotate, disable, and revoke clinic kiosk stations.</p></header>
+    @if (_statusMessage is not null) { <p class="@(_statusIsError ? "is-error" : string.Empty)" role="@(_statusIsError ? "alert" : "status")">@_statusMessage</p> }
+    @if (!_canMutate) { <p role="status">Owner access is read-only. An Administrator must manage kiosk stations.</p> }
+    @if (_enrollmentCode is not null)
+    {
+        <aside class="kiosk-admin__code" role="status"><strong>One-time enrollment code</strong><code>@_enrollmentCode.Code</code><span>Expires @_enrollmentCode.ExpiresAtUtc.ToLocalTime().ToString("g")</span></aside>
+    }
+    <form class="kiosk-admin__create" @onsubmit="CreateStation" @onsubmit:preventDefault="true">
+        <label>Station name<input @bind="_newStationName" disabled="@ControlsDisabled" /></label>
+        <button type="submit" disabled="@ControlsDisabled">Add Station</button>
+    </form>
+
+    <section class="kiosk-admin__token" aria-labelledby="kiosk-token-title">
+        <div>
+            <h2 id="kiosk-token-title">Appointment Check-In Token</h2>
+            <p>Create a short-lived code for a scheduled appointment. Share only through an approved clinic workflow.</p>
+        </div>
+        <form @onsubmit="CreateAppointmentToken" @onsubmit:preventDefault="true">
+            <label for="kiosk-appointment-id">Appointment ID</label>
+            <input id="kiosk-appointment-id" @bind="_appointmentId" autocomplete="off" disabled="@ControlsDisabled" />
+            <button type="submit" disabled="@ControlsDisabled">Create Token</button>
+        </form>
+        @if (_checkInToken is not null)
+        {
+            <aside class="kiosk-admin__code" role="status">
+                <strong>Short-lived check-in token</strong>
+                <span>Numeric code</span><code>@_checkInToken.NumericCode</code>
+                <span>QR payload</span><code>@_checkInToken.QrPayload</code>
+                <span>Expires @_checkInToken.ExpiresAtUtc.ToLocalTime().ToString("g")</span>
+            </aside>
+        }
+    </section>
+
+    <div class="kiosk-admin__stations">
+        @foreach (var station in _stations)
+        {
+            <article>
+                <div>
+                    @if (_editingStationId == station.Id)
+                    {
+                        <label class="kiosk-admin__rename-label" for="kiosk-station-name-@station.Id">Station name</label>
+                        <input id="kiosk-station-name-@station.Id" @bind="_editingStationName" maxlength="120" disabled="@ControlsDisabled" />
+                    }
+                    else
+                    {
+                        <strong>@station.Name</strong>
+                    }
+                    <small>@(station.IsActive ? "Active" : "Disabled") · Last seen @(station.LastSeenAtUtc?.ToLocalTime().ToString("g") ?? "never")</small>
+                </div>
+                <div class="kiosk-admin__actions">
+                    @if (_editingStationId == station.Id)
+                    {
+                        <button type="button" @onclick="() => SaveStationName(station)" disabled="@ControlsDisabled">Save Name</button>
+                        <button type="button" @onclick="CancelStationRename" disabled="@_isBusy">Cancel</button>
+                    }
+                    else
+                    {
+                        <button type="button" @onclick="() => BeginStationRename(station)" disabled="@ControlsDisabled">Rename</button>
+                        <button type="button" @onclick="() => RequestConfirmation(station, KioskAdminAction.Rotate)" disabled="@ControlsDisabled">Rotate Enrollment</button>
+                        <button type="button" @onclick="() => ToggleStation(station)" disabled="@ControlsDisabled">@(station.IsActive ? "Disable" : "Enable")</button>
+                        <button type="button" @onclick="() => RequestConfirmation(station, KioskAdminAction.Revoke)" disabled="@ControlsDisabled">Revoke</button>
+                    }
+                </div>
+            </article>
+        }
+    </div>
+
+    @if (_pendingStation is not null)
+    {
+        <div class="kiosk-admin__dialog-backdrop">
+            <section class="kiosk-admin__dialog" role="alertdialog" aria-modal="true" aria-labelledby="kiosk-confirm-title" aria-describedby="kiosk-confirm-description">
+                <h2 id="kiosk-confirm-title">@(_pendingAction == KioskAdminAction.Rotate ? "Rotate station enrollment?" : "Revoke kiosk station?")</h2>
+                <p id="kiosk-confirm-description">
+                    @(_pendingAction == KioskAdminAction.Rotate
+                        ? $"Rotating {_pendingStation.Name} invalidates its current device credential and creates a new one-time enrollment code."
+                        : $"Revoking {_pendingStation.Name} immediately prevents that station from checking in patients.")
+                </p>
+                <div class="kiosk-admin__dialog-actions">
+                    <button type="button" @onclick="CancelConfirmation" disabled="@_isBusy">Cancel</button>
+                    <button type="button" class="kiosk-admin__danger" @onclick="ConfirmPendingAction" disabled="@_isBusy">
+                        @(_pendingAction == KioskAdminAction.Rotate ? "Rotate Enrollment" : "Revoke Station")
+                    </button>
+                </div>
+            </section>
+        </div>
+    }
+</section>
+
+@code {
+    private IKioskCheckInService? _service;
+    private IReadOnlyList<KioskStationDto> _stations = [];
+    private string _newStationName = string.Empty;
+    private string _appointmentId = string.Empty;
+    private KioskEnrollmentCodeDto? _enrollmentCode;
+    private KioskCheckInTokenDto? _checkInToken;
+    private bool _isBusy;
+    private bool _canMutate = true;
+    private bool _statusIsError;
+    private string? _statusMessage;
+    private KioskStationDto? _pendingStation;
+    private KioskAdminAction _pendingAction;
+    private Guid? _editingStationId;
+    private string _editingStationName = string.Empty;
+    private bool ControlsDisabled => _isBusy || !_canMutate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Services.GetService(typeof(Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider))
+            is Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider authenticationStateProvider)
+        {
+            var authenticationState = await authenticationStateProvider.GetAuthenticationStateAsync();
+            _canMutate = authenticationState.User.IsInRole(PTDoc.Application.Services.Roles.Admin);
+        }
+
+        _service = Services.GetService(typeof(IKioskCheckInService)) as IKioskCheckInService;
+        if (_service is null) return;
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        if (_service is null) return;
+        _isBusy = true;
+        try { _stations = await _service.GetStationsAsync(Guid.Empty); }
+        catch (Exception) { ShowStatus("Kiosk stations could not be loaded.", true); }
+        finally { _isBusy = false; }
+    }
+
+    private async Task CreateStation()
+    {
+        if (_service is null || !_canMutate) return;
+        _isBusy = true;
+        try
+        {
+            var result = await _service.CreateStationAsync(Guid.Empty, new CreateKioskStationRequest(_newStationName), Guid.Empty, string.Empty);
+            if (!result.Succeeded || result.Value is null) { ShowResultError(result.Status, result.ValidationErrors); return; }
+            _enrollmentCode = result.Value;
+            _newStationName = string.Empty;
+            await Reload();
+            ShowStatus("Station created. Enter the one-time code on the kiosk device.", false);
+        }
+        catch (Exception) { ShowStatus("The kiosk station could not be created.", true); }
+        finally { _isBusy = false; }
+    }
+
+    private async Task Rotate(KioskStationDto station)
+    {
+        if (_service is null) return;
+        _isBusy = true;
+        try
+        {
+            var result = await _service.RotateEnrollmentAsync(Guid.Empty, station.Id, station.Version, Guid.Empty, string.Empty);
+            if (!result.Succeeded || result.Value is null) { ShowResultError(result.Status, result.ValidationErrors); return; }
+            _enrollmentCode = result.Value;
+            await Reload();
+            ShowStatus("Enrollment rotated; the prior device credential is no longer valid.", false);
+        }
+        catch (Exception) { ShowStatus("Enrollment could not be rotated. Reload and try again.", true); }
+        finally { _isBusy = false; }
+    }
+
+    private async Task ToggleStation(KioskStationDto station)
+    {
+        if (_service is null || !_canMutate) return;
+        _isBusy = true;
+        try
+        {
+            var result = await _service.UpdateStationAsync(Guid.Empty, station.Id,
+                new UpdateKioskStationRequest(station.Name, !station.IsActive, station.Version), Guid.Empty, string.Empty);
+            if (!result.Succeeded) { ShowResultError(result.Status, result.ValidationErrors); return; }
+            await Reload();
+            ShowStatus(station.IsActive ? "Station disabled." : "Station enabled.", false);
+        }
+        catch (Exception) { ShowStatus("The station status could not be changed. Reload and try again.", true); }
+        finally { _isBusy = false; }
+    }
+
+    private void BeginStationRename(KioskStationDto station)
+    {
+        if (!_canMutate) return;
+        _editingStationId = station.Id;
+        _editingStationName = station.Name;
+    }
+
+    private void CancelStationRename()
+    {
+        _editingStationId = null;
+        _editingStationName = string.Empty;
+    }
+
+    private async Task SaveStationName(KioskStationDto station)
+    {
+        if (_service is null || !_canMutate) return;
+        _isBusy = true;
+        try
+        {
+            var result = await _service.UpdateStationAsync(Guid.Empty, station.Id,
+                new UpdateKioskStationRequest(_editingStationName, station.IsActive, station.Version), Guid.Empty, string.Empty);
+            if (!result.Succeeded) { ShowResultError(result.Status, result.ValidationErrors); return; }
+            CancelStationRename();
+            await Reload();
+            ShowStatus("Station name updated.", false);
+        }
+        catch (Exception) { ShowStatus("The station name could not be updated. Reload and try again.", true); }
+        finally { _isBusy = false; }
+    }
+
+    private async Task CreateAppointmentToken()
+    {
+        if (_service is null || !_canMutate) return;
+        if (!Guid.TryParse(_appointmentId, out var appointmentId))
+        {
+            ShowStatus("Enter a valid appointment ID.", true);
+            return;
+        }
+
+        _isBusy = true;
+        try
+        {
+            var result = await _service.CreateCheckInTokenAsync(Guid.Empty, appointmentId, Guid.Empty, string.Empty);
+            if (!result.Succeeded || result.Value is null) { ShowResultError(result.Status, result.ValidationErrors); return; }
+            _checkInToken = result.Value;
+            ShowStatus("A short-lived appointment check-in token was created.", false);
+        }
+        catch (Exception) { ShowStatus("The appointment token could not be created. Verify the appointment and try again.", true); }
+        finally { _isBusy = false; }
+    }
+
+    private async Task Revoke(KioskStationDto station)
+    {
+        if (_service is null || !_canMutate) return;
+        _isBusy = true;
+        try
+        {
+            var result = await _service.RevokeStationAsync(Guid.Empty, station.Id, station.Version, Guid.Empty, string.Empty);
+            if (!result.Succeeded) { ShowResultError(result.Status, result.ValidationErrors); return; }
+            await Reload();
+            ShowStatus("Station revoked.", false);
+        }
+        catch (Exception) { ShowStatus("The station could not be revoked. Reload and try again.", true); }
+        finally { _isBusy = false; }
+    }
+
+    private void RequestConfirmation(KioskStationDto station, KioskAdminAction action)
+    {
+        if (!_canMutate) return;
+        _pendingStation = station;
+        _pendingAction = action;
+    }
+
+    private void CancelConfirmation() => _pendingStation = null;
+
+    private async Task ConfirmPendingAction()
+    {
+        if (_pendingStation is null) return;
+        var station = _pendingStation;
+        var action = _pendingAction;
+        await (action == KioskAdminAction.Rotate ? Rotate(station) : Revoke(station));
+        _pendingStation = null;
+    }
+
+    private void ShowResultError(SettingsOperationStatus status, IReadOnlyDictionary<string, string[]>? errors) =>
+        ShowStatus(errors?.Values.SelectMany(value => value).FirstOrDefault() ??
+            (status == SettingsOperationStatus.Conflict ? "Station changed in another session. Reload and retry." : "The kiosk action could not be completed."), true);
+    private void ShowStatus(string message, bool error) { _statusMessage = message; _statusIsError = error; }
+    private void BackToSettings() => Navigation.NavigateTo("/settings");
+    private enum KioskAdminAction { Rotate, Revoke }
+}

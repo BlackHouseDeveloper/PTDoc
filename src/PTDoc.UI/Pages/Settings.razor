@@ -1,6 +1,10 @@
 @page "/settings"
 @attribute [Authorize(Roles = "Admin,Owner,PT")]
+@page "/settings/auto-check-in"
+@page "/settings/kiosk"
 @rendermode InteractiveServer
+@inject NavigationManager Navigation
+@implements IDisposable
 
 <PageTitle>Settings - PTDoc</PageTitle>
 
@@ -36,7 +40,16 @@
             }
             else if (activeSection == "documentation")
             {
+                <DocumentationComplianceSettings />
                 <NoteTemplateSettingsPanel />
+            }
+            else if (activeSection == "auto-check-in")
+            {
+                <AutoCheckInSettings />
+            }
+            else if (activeSection == "kiosk")
+            {
+                <KioskAdministrationSettings />
             }
             else if (activeSection == "approvals")
             {
@@ -86,6 +99,37 @@
         authorizationResolved = true;
     }
 
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += HandleLocationChanged;
+        ApplyRouteSection(Navigation.Uri);
+    }
+
+    private void HandleLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs eventArgs)
+    {
+        _ = InvokeAsync(() =>
+        {
+            ApplyRouteSection(eventArgs.Location);
+            StateHasChanged();
+        });
+    }
+
+    private void ApplyRouteSection(string location)
+    {
+        if (isClinicalApproverOnly)
+        {
+            activeSection = "documentation";
+            return;
+        }
+
+        var path = new Uri(location).AbsolutePath.TrimEnd('/');
+        activeSection = path.EndsWith("/auto-check-in", StringComparison.OrdinalIgnoreCase)
+            ? "auto-check-in"
+            : path.EndsWith("/kiosk", StringComparison.OrdinalIgnoreCase)
+                ? "kiosk"
+                : "roles-permissions";
+    }
+
     private void HandleSectionSelected(string sectionKey)
     {
         if (isClinicalApproverOnly && sectionKey != "documentation")
@@ -97,9 +141,16 @@
         activeSection = sectionKey;
     }
 
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= HandleLocationChanged;
+    }
+
     private static string GetSectionTitle(string sectionKey) => sectionKey switch
     {
         "roles-permissions" => "Roles & Permissions",
+        "auto-check-in" => "Auto Check-In Messaging",
+        "kiosk" => "Kiosk Check-In",
         "scheduling" => "Scheduling & Visit Types",
         "documentation" => "Documentation and Compliance",
         "providers" => "Provider Directory",
@@ -111,7 +162,6 @@
 
     private static string GetDeferredDescription(string sectionKey) => sectionKey switch
     {
-        "documentation" => "This settings area is deferred until documentation controls are exposed by the backend.",
         "billing" => "This settings area is deferred until billing and coding preferences are available through an existing API contract.",
         "ai-outcomes" => "This settings area is deferred until AI and outcome-measure preferences are backed by a dedicated service contract.",
         _ => "This settings area is intentionally deferred and will be implemented in a later sprint once a backend contract exists."

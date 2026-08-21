@@ -69,7 +69,8 @@
     
     @if (IsFiltersOpen)
     {
-        <AppointmentFiltersPanel Filter="@CurrentFilter" 
+        <AppointmentFiltersPanel Filter="@CurrentFilter"
+                                AppointmentTypes="@AppointmentTypes"
                                 OnFilterChanged="OnFilterChanged" />
     }
     
@@ -142,6 +143,9 @@
 
     [Parameter]
     public AppointmentsFilter CurrentFilter { get; set; } = new();
+
+    [Parameter]
+    public IReadOnlyList<string> AppointmentTypes { get; set; } = Array.Empty<string>();
 
     [Parameter]
     public EventCallback<AppointmentsFilter> OnFilterChanged { get; set; }
