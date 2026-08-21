@@ -1139,6 +1139,9 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.IdempotencyKey).HasMaxLength(160).IsRequired();
             entity.Property(e => e.LastStatusCode).HasMaxLength(80);
             entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
+            // Appointment.ClinicId is nullable for legacy rows, so EF cannot model it as a principal
+            // alternate key without making the compatibility column required. Provider migrations
+            // enforce the stronger (ClinicId, AppointmentId) boundary until ClinicId becomes required.
             entity.HasOne(e => e.Appointment).WithMany().HasForeignKey(e => e.AppointmentId).OnDelete(DeleteBehavior.Restrict);
         });
 

@@ -195,6 +195,9 @@ The same migration:
 - binds appointment visit-type references and kiosk enrollment-code station references through
   clinic-qualified composite foreign keys, while kiosk enrollment codes and check-in tokens also
   carry direct clinic foreign keys;
+- binds each reminder dispatch to an appointment through `(ClinicId, AppointmentId)`, backed by a
+  temporary unique `(ClinicId, Id)` appointment index while legacy appointment clinic IDs remain
+  nullable, so reminder processing cannot cross clinic boundaries;
 - leaves `Appointments.AppointmentType` in place for the dual-read/write compatibility release.
 
 Apply schema changes before enabling the related API/UI paths. Do not make `VisitTypeId` required or

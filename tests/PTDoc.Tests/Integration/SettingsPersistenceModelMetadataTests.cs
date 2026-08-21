@@ -103,6 +103,20 @@ public sealed class SettingsPersistenceModelMetadataTests
             visitTypes.UniqueConstraints,
             constraint => constraint.Columns.SequenceEqual(new[] { "ClinicId", "Id" }));
 
+        var reminderDispatches = FindCreateTable(migrationBuilder, "AppointmentReminderDispatches");
+        Assert.Contains(
+            reminderDispatches.ForeignKeys,
+            foreignKey => foreignKey.PrincipalTable == "Appointments"
+                && foreignKey.Columns.SequenceEqual(new[] { "ClinicId", "AppointmentId" })
+                && foreignKey.PrincipalColumns is not null
+                && foreignKey.PrincipalColumns.SequenceEqual(new[] { "ClinicId", "Id" }));
+        Assert.Contains(
+            migrationBuilder.Operations.OfType<CreateIndexOperation>(),
+            index => index.Table == "Appointments"
+                && index.Name == "UX_Appointments_ClinicId_Id_ReminderDispatch"
+                && index.IsUnique
+                && index.Columns.SequenceEqual(new[] { "ClinicId", "Id" }));
+
         var kioskStations = FindCreateTable(migrationBuilder, "KioskStations");
         Assert.Contains(
             kioskStations.UniqueConstraints,

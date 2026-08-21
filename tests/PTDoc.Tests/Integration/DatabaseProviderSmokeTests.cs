@@ -224,6 +224,7 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
         Assert.Equal(note.Id, savedOverride.NoteId);
 
         await AssertAppointmentOverlapGuardAsync(context, clinic.Id, patient.Id, user.Id, appointment);
+        await AssertReminderDispatchClinicBoundaryAsync(context, clinic.Id, appointment);
     }
 
     private static async Task AssertAppointmentOverlapGuardAsync(
@@ -259,7 +260,7 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
             }
         }
 
-        context.Appointments.Add(new Appointment
+        var authorizedOverlap = new Appointment
         {
             PatientId = patientId,
             ClinicalId = clinicianId,
@@ -267,17 +268,84 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
             StartTimeUtc = existingAppointment.StartTimeUtc.AddMinutes(10),
             EndTimeUtc = existingAppointment.EndTimeUtc.AddMinutes(10),
             AppointmentType = AppointmentType.FollowUp,
+            AuthorizedOverlap = true,
             Status = AppointmentStatus.Scheduled,
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = clinicianId,
             SyncState = SyncState.Pending
-        });
+        };
+        context.Appointments.Add(authorizedOverlap);
+        await context.SaveChangesAsync();
+
+        Assert.True(await context.Appointments.AnyAsync(row => row.Id == authorizedOverlap.Id));
+
+        var unauthorizedOverlap = new Appointment
+        {
+            PatientId = patientId,
+            ClinicalId = clinicianId,
+            ClinicId = clinicId,
+            StartTimeUtc = existingAppointment.StartTimeUtc.AddMinutes(20),
+            EndTimeUtc = existingAppointment.EndTimeUtc.AddMinutes(20),
+            AppointmentType = AppointmentType.FollowUp,
+            Status = AppointmentStatus.Scheduled,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = clinicianId,
+            SyncState = SyncState.Pending
+        };
+        context.Appointments.Add(unauthorizedOverlap);
 
         var exception = await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
         Assert.Contains(
             "APPOINTMENT_OVERBOOKING",
             exception.GetBaseException().Message,
             StringComparison.Ordinal);
+        context.Entry(unauthorizedOverlap).State = EntityState.Detached;
+    }
+
+    private static async Task AssertReminderDispatchClinicBoundaryAsync(
+        ApplicationDbContext context,
+        Guid appointmentClinicId,
+        Appointment appointment)
+    {
+        var validDispatch = CreateReminderDispatch(appointmentClinicId, appointment.Id, "valid");
+        context.AppointmentReminderDispatches.Add(validDispatch);
+        await context.SaveChangesAsync();
+
+        var otherClinic = new Clinic
+        {
+            Name = "Other Provider Smoke",
+            Slug = $"other-provider-{Guid.NewGuid():N}"
+        };
+        context.Clinics.Add(otherClinic);
+        await context.SaveChangesAsync();
+
+        var crossClinicDispatch = CreateReminderDispatch(otherClinic.Id, appointment.Id, "cross-clinic");
+        context.AppointmentReminderDispatches.Add(crossClinicDispatch);
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+        context.Entry(crossClinicDispatch).State = EntityState.Detached;
+    }
+
+    private static AppointmentReminderDispatch CreateReminderDispatch(
+        Guid clinicId,
+        Guid appointmentId,
+        string idempotencySuffix)
+    {
+        var now = DateTime.UtcNow;
+        return new AppointmentReminderDispatch
+        {
+            ClinicId = clinicId,
+            AppointmentId = appointmentId,
+            AppointmentVersionUtc = now,
+            ReminderLeadHours = 24,
+            Purpose = ReminderDispatchPurpose.AppointmentReminder,
+            Channel = ReminderChannel.Email,
+            IdempotencyKey = $"provider-smoke-{idempotencySuffix}-{Guid.NewGuid():N}",
+            Status = ReminderDispatchStatus.Pending,
+            EligibleAtUtc = now,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now
+        };
     }
 
     private static async Task AssertSchemaQueryableAsync(ApplicationDbContext context)

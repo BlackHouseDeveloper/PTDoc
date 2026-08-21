@@ -58,6 +58,15 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 type: "TEXT",
                 nullable: true);
 
+            // Appointment.ClinicId remains nullable for the compatibility release. This unique
+            // index lets reminder dispatches use a clinic-qualified foreign key without making
+            // legacy appointments non-nullable prematurely.
+            migrationBuilder.CreateIndex(
+                name: "UX_Appointments_ClinicId_Id_ReminderDispatch",
+                table: "Appointments",
+                columns: new[] { "ClinicId", "Id" },
+                unique: true);
+
             migrationBuilder.CreateTable(
                 name: "AppointmentReminderDispatches",
                 columns: table => new
@@ -83,10 +92,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 {
                     table.PrimaryKey("PK_AppointmentReminderDispatches", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_AppointmentReminderDispatches_Appointments_AppointmentId",
-                        column: x => x.AppointmentId,
+                        name: "FK_AppointmentReminderDispatches_Appointments_ClinicId_AppointmentId",
+                        columns: x => new { x.ClinicId, x.AppointmentId },
                         principalTable: "Appointments",
-                        principalColumn: "Id",
+                        principalColumns: new[] { "ClinicId", "Id" },
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_AppointmentReminderDispatches_Clinics_ClinicId",
@@ -745,6 +754,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 CREATE INDEX "IX_Appointments_PatientId" ON "Appointments" ("PatientId");
                 CREATE INDEX "IX_Appointments_StartTimeUtc" ON "Appointments" ("StartTimeUtc");
                 CREATE INDEX "IX_Appointments_ClinicId_VisitTypeId" ON "Appointments" ("ClinicId", "VisitTypeId");
+                CREATE UNIQUE INDEX "UX_Appointments_ClinicId_Id_ReminderDispatch"
+                    ON "Appointments" ("ClinicId", "Id");
                 CREATE INDEX "IX_Appointments_ClinicalId_StartTimeUtc" ON "Appointments" ("ClinicalId", "StartTimeUtc");
                 CREATE UNIQUE INDEX "UX_Appointments_PatientId_ClinicalVisitOrdinal"
                     ON "Appointments" ("PatientId", "ClinicalVisitOrdinal")
@@ -795,6 +806,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
         {
             migrationBuilder.Sql("""DROP TRIGGER IF EXISTS "TR_Appointments_PreventOverlap_Insert";""");
             migrationBuilder.Sql("""DROP TRIGGER IF EXISTS "TR_Appointments_PreventOverlap_Update";""");
+
+            migrationBuilder.DropTable(
+                name: "AppointmentReminderDispatches");
+
             migrationBuilder.Sql("PRAGMA foreign_keys = OFF;", suppressTransaction: true);
             migrationBuilder.Sql(
                 """
@@ -843,9 +858,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     ON "Appointments" ("ClinicId", "PatientId", "ClinicalVisitOrdinal");
                 """);
             migrationBuilder.Sql("PRAGMA foreign_keys = ON;", suppressTransaction: true);
-
-            migrationBuilder.DropTable(
-                name: "AppointmentReminderDispatches");
 
             migrationBuilder.DropTable(
                 name: "AutoCheckInPolicies");

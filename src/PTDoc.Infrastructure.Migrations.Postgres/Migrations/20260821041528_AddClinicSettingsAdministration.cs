@@ -58,6 +58,15 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 type: "uuid",
                 nullable: true);
 
+            // Appointment.ClinicId remains nullable for the compatibility release. This unique
+            // index lets reminder dispatches use a clinic-qualified foreign key without making
+            // legacy appointments non-nullable prematurely.
+            migrationBuilder.CreateIndex(
+                name: "UX_Appointments_ClinicId_Id_ReminderDispatch",
+                table: "Appointments",
+                columns: new[] { "ClinicId", "Id" },
+                unique: true);
+
             migrationBuilder.CreateTable(
                 name: "AppointmentReminderDispatches",
                 columns: table => new
@@ -83,10 +92,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 {
                     table.PrimaryKey("PK_AppointmentReminderDispatches", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_AppointmentReminderDispatches_Appointments_AppointmentId",
-                        column: x => x.AppointmentId,
+                        name: "FK_AppointmentReminderDispatches_Appointments_ClinicId_AppointmentId",
+                        columns: x => new { x.ClinicId, x.AppointmentId },
                         principalTable: "Appointments",
-                        principalColumn: "Id",
+                        principalColumns: new[] { "ClinicId", "Id" },
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_AppointmentReminderDispatches_Clinics_ClinicId",
@@ -746,6 +755,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "AppointmentReminderDispatches");
+
+            migrationBuilder.DropIndex(
+                name: "UX_Appointments_ClinicId_Id_ReminderDispatch",
+                table: "Appointments");
 
             migrationBuilder.DropTable(
                 name: "AutoCheckInPolicies");
