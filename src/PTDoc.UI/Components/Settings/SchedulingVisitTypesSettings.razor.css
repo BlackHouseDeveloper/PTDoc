@@ -301,24 +301,47 @@
     display: flex;
     flex: 0 0 auto;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
+    position: relative;
     width: var(--touch-target-mobile);
     height: var(--touch-target-mobile);
     border: 1px solid transparent;
-    border-radius: 50%;
-    background: var(--switch-background);
+    border-radius: 999px;
+    background: transparent;
     cursor: pointer;
 }
 
+.scheduling-switch::before {
+    position: absolute;
+    inset-inline-start: 0;
+    width: 100%;
+    height: var(--spacing-6);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--switch-background);
+    content: "";
+}
+
 .scheduling-switch span {
+    position: absolute;
+    inset-inline-start: var(--spacing-1);
+    z-index: 1;
     width: var(--spacing-4);
     height: var(--spacing-4);
     border-radius: 50%;
-    background: var(--primary-foreground);
+    background: var(--card);
+    box-shadow: var(--shadow-sm);
+    transition: transform var(--transition-fast);
 }
 
-.scheduling-switch.is-enabled {
+.scheduling-switch.is-enabled::before {
+    border-color: var(--primary);
     background: var(--primary);
+}
+
+.scheduling-switch.is-enabled span {
+    background: var(--primary-foreground);
+    transform: translateX(var(--spacing-5));
 }
 
 .clinic-hours {

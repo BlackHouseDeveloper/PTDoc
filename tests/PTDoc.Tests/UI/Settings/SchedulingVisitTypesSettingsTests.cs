@@ -70,6 +70,33 @@ public sealed class SchedulingVisitTypesSettingsTests : TestContext
     }
 
     [Fact]
+    public void ActionBar_ResetRestoresDefaultsAndCancelRestoresLastSavedSnapshot()
+    {
+        var cut = RenderComponent<SchedulingVisitTypesSettings>();
+        cut.Find("#calendar-behavior-tab").Click();
+
+        cut.Find("#default-appointment-duration").Change("60 minutes");
+        cut.Find("#intake-sent-color").Input("#123456");
+        cut.Find("button[aria-label='Allow Double Booking']").Click();
+        FindAction(cut, "Save Changes").Click();
+
+        cut.Find("#default-appointment-duration").Change("30 minutes");
+        cut.Find("#intake-sent-color").Input("#abcdef");
+        cut.Find("button[aria-label='Allow Double Booking']").Click();
+        FindAction(cut, "Cancel").Click();
+
+        Assert.Equal("60 minutes", cut.Find("#default-appointment-duration").GetAttribute("value"));
+        Assert.Equal("#123456", cut.Find("#intake-sent-color").GetAttribute("value"));
+        Assert.Equal("true", cut.Find("button[aria-label='Allow Double Booking']").GetAttribute("aria-checked"));
+
+        FindAction(cut, "Reset to Default").Click();
+
+        Assert.Equal("45 minutes", cut.Find("#default-appointment-duration").GetAttribute("value"));
+        Assert.Equal(string.Empty, cut.Find("#intake-sent-color").GetAttribute("value"));
+        Assert.Equal("false", cut.Find("button[aria-label='Allow Double Booking']").GetAttribute("aria-checked"));
+    }
+
+    [Fact]
     public void Tabs_SupportKeyboardNavigationAndReferenceTheRenderedPanel()
     {
         var cut = RenderComponent<SchedulingVisitTypesSettings>();
@@ -98,4 +125,8 @@ public sealed class SchedulingVisitTypesSettingsTests : TestContext
 
         Assert.Equal("true", cut.Find("#clinic-hours-tab").GetAttribute("aria-selected"));
     }
+
+    private static AngleSharp.Dom.IElement FindAction(IRenderedComponent<SchedulingVisitTypesSettings> cut, string label) =>
+        cut.FindAll(".scheduling-settings__action-bar button")
+            .Single(button => button.TextContent.Contains(label, StringComparison.Ordinal));
 }

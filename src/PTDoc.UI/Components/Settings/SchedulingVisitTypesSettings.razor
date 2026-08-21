@@ -132,6 +132,7 @@
     private bool _allowCancelFromWeekView = true;
     private bool _allowRescheduleFromWeekView = true;
     private bool _sendAppointmentReminders = true;
+    private SchedulingSettingsSnapshot _savedSettings = SchedulingSettingsSnapshot.Default;
 
     private static readonly TabDefinition[] Tabs =
     [
@@ -170,6 +171,11 @@
     private static readonly IReadOnlyList<string> ClinicianViewOptions = ["Day View", "Week View", "Month View"];
     private static readonly IReadOnlyList<string> AdminViewOptions = ["All-Day View", "Week View", "Month View"];
     private static readonly IReadOnlyList<string> ReminderTimingOptions = ["12 hours before", "24 hours before", "48 hours before"];
+
+    protected override void OnInitialized()
+    {
+        _savedSettings = CaptureSettings();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -394,28 +400,51 @@
 
     private void ResetToDefaults()
     {
-        _defaultAppointmentDuration = "45 minutes";
-        _bufferTime = "15 minutes";
-        _defaultClinicianView = "Week View";
-        _defaultAdminView = "All-Day View";
-        _reminderTiming = "24 hours before";
-        _intakeSentColor = string.Empty;
-        _intakeIncompleteColor = string.Empty;
-        _intakeCompleteColor = string.Empty;
-        _allowDoubleBooking = false;
-        _autoConfirmAppointments = true;
-        _enableClickToCreate = true;
-        _showIntakeStatus = true;
-        _allowCancelFromWeekView = true;
-        _allowRescheduleFromWeekView = true;
-        _sendAppointmentReminders = true;
+        ApplySettings(SchedulingSettingsSnapshot.Default);
     }
 
-    private void CancelChanges() => ResetToDefaults();
+    private void CancelChanges() => ApplySettings(_savedSettings);
 
     private void SaveChanges()
     {
+        _savedSettings = CaptureSettings();
         // TODO: Persist scheduling preferences when an application service contract is available.
+    }
+
+    private SchedulingSettingsSnapshot CaptureSettings() => new(
+        _defaultAppointmentDuration,
+        _bufferTime,
+        _defaultClinicianView,
+        _defaultAdminView,
+        _reminderTiming,
+        _intakeSentColor,
+        _intakeIncompleteColor,
+        _intakeCompleteColor,
+        _allowDoubleBooking,
+        _autoConfirmAppointments,
+        _enableClickToCreate,
+        _showIntakeStatus,
+        _allowCancelFromWeekView,
+        _allowRescheduleFromWeekView,
+        _sendAppointmentReminders);
+
+    private void ApplySettings(SchedulingSettingsSnapshot settings)
+    {
+        _defaultAppointmentDuration = settings.DefaultAppointmentDuration;
+        _bufferTime = settings.BufferTime;
+        _defaultClinicianView = settings.DefaultClinicianView;
+        _defaultAdminView = settings.DefaultAdminView;
+        _reminderTiming = settings.ReminderTiming;
+        _intakeSentColor = settings.IntakeSentColor;
+        _intakeIncompleteColor = settings.IntakeIncompleteColor;
+        _intakeCompleteColor = settings.IntakeCompleteColor;
+        _allowDoubleBooking = settings.AllowDoubleBooking;
+        _autoConfirmAppointments = settings.AutoConfirmAppointments;
+        _enableClickToCreate = settings.EnableClickToCreate;
+        _showIntakeStatus = settings.ShowIntakeStatus;
+        _allowCancelFromWeekView = settings.AllowCancelFromWeekView;
+        _allowRescheduleFromWeekView = settings.AllowRescheduleFromWeekView;
+        _sendAppointmentReminders = settings.SendAppointmentReminders;
     }
 
     private void OpenAddVisitType()
@@ -461,6 +490,41 @@
         string TabId);
 
     private sealed record ScheduledItem(string Name, string Duration, string? Badge = null);
+
+    private sealed record SchedulingSettingsSnapshot(
+        string DefaultAppointmentDuration,
+        string BufferTime,
+        string DefaultClinicianView,
+        string DefaultAdminView,
+        string ReminderTiming,
+        string IntakeSentColor,
+        string IntakeIncompleteColor,
+        string IntakeCompleteColor,
+        bool AllowDoubleBooking,
+        bool AutoConfirmAppointments,
+        bool EnableClickToCreate,
+        bool ShowIntakeStatus,
+        bool AllowCancelFromWeekView,
+        bool AllowRescheduleFromWeekView,
+        bool SendAppointmentReminders)
+    {
+        public static SchedulingSettingsSnapshot Default { get; } = new(
+            "45 minutes",
+            "15 minutes",
+            "Week View",
+            "All-Day View",
+            "24 hours before",
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            false,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true);
+    }
 
     public async ValueTask DisposeAsync()
     {

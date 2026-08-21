@@ -25,14 +25,15 @@ public sealed class RolesPermissionsSettingsTests : TestContext
         Assert.Null(cut.Find("#roles-settings-panel").GetAttribute("tabindex"));
         Assert.Equal("true", cut.Find("button[aria-label=\"Edit Others' Notes: View\"]").GetAttribute("aria-checked"));
         Assert.Equal("true", cut.Find("button[aria-label='Sign/Submit Notes: Full']").GetAttribute("aria-checked"));
-        Assert.Equal("true", cut.Find("button[aria-label='Delete Notes: None']").GetAttribute("aria-checked"));
+        Assert.Equal("true", cut.Find("button[aria-label='Delete Draft Notes: None']").GetAttribute("aria-checked"));
+        Assert.Contains("Remove unsigned draft clinical documentation", cut.Markup, StringComparison.Ordinal);
         Assert.Equal(
             ["2", "9", "7", "12"],
             cut.FindAll(".permission-summary__metrics strong").Select(metric => metric.TextContent).ToArray());
     }
 
     [Fact]
-    public void PermissionAndRoleSelections_KeepIndependentRoleStateAndSummary()
+    public void PermissionPreview_IsLimitedToDocumentedPtDptBaselineAndSummaryRemainsLive()
     {
         var cut = RenderComponent<RolesPermissionsSettings>();
 
@@ -42,26 +43,14 @@ public sealed class RolesPermissionsSettingsTests : TestContext
             ["2", "9", "6", "13"],
             cut.FindAll(".permission-summary__metrics strong").Select(metric => metric.TextContent).ToArray());
 
-        cut.FindAll(".role-card")
-            .Single(button => button.TextContent.Contains("Practice Manager", StringComparison.Ordinal))
-            .Click();
-
-        Assert.Equal("false", cut.Find("button[aria-label='View Clinical Notes: None']").GetAttribute("aria-checked"));
-        Assert.Equal("-1", cut.Find("button[aria-label='View Clinical Notes: None']").GetAttribute("tabindex"));
-        Assert.Equal("0", cut.Find("button[aria-label='View Clinical Notes: View']").GetAttribute("tabindex"));
-        Assert.Equal(
-            "true",
-            cut.FindAll(".role-card")
-                .Single(button => button.TextContent.Contains("Practice Manager", StringComparison.Ordinal))
-                .GetAttribute("aria-pressed"));
-        Assert.Contains("Copy permissions from another role to Practice Manager", cut.Markup, StringComparison.Ordinal);
-        Assert.Contains("Permission Summary for Practice Manager", cut.Markup, StringComparison.Ordinal);
-
-        cut.FindAll(".role-card")
-            .Single(button => button.TextContent.Contains("PT / DPT", StringComparison.Ordinal))
-            .Click();
-
-        Assert.Equal("true", cut.Find("button[aria-label='View Clinical Notes: None']").GetAttribute("aria-checked"));
+        var roleCards = cut.FindAll(".role-card");
+        Assert.Equal(7, roleCards.Count(button => button.HasAttribute("disabled")));
+        Assert.False(roleCards.Single(button => button.TextContent.Contains("PT / DPT", StringComparison.Ordinal)).HasAttribute("disabled"));
+        Assert.True(roleCards.Single(button => button.TextContent.Contains("Practice Manager", StringComparison.Ordinal)).HasAttribute("disabled"));
+        Assert.Equal(7, cut.FindAll(".role-card__description small").Count);
+        Assert.True(cut.Find("#clone-role-select").HasAttribute("disabled"));
+        Assert.True(cut.Find(".clone-permissions button").HasAttribute("disabled"));
+        Assert.Contains("only documented permission baseline", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Permission Summary for PT / DPT", cut.Markup, StringComparison.Ordinal);
     }
 

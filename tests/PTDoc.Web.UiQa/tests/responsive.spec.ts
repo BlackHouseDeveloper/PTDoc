@@ -153,11 +153,21 @@ test.describe('PTDoc responsive UI QA', () => {
 
         const visitTypesTab = page.getByRole('tab', { name: 'Visit Types' });
         const scheduleBlocksTab = page.getByRole('tab', { name: 'Schedule Blocks' });
+        const calendarBehaviorTab = page.getByRole('tab', { name: 'Calendar Behavior' });
         const clinicHoursTab = page.getByRole('tab', { name: 'Clinic Hours' });
         await scheduleBlocksTab.click();
         await expect(scheduleBlocksTab).toHaveAttribute('aria-selected', 'true');
         await expect.poll(() => scheduleBlocksTab.evaluate(element => getComputedStyle(element).borderTopColor))
           .not.toBe('rgba(0, 0, 0, 0)');
+
+        await calendarBehaviorTab.click();
+        const doubleBookingSwitch = page.getByRole('switch', { name: 'Allow Double Booking' });
+        const switchThumb = doubleBookingSwitch.locator('span');
+        const disabledThumbTransform = await switchThumb.evaluate(element => getComputedStyle(element).transform);
+        await doubleBookingSwitch.click();
+        await expect(doubleBookingSwitch).toHaveAttribute('aria-checked', 'true');
+        await expect.poll(() => switchThumb.evaluate(element => getComputedStyle(element).transform))
+          .not.toBe(disabledThumbTransform);
 
         await visitTypesTab.click();
         await visitTypesTab.scrollIntoViewIfNeeded();

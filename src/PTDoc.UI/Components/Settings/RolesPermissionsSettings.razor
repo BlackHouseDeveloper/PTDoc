@@ -78,6 +78,10 @@
                     <p>Choose a role to view and edit its permissions</p>
                 </header>
 
+                <p class="role-selector__notice" role="note">
+                    PT / DPT is the only documented permission baseline in this UI preview. Other roles remain visible for reference and cannot be configured until authoritative role-specific matrices are connected.
+                </p>
+
                 <div class="role-selector__grid">
                     @foreach (var role in Roles)
                     {
@@ -85,12 +89,19 @@
                             type="button"
                             class="role-card @(role.Name == _selectedRole ? "is-selected" : string.Empty)"
                             aria-pressed="@(role.Name == _selectedRole ? "true" : "false")"
-                            @onclick="() => SelectRole(role.Name)">
+                            disabled="@(!role.IsConfigurable)"
+                            @onclick="() => SelectRole(role)">
                             <span class="role-card__identity">
                                 <span class="role-card__dot @role.DotClass" aria-hidden="true"></span>
                                 <span class="role-card__name">@role.Name</span>
                             </span>
-                            <span class="role-card__description">@role.Description</span>
+                            <span class="role-card__description">
+                                <span>@role.Description</span>
+                                @if (!role.IsConfigurable)
+                                {
+                                    <small>Preview unavailable</small>
+                                }
+                            </span>
                         </button>
                     }
                 </div>
@@ -100,18 +111,14 @@
                 <img class="clone-permissions__icon" src="_content/PTDoc.UI/images/settings/clone.svg" alt="" aria-hidden="true" />
                 <div class="clone-permissions__copy">
                     <h2 id="clone-permissions-title">Clone Permissions</h2>
-                    <p>Copy permissions from another role to @_selectedRole</p>
+                    <p id="clone-permissions-availability">Role cloning is unavailable until documented source-role baselines are connected.</p>
                 </div>
                 <div class="clone-permissions__actions">
                     <label class="roles-permissions__sr-only" for="clone-role-select">Source role</label>
-                    <select id="clone-role-select" @bind="_cloneSourceRole">
-                        <option value=""></option>
-                        @foreach (var role in Roles.Where(role => role.Name != _selectedRole))
-                        {
-                            <option value="@role.Name">@role.Name</option>
-                        }
+                    <select id="clone-role-select" @bind="_cloneSourceRole" aria-describedby="clone-permissions-availability" disabled>
+                        <option value="">Unavailable in preview</option>
                     </select>
-                    <button type="button" @onclick="ClonePermissions">Clone</button>
+                    <button type="button" aria-describedby="clone-permissions-availability" @onclick="ClonePermissions" disabled>Clone</button>
                 </div>
             </section>
 
@@ -301,24 +308,20 @@
 
     private static readonly IReadOnlyList<RoleDefinition> Roles =
     [
-        new("Owner / Executive Admin", "Full system access and control", "role-card__dot--owner"),
-        new("Practice Manager", "Manage clinic operations and staff", "role-card__dot--manager"),
-        new("PT / DPT", "Licensed physical therapist", "role-card__dot--pt"),
-        new("PTA", "Physical therapist assistant", "role-card__dot--pta"),
-        new("Therapy Aide / Rehab Tech", "Support staff for therapy sessions", "role-card__dot--aide"),
-        new("Front Desk / Patient Care Coordinator", "Patient intake and scheduling", "role-card__dot--front-desk"),
-        new("Billing Specialist", "Handle billing and insurance", "role-card__dot--billing"),
-        new("Patient", "Patient portal access only", "role-card__dot--patient")
+        new("Owner / Executive Admin", "Full system access and control", "role-card__dot--owner", false),
+        new("Practice Manager", "Manage clinic operations and staff", "role-card__dot--manager", false),
+        new("PT / DPT", "Licensed physical therapist", "role-card__dot--pt", true),
+        new("PTA", "Physical therapist assistant", "role-card__dot--pta", false),
+        new("Therapy Aide / Rehab Tech", "Support staff for therapy sessions", "role-card__dot--aide", false),
+        new("Front Desk / Patient Care Coordinator", "Patient intake and scheduling", "role-card__dot--front-desk", false),
+        new("Billing Specialist", "Handle billing and insurance", "role-card__dot--billing", false),
+        new("Patient", "Patient portal access only", "role-card__dot--patient", false)
     ];
 
-    private readonly Dictionary<string, IReadOnlyList<PermissionCategory>> _permissionCategoriesByRole =
-        Roles.ToDictionary(role => role.Name, _ => CreatePermissionCategories(), StringComparer.Ordinal);
-
-    private IReadOnlyList<PermissionCategory> _permissionCategories = Array.Empty<PermissionCategory>();
+    private readonly IReadOnlyList<PermissionCategory> _permissionCategories = CreatePermissionCategories();
 
     protected override void OnInitialized()
     {
-        _permissionCategories = _permissionCategoriesByRole[_selectedRole];
         _savedSecuritySettings = CaptureSecuritySettings();
     }
 
@@ -378,10 +381,14 @@
         _ => throw new ArgumentOutOfRangeException(nameof(tab), tab, null)
     };
 
-    private void SelectRole(string roleName)
+    private void SelectRole(RoleDefinition role)
     {
-        _selectedRole = roleName;
-        _permissionCategories = _permissionCategoriesByRole[roleName];
+        if (!role.IsConfigurable)
+        {
+            return;
+        }
+
+        _selectedRole = role.Name;
         _cloneSourceRole = string.Empty;
         // TODO: Load role list from application data source.
     }
@@ -563,7 +570,7 @@
                 new("Edit Others' Notes", "Modify notes created by other clinicians (admin only)", "View", ["None", "View"]),
                 new("Sign/Submit Notes", "Finalize and submit clinical documentation", "Full", ["None", "Full"], true),
                 new("Co-Sign PTA Notes", "Review and co-sign notes from PTAs", "Full", ["None", "Full"], true),
-                new("Delete Notes", "Remove clinical documentation (audit trail maintained)", "None", ["None", "Full"])
+                new("Delete Draft Notes", "Remove unsigned draft clinical documentation (audit trail maintained)", "None", ["None", "Full"])
             ]),
         new(
             "scheduling-title",
@@ -626,7 +633,7 @@
         SecuritySettings
     }
 
-    private sealed record RoleDefinition(string Name, string Description, string DotClass);
+    private sealed record RoleDefinition(string Name, string Description, string DotClass, bool IsConfigurable);
 
     private sealed record SecuritySettingsSnapshot(
         bool RequireMfa,
