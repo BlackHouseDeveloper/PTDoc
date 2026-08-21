@@ -27,7 +27,11 @@ public sealed class SchedulingVisitTypesSettingsTests : TestContext
         Assert.Contains("Requires Intake", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Consultation (Non-Billable)", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Auto Check-In Messaging", cut.Markup, StringComparison.Ordinal);
-        Assert.Contains("Save Changes", cut.Find(".scheduling-settings__action-bar").TextContent, StringComparison.Ordinal);
+        Assert.Contains("Save Preview", cut.Find(".scheduling-settings__action-bar").TextContent, StringComparison.Ordinal);
+        Assert.Contains("are not persisted", cut.Find("#scheduling-preview-status").TextContent, StringComparison.Ordinal);
+        Assert.Equal(
+            "scheduling-preview-status",
+            FindAction(cut, "Save Preview").GetAttribute("aria-describedby"));
     }
 
     [Fact]
@@ -78,7 +82,8 @@ public sealed class SchedulingVisitTypesSettingsTests : TestContext
         cut.Find("#default-appointment-duration").Change("60 minutes");
         cut.Find("#intake-sent-color").Input("#123456");
         cut.Find("button[aria-label='Allow Double Booking']").Click();
-        FindAction(cut, "Save Changes").Click();
+        FindAction(cut, "Save Preview").Click();
+        Assert.Contains("Preview baseline updated", cut.Find("#scheduling-preview-status").TextContent, StringComparison.Ordinal);
 
         cut.Find("#default-appointment-duration").Change("30 minutes");
         cut.Find("#intake-sent-color").Input("#abcdef");
@@ -88,12 +93,14 @@ public sealed class SchedulingVisitTypesSettingsTests : TestContext
         Assert.Equal("60 minutes", cut.Find("#default-appointment-duration").GetAttribute("value"));
         Assert.Equal("#123456", cut.Find("#intake-sent-color").GetAttribute("value"));
         Assert.Equal("true", cut.Find("button[aria-label='Allow Double Booking']").GetAttribute("aria-checked"));
+        Assert.Contains("last saved preview was restored", cut.Find("#scheduling-preview-status").TextContent, StringComparison.Ordinal);
 
         FindAction(cut, "Reset to Default").Click();
 
         Assert.Equal("45 minutes", cut.Find("#default-appointment-duration").GetAttribute("value"));
         Assert.Equal(string.Empty, cut.Find("#intake-sent-color").GetAttribute("value"));
         Assert.Equal("false", cut.Find("button[aria-label='Allow Double Booking']").GetAttribute("aria-checked"));
+        Assert.Contains("Canonical defaults applied", cut.Find("#scheduling-preview-status").TextContent, StringComparison.Ordinal);
     }
 
     [Fact]

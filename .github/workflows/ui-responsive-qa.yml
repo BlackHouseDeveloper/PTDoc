@@ -26,6 +26,8 @@ jobs:
       PTDOC_WEB_BASE_URL: ${{ inputs.web_base_url }}
       PTDOC_UI_QA_USERNAME: ${{ secrets.PTDOC_UI_QA_USERNAME }}
       PTDOC_UI_QA_PIN: ${{ secrets.PTDOC_UI_QA_PIN }}
+      PTDOC_UI_QA_ADMIN_USERNAME: ${{ secrets.PTDOC_UI_QA_ADMIN_USERNAME }}
+      PTDOC_UI_QA_ADMIN_PIN: ${{ secrets.PTDOC_UI_QA_ADMIN_PIN }}
       PTDOC_UI_QA_NOTE_WORKSPACE_PATH: ${{ vars.PTDOC_UI_QA_NOTE_WORKSPACE_PATH }}
       PTDOC_DEVELOPER_MODE: "true"
 

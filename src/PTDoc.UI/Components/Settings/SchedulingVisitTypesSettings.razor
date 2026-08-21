@@ -93,6 +93,9 @@
         @QuickAdminTools()
 
         <footer class="scheduling-settings__action-bar" aria-label="Scheduling settings actions">
+            <p id="scheduling-preview-status" class="scheduling-settings__preview-status" role="status" aria-live="polite">
+                @_previewStatus
+            </p>
             <button type="button" @onclick="ResetToDefaults">
                 <img src="_content/PTDoc.UI/images/settings/reset.svg" alt="" aria-hidden="true" />
                 <span>Reset to Default</span>
@@ -101,9 +104,9 @@
                 <img src="_content/PTDoc.UI/images/settings/cancel.svg" alt="" aria-hidden="true" />
                 <span>Cancel</span>
             </button>
-            <button type="button" class="scheduling-settings__save-action" @onclick="SaveChanges">
+            <button type="button" class="scheduling-settings__save-action" aria-describedby="scheduling-preview-status" @onclick="SavePreview">
                 <img src="_content/PTDoc.UI/images/settings/save.svg" alt="" aria-hidden="true" />
-                <span>Save Changes</span>
+                <span>Save Preview</span>
             </button>
         </footer>
     </div>
@@ -132,6 +135,7 @@
     private bool _allowCancelFromWeekView = true;
     private bool _allowRescheduleFromWeekView = true;
     private bool _sendAppointmentReminders = true;
+    private string _previewStatus = "Preview only: changes and the Cancel baseline remain on this page and are not persisted.";
     private SchedulingSettingsSnapshot _savedSettings = SchedulingSettingsSnapshot.Default;
 
     private static readonly TabDefinition[] Tabs =
@@ -401,13 +405,19 @@
     private void ResetToDefaults()
     {
         ApplySettings(SchedulingSettingsSnapshot.Default);
+        _previewStatus = "Canonical defaults applied to this preview. Changes are not persisted.";
     }
 
-    private void CancelChanges() => ApplySettings(_savedSettings);
+    private void CancelChanges()
+    {
+        ApplySettings(_savedSettings);
+        _previewStatus = "The last saved preview was restored. Changes are not persisted.";
+    }
 
-    private void SaveChanges()
+    private void SavePreview()
     {
         _savedSettings = CaptureSettings();
+        _previewStatus = "Preview baseline updated on this page. Changes are not persisted.";
         // TODO: Persist scheduling preferences when an application service contract is available.
     }
 

@@ -423,6 +423,14 @@
     color: var(--settings-scheduling-action-bar-foreground);
 }
 
+.scheduling-settings__preview-status {
+    flex: 1 1 auto;
+    margin: 0 auto 0 0;
+    color: var(--muted-foreground);
+    font-size: var(--text-xs);
+    line-height: var(--line-height-normal);
+}
+
 .scheduling-settings__action-bar button {
     display: inline-flex;
     align-items: center;

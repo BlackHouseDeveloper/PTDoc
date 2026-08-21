@@ -96,7 +96,11 @@ test.describe('PTDoc responsive UI QA', () => {
     for (const route of routeCases) {
       test(`${route.name} is usable at ${viewport.name} in light mode`, async ({ page }) => {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
-        await authenticateIfNeeded(page);
+        if (route.path === '/settings') {
+          await authenticateForSettings(page);
+        } else {
+          await authenticateIfNeeded(page);
+        }
         await setTheme(page, 'light');
         await gotoAppRoute(page, route.path);
 
@@ -319,14 +323,15 @@ async function gotoAppRoute(page: Page, path: string) {
 }
 
 async function authenticateForSettings(page: Page) {
-  const adminUsername = process.env.PTDOC_UI_QA_ADMIN_USERNAME;
-  const adminPin = process.env.PTDOC_UI_QA_ADMIN_PIN ?? process.env.PTDOC_UI_QA_PIN;
-  if (adminUsername && adminPin) {
-    await authenticateAs(page, adminUsername, adminPin);
-    return;
+  const adminUsername = process.env.PTDOC_UI_QA_ADMIN_USERNAME?.trim();
+  const adminPin = (process.env.PTDOC_UI_QA_ADMIN_PIN ?? process.env.PTDOC_UI_QA_PIN)?.trim();
+  if (!adminUsername || !adminPin) {
+    throw new Error(
+      'Settings responsive checks require PTDOC_UI_QA_ADMIN_USERNAME and either ' +
+      'PTDOC_UI_QA_ADMIN_PIN or PTDOC_UI_QA_PIN for an Admin/Owner-capable fixture.');
   }
 
-  await authenticateIfNeeded(page);
+  await authenticateAs(page, adminUsername, adminPin);
 }
 
 async function setTheme(page: Page, theme: 'light' | 'dark') {

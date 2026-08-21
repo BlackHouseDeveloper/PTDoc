@@ -32,8 +32,15 @@ npm run install:browsers
 PTDOC_WEB_BASE_URL=http://localhost:5145 \
 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> \
 PTDOC_UI_QA_PIN=<pin> \
+PTDOC_UI_QA_ADMIN_USERNAME=<settings-capable-admin-user> \
+PTDOC_UI_QA_ADMIN_PIN=<admin-pin> \
 npm run test:responsive
 ```
+
+The Settings matrix requires the explicit Admin/Owner-capable fixture. If its PIN
+matches the generic fixture, `PTDOC_UI_QA_ADMIN_PIN` may be omitted and the shared
+`PTDOC_UI_QA_PIN` is used. Generic credentials are never assumed to have Settings
+access.
 
 Never commit credentials or generated Playwright storage-state files. If a route requires login and neither credentials nor a valid storage-state file establishes a session, the suite fails fast instead of reporting skipped tests.
 
@@ -50,7 +57,7 @@ PTDOC_UI_QA_NOTE_WORKSPACE_PATH=/patients/<patient-id>/notes/<note-id>
 The first-pass Chrome matrix covers:
 
 - Viewports: `1280x720`, `1366x768`, `1440x900`, `1536x864`.
-- Routes: dashboard, appointments, intake, notes, and an optional seeded note workspace.
+- Routes: dashboard, appointments, intake, notes, Settings, and an optional seeded note workspace.
 - Themes: light across the matrix, plus dark mode at `1280x720`.
 - Sidebar states: desktop full/icon rail and drawer open/closed below `1200px`.
 
@@ -94,7 +101,8 @@ Run **UI Responsive QA** from GitHub Actions when you need browser evidence outs
 
 - Use `http://localhost:5145` to let the workflow start local API/Web processes.
 - Use a deployed beta URL to run against an already-hosted environment.
-- Set repository secrets `PTDOC_UI_QA_USERNAME` and `PTDOC_UI_QA_PIN` for authenticated checks.
+- Set repository secrets `PTDOC_UI_QA_USERNAME` and `PTDOC_UI_QA_PIN` for generic authenticated checks.
+- Set `PTDOC_UI_QA_ADMIN_USERNAME` and `PTDOC_UI_QA_ADMIN_PIN` secrets for the Settings matrix; the shared PIN remains a supported fallback.
 - Set repository variable `PTDOC_UI_QA_NOTE_WORKSPACE_PATH` to include a known note workspace route.
 - Artifacts upload on failure, or on demand with `upload_artifacts=true`.
 
