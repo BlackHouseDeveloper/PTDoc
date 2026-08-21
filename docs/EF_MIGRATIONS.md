@@ -181,6 +181,22 @@ compatible with that trigger. Migration
 and intentionally emits no table or trigger DDL. Do not remove or disable the
 overlap trigger when applying or rolling back application releases.
 
+Migration `AddClinicSettingsAdministration` updates that trigger for all three providers. It keeps
+overlap rejection as the default and bypasses it only when the new appointment row has
+`AuthorizedOverlap = true`, which is set only after centralized scheduling policy evaluation.
+The same migration:
+
+- adds clinic security, TOTP/recovery, role-capability, visit-type, scheduling, reminder,
+  Auto Check-In, and kiosk tables;
+- seeds every existing clinic with 270 role-capability rows, 12 visit types, seven business-hour
+  rows, and canonical security/scheduling/Auto Check-In policies;
+- adds nullable `Appointments.VisitTypeId` and backfills the three known values from the legacy
+  `Appointments.AppointmentType` column;
+- leaves `Appointments.AppointmentType` in place for the dual-read/write compatibility release.
+
+Apply schema changes before enabling the related API/UI paths. Do not make `VisitTypeId` required or
+remove the legacy field until Web and MAUI have completed the compatibility release.
+
 ### Environment Variables — Runtime API
 
 These variables are read by the API at startup:

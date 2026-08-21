@@ -31,6 +31,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<int>("AppointmentType")
                         .HasColumnType("int");
 
+                    b.Property<bool>("AuthorizedOverlap")
+                        .HasColumnType("bit");
+
                     b.Property<string>("CancellationReason")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -73,6 +76,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<int>("SyncState")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("VisitTypeId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ClinicId")
@@ -83,6 +89,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("PatientId");
 
                     b.HasIndex("StartTimeUtc");
+
+                    b.HasIndex("VisitTypeId");
 
                     b.HasIndex("ClinicalId", "StartTimeUtc");
 
@@ -165,6 +173,74 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("AppointmentPaymentTransactions");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.AppointmentReminderDispatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AppointmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("AppointmentVersionUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Channel")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("EligibleAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("LastStatusCode")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTime?>("NextAttemptAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Purpose")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReminderLeadHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppointmentId");
+
+                    b.HasIndex("ClinicId");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "NextAttemptAtUtc");
+
+                    b.ToTable("AppointmentReminderDispatches");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -230,6 +306,60 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("AuditLogs");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.AutoCheckInPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EligibleVisitTypeIdsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("EnableEmail")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("EnableSms")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("LeadHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TemplateKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId")
+                        .IsUnique();
+
+                    b.ToTable("AutoCheckInPolicies");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.Clinic", b =>
                 {
                     b.Property<Guid>("Id")
@@ -252,6 +382,17 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasDefaultValue("America/Los_Angeles");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
 
                     b.HasIndex("IsActive");
@@ -260,6 +401,108 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Clinics");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.ClinicBusinessHour", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DayOfWeek")
+                        .HasColumnType("int");
+
+                    b.Property<TimeOnly?>("EndLocalTime")
+                        .HasColumnType("time");
+
+                    b.Property<bool>("IsOpen")
+                        .HasColumnType("bit");
+
+                    b.Property<TimeOnly?>("LunchEndLocalTime")
+                        .HasColumnType("time");
+
+                    b.Property<TimeOnly?>("LunchStartLocalTime")
+                        .HasColumnType("time");
+
+                    b.Property<TimeOnly?>("StartLocalTime")
+                        .HasColumnType("time");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId", "DayOfWeek")
+                        .IsUnique();
+
+                    b.ToTable("ClinicBusinessHours");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.ClinicSecurityPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AllowRoleCustomization")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("AuthorizationMode")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("MfaEffectiveAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("MfaEnforcementMode")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MinimumPinLength")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("RequirePinChangeOnFirstLogin")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RestrictCliniciansToOwnSchedules")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("SessionInactivityMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId")
+                        .IsUnique();
+
+                    b.ToTable("ClinicSecurityPolicies");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.ClinicalNote", b =>
@@ -593,6 +836,543 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("ExternalSystemMappings");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.FaxRecipient", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("FaxNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("FaxTransmissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProviderStatus")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("RecipientName")
+                        .HasMaxLength(245)
+                        .HasColumnType("nvarchar(245)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FaxTransmissionId");
+
+                    b.ToTable("FaxRecipients", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.FaxStatusEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<Guid>("FaxTransmissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ProviderStatus")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FaxTransmissionId", "OccurredAtUtc");
+
+                    b.ToTable("FaxStatusEvents", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.FaxTransmission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ClientCorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CoverMessage")
+                        .HasMaxLength(9945)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CoverSubject")
+                        .HasMaxLength(1045)
+                        .HasColumnType("nvarchar(1045)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DocumentContentType")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("DocumentFileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("DocumentHashSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<long>("DocumentSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("DocumentStorageKey")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<bool>("IncludeCoverSheet")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("IntegrationConnectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("OriginalTransmissionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("PatientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProviderFaxId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ProviderStatus")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("RequestedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("SourceClinicalNoteId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("SourceDocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("SubmittedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PatientId");
+
+                    b.HasIndex("ProviderFaxId");
+
+                    b.HasIndex("ClinicId", "CreatedAtUtc");
+
+                    b.HasIndex("IntegrationConnectionId", "ClientCorrelationId")
+                        .IsUnique();
+
+                    b.ToTable("FaxTransmissions", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepPrescriptionExercise", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DescriptionOverride")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("Duration")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ExternalExerciseId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<bool>("Flip")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Frequency")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("HepProgramRevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Hold")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("IsHomeExercise")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Level")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("Mirror")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Other")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("Repetitions")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Rest")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Sets")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Tempo")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Weight")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HepProgramRevisionId", "SortOrder")
+                        .IsUnique();
+
+                    b.ToTable("HepPrescriptionExercises", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepProgram", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CurrentRevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("IntegrationConnectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LastFailureCode")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<DateTime?>("LastSyncedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastTrackingSyncAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProviderEpisodeId")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("ProviderProgramId")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("CurrentRevisionId");
+
+                    b.HasIndex("IntegrationConnectionId");
+
+                    b.HasIndex("PatientId", "UpdatedAtUtc");
+
+                    b.ToTable("HepPrograms", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepProgramRevision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("HepProgramId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProviderVersion")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<DateTime?>("PublishedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly?>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("TherapistNotes")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("HepProgramId", "Version")
+                        .IsUnique();
+
+                    b.ToTable("HepProgramRevisions", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepTrackingObservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ActivityAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("ExternalExerciseId")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<Guid>("HepProgramId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ImportedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ProviderObservationId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("UnitOfMeasure")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HepProgramId", "ActivityAtUtc");
+
+                    b.HasIndex("HepProgramId", "ProviderObservationId")
+                        .IsUnique();
+
+                    b.ToTable("HepTrackingObservations", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.InboundFax", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("AssignedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("AssignedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AssignedPatientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AssignmentReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DocumentContentType")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("DocumentFileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("DocumentHashSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<long>("DocumentSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("DocumentStorageKey")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.Property<string>("FromNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("IntegrationConnectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("PageCount")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("PatientDocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProviderFaxId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ProviderStatus")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("ReceivedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("SenderName")
+                        .HasMaxLength(245)
+                        .HasColumnType("nvarchar(245)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ToNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignedPatientId");
+
+                    b.HasIndex("PatientDocumentId");
+
+                    b.HasIndex("IntegrationConnectionId", "ProviderFaxId")
+                        .IsUnique();
+
+                    b.HasIndex("ClinicId", "Status", "ReceivedAtUtc");
+
+                    b.ToTable("InboundFaxes", (string)null);
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.IntakeForm", b =>
                 {
                     b.Property<Guid>("Id")
@@ -748,6 +1528,408 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("PatientId", "Channel", "UpdatedAtUtc");
 
                     b.ToTable("IntakeOtpChallenges");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationConflict", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ConflictType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DetailsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<Guid>("IntegrationConnectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("InternalEntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ResolvedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EntityType", "InternalEntityId");
+
+                    b.HasIndex("IntegrationConnectionId", "Status");
+
+                    b.ToTable("IntegrationConflicts", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationConnection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ComplianceApprovedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ComplianceApprovedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ConfigurationJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LastHealthCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("LastVerifiedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("SecretReference")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("WebhookTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsEnabled");
+
+                    b.HasIndex("ClinicId", "Provider")
+                        .IsUnique();
+
+                    b.ToTable("IntegrationConnections", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationExternalMapping", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<Guid>("IntegrationConnectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("InternalEntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastSyncedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId");
+
+                    b.HasIndex("IntegrationConnectionId", "EntityType", "ExternalId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_IntExtMap_Conn_Entity_External");
+
+                    b.HasIndex("IntegrationConnectionId", "EntityType", "InternalEntityId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_IntExtMap_Conn_Entity_Internal");
+
+                    b.ToTable("IntegrationExternalMappings", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationOutboxItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AggregateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AggregateType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<Guid>("IntegrationConnectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("JobType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<DateTime?>("LeaseExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LeaseOwner")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<int>("MaxAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AggregateType", "AggregateId");
+
+                    b.HasIndex("IntegrationConnectionId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "NextAttemptAtUtc");
+
+                    b.ToTable("IntegrationOutboxItems", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationSyncCheckpoint", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Cursor")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid>("IntegrationConnectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("LastSuccessfulAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("SyncType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IntegrationConnectionId", "SyncType")
+                        .IsUnique();
+
+                    b.ToTable("IntegrationSyncCheckpoints", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.KioskCheckInToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AppointmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ConsumedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppointmentId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("KioskCheckInTokens");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.KioskEnrollmentCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime?>("ConsumedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("KioskStationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CodeHash")
+                        .IsUnique();
+
+                    b.HasIndex("KioskStationId");
+
+                    b.ToTable("KioskEnrollmentCodes");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.KioskStation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DeviceCredentialHash")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastSeenAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("KioskStations");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.LoginAttempt", b =>
@@ -1204,6 +2386,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<long>("SizeBytes")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("StorageKey")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
                     b.Property<DateTime>("UploadedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -1303,6 +2489,88 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("PatientGoals");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.ProcessedIntegrationWebhook", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("IntegrationConnectionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PayloadHashSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ProviderMessageId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<DateTime>("ReceivedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IntegrationConnectionId", "ProviderMessageId")
+                        .IsUnique();
+
+                    b.ToTable("ProcessedIntegrationWebhooks", (string)null);
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.RoleCapabilityPermission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("CapabilityKey")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LockedMinimum")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RoleKey")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId", "RoleKey", "CapabilityKey")
+                        .IsUnique();
+
+                    b.ToTable("RoleCapabilityPermissions");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.RuleOverride", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1341,6 +2609,153 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("RuleOverrides");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.ScheduleBlockRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ClinicianId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateOnly?>("EffectiveEndDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly>("EffectiveStartDate")
+                        .HasColumnType("date");
+
+                    b.Property<TimeOnly>("EndLocalTime")
+                        .HasColumnType("time");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsRecurring")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<TimeOnly>("StartLocalTime")
+                        .HasColumnType("time");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Weekdays")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId", "ClinicianId");
+
+                    b.HasIndex("ClinicId", "IsActive");
+
+                    b.ToTable("ScheduleBlockRules");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.SchedulingPreferences", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AllowCancelFromWeekView")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("AllowDoubleBooking")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("AllowRescheduleFromWeekView")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("AppointmentBufferMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("AutoConfirmAppointments")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DefaultAdminView")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<int>("DefaultAppointmentDurationMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DefaultClinicianView")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<bool>("EnableClickToCreate")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("IntakeCompleteColor")
+                        .HasMaxLength(7)
+                        .HasColumnType("nvarchar(7)");
+
+                    b.Property<string>("IntakeIncompleteColor")
+                        .HasMaxLength(7)
+                        .HasColumnType("nvarchar(7)");
+
+                    b.Property<string>("IntakeSentColor")
+                        .HasMaxLength(7)
+                        .HasColumnType("nvarchar(7)");
+
+                    b.Property<int>("ReminderLeadHours")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("SendAppointmentReminders")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("ShowIntakeStatus")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId")
+                        .IsUnique();
+
+                    b.ToTable("SchedulingPreferences");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.Session", b =>
@@ -1650,6 +3065,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<DateTime?>("LegacyPinGraceEndsAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("LicenseExpirationDate")
                         .HasColumnType("datetime2");
 
@@ -1661,6 +3079,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasMaxLength(2)
                         .HasColumnType("nvarchar(2)");
 
+                    b.Property<bool>("MustChangePin")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<string>("NormalizedPhoneNumber")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
@@ -1668,6 +3091,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<string>("PhoneNumber")
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime?>("PinChangedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("PinHash")
                         .IsRequired()
@@ -1705,6 +3131,81 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.UserMfaCredential", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ActivatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EncryptedSecret")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<int>("FailedAttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("LastAcceptedTimeStep")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("LockedUntilUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ResetAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ResetByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("UserMfaCredentials");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.UserMfaRecoveryCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("UsedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserMfaCredentialId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserMfaCredentialId", "CodeHash")
+                        .IsUnique();
+
+                    b.ToTable("UserMfaRecoveryCodes");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.UserNotification", b =>
@@ -1798,6 +3299,66 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("UserNotificationPreferences");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.VisitType", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DurationMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsBillable")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<bool>("PtaAllowed")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RequiresIntake")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId", "Code")
+                        .IsUnique();
+
+                    b.HasIndex("ClinicId", "IsActive", "DisplayOrder");
+
+                    b.ToTable("VisitTypes");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.Appointment", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
@@ -1811,9 +3372,16 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("PTDoc.Core.Models.VisitType", "VisitType")
+                        .WithMany()
+                        .HasForeignKey("VisitTypeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Clinic");
 
                     b.Navigation("Patient");
+
+                    b.Navigation("VisitType");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.AppointmentPaymentTransaction", b =>
@@ -1833,6 +3401,58 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Appointment");
 
                     b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.AppointmentReminderDispatch", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Appointment", "Appointment")
+                        .WithMany()
+                        .HasForeignKey("AppointmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Appointment");
+
+                    b.Navigation("Clinic");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.AutoCheckInPolicy", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.ClinicBusinessHour", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.ClinicSecurityPolicy", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.ClinicalNote", b =>
@@ -1872,9 +3492,159 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasOne("PTDoc.Core.Models.Patient", "Patient")
                         .WithMany()
                         .HasForeignKey("InternalPatientId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.FaxRecipient", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.FaxTransmission", "FaxTransmission")
+                        .WithMany("Recipients")
+                        .HasForeignKey("FaxTransmissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FaxTransmission");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.FaxStatusEvent", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.FaxTransmission", "FaxTransmission")
+                        .WithMany("StatusEvents")
+                        .HasForeignKey("FaxTransmissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FaxTransmission");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.FaxTransmission", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.IntegrationConnection", "IntegrationConnection")
+                        .WithMany()
+                        .HasForeignKey("IntegrationConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Clinic");
+
+                    b.Navigation("IntegrationConnection");
+
+                    b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepPrescriptionExercise", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.HepProgramRevision", "HepProgramRevision")
+                        .WithMany("Exercises")
+                        .HasForeignKey("HepProgramRevisionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("HepProgramRevision");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepProgram", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.IntegrationConnection", "IntegrationConnection")
+                        .WithMany()
+                        .HasForeignKey("IntegrationConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("IntegrationConnection");
+
+                    b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepProgramRevision", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.HepProgram", "HepProgram")
+                        .WithMany("Revisions")
+                        .HasForeignKey("HepProgramId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("HepProgram");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepTrackingObservation", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.HepProgram", "HepProgram")
+                        .WithMany("TrackingObservations")
+                        .HasForeignKey("HepProgramId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("HepProgram");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.InboundFax", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Patient", "AssignedPatient")
+                        .WithMany()
+                        .HasForeignKey("AssignedPatientId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PTDoc.Core.Models.IntegrationConnection", "IntegrationConnection")
+                        .WithMany()
+                        .HasForeignKey("IntegrationConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.PatientDocument", "PatientDocument")
+                        .WithMany()
+                        .HasForeignKey("PatientDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("AssignedPatient");
+
+                    b.Navigation("IntegrationConnection");
+
+                    b.Navigation("PatientDocument");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.IntakeForm", b =>
@@ -1893,6 +3663,102 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Clinic");
 
                     b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationConflict", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.IntegrationConnection", "IntegrationConnection")
+                        .WithMany()
+                        .HasForeignKey("IntegrationConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("IntegrationConnection");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationConnection", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationExternalMapping", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.IntegrationConnection", "IntegrationConnection")
+                        .WithMany()
+                        .HasForeignKey("IntegrationConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+
+                    b.Navigation("IntegrationConnection");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationOutboxItem", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.IntegrationConnection", "IntegrationConnection")
+                        .WithMany()
+                        .HasForeignKey("IntegrationConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("IntegrationConnection");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.IntegrationSyncCheckpoint", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.IntegrationConnection", "IntegrationConnection")
+                        .WithMany()
+                        .HasForeignKey("IntegrationConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("IntegrationConnection");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.KioskCheckInToken", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Appointment", "Appointment")
+                        .WithMany()
+                        .HasForeignKey("AppointmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Appointment");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.KioskEnrollmentCode", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.KioskStation", "KioskStation")
+                        .WithMany()
+                        .HasForeignKey("KioskStationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("KioskStation");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.KioskStation", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.NoteTaxonomySelection", b =>
@@ -2038,6 +3904,28 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Patient");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.ProcessedIntegrationWebhook", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.IntegrationConnection", "IntegrationConnection")
+                        .WithMany()
+                        .HasForeignKey("IntegrationConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("IntegrationConnection");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.RoleCapabilityPermission", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.RuleOverride", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.ClinicalNote", "Note")
@@ -2054,6 +3942,28 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Note");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.ScheduleBlockRule", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.SchedulingPreferences", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.Session", b =>
@@ -2096,6 +4006,28 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Clinic");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.UserMfaCredential", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.User", "User")
+                        .WithOne("MfaCredential")
+                        .HasForeignKey("PTDoc.Core.Models.UserMfaCredential", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.UserMfaRecoveryCode", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.UserMfaCredential", "Credential")
+                        .WithMany()
+                        .HasForeignKey("UserMfaCredentialId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Credential");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.UserNotification", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
@@ -2124,6 +4056,17 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.VisitType", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Clinic");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.Clinic", b =>
                 {
                     b.Navigation("Patients");
@@ -2138,6 +4081,25 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("ObjectiveMetrics");
 
                     b.Navigation("TaxonomySelections");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.FaxTransmission", b =>
+                {
+                    b.Navigation("Recipients");
+
+                    b.Navigation("StatusEvents");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepProgram", b =>
+                {
+                    b.Navigation("Revisions");
+
+                    b.Navigation("TrackingObservations");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.HepProgramRevision", b =>
+                {
+                    b.Navigation("Exercises");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.Patient", b =>
@@ -2155,6 +4117,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("PTDoc.Core.Models.User", b =>
                 {
+                    b.Navigation("MfaCredential");
+
                     b.Navigation("Sessions");
                 });
 #pragma warning disable 612, 618
