@@ -6,6 +6,11 @@ namespace PTDoc.Tests.UI.Settings;
 [Trait("Category", "CoreCi")]
 public sealed class SchedulingVisitTypesSettingsTests : TestContext
 {
+    public SchedulingVisitTypesSettingsTests()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+    }
+
     [Fact]
     public void DefaultState_RendersDocumentedVisitTypesAndSharedActions()
     {
@@ -61,5 +66,35 @@ public sealed class SchedulingVisitTypesSettingsTests : TestContext
         cut.Find("#clinic-hours-tab").Click();
         cut.Find("button[aria-label='Send Appointment Reminders']").Click();
         Assert.Equal("false", cut.Find("button[aria-label='Send Appointment Reminders']").GetAttribute("aria-checked"));
+    }
+
+    [Fact]
+    public void Tabs_SupportKeyboardNavigationAndReferenceTheRenderedPanel()
+    {
+        var cut = RenderComponent<SchedulingVisitTypesSettings>();
+
+        Assert.All(
+            cut.FindAll("[role='tab']"),
+            tab => Assert.Equal("scheduling-settings-panel", tab.GetAttribute("aria-controls")));
+        Assert.Equal("visit-types-tab", cut.Find("#scheduling-settings-panel").GetAttribute("aria-labelledby"));
+
+        cut.Find("#visit-types-tab").KeyDown("ArrowRight");
+
+        Assert.Equal("true", cut.Find("#schedule-blocks-tab").GetAttribute("aria-selected"));
+        Assert.Equal("0", cut.Find("#schedule-blocks-tab").GetAttribute("tabindex"));
+        Assert.Equal("schedule-blocks-tab", cut.Find("#scheduling-settings-panel").GetAttribute("aria-labelledby"));
+
+        cut.Find("#schedule-blocks-tab").KeyDown("End");
+
+        Assert.Equal("true", cut.Find("#clinic-hours-tab").GetAttribute("aria-selected"));
+        Assert.Equal("clinic-hours-tab", cut.Find("#scheduling-settings-panel").GetAttribute("aria-labelledby"));
+
+        cut.Find("#clinic-hours-tab").KeyDown("Home");
+
+        Assert.Equal("true", cut.Find("#visit-types-tab").GetAttribute("aria-selected"));
+
+        cut.Find("#visit-types-tab").KeyDown("ArrowLeft");
+
+        Assert.Equal("true", cut.Find("#clinic-hours-tab").GetAttribute("aria-selected"));
     }
 }

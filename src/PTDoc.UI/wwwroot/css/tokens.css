@@ -302,6 +302,21 @@
 
   --ai-output-text: #e5e5e5;
   --ai-output-background: #2a2a2a;
+  --settings-guidance-bg: #3b2a4a;
+  --settings-guidance-border: #7e22ce;
+  --settings-guidance-foreground: #f3e8ff;
+  --settings-clone-bg: #172a46;
+  --settings-clone-border: #3b82f6;
+  --settings-clone-foreground: #dbeafe;
+  --settings-clone-muted: #93c5fd;
+  --settings-clone-button-bg: #1d4ed8;
+  --settings-summary-bg: #18362a;
+  --settings-summary-border: #15803d;
+  --settings-summary-foreground: #dcfce7;
+  --settings-compliance-bg: #422b1f;
+  --settings-compliance-border: #c2410c;
+  --settings-compliance-foreground: #ffedd5;
+  --settings-compliance-muted: #fdba74;
   --settings-scheduling-neutral-icon-filter: brightness(0) invert(1);
   --settings-scheduling-muted-icon-filter: brightness(0) invert(1);
   --settings-scheduling-active-tab-bg: transparent;

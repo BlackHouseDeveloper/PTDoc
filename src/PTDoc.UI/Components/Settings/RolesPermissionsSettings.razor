@@ -9,26 +9,30 @@
 
     <div class="roles-permissions__tabs" role="tablist" aria-label="Roles and security settings">
         <button
+            @ref="_rolePermissionsTab"
             type="button"
             id="role-permissions-tab"
             class="roles-permissions__tab @(_activeTab == SettingsTab.RolePermissions ? "is-active" : string.Empty)"
             role="tab"
             aria-selected="@(_activeTab == SettingsTab.RolePermissions ? "true" : "false")"
-            aria-controls="role-permissions-panel"
+            aria-controls="roles-settings-panel"
             tabindex="@(_activeTab == SettingsTab.RolePermissions ? "0" : "-1")"
-            @onclick="() => SelectTab(SettingsTab.RolePermissions)">
+            @onclick="() => SelectTab(SettingsTab.RolePermissions)"
+            @onkeydown="eventArgs => HandleTabKeyDownAsync(eventArgs, SettingsTab.RolePermissions)">
             <img src="_content/PTDoc.UI/images/settings/roles-tab.svg" alt="" aria-hidden="true" />
             <span>Role Permissions</span>
         </button>
         <button
+            @ref="_securitySettingsTab"
             type="button"
             id="security-settings-tab"
             class="roles-permissions__tab @(_activeTab == SettingsTab.SecuritySettings ? "is-active" : string.Empty)"
             role="tab"
             aria-selected="@(_activeTab == SettingsTab.SecuritySettings ? "true" : "false")"
-            aria-controls="security-settings-panel"
+            aria-controls="roles-settings-panel"
             tabindex="@(_activeTab == SettingsTab.SecuritySettings ? "0" : "-1")"
-            @onclick="() => SelectTab(SettingsTab.SecuritySettings)">
+            @onclick="() => SelectTab(SettingsTab.SecuritySettings)"
+            @onkeydown="eventArgs => HandleTabKeyDownAsync(eventArgs, SettingsTab.SecuritySettings)">
             <img src="_content/PTDoc.UI/images/settings/security-tab.svg" alt="" aria-hidden="true" />
             <span>Security Settings</span>
         </button>
@@ -37,7 +41,7 @@
     @if (_activeTab == SettingsTab.RolePermissions)
     {
         <div
-            id="role-permissions-panel"
+            id="roles-settings-panel"
             class="roles-permissions__tabpanel"
             role="tabpanel"
             aria-labelledby="role-permissions-tab"
@@ -175,7 +179,7 @@
     else
     {
         <div
-            id="security-settings-panel"
+            id="roles-settings-panel"
             class="roles-permissions__tabpanel"
             role="tabpanel"
             aria-labelledby="security-settings-tab"
@@ -263,6 +267,8 @@
 
 @code {
     private SettingsTab _activeTab = SettingsTab.RolePermissions;
+    private ElementReference _rolePermissionsTab;
+    private ElementReference _securitySettingsTab;
     private string _selectedRole = "PT / DPT";
     private string _cloneSourceRole = string.Empty;
     private bool _requireMfa = true;
@@ -293,6 +299,37 @@
         _activeTab = tab;
         // TODO: Connect tab state to application navigation/state management if required.
     }
+
+    private async Task HandleTabKeyDownAsync(KeyboardEventArgs eventArgs, SettingsTab currentTab)
+    {
+        SettingsTab? targetTab = eventArgs.Key switch
+        {
+            "ArrowRight" => currentTab == SettingsTab.RolePermissions
+                ? SettingsTab.SecuritySettings
+                : SettingsTab.RolePermissions,
+            "ArrowLeft" => currentTab == SettingsTab.RolePermissions
+                ? SettingsTab.SecuritySettings
+                : SettingsTab.RolePermissions,
+            "Home" => SettingsTab.RolePermissions,
+            "End" => SettingsTab.SecuritySettings,
+            _ => null
+        };
+
+        if (targetTab is null)
+        {
+            return;
+        }
+
+        SelectTab(targetTab.Value);
+        await GetTabReference(targetTab.Value).FocusAsync();
+    }
+
+    private ElementReference GetTabReference(SettingsTab tab) => tab switch
+    {
+        SettingsTab.RolePermissions => _rolePermissionsTab,
+        SettingsTab.SecuritySettings => _securitySettingsTab,
+        _ => throw new ArgumentOutOfRangeException(nameof(tab), tab, null)
+    };
 
     private void SelectRole(string roleName)
     {

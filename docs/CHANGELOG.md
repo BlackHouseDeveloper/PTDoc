@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - Settings UI accessibility and compliance copy
 
 - **Settings review follow-up** — Added roving tab stops to Settings tabs and permission radio groups, with regression coverage for active/inactive focusability. Reworded the baseline HIPAA callout so it does not imply local preview changes are already persisted or auditable. Reason: keyboard navigation must avoid unnecessary tab stops, and compliance-critical copy must accurately describe current enforcement.
+- **Suppressed review follow-up** — Completed ArrowLeft, ArrowRight, Home, and End keyboard navigation with programmatic focus for the Roles and Scheduling tablists, pointed every tab at its stable rendered tabpanel, and added dark-theme guidance, clone, summary, and compliance surface tokens with WCAG AA text contrast. Added focused regression coverage for keyboard selection and tab-to-panel relationships. Reason: roving tab stops require a complete keyboard path, ARIA references must resolve in the rendered document, and light-only callout colors break dark-theme readability.
 
 ### Fixed - branch live-verification failures
 

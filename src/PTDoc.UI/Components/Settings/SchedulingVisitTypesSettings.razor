@@ -8,25 +8,66 @@
     </header>
 
     <div class="scheduling-settings__tabs" role="tablist" aria-label="Scheduling and visit type settings">
-        @foreach (var tab in Tabs)
-        {
-            <button
-                type="button"
-                id="@tab.TabId"
-                class="scheduling-settings__tab @(tab.Tab == _activeTab ? "is-active" : string.Empty)"
-                role="tab"
-                aria-selected="@(tab.Tab == _activeTab ? "true" : "false")"
-                aria-controls="@tab.PanelId"
-                tabindex="@(tab.Tab == _activeTab ? "0" : "-1")"
-                @onclick="() => SelectTab(tab.Tab)">
-                <img src="@tab.IconPath" alt="" aria-hidden="true" />
-                <span>@tab.Label</span>
-            </button>
-        }
+        <button
+            @ref="_visitTypesTab"
+            type="button"
+            id="visit-types-tab"
+            class="scheduling-settings__tab @(_activeTab == SchedulingTab.VisitTypes ? "is-active" : string.Empty)"
+            role="tab"
+            aria-selected="@(_activeTab == SchedulingTab.VisitTypes ? "true" : "false")"
+            aria-controls="scheduling-settings-panel"
+            tabindex="@(_activeTab == SchedulingTab.VisitTypes ? "0" : "-1")"
+            @onclick="() => SelectTab(SchedulingTab.VisitTypes)"
+            @onkeydown="eventArgs => HandleTabKeyDownAsync(eventArgs, SchedulingTab.VisitTypes)">
+            <img src="_content/PTDoc.UI/images/settings/scheduling-tab-visit.svg" alt="" aria-hidden="true" />
+            <span>Visit Types</span>
+        </button>
+        <button
+            @ref="_scheduleBlocksTab"
+            type="button"
+            id="schedule-blocks-tab"
+            class="scheduling-settings__tab @(_activeTab == SchedulingTab.ScheduleBlocks ? "is-active" : string.Empty)"
+            role="tab"
+            aria-selected="@(_activeTab == SchedulingTab.ScheduleBlocks ? "true" : "false")"
+            aria-controls="scheduling-settings-panel"
+            tabindex="@(_activeTab == SchedulingTab.ScheduleBlocks ? "0" : "-1")"
+            @onclick="() => SelectTab(SchedulingTab.ScheduleBlocks)"
+            @onkeydown="eventArgs => HandleTabKeyDownAsync(eventArgs, SchedulingTab.ScheduleBlocks)">
+            <img src="_content/PTDoc.UI/images/settings/scheduling-tab-blocks.svg" alt="" aria-hidden="true" />
+            <span>Schedule Blocks</span>
+        </button>
+        <button
+            @ref="_calendarBehaviorTab"
+            type="button"
+            id="calendar-behavior-tab"
+            class="scheduling-settings__tab @(_activeTab == SchedulingTab.CalendarBehavior ? "is-active" : string.Empty)"
+            role="tab"
+            aria-selected="@(_activeTab == SchedulingTab.CalendarBehavior ? "true" : "false")"
+            aria-controls="scheduling-settings-panel"
+            tabindex="@(_activeTab == SchedulingTab.CalendarBehavior ? "0" : "-1")"
+            @onclick="() => SelectTab(SchedulingTab.CalendarBehavior)"
+            @onkeydown="eventArgs => HandleTabKeyDownAsync(eventArgs, SchedulingTab.CalendarBehavior)">
+            <img src="_content/PTDoc.UI/images/settings/scheduling-tab-behavior.svg" alt="" aria-hidden="true" />
+            <span>Calendar Behavior</span>
+        </button>
+        <button
+            @ref="_clinicHoursTab"
+            type="button"
+            id="clinic-hours-tab"
+            class="scheduling-settings__tab @(_activeTab == SchedulingTab.ClinicHours ? "is-active" : string.Empty)"
+            role="tab"
+            aria-selected="@(_activeTab == SchedulingTab.ClinicHours ? "true" : "false")"
+            aria-controls="scheduling-settings-panel"
+            tabindex="@(_activeTab == SchedulingTab.ClinicHours ? "0" : "-1")"
+            @onclick="() => SelectTab(SchedulingTab.ClinicHours)"
+            @onkeydown="eventArgs => HandleTabKeyDownAsync(eventArgs, SchedulingTab.ClinicHours)">
+            <img src="_content/PTDoc.UI/images/settings/scheduling-tab-hours.svg" alt="" aria-hidden="true" />
+            <span>Clinic Hours</span>
+        </button>
     </div>
 
     <div
-        id="@GetPanelId(_activeTab)"
+        id="scheduling-settings-panel"
         class="scheduling-settings__tabpanel"
         role="tabpanel"
         aria-labelledby="@GetTabId(_activeTab)"
@@ -68,6 +109,10 @@
 
 @code {
     private SchedulingTab _activeTab = SchedulingTab.VisitTypes;
+    private ElementReference _visitTypesTab;
+    private ElementReference _scheduleBlocksTab;
+    private ElementReference _calendarBehaviorTab;
+    private ElementReference _clinicHoursTab;
     private string _defaultAppointmentDuration = "45 minutes";
     private string _bufferTime = "15 minutes";
     private string _defaultClinicianView = "Week View";
@@ -84,12 +129,12 @@
     private bool _allowRescheduleFromWeekView = true;
     private bool _sendAppointmentReminders = true;
 
-    private static readonly IReadOnlyList<TabDefinition> Tabs =
+    private static readonly TabDefinition[] Tabs =
     [
-        new(SchedulingTab.VisitTypes, "Visit Types", "visit-types-tab", "visit-types-panel", "_content/PTDoc.UI/images/settings/scheduling-tab-visit.svg"),
-        new(SchedulingTab.ScheduleBlocks, "Schedule Blocks", "schedule-blocks-tab", "schedule-blocks-panel", "_content/PTDoc.UI/images/settings/scheduling-tab-blocks.svg"),
-        new(SchedulingTab.CalendarBehavior, "Calendar Behavior", "calendar-behavior-tab", "calendar-behavior-panel", "_content/PTDoc.UI/images/settings/scheduling-tab-behavior.svg"),
-        new(SchedulingTab.ClinicHours, "Clinic Hours", "clinic-hours-tab", "clinic-hours-panel", "_content/PTDoc.UI/images/settings/scheduling-tab-hours.svg")
+        new(SchedulingTab.VisitTypes, "visit-types-tab"),
+        new(SchedulingTab.ScheduleBlocks, "schedule-blocks-tab"),
+        new(SchedulingTab.CalendarBehavior, "calendar-behavior-tab"),
+        new(SchedulingTab.ClinicHours, "clinic-hours-tab")
     ];
 
     private static readonly IReadOnlyList<ScheduledItem> VisitTypes =
@@ -123,6 +168,41 @@
     private static readonly IReadOnlyList<string> ReminderTimingOptions = ["12 hours before", "24 hours before", "48 hours before"];
 
     private void SelectTab(SchedulingTab tab) => _activeTab = tab;
+
+    private async Task HandleTabKeyDownAsync(KeyboardEventArgs eventArgs, SchedulingTab currentTab)
+    {
+        var currentIndex = Array.FindIndex(Tabs, tab => tab.Tab == currentTab);
+        if (currentIndex < 0)
+        {
+            return;
+        }
+
+        SchedulingTab? targetTab = eventArgs.Key switch
+        {
+            "ArrowRight" => Tabs[(currentIndex + 1) % Tabs.Length].Tab,
+            "ArrowLeft" => Tabs[(currentIndex - 1 + Tabs.Length) % Tabs.Length].Tab,
+            "Home" => Tabs[0].Tab,
+            "End" => Tabs[^1].Tab,
+            _ => null
+        };
+
+        if (targetTab is null)
+        {
+            return;
+        }
+
+        SelectTab(targetTab.Value);
+        await GetTabReference(targetTab.Value).FocusAsync();
+    }
+
+    private ElementReference GetTabReference(SchedulingTab tab) => tab switch
+    {
+        SchedulingTab.VisitTypes => _visitTypesTab,
+        SchedulingTab.ScheduleBlocks => _scheduleBlocksTab,
+        SchedulingTab.CalendarBehavior => _calendarBehaviorTab,
+        SchedulingTab.ClinicHours => _clinicHoursTab,
+        _ => throw new ArgumentOutOfRangeException(nameof(tab), tab, null)
+    };
 
     private RenderFragment VisitTypesPanel() => @<section class="scheduling-panel" aria-labelledby="visit-types-heading">
         @PanelHeader("visit-types-heading", "Visit Types", "Configure appointment types and durations", "_content/PTDoc.UI/images/settings/scheduling.svg", "Add Visit Type", OpenAddVisitType)
@@ -289,8 +369,6 @@
 
     private static string GetTabId(SchedulingTab tab) => Tabs.Single(item => item.Tab == tab).TabId;
 
-    private static string GetPanelId(SchedulingTab tab) => Tabs.Single(item => item.Tab == tab).PanelId;
-
     private void ResetToDefaults()
     {
         _defaultAppointmentDuration = "45 minutes";
@@ -357,10 +435,7 @@
 
     private sealed record TabDefinition(
         SchedulingTab Tab,
-        string Label,
-        string TabId,
-        string PanelId,
-        string IconPath);
+        string TabId);
 
     private sealed record ScheduledItem(string Name, string Duration, string? Badge = null);
 }

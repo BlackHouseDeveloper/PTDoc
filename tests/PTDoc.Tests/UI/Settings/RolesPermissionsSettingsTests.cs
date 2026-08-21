@@ -6,6 +6,11 @@ namespace PTDoc.Tests.UI.Settings;
 [Trait("Category", "CoreCi")]
 public sealed class RolesPermissionsSettingsTests : TestContext
 {
+    public RolesPermissionsSettingsTests()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+    }
+
     [Fact]
     public void DefaultState_RendersDocumentedRolePermissionMatrix()
     {
@@ -69,5 +74,31 @@ public sealed class RolesPermissionsSettingsTests : TestContext
         cut.Find("button[aria-label='Restrict Schedule Access']").Click();
 
         Assert.Equal("true", cut.Find("button[aria-label='Restrict Schedule Access']").GetAttribute("aria-checked"));
+    }
+
+    [Fact]
+    public void Tabs_SupportKeyboardNavigationAndReferenceTheRenderedPanel()
+    {
+        var cut = RenderComponent<RolesPermissionsSettings>();
+
+        Assert.All(
+            cut.FindAll("[role='tab']"),
+            tab => Assert.Equal("roles-settings-panel", tab.GetAttribute("aria-controls")));
+        Assert.Equal("role-permissions-tab", cut.Find("#roles-settings-panel").GetAttribute("aria-labelledby"));
+
+        cut.Find("#role-permissions-tab").KeyDown("ArrowRight");
+
+        Assert.Equal("true", cut.Find("#security-settings-tab").GetAttribute("aria-selected"));
+        Assert.Equal("0", cut.Find("#security-settings-tab").GetAttribute("tabindex"));
+        Assert.Equal("security-settings-tab", cut.Find("#roles-settings-panel").GetAttribute("aria-labelledby"));
+
+        cut.Find("#security-settings-tab").KeyDown("Home");
+
+        Assert.Equal("true", cut.Find("#role-permissions-tab").GetAttribute("aria-selected"));
+        Assert.Equal("role-permissions-tab", cut.Find("#roles-settings-panel").GetAttribute("aria-labelledby"));
+
+        cut.Find("#role-permissions-tab").KeyDown("ArrowLeft");
+
+        Assert.Equal("true", cut.Find("#security-settings-tab").GetAttribute("aria-selected"));
     }
 }
