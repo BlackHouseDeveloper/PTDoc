@@ -689,8 +689,8 @@
 }
 
 .security-action-bar .security-action-bar__save {
-    background: var(--primary);
-    color: var(--primary-foreground);
+    background: var(--settings-save-bg);
+    color: var(--settings-save-foreground);
 }
 
 .security-action-bar .security-action-bar__save img {

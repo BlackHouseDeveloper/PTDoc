@@ -7,13 +7,21 @@
 <div class="settings-page-container">
     <GlobalPageHeader />
 
-    <div class="settings-shell" aria-label="Settings center">
-        <SettingsSidebarNav
-            ActiveSection="@activeSection"
-            ClinicalApproverOnly="@isClinicalApproverOnly"
-            OnSectionSelected="HandleSectionSelected" />
+    @if (!authorizationResolved)
+    {
+        <section class="settings-section-card" role="status" aria-live="polite">
+            Loading settings…
+        </section>
+    }
+    else
+    {
+        <div class="settings-shell" aria-label="Settings center">
+            <SettingsSidebarNav
+                ActiveSection="@activeSection"
+                ClinicalApproverOnly="@isClinicalApproverOnly"
+                OnSectionSelected="HandleSectionSelected" />
 
-        <main class="settings-main-content" aria-live="polite">
+            <main class="settings-main-content" aria-live="polite">
             @if (activeSection == "roles-permissions")
             {
                 <RolesPermissionsSettings />
@@ -56,26 +64,26 @@
                     Title="@GetSectionTitle(activeSection)"
                     Description="@GetDeferredDescription(activeSection)" />
             }
-        </main>
-    </div>
+            </main>
+        </div>
+    }
 </div>
 
 @code {
-    private string activeSection = "roles-permissions";
-    private bool isClinicalApproverOnly;
+    private string activeSection = "documentation";
+    private bool isClinicalApproverOnly = true;
+    private bool authorizationResolved;
 
     [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        isClinicalApproverOnly = state.User.IsInRole(Roles.PT)
-            && !state.User.IsInRole(Roles.Admin)
-            && !state.User.IsInRole(Roles.Owner);
-        if (isClinicalApproverOnly)
-        {
-            activeSection = "documentation";
-        }
+        var canAdministerSettings = state.User.IsInRole(Roles.Admin)
+            || state.User.IsInRole(Roles.Owner);
+        isClinicalApproverOnly = !canAdministerSettings;
+        activeSection = canAdministerSettings ? "roles-permissions" : "documentation";
+        authorizationResolved = true;
     }
 
     private void HandleSectionSelected(string sectionKey)

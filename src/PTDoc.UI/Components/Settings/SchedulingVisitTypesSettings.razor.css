@@ -489,8 +489,8 @@
 }
 
 .scheduling-settings__action-bar .scheduling-settings__save-action {
-    background: var(--primary);
-    color: var(--primary-foreground);
+    background: var(--settings-save-bg);
+    color: var(--settings-save-foreground);
 }
 
 .scheduling-settings__action-bar .scheduling-settings__save-action img {

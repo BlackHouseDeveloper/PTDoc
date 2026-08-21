@@ -69,7 +69,9 @@ Current Settings aliases:
 | `--settings-compliance-muted` | Secondary compliance guidance text. |
 | `--settings-action-bar-bg` | Roles and Security action-bar background. |
 | `--settings-action-bar-foreground` | Roles and Security action-bar text foreground. |
-| `--settings-save-icon-filter` | Theme-aware filter that aligns fixed-stroke Save icons with primary-button text. |
+| `--settings-save-bg` | Contrast-safe background shared by enabled Settings Save Preview actions. |
+| `--settings-save-foreground` | Contrast-safe text foreground shared by enabled Settings Save Preview actions. |
+| `--settings-save-icon-filter` | Theme-aware filter that aligns fixed-stroke Save icons with the Settings Save Preview foreground. |
 | `--settings-scheduling-neutral-icon-filter` | Theme-aware filter for neutral Scheduling icons. |
 | `--settings-scheduling-muted-icon-filter` | Theme-aware filter for muted Scheduling icons. |
 | `--settings-scheduling-panel-border` | Scheduling panel, tab, and action-bar border. |

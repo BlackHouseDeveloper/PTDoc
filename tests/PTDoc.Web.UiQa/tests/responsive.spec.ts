@@ -152,6 +152,7 @@ test.describe('PTDoc responsive UI QA', () => {
         await expect(rolePermissionsTab).toHaveAttribute('aria-selected', 'true');
         await securitySettingsTab.click();
         await expect(securitySettingsTab).toHaveAttribute('aria-selected', 'true');
+        await expectTextContrast(page.getByRole('button', { name: 'Save Preview' }), 4.5);
         await rolePermissionsTab.click();
 
         const permissionLevel = page.getByRole('radio', { name: 'View Clinical Notes: View' });
@@ -165,6 +166,7 @@ test.describe('PTDoc responsive UI QA', () => {
 
         await page.getByRole('button', { name: /Scheduling & Visit Types/i }).click();
         await expect(page.getByRole('heading', { name: 'Scheduling & Visit Types', exact: true })).toBeVisible();
+        await expectTextContrast(page.getByRole('button', { name: 'Save Preview' }), 4.5);
 
         const visitTypesTab = page.getByRole('tab', { name: 'Visit Types' });
         const scheduleBlocksTab = page.getByRole('tab', { name: 'Schedule Blocks' });
@@ -397,6 +399,34 @@ async function expectNoDocumentHorizontalOverflow(page: Page) {
   });
 
   expect(overflow).toBeLessThanOrEqual(1);
+}
+
+async function expectTextContrast(locator: import('@playwright/test').Locator, minimumRatio: number) {
+  const contrastRatio = await locator.evaluate(element => {
+    const parseRgb = (value: string) => {
+      const channels = value.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+      if (!channels || channels.length !== 3) {
+        throw new Error(`Unable to parse CSS color: ${value}`);
+      }
+
+      return channels;
+    };
+    const luminance = (channels: number[]) => {
+      const linear = channels.map(channel => {
+        const normalized = channel / 255;
+        return normalized <= 0.04045
+          ? normalized / 12.92
+          : Math.pow((normalized + 0.055) / 1.055, 2.4);
+      });
+      return (0.2126 * linear[0]) + (0.7152 * linear[1]) + (0.0722 * linear[2]);
+    };
+    const styles = getComputedStyle(element);
+    const foreground = luminance(parseRgb(styles.color));
+    const background = luminance(parseRgb(styles.backgroundColor));
+    return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+  });
+
+  expect(contrastRatio).toBeGreaterThanOrEqual(minimumRatio);
 }
 
 async function expectSidebarControlsNotClipped(page: Page) {

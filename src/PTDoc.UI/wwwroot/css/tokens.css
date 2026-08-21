@@ -211,6 +211,8 @@
   --settings-compliance-muted: #9a3412;
   --settings-action-bar-bg: rgba(38, 38, 38, 0.95);
   --settings-action-bar-foreground: #e5e5e5;
+  --settings-save-bg: #166534;
+  --settings-save-foreground: #ffffff;
   --settings-save-icon-filter: brightness(0) invert(1);
   --settings-scheduling-neutral-icon-filter: none;
   --settings-scheduling-muted-icon-filter: none;
@@ -323,6 +325,8 @@
   --settings-compliance-border: #c2410c;
   --settings-compliance-foreground: #ffedd5;
   --settings-compliance-muted: #fdba74;
+  --settings-save-bg: #22c55e;
+  --settings-save-foreground: #000000;
   --settings-save-icon-filter: none;
   --settings-scheduling-neutral-icon-filter: brightness(0) invert(1);
   --settings-scheduling-muted-icon-filter: brightness(0) invert(1);
