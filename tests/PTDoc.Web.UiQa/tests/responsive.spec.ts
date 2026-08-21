@@ -21,6 +21,10 @@ type RouteCase = {
 
 const DESKTOP_BREAKPOINT = 1200;
 
+function resolveSettingsAdminPin(environment: Record<string, string | undefined>) {
+  return environment.PTDOC_UI_QA_ADMIN_PIN?.trim() || environment.PTDOC_UI_QA_PIN?.trim();
+}
+
 const responsiveViewports: ViewportCase[] = [
   { name: '1280x720', width: 1280, height: 720 },
   { name: '1366x768', width: 1366, height: 768 },
@@ -52,6 +56,13 @@ if (noteWorkspacePath) {
 }
 
 test.describe('PTDoc responsive UI QA', () => {
+  test('settings authentication falls back to the shared PIN when the Admin PIN is empty', () => {
+    expect(resolveSettingsAdminPin({
+      PTDOC_UI_QA_ADMIN_PIN: '   ',
+      PTDOC_UI_QA_PIN: ' shared-pin '
+    })).toBe('shared-pin');
+  });
+
   test('mobile signup keeps populated text fields bound and focuses the first invalid field without creating an account', async ({ page }) => {
     attachConsoleCapture(page);
     await page.addInitScript(() => {
@@ -329,7 +340,7 @@ async function authenticateForSettings(page: Page) {
   }
 
   const adminUsername = process.env.PTDOC_UI_QA_ADMIN_USERNAME?.trim();
-  const adminPin = (process.env.PTDOC_UI_QA_ADMIN_PIN ?? process.env.PTDOC_UI_QA_PIN)?.trim();
+  const adminPin = resolveSettingsAdminPin(process.env);
   if (!adminUsername || !adminPin) {
     throw new Error(
       'Settings responsive checks require PTDOC_UI_QA_ADMIN_USERNAME and either ' +
