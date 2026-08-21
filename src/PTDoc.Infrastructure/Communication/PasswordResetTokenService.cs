@@ -27,11 +27,6 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (!IsValidPin(request.NewPin))
-        {
-            return Failure(PasswordResetCompletionStatus.InvalidPin, "PIN must be exactly 4 digits.");
-        }
-
         if (!IsSafeTokenInput(request.Token))
         {
             return Failure(PasswordResetCompletionStatus.InvalidToken, "The reset link is invalid or expired.");
@@ -89,6 +84,11 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
                         return Failure(PasswordResetCompletionStatus.Expired, "The reset link is invalid or expired.");
                     }
 
+                    if (!IsValidPin(request.NewPin))
+                    {
+                        return Failure(PasswordResetCompletionStatus.InvalidPin, "PIN must be 8 to 12 digits.");
+                    }
+
                     var claimed = await _db.PasswordResetTokens
                         .Where(resetToken =>
                             resetToken.TokenHash == tokenHash &&
@@ -107,7 +107,11 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
                     var userUpdated = await _db.Users
                         .Where(user => user.Id == tokenMetadata.UserId)
                         .ExecuteUpdateAsync(
-                            setters => setters.SetProperty(user => user.PinHash, AuthService.HashPin(request.NewPin)),
+                            setters => setters
+                                .SetProperty(user => user.PinHash, AuthService.HashPin(request.NewPin))
+                                .SetProperty(user => user.MustChangePin, false)
+                                .SetProperty(user => user.PinChangedAtUtc, DateTime.UtcNow)
+                                .SetProperty(user => user.LegacyPinGraceEndsAtUtc, (DateTime?)null),
                             cancellationToken);
                     if (userUpdated != 1)
                     {
@@ -144,7 +148,15 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
                 return Failure(PasswordResetCompletionStatus.Expired, "The reset link is invalid or expired.");
             }
 
+            if (!IsValidPin(request.NewPin))
+            {
+                return Failure(PasswordResetCompletionStatus.InvalidPin, "PIN must be 8 to 12 digits.");
+            }
+
             token.User.PinHash = AuthService.HashPin(request.NewPin);
+            token.User.MustChangePin = false;
+            token.User.PinChangedAtUtc = DateTime.UtcNow;
+            token.User.LegacyPinGraceEndsAtUtc = null;
             token.UsedAtUtc = now;
             await _db.SaveChangesAsync(cancellationToken);
 
@@ -194,7 +206,7 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
         => !string.IsNullOrWhiteSpace(token) && token.Length <= MaxTokenLength;
 
     private static bool IsValidPin(string pin)
-        => pin.Length == 4 && pin.All(char.IsDigit);
+        => pin.Length is >= 8 and <= 12 && pin.All(char.IsDigit);
 
     private static bool IsExpectedResetTokenStorageException(Exception ex)
         => ex is DbException or InvalidOperationException or FormatException or OverflowException;

@@ -37,7 +37,7 @@ public class UserRegistrationServiceTests
             new DateTime(1990, 1, 1),
             "PT",
             clinic.Id,
-            "1234",
+            "12345678",
             "PT12345",
             "CA"));
 
@@ -67,7 +67,7 @@ public class UserRegistrationServiceTests
             new DateTime(1990, 1, 1),
             "PT",
             clinic.Id,
-            "1234",
+            "12345678",
             null,
             null));
 
@@ -102,7 +102,7 @@ public class UserRegistrationServiceTests
             new DateTime(1992, 3, 3),
             "FrontDesk",
             clinic.Id,
-            "1234",
+            "12345678",
             null,
             null));
 
@@ -150,7 +150,7 @@ public class UserRegistrationServiceTests
             new DateTime(1992, 3, 3),
             roleKey,
             clinic.Id,
-            "1234",
+            "12345678",
             null,
             null));
 
@@ -204,7 +204,7 @@ public class UserRegistrationServiceTests
             new DateTime(1991, 4, 4),
             "FrontDesk",
             clinic.Id,
-            "1234",
+            "12345678",
             null,
             null));
 

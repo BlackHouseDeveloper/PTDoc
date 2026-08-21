@@ -37,6 +37,8 @@ using PTDoc.Api.NoteTemplates;
 using PTDoc.Api.Pdf;
 using PTDoc.Api.ReferenceData;
 using PTDoc.Api.Sync;
+using PTDoc.Api.Settings;
+using PTDoc.Api.Security;
 using PTDoc.Api.Notifications;
 using PTDoc.Application.AI;
 using PTDoc.Application.Auth;
@@ -55,6 +57,7 @@ using PTDoc.Application.Pdf;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Security;
 using PTDoc.Application.Sync;
+using PTDoc.Application.Settings;
 using PTDoc.AI.Services;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Data.Interceptors;
@@ -69,6 +72,7 @@ using PTDoc.Infrastructure.Security;
 using PTDoc.Infrastructure.Services;
 using PTDoc.Infrastructure.BackgroundJobs;
 using PTDoc.Infrastructure.Sync;
+using PTDoc.Infrastructure.Settings;
 using PTDoc.Application.BackgroundJobs;
 using PTDoc.Integrations.Services;
 
@@ -191,9 +195,33 @@ builder.Services.AddRateLimiter(options =>
                 AutoReplenishment = true
             }));
 
+    options.AddPolicy("KioskAuthentication", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            GetAnonymousRequestRateLimitPartitionKey(httpContext, builder.Configuration, builder.Environment),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(5),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
+    options.AddPolicy("MfaAuthentication", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            GetAnonymousRequestRateLimitPartitionKey(httpContext, builder.Configuration, builder.Environment),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(5),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
     options.OnRejected = (context, cancellationToken) =>
         new ValueTask(UsesAiGenerationRateLimitPolicy(context.HttpContext)
             ? AiRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken)
+            : UsesMfaAuthenticationRateLimitPolicy(context.HttpContext)
+                ? MfaRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken)
             : UsesIntakeOtpDeliveryRateLimitPolicy(context.HttpContext)
                 ? IntakeOtpRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken)
                 : PasswordResetRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken));
@@ -208,6 +236,19 @@ builder.Services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>();
 builder.Services.AddScoped<IPatientContextAccessor, HttpPatientContextAccessor>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserRegistrationService, UserRegistrationService>();
+builder.Services.AddScoped<IRolePermissionAdministrationService, RolePermissionAdministrationService>();
+builder.Services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
+builder.Services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, DynamicCapabilityAuthorizationHandler>();
+builder.Services.AddScoped<ISecurityPolicyAdministrationService, SecurityPolicyAdministrationService>();
+builder.Services.AddScoped<ISchedulingAdministrationService, SchedulingAdministrationService>();
+builder.Services.AddScoped<ISchedulingPolicyEvaluator, SchedulingPolicyEvaluator>();
+builder.Services.AddScoped<IAutoCheckInAdministrationService, AutoCheckInAdministrationService>();
+builder.Services.AddScoped<IKioskCheckInService, KioskCheckInService>();
+builder.Services.AddDataProtection();
+builder.Services.AddSingleton<ISettingsSecretProtector, DataProtectionSettingsSecretProtector>();
+builder.Services.AddScoped<IMfaAuthenticationService, MfaAuthenticationService>();
+builder.Services.AddScoped<IAppointmentCommunicationProcessor, AppointmentCommunicationProcessor>();
+builder.Services.AddScoped<IAppointmentCheckInWorkflow, AppointmentCheckInWorkflow>();
 builder.Services.Configure<IntakeInviteOptions>(builder.Configuration.GetSection(IntakeInviteOptions.SectionName));
 
 // Register sync services
@@ -222,6 +263,7 @@ builder.Services.Configure<SessionCleanupOptions>(
     builder.Configuration.GetSection(SessionCleanupOptions.SectionName));
 builder.Services.AddHostedService<SyncRetryBackgroundService>();
 builder.Services.AddHostedService<SessionCleanupBackgroundService>();
+builder.Services.AddHostedService<AppointmentCommunicationBackgroundService>();
 
 // Register compliance services
 builder.Services.AddScoped<PTDoc.Application.Compliance.IRulesEngine, PTDoc.Infrastructure.Compliance.RulesEngine>();
@@ -911,6 +953,7 @@ app.UseCors();
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseMiddleware<ProvisioningGuardMiddleware>();
+app.UseMiddleware<ExternalMfaAssuranceMiddleware>();
 app.UseAuthorization();
 
 // Health check endpoints (Sprint F – unauthenticated, standard deployment probe pattern)
@@ -992,6 +1035,7 @@ app.MapTreatmentTaxonomyEndpoints(); // PT treatment taxonomy reference data
 app.MapIcd10Endpoints(); // ICD-10 code search (bundled)
 app.MapIntakeReferenceDataEndpoints(); // Intake body part / medication / pain descriptor reference data
 app.MapNoteWorkspaceV2Endpoints(); // Typed eval/reeval/progress workspace API
+app.MapSettingsAdministrationEndpoints(); // Clinic-scoped Settings administration
 
 
 app.Run();
@@ -1188,6 +1232,10 @@ static bool UsesAiGenerationRateLimitPolicy(HttpContext httpContext) =>
 static bool UsesIntakeOtpDeliveryRateLimitPolicy(HttpContext httpContext) =>
     httpContext.GetEndpoint()?.Metadata.GetOrderedMetadata<EnableRateLimitingAttribute>()
         .Any(metadata => string.Equals(metadata.PolicyName, "IntakeOtpDelivery", StringComparison.Ordinal)) == true;
+
+static bool UsesMfaAuthenticationRateLimitPolicy(HttpContext httpContext) =>
+    httpContext.GetEndpoint()?.Metadata.GetOrderedMetadata<EnableRateLimitingAttribute>()
+        .Any(metadata => string.Equals(metadata.PolicyName, "MfaAuthentication", StringComparison.Ordinal)) == true;
 
 static bool IsValidBetaAccessSeedPin(string? seedPin) =>
     !string.IsNullOrWhiteSpace(seedPin)

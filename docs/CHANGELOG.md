@@ -57,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Enterprise regression stabilization** — Made the Web token forwarder treat unavailable OIDC services as a missing session token, retained legacy payer member-ID aliases during normalized dual writes, re-queried rendered bUnit controls after state changes, and aligned affected tests with explicit dashboard categories and the governed provider-directory workflow. Registered the new insurance-carrier reference material in the runtime provenance index and clinic-reference catalog. Reason: compatibility paths and UI tests must reflect the new authoritative data contracts without masking expired sessions or dropping existing payer values.
 - **Intervention library navigation state** — Rendered explicit string-valued `aria-pressed` and `aria-selected` states for exercise and manual-technique filters and tabs; updated the manual-technique regression to inspect the editable Notes field's rendered value. Reason: ARIA state attributes and form values must expose their current state consistently to assistive technology and the component test renderer.
 
+### Added - Settings services and API layer
+
+- **Settings services and API review slice** — Connected the persisted Settings aggregates to clinic-scoped administration services, dynamic authorization, PIN/TOTP step-up authentication, appointment availability, reminders, Auto Check-In, kiosk workflows, API endpoints, and focused server-side regression coverage. Reason: security-sensitive workflow logic is isolated from the generated persistence artifacts so it can be reviewed as a dedicated stacked change.
+
 ### Fixed - Settings persistence review follow-up
 
 - **SQLite overlap-default compatibility** — Preserved the false database default for `AuthorizedOverlap` through the explicit SQLite appointment-table rebuild, made the default part of the EF model and all provider snapshots, and added a migration-backed legacy-column insert regression. Reason: compatibility clients that do not know the new column must continue to insert appointments with overlap authorization defaulting safely to false on every provider.

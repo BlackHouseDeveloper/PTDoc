@@ -1,6 +1,7 @@
 using PTDoc.Application.Auth;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
+using PTDoc.Infrastructure.Identity;
 using System.Security.Claims;
 
 namespace PTDoc.Api.Auth;
@@ -11,38 +12,89 @@ public static class AuthEndpoints
     {
         app.MapPost("/auth/token", async (
             LoginRequest request,
-            ICredentialValidator validator,
+            IAuthService authService,
             JwtTokenIssuer issuer,
-            IAuditService auditService,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var identity = await validator.ValidateAsync(
+            var result = await authService.AuthenticateAsync(
                 request.Username,
                 request.Password,
+                GetRemoteIpAddress(httpContext),
+                httpContext.Request.Headers.UserAgent.ToString(),
                 cancellationToken);
 
-            if (identity is null)
+            if (result is null || result.Status == AuthStatus.InvalidCredentials)
             {
-                await LogAuthEventBestEffortAsync(
-                    auditService,
-                    AuditEvent.LoginFailed(GetRemoteIpAddress(httpContext), "InvalidCredentials"),
-                    cancellationToken);
                 return Results.Unauthorized();
             }
 
-            var tokens = await issuer.IssueAsync(identity, cancellationToken);
-            if (TryResolveUserId(identity, out var userId))
+            if (result.Status is AuthStatus.AccountLocked or AuthStatus.PendingApproval)
             {
-                await LogAuthEventBestEffortAsync(
-                    auditService,
-                    AuditEvent.LoginSuccess(userId, GetRemoteIpAddress(httpContext)),
-                    cancellationToken);
+                return Results.Json(
+                    new { status = result.Status.ToString() },
+                    statusCode: StatusCodes.Status403Forbidden);
             }
 
-            return Results.Ok(tokens);
+            return result.Status == AuthStatus.Success
+                ? await IssueJwtAsync(result, issuer, cancellationToken)
+                : Results.Json(ToStepUpResponse(result), statusCode: StatusCodes.Status202Accepted);
         })
         .AllowAnonymous();
+
+        app.MapPost("/auth/pin-change", async (
+            JwtPinChangeRequest request,
+            IAuthService authService,
+            JwtTokenIssuer issuer,
+            HttpContext httpContext,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await authService.CompletePinChangeAsync(
+                request.ChallengeToken,
+                request.NewPin,
+                GetRemoteIpAddress(httpContext),
+                httpContext.Request.Headers.UserAgent.ToString(),
+                cancellationToken);
+            if (result is null)
+            {
+                return Results.Unauthorized();
+            }
+
+            if (result.Status == AuthStatus.RequiresPinChange)
+            {
+                return Results.UnprocessableEntity(new
+                {
+                    status = result.Status.ToString(),
+                    error = "pin_policy_failed",
+                    challengeToken = result.ChallengeToken
+                });
+            }
+
+            return result.Status == AuthStatus.Success
+                ? await IssueJwtAsync(result, issuer, cancellationToken)
+                : Results.Json(ToStepUpResponse(result), statusCode: StatusCodes.Status202Accepted);
+        })
+        .AllowAnonymous()
+        .RequireRateLimiting("MfaAuthentication");
+
+        app.MapPost("/auth/complete", async (
+            JwtAuthenticationCompletionRequest request,
+            IAuthService authService,
+            JwtTokenIssuer issuer,
+            HttpContext httpContext,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await authService.CompleteMfaAsync(
+                request.CompletionToken,
+                GetRemoteIpAddress(httpContext),
+                httpContext.Request.Headers.UserAgent.ToString(),
+                cancellationToken);
+            return result is null
+                ? Results.Unauthorized()
+                : await IssueJwtAsync(result, issuer, cancellationToken);
+        })
+        .AllowAnonymous()
+        .RequireRateLimiting("MfaAuthentication");
 
         app.MapPost("/auth/refresh", async (
             RefreshTokenRequest request,
@@ -81,6 +133,42 @@ public static class AuthEndpoints
     private static string? GetRemoteIpAddress(HttpContext httpContext)
         => httpContext.Connection.RemoteIpAddress?.ToString();
 
+    private static object ToStepUpResponse(AuthResult result) => new
+    {
+        status = result.Status.ToString(),
+        challengeToken = result.ChallengeToken
+    };
+
+    private static async Task<IResult> IssueJwtAsync(
+        AuthResult result,
+        JwtTokenIssuer issuer,
+        CancellationToken cancellationToken)
+    {
+        if (result.Status != AuthStatus.Success || result.UserId is null ||
+            string.IsNullOrWhiteSpace(result.Username) || string.IsNullOrWhiteSpace(result.Role))
+        {
+            return Results.Problem(
+                "Authentication service returned an incomplete success result.",
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        var claims = new List<Claim>
+        {
+            new(PTDocClaimTypes.InternalUserId, result.UserId.Value.ToString()),
+            new(ClaimTypes.NameIdentifier, result.UserId.Value.ToString()),
+            new(ClaimTypes.Name, result.Username),
+            new(ClaimTypes.Role, result.Role),
+            new(PTDocClaimTypes.AuthenticationType, "pin_step_up_jwt")
+        };
+        if (result.ClinicId is { } clinicId)
+        {
+            claims.Add(new Claim(HttpTenantContextAccessor.ClinicIdClaimType, clinicId.ToString()));
+        }
+
+        var identity = new ClaimsIdentity(claims, PTDocAuthSchemes.Bearer);
+        return Results.Ok(await issuer.IssueAsync(identity, cancellationToken));
+    }
+
     internal static async Task LogAuthEventBestEffortAsync(
         IAuditService auditService,
         AuditEvent auditEvent,
@@ -103,3 +191,6 @@ public static class AuthEndpoints
         return Guid.TryParse(claimValue, out userId);
     }
 }
+
+public sealed record JwtPinChangeRequest(string ChallengeToken, string NewPin);
+public sealed record JwtAuthenticationCompletionRequest(string CompletionToken);
