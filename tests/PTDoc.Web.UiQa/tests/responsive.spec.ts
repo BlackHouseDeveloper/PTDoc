@@ -1,6 +1,7 @@
 import { expect, Page, test } from '@playwright/test';
 import {
   attachConsoleCapture,
+  authenticateAs,
   authenticateIfNeeded,
   expectNoRelevantConsoleErrors,
   waitForAppInteractive
@@ -20,6 +21,10 @@ type RouteCase = {
 
 const DESKTOP_BREAKPOINT = 1200;
 
+function resolveSettingsAdminPin(environment: Record<string, string | undefined>) {
+  return environment.PTDOC_UI_QA_ADMIN_PIN?.trim() || environment.PTDOC_UI_QA_PIN?.trim();
+}
+
 const responsiveViewports: ViewportCase[] = [
   { name: '1280x720', width: 1280, height: 720 },
   { name: '1366x768', width: 1366, height: 768 },
@@ -31,7 +36,14 @@ const routeCases: RouteCase[] = [
   { name: 'dashboard', path: '/', titlePattern: /Dashboard/i },
   { name: 'appointments', path: '/appointments', titlePattern: /Appointments/i },
   { name: 'intake', path: '/intake', titlePattern: /Intake/i },
-  { name: 'notes', path: '/notes', titlePattern: /Notes/i }
+  { name: 'notes', path: '/notes', titlePattern: /Notes/i },
+  { name: 'settings', path: '/settings', titlePattern: /Settings/i }
+];
+
+const settingsViewports: ViewportCase[] = [
+  { name: 'roles-900px-breakpoint', width: 900, height: 900 },
+  { name: 'shared-767px-breakpoint', width: 767, height: 900 },
+  { name: 'shared-520px-breakpoint', width: 520, height: 844 }
 ];
 
 const noteWorkspacePath = process.env.PTDOC_UI_QA_NOTE_WORKSPACE_PATH;
@@ -44,6 +56,13 @@ if (noteWorkspacePath) {
 }
 
 test.describe('PTDoc responsive UI QA', () => {
+  test('settings authentication falls back to the shared PIN when the Admin PIN is empty', () => {
+    expect(resolveSettingsAdminPin({
+      PTDOC_UI_QA_ADMIN_PIN: '   ',
+      PTDOC_UI_QA_PIN: ' shared-pin '
+    })).toBe('shared-pin');
+  });
+
   test('mobile signup keeps populated text fields bound and focuses the first invalid field without creating an account', async ({ page }) => {
     attachConsoleCapture(page);
     await page.addInitScript(() => {
@@ -88,7 +107,11 @@ test.describe('PTDoc responsive UI QA', () => {
     for (const route of routeCases) {
       test(`${route.name} is usable at ${viewport.name} in light mode`, async ({ page }) => {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
-        await authenticateIfNeeded(page);
+        if (route.path === '/settings') {
+          await authenticateForSettings(page);
+        } else {
+          await authenticateIfNeeded(page);
+        }
         await setTheme(page, 'light');
         await gotoAppRoute(page, route.path);
 
@@ -114,6 +137,70 @@ test.describe('PTDoc responsive UI QA', () => {
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoRelevantConsoleErrors(page);
   });
+
+  for (const theme of ['light', 'dark'] as const) {
+    for (const viewport of settingsViewports) {
+      test(`settings tabs are usable at ${viewport.name} in ${theme} mode`, async ({ page }) => {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await authenticateForSettings(page);
+        await setTheme(page, theme);
+        await gotoAppRoute(page, '/settings');
+
+        await expect(page.getByRole('heading', { name: 'Roles & Permissions', exact: true })).toBeVisible();
+        const rolePermissionsTab = page.getByRole('tab', { name: 'Role Permissions' });
+        const securitySettingsTab = page.getByRole('tab', { name: 'Security Settings' });
+        await expect(rolePermissionsTab).toHaveAttribute('aria-selected', 'true');
+        await securitySettingsTab.click();
+        await expect(securitySettingsTab).toHaveAttribute('aria-selected', 'true');
+        await expectTextContrast(page.getByRole('button', { name: 'Save Preview' }), 4.5);
+        await rolePermissionsTab.click();
+
+        const permissionLevel = page.getByRole('radio', { name: 'View Clinical Notes: View' });
+        await permissionLevel.scrollIntoViewIfNeeded();
+        await permissionLevel.focus();
+        const permissionScrollBefore = await page.evaluate(() => window.scrollY);
+        await permissionLevel.press('End');
+        await expect(permissionLevel).toHaveAttribute('aria-checked', 'true');
+        const permissionScrollAfter = await page.evaluate(() => window.scrollY);
+        expect(Math.abs(permissionScrollAfter - permissionScrollBefore)).toBeLessThanOrEqual(1);
+
+        await page.getByRole('button', { name: /Scheduling & Visit Types/i }).click();
+        await expect(page.getByRole('heading', { name: 'Scheduling & Visit Types', exact: true })).toBeVisible();
+        await expectTextContrast(page.getByRole('button', { name: 'Save Preview' }), 4.5);
+
+        const visitTypesTab = page.getByRole('tab', { name: 'Visit Types' });
+        const scheduleBlocksTab = page.getByRole('tab', { name: 'Schedule Blocks' });
+        const calendarBehaviorTab = page.getByRole('tab', { name: 'Calendar Behavior' });
+        const clinicHoursTab = page.getByRole('tab', { name: 'Clinic Hours' });
+        await scheduleBlocksTab.click();
+        await expect(scheduleBlocksTab).toHaveAttribute('aria-selected', 'true');
+        await expect.poll(() => scheduleBlocksTab.evaluate(element => getComputedStyle(element).borderTopColor))
+          .not.toBe('rgba(0, 0, 0, 0)');
+
+        await calendarBehaviorTab.click();
+        const doubleBookingSwitch = page.getByRole('switch', { name: 'Allow Double Booking' });
+        const switchThumb = doubleBookingSwitch.locator('span');
+        const disabledThumbTransform = await switchThumb.evaluate(element => getComputedStyle(element).transform);
+        await doubleBookingSwitch.click();
+        await expect(doubleBookingSwitch).toHaveAttribute('aria-checked', 'true');
+        await expect.poll(() => switchThumb.evaluate(element => getComputedStyle(element).transform))
+          .not.toBe(disabledThumbTransform);
+
+        await visitTypesTab.click();
+        await visitTypesTab.scrollIntoViewIfNeeded();
+        await visitTypesTab.focus();
+        const tabScrollBefore = await page.evaluate(() => window.scrollY);
+        await visitTypesTab.press('End');
+        await expect(clinicHoursTab).toHaveAttribute('aria-selected', 'true');
+        const tabScrollAfter = await page.evaluate(() => window.scrollY);
+        expect(Math.abs(tabScrollAfter - tabScrollBefore)).toBeLessThanOrEqual(1);
+
+        await expectNoFrameworkOverlay(page);
+        await expectNoDocumentHorizontalOverflow(page);
+        await expectNoRelevantConsoleErrors(page);
+      });
+    }
+  }
 
   test('desktop sidebar collapses to an icon rail without clipping controls', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
@@ -248,6 +335,23 @@ async function gotoAppRoute(page: Page, path: string) {
   await waitForAppInteractive(page);
 }
 
+async function authenticateForSettings(page: Page) {
+  if (process.env.PTDOC_UI_QA_STORAGE_STATE?.trim()) {
+    await authenticateIfNeeded(page);
+    return;
+  }
+
+  const adminUsername = process.env.PTDOC_UI_QA_ADMIN_USERNAME?.trim();
+  const adminPin = resolveSettingsAdminPin(process.env);
+  if (!adminUsername || !adminPin) {
+    throw new Error(
+      'Settings responsive checks require PTDOC_UI_QA_ADMIN_USERNAME and either ' +
+      'PTDOC_UI_QA_ADMIN_PIN or PTDOC_UI_QA_PIN for an Admin/Owner-capable fixture.');
+  }
+
+  await authenticateAs(page, adminUsername, adminPin);
+}
+
 async function setTheme(page: Page, theme: 'light' | 'dark') {
   await page.evaluate(value => {
     localStorage.setItem('ptdoc-theme', value);
@@ -295,6 +399,34 @@ async function expectNoDocumentHorizontalOverflow(page: Page) {
   });
 
   expect(overflow).toBeLessThanOrEqual(1);
+}
+
+async function expectTextContrast(locator: import('@playwright/test').Locator, minimumRatio: number) {
+  const contrastRatio = await locator.evaluate(element => {
+    const parseRgb = (value: string) => {
+      const channels = value.match(/[\d.]+/g)?.slice(0, 3).map(Number);
+      if (!channels || channels.length !== 3) {
+        throw new Error(`Unable to parse CSS color: ${value}`);
+      }
+
+      return channels;
+    };
+    const luminance = (channels: number[]) => {
+      const linear = channels.map(channel => {
+        const normalized = channel / 255;
+        return normalized <= 0.04045
+          ? normalized / 12.92
+          : Math.pow((normalized + 0.055) / 1.055, 2.4);
+      });
+      return (0.2126 * linear[0]) + (0.7152 * linear[1]) + (0.0722 * linear[2]);
+    };
+    const styles = getComputedStyle(element);
+    const foreground = luminance(parseRgb(styles.color));
+    const background = luminance(parseRgb(styles.backgroundColor));
+    return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+  });
+
+  expect(contrastRatio).toBeGreaterThanOrEqual(minimumRatio);
 }
 
 async function expectSidebarControlsNotClipped(page: Page) {

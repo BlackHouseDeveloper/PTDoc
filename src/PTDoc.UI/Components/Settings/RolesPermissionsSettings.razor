@@ -1,0 +1,709 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<section class="roles-permissions" aria-labelledby="roles-permissions-title" @ref="_root">
+    <header class="roles-permissions__header">
+        <img src="_content/PTDoc.UI/images/settings/role-selector.svg" alt="" aria-hidden="true" />
+        <div>
+            <h1 id="roles-permissions-title">Roles &amp; Permissions</h1>
+            <p>Manage user roles, access levels, and permission sets</p>
+        </div>
+    </header>
+
+    <div class="roles-permissions__tabs" role="tablist" aria-label="Roles and security settings">
+        <button
+            @ref="_rolePermissionsTab"
+            type="button"
+            id="role-permissions-tab"
+            class="roles-permissions__tab @(_activeTab == SettingsTab.RolePermissions ? "is-active" : string.Empty)"
+            role="tab"
+            aria-selected="@(_activeTab == SettingsTab.RolePermissions ? "true" : "false")"
+            aria-controls="roles-settings-panel"
+            tabindex="@(_activeTab == SettingsTab.RolePermissions ? "0" : "-1")"
+            @onclick="() => SelectTab(SettingsTab.RolePermissions)"
+            @onkeydown="eventArgs => HandleTabKeyDownAsync(eventArgs, SettingsTab.RolePermissions)">
+            <img src="_content/PTDoc.UI/images/settings/roles-tab.svg" alt="" aria-hidden="true" />
+            <span>Role Permissions</span>
+        </button>
+        <button
+            @ref="_securitySettingsTab"
+            type="button"
+            id="security-settings-tab"
+            class="roles-permissions__tab @(_activeTab == SettingsTab.SecuritySettings ? "is-active" : string.Empty)"
+            role="tab"
+            aria-selected="@(_activeTab == SettingsTab.SecuritySettings ? "true" : "false")"
+            aria-controls="roles-settings-panel"
+            tabindex="@(_activeTab == SettingsTab.SecuritySettings ? "0" : "-1")"
+            @onclick="() => SelectTab(SettingsTab.SecuritySettings)"
+            @onkeydown="eventArgs => HandleTabKeyDownAsync(eventArgs, SettingsTab.SecuritySettings)">
+            <img src="_content/PTDoc.UI/images/settings/security-tab.svg" alt="" aria-hidden="true" />
+            <span>Security Settings</span>
+        </button>
+    </div>
+
+    @if (_activeTab == SettingsTab.RolePermissions)
+    {
+        <div
+            id="roles-settings-panel"
+            class="roles-permissions__tabpanel"
+            role="tabpanel"
+            aria-labelledby="role-permissions-tab">
+            <aside class="permission-guidance" aria-labelledby="permission-guidance-title">
+                <img class="permission-guidance__icon" src="_content/PTDoc.UI/images/settings/guidance-info.svg" alt="" aria-hidden="true" />
+                <div>
+                    <h2 id="permission-guidance-title">How to Use the Permission Matrix</h2>
+                    <ul>
+                        <li><strong>None:</strong> No access to this feature</li>
+                        <li><strong>View:</strong> Read-only access (can see but not modify)</li>
+                        <li><strong>Edit:</strong> Can create and modify (standard user access)</li>
+                        <li><strong>Full:</strong> Complete control including delete and admin actions</li>
+                        <li class="permission-guidance__status">
+                            <img src="_content/PTDoc.UI/images/settings/guidance-locked.svg" alt="" aria-hidden="true" />
+                            <span>Locked permissions are system-required and cannot be changed</span>
+                        </li>
+                        <li class="permission-guidance__status">
+                            <img src="_content/PTDoc.UI/images/settings/guidance-recommended.svg" alt="" aria-hidden="true" />
+                            <span>Recommended permissions are suggested for optimal workflow</span>
+                        </li>
+                    </ul>
+                </div>
+            </aside>
+
+            <section class="settings-panel role-selector" aria-labelledby="role-selector-title">
+                <header class="settings-panel__header">
+                    <div class="settings-panel__title">
+                        <img src="_content/PTDoc.UI/images/settings/role-selector.svg" alt="" aria-hidden="true" />
+                        <h2 id="role-selector-title">Select Role to Configure</h2>
+                    </div>
+                    <p>Choose a role to view and edit its permissions</p>
+                </header>
+
+                <p class="role-selector__notice" role="note">
+                    PT / DPT is the only documented permission baseline in this UI preview. Permission selections and the live summary remain local to this page and are not persisted. Other roles remain visible for reference and cannot be configured until authoritative role-specific matrices are connected.
+                </p>
+
+                <div class="role-selector__grid">
+                    @foreach (var role in Roles)
+                    {
+                        <button
+                            type="button"
+                            class="role-card @(role.Name == _selectedRole ? "is-selected" : string.Empty)"
+                            aria-pressed="@(role.Name == _selectedRole ? "true" : "false")"
+                            disabled="@(!role.IsConfigurable)"
+                            @onclick="() => SelectRole(role)">
+                            <span class="role-card__identity">
+                                <span class="role-card__dot @role.DotClass" aria-hidden="true"></span>
+                                <span class="role-card__name">@role.Name</span>
+                            </span>
+                            <span class="role-card__description">
+                                <span>@role.Description</span>
+                                @if (!role.IsConfigurable)
+                                {
+                                    <small>Preview unavailable</small>
+                                }
+                            </span>
+                        </button>
+                    }
+                </div>
+            </section>
+
+            <section class="clone-permissions" aria-labelledby="clone-permissions-title">
+                <img class="clone-permissions__icon" src="_content/PTDoc.UI/images/settings/clone.svg" alt="" aria-hidden="true" />
+                <div class="clone-permissions__copy">
+                    <h2 id="clone-permissions-title">Clone Permissions</h2>
+                    <p id="clone-permissions-availability">Role cloning is unavailable until documented source-role baselines are connected.</p>
+                </div>
+                <div class="clone-permissions__actions">
+                    <label class="roles-permissions__sr-only" for="clone-role-select">Source role</label>
+                    <select id="clone-role-select" @bind="_cloneSourceRole" aria-describedby="clone-permissions-availability" disabled>
+                        <option value="">Unavailable in preview</option>
+                    </select>
+                    <button type="button" aria-describedby="clone-permissions-availability" @onclick="ClonePermissions" disabled>Clone</button>
+                </div>
+            </section>
+
+            @foreach (var category in _permissionCategories)
+            {
+                <section class="settings-panel permission-category" aria-labelledby="@category.TitleId">
+                    <header class="settings-panel__header settings-panel__header--compact">
+                        <div class="settings-panel__title">
+                            <img src="@category.IconPath" alt="" aria-hidden="true" />
+                            <h2 id="@category.TitleId">@category.Title</h2>
+                        </div>
+                    </header>
+
+                    <div class="permission-category__rows">
+                        @foreach (var permission in category.Permissions)
+                        {
+                            <div class="permission-row">
+                                <div class="permission-row__copy">
+                                    <div class="permission-row__label">
+                                        <span>@permission.Name</span>
+                                        @if (permission.IsRecommended)
+                                        {
+                                            <img src="_content/PTDoc.UI/images/settings/permission-recommended.svg" alt="" aria-hidden="true" />
+                                            <span class="roles-permissions__sr-only">Recommended permission</span>
+                                        }
+                                        <img src="_content/PTDoc.UI/images/settings/permission-info.svg" alt="" aria-hidden="true" />
+                                    </div>
+                                    <p>@permission.Description</p>
+                                </div>
+                                <div class="permission-row__options" role="radiogroup" aria-label="@($"{permission.Name} permission")">
+                                    @{
+                                        var firstLevel = permission.AvailableLevels[0];
+                                        var secondLevel = permission.AvailableLevels[1];
+                                        <button
+                                            @ref="permission.FirstLevelButton"
+                                            type="button"
+                                            class="permission-level @(permission.SelectedLevel == firstLevel ? "is-selected" : string.Empty)"
+                                            role="radio"
+                                            aria-checked="@(permission.SelectedLevel == firstLevel ? "true" : "false")"
+                                            aria-label="@($"{permission.Name}: {firstLevel}")"
+                                            tabindex="@(permission.SelectedLevel == firstLevel ? "0" : "-1")"
+                                            @onclick="() => SetPermissionLevel(permission, firstLevel)"
+                                            @onkeydown="eventArgs => HandlePermissionLevelKeyDownAsync(eventArgs, permission, 0)">
+                                            @firstLevel
+                                        </button>
+                                        <button
+                                            @ref="permission.SecondLevelButton"
+                                            type="button"
+                                            class="permission-level @(permission.SelectedLevel == secondLevel ? "is-selected" : string.Empty)"
+                                            role="radio"
+                                            aria-checked="@(permission.SelectedLevel == secondLevel ? "true" : "false")"
+                                            aria-label="@($"{permission.Name}: {secondLevel}")"
+                                            tabindex="@(permission.SelectedLevel == secondLevel ? "0" : "-1")"
+                                            @onclick="() => SetPermissionLevel(permission, secondLevel)"
+                                            @onkeydown="eventArgs => HandlePermissionLevelKeyDownAsync(eventArgs, permission, 1)">
+                                            @secondLevel
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </section>
+            }
+
+            <section class="permission-summary" aria-labelledby="permission-summary-title">
+                <header class="permission-summary__header">
+                    <img src="_content/PTDoc.UI/images/settings/summary.svg" alt="" aria-hidden="true" />
+                    <h2 id="permission-summary-title">Permission Summary for @_selectedRole</h2>
+                </header>
+                <div class="permission-summary__metrics">
+                    <div><strong>@CountPermissionLevel("Full")</strong><span>Full Access</span></div>
+                    <div><strong>@CountPermissionLevel("Edit")</strong><span>Edit Access</span></div>
+                    <div><strong>@CountPermissionLevel("View")</strong><span>View Only</span></div>
+                    <div><strong>@CountPermissionLevel("None")</strong><span>No Access</span></div>
+                </div>
+            </section>
+
+            @QuickAdminTools()
+        </div>
+    }
+    else
+    {
+        <div
+            id="roles-settings-panel"
+            class="roles-permissions__tabpanel"
+            role="tabpanel"
+            aria-labelledby="security-settings-tab">
+            <section class="settings-panel security-card" aria-labelledby="security-requirements-title">
+                <header class="settings-panel__header">
+                    <div class="settings-panel__title">
+                        <img src="_content/PTDoc.UI/images/settings/security-requirements.svg" alt="" aria-hidden="true" />
+                        <h2 id="security-requirements-title">Security Requirements</h2>
+                    </div>
+                    <p>Configure authentication and security policies</p>
+                </header>
+                <div class="security-card__rows">
+                    @SecurityToggle("Require Multi-Factor Authentication", "All users must enable 2FA for account access", _requireMfa, ToggleMfa)
+                    @SecurityToggle("Require PIN Change on First Login", "Force new users to create their own PIN", _requirePinChange, TogglePinChange)
+                    @SecurityInput("auto-lockout-time", "Auto-Lockout Time", "Automatically lock session after inactivity", _autoLockoutTime, value => _autoLockoutTime = value)
+                    @SecurityInput("password-expiration", "Password Expiration", "Require password reset every X days", _passwordExpiration, value => _passwordExpiration = value)
+                    @SecurityInput("minimum-password-length", "Minimum Password Length", "Enforce minimum character count for passwords", _minimumPasswordLength, value => _minimumPasswordLength = value)
+                </div>
+            </section>
+
+            <section class="settings-panel security-card" aria-labelledby="role-management-title">
+                <header class="settings-panel__header">
+                    <div class="settings-panel__title">
+                        <img src="_content/PTDoc.UI/images/settings/role-management.svg" alt="" aria-hidden="true" />
+                        <h2 id="role-management-title">Role Management</h2>
+                    </div>
+                    <p>Configure role capabilities and customization options</p>
+                </header>
+                <div class="security-card__rows security-card__rows--compact">
+                    @SecurityToggle("Allow Role Customization", "Enable admins to customize permissions for clinical roles", _allowRoleCustomization, ToggleRoleCustomization)
+                    @SecurityToggle("Enable Audit Log", "Track all permission changes and role assignments", _enableAuditLog, ToggleAuditLog)
+                    <button type="button" class="manage-roles-row" @onclick="GoToRolesAsync">
+                        <span class="manage-roles-row__copy">
+                            <img src="_content/PTDoc.UI/images/settings/manage-roles.svg" alt="" aria-hidden="true" />
+                            <span>
+                                <strong>Manage Individual Roles</strong>
+                                <small>View and edit detailed role permissions</small>
+                            </span>
+                        </span>
+                        <span class="manage-roles-row__action">Go to Roles</span>
+                    </button>
+                </div>
+            </section>
+
+            <section class="settings-panel security-card" aria-labelledby="access-control-title">
+                <header class="settings-panel__header">
+                    <div class="settings-panel__title">
+                        <img src="_content/PTDoc.UI/images/settings/access-control.svg" alt="" aria-hidden="true" />
+                        <h2 id="access-control-title">Access Control</h2>
+                    </div>
+                    <p>Control what users can see and access</p>
+                </header>
+                <div class="security-card__rows security-card__rows--compact">
+                    @SecurityToggle("Restrict Schedule Access", "Limit clinicians to view only their own schedule", _restrictScheduleAccess, ToggleScheduleAccess)
+                    <aside class="hipaa-callout" aria-labelledby="hipaa-compliance-title">
+                        <img src="_content/PTDoc.UI/images/settings/hipaa-warning.svg" alt="" aria-hidden="true" />
+                        <div>
+                            <h3 id="hipaa-compliance-title">HIPAA Compliance</h3>
+                            <p>This preview illustrates controls required for HIPAA-conscious operations. Audit retention and enforcement require backend policy integration; changes here are not yet persisted.</p>
+                        </div>
+                    </aside>
+                </div>
+            </section>
+
+            @QuickAdminTools()
+
+            <div class="security-action-bar" aria-label="Security settings actions">
+                <p id="security-preview-status" class="security-action-bar__preview-status" role="status" aria-live="polite">
+                    @_securityPreviewStatus
+                </p>
+                <button type="button" @onclick="ResetSecuritySettings">
+                    <img src="_content/PTDoc.UI/images/settings/reset.svg" alt="" aria-hidden="true" />
+                    <span>Reset to Default</span>
+                </button>
+                <button type="button" @onclick="CancelSecurityChanges">
+                    <img src="_content/PTDoc.UI/images/settings/cancel.svg" alt="" aria-hidden="true" />
+                    <span>Cancel</span>
+                </button>
+                <button type="button" class="security-action-bar__save" aria-describedby="security-preview-status" @onclick="SaveSecurityPreview">
+                    <img src="_content/PTDoc.UI/images/settings/save.svg" alt="" aria-hidden="true" />
+                    <span>Save Preview</span>
+                </button>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    private SettingsTab _activeTab = SettingsTab.RolePermissions;
+    private ElementReference _root;
+    private ElementReference _rolePermissionsTab;
+    private ElementReference _securitySettingsTab;
+    private IJSObjectReference? _keyboardModule;
+    private string _selectedRole = "PT / DPT";
+    private string _cloneSourceRole = string.Empty;
+    private bool _requireMfa = true;
+    private bool _requirePinChange = true;
+    private bool _allowRoleCustomization = true;
+    private bool _enableAuditLog = true;
+    private bool _restrictScheduleAccess;
+    private string _autoLockoutTime = string.Empty;
+    private string _passwordExpiration = string.Empty;
+    private string _minimumPasswordLength = "8";
+    private string _securityPreviewStatus = "Preview only: security changes and the Cancel baseline remain on this page and are not persisted.";
+    private SecuritySettingsSnapshot _savedSecuritySettings = SecuritySettingsSnapshot.Default;
+
+    private static readonly IReadOnlyList<RoleDefinition> Roles =
+    [
+        new("Owner / Executive Admin", "Full system access and control", "role-card__dot--owner", false),
+        new("Practice Manager", "Manage clinic operations and staff", "role-card__dot--manager", false),
+        new("PT / DPT", "Licensed physical therapist", "role-card__dot--pt", true),
+        new("PTA", "Physical therapist assistant", "role-card__dot--pta", false),
+        new("Therapy Aide / Rehab Tech", "Support staff for therapy sessions", "role-card__dot--aide", false),
+        new("Front Desk / Patient Care Coordinator", "Patient intake and scheduling", "role-card__dot--front-desk", false),
+        new("Billing Specialist", "Handle billing and insurance", "role-card__dot--billing", false),
+        new("Patient", "Patient portal access only", "role-card__dot--patient", false)
+    ];
+
+    private readonly IReadOnlyList<PermissionCategory> _permissionCategories = CreatePermissionCategories();
+
+    protected override void OnInitialized()
+    {
+        _savedSecuritySettings = CaptureSecuritySettings();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            _keyboardModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/settings-keyboard.js");
+            await _keyboardModule.InvokeVoidAsync("attachKeyboardGuards", _root);
+        }
+        catch (Exception)
+        {
+            // Blazor handlers still provide selection when interop is unavailable during
+            // prerender, component tests, or circuit teardown.
+        }
+    }
+
+    private void SelectTab(SettingsTab tab)
+    {
+        _activeTab = tab;
+        // TODO: Connect tab state to application navigation/state management if required.
+    }
+
+    private async Task HandleTabKeyDownAsync(KeyboardEventArgs eventArgs, SettingsTab currentTab)
+    {
+        SettingsTab? targetTab = eventArgs.Key switch
+        {
+            "ArrowRight" => currentTab == SettingsTab.RolePermissions
+                ? SettingsTab.SecuritySettings
+                : SettingsTab.RolePermissions,
+            "ArrowLeft" => currentTab == SettingsTab.RolePermissions
+                ? SettingsTab.SecuritySettings
+                : SettingsTab.RolePermissions,
+            "Home" => SettingsTab.RolePermissions,
+            "End" => SettingsTab.SecuritySettings,
+            _ => null
+        };
+
+        if (targetTab is null)
+        {
+            return;
+        }
+
+        SelectTab(targetTab.Value);
+        await GetTabReference(targetTab.Value).FocusAsync();
+    }
+
+    private ElementReference GetTabReference(SettingsTab tab) => tab switch
+    {
+        SettingsTab.RolePermissions => _rolePermissionsTab,
+        SettingsTab.SecuritySettings => _securitySettingsTab,
+        _ => throw new ArgumentOutOfRangeException(nameof(tab), tab, null)
+    };
+
+    private void SelectRole(RoleDefinition role)
+    {
+        if (!role.IsConfigurable)
+        {
+            return;
+        }
+
+        _selectedRole = role.Name;
+        _cloneSourceRole = string.Empty;
+        // TODO: Load role list from application data source.
+    }
+
+    private static void SetPermissionLevel(PermissionDefinition permission, string level)
+    {
+        permission.SelectedLevel = level;
+        // TODO: Persist permission changes.
+    }
+
+    private int CountPermissionLevel(string level) => _permissionCategories
+        .SelectMany(category => category.Permissions)
+        .Count(permission => permission.SelectedLevel == level);
+
+    private static async Task HandlePermissionLevelKeyDownAsync(
+        KeyboardEventArgs eventArgs,
+        PermissionDefinition permission,
+        int currentIndex)
+    {
+        var targetIndex = eventArgs.Key switch
+        {
+            "ArrowRight" or "ArrowDown" => (currentIndex + 1) % permission.AvailableLevels.Count,
+            "ArrowLeft" or "ArrowUp" => (currentIndex - 1 + permission.AvailableLevels.Count) % permission.AvailableLevels.Count,
+            "Home" => 0,
+            "End" => permission.AvailableLevels.Count - 1,
+            _ => -1
+        };
+
+        if (targetIndex < 0)
+        {
+            return;
+        }
+
+        SetPermissionLevel(permission, permission.AvailableLevels[targetIndex]);
+        await permission.GetLevelButton(targetIndex).FocusAsync();
+    }
+
+    private void ClonePermissions()
+    {
+        // TODO: Implement permission cloning once role-specific permission data is available.
+        // TODO: Persist cloned permission changes.
+    }
+
+    private void ToggleMfa() => _requireMfa = !_requireMfa;
+
+    private void TogglePinChange() => _requirePinChange = !_requirePinChange;
+
+    private void ToggleRoleCustomization() => _allowRoleCustomization = !_allowRoleCustomization;
+
+    private void ToggleAuditLog() => _enableAuditLog = !_enableAuditLog;
+
+    private void ToggleScheduleAccess() => _restrictScheduleAccess = !_restrictScheduleAccess;
+
+    private async Task GoToRolesAsync()
+    {
+        SelectTab(SettingsTab.RolePermissions);
+        await _rolePermissionsTab.FocusAsync();
+    }
+
+    private void ResetSecuritySettings()
+    {
+        ApplySecuritySettings(SecuritySettingsSnapshot.Default);
+        _securityPreviewStatus = "Canonical security defaults applied to this preview. Changes are not persisted.";
+    }
+
+    private void CancelSecurityChanges()
+    {
+        ApplySecuritySettings(_savedSecuritySettings);
+        _securityPreviewStatus = "The last saved security preview was restored. Changes are not persisted.";
+    }
+
+    private void SaveSecurityPreview()
+    {
+        _savedSecuritySettings = CaptureSecuritySettings();
+        _securityPreviewStatus = "Security preview baseline updated on this page. Changes are not persisted.";
+        // TODO: Load security policy values from the application data source.
+        // TODO: Persist security toggle changes.
+        // TODO: Persist security input values.
+        // TODO: Define security-input validation rules.
+        // TODO: Implement security settings persistence.
+        // TODO: Connect actual audit/compliance behavior.
+        // TODO: Apply application-standard loading/error/success states when backend integration is introduced.
+    }
+
+    private SecuritySettingsSnapshot CaptureSecuritySettings() => new(
+        _requireMfa,
+        _requirePinChange,
+        _allowRoleCustomization,
+        _enableAuditLog,
+        _restrictScheduleAccess,
+        _autoLockoutTime,
+        _passwordExpiration,
+        _minimumPasswordLength);
+
+    private void ApplySecuritySettings(SecuritySettingsSnapshot settings)
+    {
+        _requireMfa = settings.RequireMfa;
+        _requirePinChange = settings.RequirePinChange;
+        _allowRoleCustomization = settings.AllowRoleCustomization;
+        _enableAuditLog = settings.EnableAuditLog;
+        _restrictScheduleAccess = settings.RestrictScheduleAccess;
+        _autoLockoutTime = settings.AutoLockoutTime;
+        _passwordExpiration = settings.PasswordExpiration;
+        _minimumPasswordLength = settings.MinimumPasswordLength;
+    }
+
+    private RenderFragment QuickAdminTools() => @<text>
+        <section class="settings-panel quick-admin" aria-labelledby="quick-admin-title">
+            <header class="settings-panel__header">
+                <h2 id="quick-admin-title">Quick Admin Tools</h2>
+                <p>Additional administrative features and settings</p>
+            </header>
+            <div class="quick-admin__items">
+                <button type="button" disabled>
+                    <span class="quick-admin__copy">
+                        <span class="quick-admin__icon"><img src="_content/PTDoc.UI/images/settings/quick-message.svg" alt="" aria-hidden="true" /></span>
+                        <span><strong>Auto Check-In Messaging</strong><small>Configure automated intake form delivery · Preview unavailable</small></span>
+                    </span>
+                    <img class="quick-admin__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
+                </button>
+                <button type="button" disabled>
+                    <span class="quick-admin__copy">
+                        <span class="quick-admin__icon"><img src="_content/PTDoc.UI/images/settings/quick-kiosk.svg" alt="" aria-hidden="true" /></span>
+                        <span><strong>Kiosk Check-In</strong><small>Set up and manage kiosk check-in stations · Preview unavailable</small></span>
+                    </span>
+                    <img class="quick-admin__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
+                </button>
+            </div>
+        </section>
+    </text>;
+
+    private RenderFragment SecurityToggle(string label, string description, bool isEnabled, Action toggle) => @<text>
+        <div class="security-setting-row">
+            <div>
+                <strong>@label</strong>
+                <p>@description</p>
+            </div>
+            <button
+                type="button"
+                class="security-switch @(isEnabled ? "is-enabled" : string.Empty)"
+                role="switch"
+                aria-checked="@(isEnabled ? "true" : "false")"
+                aria-label="@label"
+                @onclick="toggle">
+                <span aria-hidden="true"></span>
+            </button>
+        </div>
+    </text>;
+
+    private RenderFragment SecurityInput(string id, string label, string description, string value, Action<string> valueChanged) => @<text>
+        <div class="security-input-row">
+            <label for="@id">@label</label>
+            <p>@description</p>
+            <input
+                id="@id"
+                type="text"
+                inputmode="numeric"
+                value="@value"
+                @oninput="eventArgs => valueChanged(eventArgs.Value?.ToString() ?? string.Empty)" />
+        </div>
+    </text>;
+
+    private static IReadOnlyList<PermissionCategory> CreatePermissionCategories() =>
+    [
+        new(
+            "clinical-documentation-title",
+            "Clinical Documentation",
+            "_content/PTDoc.UI/images/settings/clinical.svg",
+            [
+                new("View Clinical Notes", "Read access to SOAP notes and evaluations", "View", ["None", "View"]),
+                new("Create Clinical Notes", "Write new SOAP notes, evaluations, and progress notes", "Edit", ["None", "Edit"]),
+                new("Edit Own Notes", "Modify notes created by self before signing", "Edit", ["None", "Edit"]),
+                new("Edit Others' Notes", "Modify notes created by other clinicians (admin only)", "View", ["None", "View"]),
+                new("Sign/Submit Notes", "Finalize and submit clinical documentation", "Full", ["None", "Full"], true),
+                new("Co-Sign PTA Notes", "Review and co-sign notes from PTAs", "Full", ["None", "Full"], true),
+                new("Delete Draft Notes", "Remove unsigned draft clinical documentation (audit trail maintained)", "None", ["None", "Full"])
+            ]),
+        new(
+            "scheduling-title",
+            "Scheduling",
+            "_content/PTDoc.UI/images/settings/scheduling.svg",
+            [
+                new("View Own Schedule", "See personal appointments and availability", "View", ["None", "View"]),
+                new("View All Schedules", "See schedules for all clinicians", "View", ["None", "View"]),
+                new("Create Appointments", "Book new patient appointments", "Edit", ["None", "Edit"]),
+                new("Modify Appointments", "Reschedule or cancel appointments", "Edit", ["None", "Edit"]),
+                new("Manage Clinician Availability", "Set working hours and time-off for staff", "None", ["None", "Full"])
+            ]),
+        new(
+            "billing-coding-title",
+            "Billing & Coding",
+            "_content/PTDoc.UI/images/settings/billing.svg",
+            [
+                new("View Billing Information", "See patient balances and billing codes", "View", ["None", "View"]),
+                new("Add CPT Codes", "Add billing codes to clinical notes", "Edit", ["None", "Edit"]),
+                new("Submit Insurance Claims", "Process and submit claims to payers", "None", ["None", "Full"]),
+                new("Manage Payer Information", "Add/edit insurance companies and contracts", "None", ["None", "Full"]),
+                new("View Billing Reports", "Access financial reports and revenue analytics", "None", ["None", "View"])
+            ]),
+        new(
+            "messaging-title",
+            "Messaging",
+            "_content/PTDoc.UI/images/settings/messaging.svg",
+            [
+                new("Internal Staff Messaging", "Send messages to other staff members", "Edit", ["None", "Edit"]),
+                new("Message Patients", "Send HIPAA-compliant messages to patients", "Edit", ["None", "Edit"]),
+                new("Broadcast Messages", "Send announcements to all staff or patients", "None", ["None", "Full"])
+            ]),
+        new(
+            "reporting-title",
+            "Reporting",
+            "_content/PTDoc.UI/images/settings/reporting.svg",
+            [
+                new("Clinical Reports", "View patient outcomes and treatment analytics", "View", ["None", "View"]),
+                new("Productivity Reports", "View clinician productivity and utilization", "View", ["None", "View"]),
+                new("Financial Reports", "Access revenue, collection, and P&L reports", "None", ["None", "View"]),
+                new("Compliance Reports", "View audit logs and compliance metrics", "None", ["None", "View"]),
+                new("Export Reports", "Download reports as PDF/CSV", "Edit", ["None", "Edit"])
+            ]),
+        new(
+            "admin-settings-title",
+            "Admin Settings",
+            "_content/PTDoc.UI/images/settings/admin.svg",
+            [
+                new("Manage Users", "Create, edit, and deactivate user accounts", "None", ["None", "Full"]),
+                new("Manage Roles & Permissions", "Edit role permissions and access levels", "None", ["None", "Full"]),
+                new("Clinic Settings", "Modify clinic information and preferences", "None", ["None", "Full"]),
+                new("Manage Templates", "Create and edit documentation templates", "Edit", ["None", "Edit"]),
+                new("Manage Integrations", "Configure third-party integrations and APIs", "None", ["None", "Full"])
+            ])
+    ];
+
+    private enum SettingsTab
+    {
+        RolePermissions,
+        SecuritySettings
+    }
+
+    private sealed record RoleDefinition(string Name, string Description, string DotClass, bool IsConfigurable);
+
+    private sealed record SecuritySettingsSnapshot(
+        bool RequireMfa,
+        bool RequirePinChange,
+        bool AllowRoleCustomization,
+        bool EnableAuditLog,
+        bool RestrictScheduleAccess,
+        string AutoLockoutTime,
+        string PasswordExpiration,
+        string MinimumPasswordLength)
+    {
+        public static SecuritySettingsSnapshot Default { get; } = new(
+            true,
+            true,
+            true,
+            true,
+            false,
+            string.Empty,
+            string.Empty,
+            "8");
+    }
+
+    private sealed record PermissionCategory(
+        string TitleId,
+        string Title,
+        string IconPath,
+        IReadOnlyList<PermissionDefinition> Permissions);
+
+    private sealed class PermissionDefinition(
+        string name,
+        string description,
+        string selectedLevel,
+        IReadOnlyList<string> availableLevels,
+        bool isRecommended = false)
+    {
+        public string Name { get; } = name;
+
+        public string Description { get; } = description;
+
+        public string SelectedLevel { get; set; } = selectedLevel;
+
+        public IReadOnlyList<string> AvailableLevels { get; } = availableLevels;
+
+        public bool IsRecommended { get; } = isRecommended;
+
+        public ElementReference FirstLevelButton { get; set; }
+
+        public ElementReference SecondLevelButton { get; set; }
+
+        public ElementReference GetLevelButton(int index) => index switch
+        {
+            0 => FirstLevelButton,
+            1 => SecondLevelButton,
+            _ => throw new ArgumentOutOfRangeException(nameof(index), index, null)
+        };
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_keyboardModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _keyboardModule.InvokeVoidAsync("detachKeyboardGuards", _root);
+            await _keyboardModule.DisposeAsync();
+        }
+        catch
+        {
+            // Ignore interop disposal failures during circuit teardown.
+        }
+    }
+}

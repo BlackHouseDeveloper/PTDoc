@@ -42,6 +42,61 @@ Current note-workspace aliases:
 - `--border-input`: input-specific border tone when different from generic borders.
 - `--text-secondary` / `--text-muted`: secondary and low-emphasis text aliases for shared note components.
 
+Current Settings aliases:
+
+| Token | Usage |
+| --- | --- |
+| `--settings-roles-content-max-width` | Maximum width of the Roles and Permissions settings surface. |
+| `--settings-roles-row-min-height` | Shared minimum height of role cards and permission rows. |
+| `--settings-roles-clone-actions-min-width` | Minimum width of the clone-permissions action column. |
+| `--settings-roles-manage-row-min-height` | Minimum height of the Manage Individual Roles row. |
+| `--settings-roles-quick-row-min-height` | Minimum height of Roles Quick Admin rows. |
+| `--settings-panel-border` | Shared border emphasis for Roles and Permissions panels. |
+| `--settings-guidance-bg` | Permission-guidance callout background. |
+| `--settings-guidance-border` | Permission-guidance callout border. |
+| `--settings-guidance-foreground` | Permission-guidance callout text and icon foreground. |
+| `--settings-clone-bg` | Clone-permissions callout background. |
+| `--settings-clone-border` | Clone-permissions callout border. |
+| `--settings-clone-foreground` | Primary clone-permissions text and icon foreground. |
+| `--settings-clone-muted` | Secondary clone-permissions text. |
+| `--settings-clone-button-bg` | Clone action background. |
+| `--settings-summary-bg` | Permission-summary background. |
+| `--settings-summary-border` | Permission-summary border. |
+| `--settings-summary-foreground` | Permission-summary text and icon foreground. |
+| `--settings-compliance-bg` | Compliance guidance background. |
+| `--settings-compliance-border` | Compliance guidance border. |
+| `--settings-compliance-foreground` | Primary compliance guidance text and icon foreground. |
+| `--settings-compliance-muted` | Secondary compliance guidance text. |
+| `--settings-action-bar-bg` | Roles and Security action-bar background. |
+| `--settings-action-bar-foreground` | Roles and Security action-bar text foreground. |
+| `--settings-save-bg` | Contrast-safe background shared by enabled Settings Save Preview actions. |
+| `--settings-save-foreground` | Contrast-safe text foreground shared by enabled Settings Save Preview actions. |
+| `--settings-save-icon-filter` | Theme-aware filter that aligns fixed-stroke Save icons with the Settings Save Preview foreground. |
+| `--settings-scheduling-neutral-icon-filter` | Theme-aware filter for neutral Scheduling icons. |
+| `--settings-scheduling-muted-icon-filter` | Theme-aware filter for muted Scheduling icons. |
+| `--settings-scheduling-panel-border` | Scheduling panel, tab, and action-bar border. |
+| `--settings-scheduling-active-tab-bg` | Selected Scheduling tab background. |
+| `--settings-scheduling-action-bar-bg` | Scheduling action-bar background. |
+| `--settings-scheduling-action-bar-foreground` | Scheduling action-bar text foreground. |
+| `--settings-scheduling-action-icon-filter` | Theme-aware filter for non-primary Scheduling action icons. |
+| `--settings-scheduling-content-max-width` | Maximum width of the Scheduling settings surface. |
+| `--settings-scheduling-item-min-height` | Minimum height of visit-type and schedule-block rows. |
+| `--settings-scheduling-row-min-height` | Minimum height of Calendar Behavior rows. |
+| `--settings-scheduling-clinic-hours-min-height` | Minimum height of the Clinic Hours panel. |
+| `--settings-scheduling-quick-row-min-height` | Minimum height of Quick Admin rows. |
+| `--settings-role-owner` | Owner / Executive Admin role indicator. |
+| `--settings-role-manager` | Practice Manager role indicator. |
+| `--settings-role-pt` | PT / DPT role indicator. |
+| `--settings-role-pta` | PTA role indicator. |
+| `--settings-role-aide` | Therapy Aide / Rehab Tech role indicator. |
+| `--settings-role-front-desk` | Front Desk / Patient Care Coordinator role indicator. |
+| `--settings-role-billing` | Billing Specialist role indicator. |
+| `--settings-role-patient` | Patient role indicator. |
+
+Color, border, icon-filter, and surface aliases that change by theme are defined in
+both `:root` and `.dark`. Layout-size aliases are theme-independent and remain in
+`:root`.
+
 ## Do / Don’t
 **Do**
 - Use tokens via `var(--token-name)` for colors, spacing, and typography.

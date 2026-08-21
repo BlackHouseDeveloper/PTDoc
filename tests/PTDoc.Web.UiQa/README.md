@@ -18,10 +18,17 @@ Start PTDoc API/Web first, then run:
 PTDOC_WEB_BASE_URL=http://localhost:5145 \
 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> \
 PTDOC_UI_QA_PIN=<pin> \
+PTDOC_UI_QA_ADMIN_USERNAME=<settings-capable-admin-user> \
+PTDOC_UI_QA_ADMIN_PIN=<admin-pin> \
 npm run test:responsive
 ```
 
 `PTDOC_WEB_BASE_URL` defaults to `http://localhost:5145`.
+The responsive Settings checks require either an Admin/Owner-authenticated
+`PTDOC_UI_QA_STORAGE_STATE`, or `PTDOC_UI_QA_ADMIN_USERNAME` plus
+`PTDOC_UI_QA_ADMIN_PIN` (or the shared `PTDOC_UI_QA_PIN` when the PIN is the same).
+Generic authenticated credentials are not assumed to have Settings access, and
+the Roles heading assertion rejects a storage state for an unauthorized role.
 
 ## Isolated Branch Live-Unblock Harness
 
@@ -127,7 +134,8 @@ The suite covers login validation, protected `/dashboard`, dashboard Notes Due r
 The tests support either:
 
 - `PTDOC_UI_QA_USERNAME` and `PTDOC_UI_QA_PIN` for local or beta seeded credentials.
-- `PTDOC_UI_QA_STORAGE_STATE` pointing to a Playwright storage-state JSON file.
+- `PTDOC_UI_QA_ADMIN_USERNAME` and `PTDOC_UI_QA_ADMIN_PIN` for Settings routes that require Admin/Owner access; the shared PIN is accepted when the role-specific PIN is omitted.
+- `PTDOC_UI_QA_STORAGE_STATE` pointing to a Playwright storage-state JSON file; responsive Settings coverage requires that session to belong to an Admin/Owner-capable fixture.
 
 Do not commit credentials or generated storage-state files. If a route requires login and neither credentials nor a valid storage-state file establishes a session, the suite fails fast instead of reporting skipped tests.
 

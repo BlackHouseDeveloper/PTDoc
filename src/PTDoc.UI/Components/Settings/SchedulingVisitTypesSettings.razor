@@ -1,0 +1,527 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<section class="scheduling-settings" aria-labelledby="scheduling-settings-title" @ref="_root">
+    <header class="scheduling-settings__page-header">
+        <img src="_content/PTDoc.UI/images/settings/scheduling.svg" alt="" aria-hidden="true" />
+        <div>
+            <h1 id="scheduling-settings-title">Scheduling &amp; Visit Types</h1>
+            <p>Configure appointment types, durations, and availability</p>
+        </div>
+    </header>
+
+    <div class="scheduling-settings__tabs" role="tablist" aria-label="Scheduling and visit type settings">
+        <button
+            @ref="_visitTypesTab"
+            type="button"
+            id="visit-types-tab"
+            class="scheduling-settings__tab @(_activeTab == SchedulingTab.VisitTypes ? "is-active" : string.Empty)"
+            role="tab"
+            aria-selected="@(_activeTab == SchedulingTab.VisitTypes ? "true" : "false")"
+            aria-controls="scheduling-settings-panel"
+            tabindex="@(_activeTab == SchedulingTab.VisitTypes ? "0" : "-1")"
+            @onclick="() => SelectTab(SchedulingTab.VisitTypes)"
+            @onkeydown="eventArgs => HandleTabKeyDownAsync(eventArgs, SchedulingTab.VisitTypes)">
+            <img src="_content/PTDoc.UI/images/settings/scheduling-tab-visit.svg" alt="" aria-hidden="true" />
+            <span>Visit Types</span>
+        </button>
+        <button
+            @ref="_scheduleBlocksTab"
+            type="button"
+            id="schedule-blocks-tab"
+            class="scheduling-settings__tab @(_activeTab == SchedulingTab.ScheduleBlocks ? "is-active" : string.Empty)"
+            role="tab"
+            aria-selected="@(_activeTab == SchedulingTab.ScheduleBlocks ? "true" : "false")"
+            aria-controls="scheduling-settings-panel"
+            tabindex="@(_activeTab == SchedulingTab.ScheduleBlocks ? "0" : "-1")"
+            @onclick="() => SelectTab(SchedulingTab.ScheduleBlocks)"
+            @onkeydown="eventArgs => HandleTabKeyDownAsync(eventArgs, SchedulingTab.ScheduleBlocks)">
+            <img src="_content/PTDoc.UI/images/settings/scheduling-tab-blocks.svg" alt="" aria-hidden="true" />
+            <span>Schedule Blocks</span>
+        </button>
+        <button
+            @ref="_calendarBehaviorTab"
+            type="button"
+            id="calendar-behavior-tab"
+            class="scheduling-settings__tab @(_activeTab == SchedulingTab.CalendarBehavior ? "is-active" : string.Empty)"
+            role="tab"
+            aria-selected="@(_activeTab == SchedulingTab.CalendarBehavior ? "true" : "false")"
+            aria-controls="scheduling-settings-panel"
+            tabindex="@(_activeTab == SchedulingTab.CalendarBehavior ? "0" : "-1")"
+            @onclick="() => SelectTab(SchedulingTab.CalendarBehavior)"
+            @onkeydown="eventArgs => HandleTabKeyDownAsync(eventArgs, SchedulingTab.CalendarBehavior)">
+            <img src="_content/PTDoc.UI/images/settings/scheduling-tab-behavior.svg" alt="" aria-hidden="true" />
+            <span>Calendar Behavior</span>
+        </button>
+        <button
+            @ref="_clinicHoursTab"
+            type="button"
+            id="clinic-hours-tab"
+            class="scheduling-settings__tab @(_activeTab == SchedulingTab.ClinicHours ? "is-active" : string.Empty)"
+            role="tab"
+            aria-selected="@(_activeTab == SchedulingTab.ClinicHours ? "true" : "false")"
+            aria-controls="scheduling-settings-panel"
+            tabindex="@(_activeTab == SchedulingTab.ClinicHours ? "0" : "-1")"
+            @onclick="() => SelectTab(SchedulingTab.ClinicHours)"
+            @onkeydown="eventArgs => HandleTabKeyDownAsync(eventArgs, SchedulingTab.ClinicHours)">
+            <img src="_content/PTDoc.UI/images/settings/scheduling-tab-hours.svg" alt="" aria-hidden="true" />
+            <span>Clinic Hours</span>
+        </button>
+    </div>
+
+    <div
+        id="scheduling-settings-panel"
+        class="scheduling-settings__tabpanel"
+        role="tabpanel"
+        aria-labelledby="@GetTabId(_activeTab)">
+        @switch (_activeTab)
+        {
+            case SchedulingTab.VisitTypes:
+                @VisitTypesPanel()
+                break;
+            case SchedulingTab.ScheduleBlocks:
+                @ScheduleBlocksPanel()
+                break;
+            case SchedulingTab.CalendarBehavior:
+                @CalendarBehaviorPanel()
+                break;
+            case SchedulingTab.ClinicHours:
+                @ClinicHoursPanels()
+                break;
+        }
+
+        @QuickAdminTools()
+
+        <footer class="scheduling-settings__action-bar" aria-label="Scheduling settings actions">
+            <p id="scheduling-preview-status" class="scheduling-settings__preview-status" role="status" aria-live="polite">
+                @_previewStatus
+            </p>
+            <button type="button" @onclick="ResetToDefaults">
+                <img src="_content/PTDoc.UI/images/settings/reset.svg" alt="" aria-hidden="true" />
+                <span>Reset to Default</span>
+            </button>
+            <button type="button" class="scheduling-settings__muted-action" @onclick="CancelChanges">
+                <img src="_content/PTDoc.UI/images/settings/cancel.svg" alt="" aria-hidden="true" />
+                <span>Cancel</span>
+            </button>
+            <button type="button" class="scheduling-settings__save-action" aria-describedby="scheduling-preview-status" @onclick="SavePreview">
+                <img src="_content/PTDoc.UI/images/settings/save.svg" alt="" aria-hidden="true" />
+                <span>Save Preview</span>
+            </button>
+        </footer>
+    </div>
+</section>
+
+@code {
+    private SchedulingTab _activeTab = SchedulingTab.VisitTypes;
+    private ElementReference _root;
+    private ElementReference _visitTypesTab;
+    private ElementReference _scheduleBlocksTab;
+    private ElementReference _calendarBehaviorTab;
+    private ElementReference _clinicHoursTab;
+    private IJSObjectReference? _keyboardModule;
+    private string _defaultAppointmentDuration = "45 minutes";
+    private string _bufferTime = "15 minutes";
+    private string _defaultClinicianView = "Week View";
+    private string _defaultAdminView = "All-Day View";
+    private string _reminderTiming = "24 hours before";
+    private string _intakeSentColor = string.Empty;
+    private string _intakeIncompleteColor = string.Empty;
+    private string _intakeCompleteColor = string.Empty;
+    private bool _allowDoubleBooking;
+    private bool _autoConfirmAppointments = true;
+    private bool _enableClickToCreate = true;
+    private bool _showIntakeStatus = true;
+    private bool _allowCancelFromWeekView = true;
+    private bool _allowRescheduleFromWeekView = true;
+    private bool _sendAppointmentReminders = true;
+    private string _previewStatus = "Preview only: changes and the Cancel baseline remain on this page and are not persisted.";
+    private SchedulingSettingsSnapshot _savedSettings = SchedulingSettingsSnapshot.Default;
+
+    private static readonly TabDefinition[] Tabs =
+    [
+        new(SchedulingTab.VisitTypes, "visit-types-tab"),
+        new(SchedulingTab.ScheduleBlocks, "schedule-blocks-tab"),
+        new(SchedulingTab.CalendarBehavior, "calendar-behavior-tab"),
+        new(SchedulingTab.ClinicHours, "clinic-hours-tab")
+    ];
+
+    private static readonly IReadOnlyList<ScheduledItem> VisitTypes =
+    [
+        new("Initial Evaluation", "60 min", "Requires Intake"),
+        new("Re-Evaluation", "60 min"),
+        new("Daily Treatment", "45 min", "PTA Allowed"),
+        new("Progress Note", "45 min", "PTA Allowed"),
+        new("Discharge", "30 min"),
+        new("Follow-Up", "30 min", "PTA Allowed"),
+        new("Group Therapy", "60 min", "PTA Allowed"),
+        new("Dry Needling", "30 min"),
+        new("Telehealth Visit", "30 min", "PTA Allowed"),
+        new("Home Health Visit", "60 min", "PTA Allowed"),
+        new("Consultation (Non-Billable)", "15 min"),
+        new("No Show", "0 min")
+    ];
+
+    private static readonly IReadOnlyList<ScheduledItem> ScheduleBlocks =
+    [
+        new("Lunch Break", "60 min", "Recurring"),
+        new("Admin Time", "30 min", "Recurring"),
+        new("Team Meeting", "30 min", "Recurring"),
+        new("Break", "15 min")
+    ];
+
+    private static readonly IReadOnlyList<string> AppointmentDurationOptions = ["30 minutes", "45 minutes", "60 minutes"];
+    private static readonly IReadOnlyList<string> BufferTimeOptions = ["0 minutes", "10 minutes", "15 minutes", "30 minutes"];
+    private static readonly IReadOnlyList<string> ClinicianViewOptions = ["Day View", "Week View", "Month View"];
+    private static readonly IReadOnlyList<string> AdminViewOptions = ["All-Day View", "Week View", "Month View"];
+    private static readonly IReadOnlyList<string> ReminderTimingOptions = ["12 hours before", "24 hours before", "48 hours before"];
+
+    protected override void OnInitialized()
+    {
+        _savedSettings = CaptureSettings();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            _keyboardModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/settings-keyboard.js");
+            await _keyboardModule.InvokeVoidAsync("attachKeyboardGuards", _root);
+        }
+        catch (Exception)
+        {
+            // Blazor handlers still provide selection when interop is unavailable during
+            // prerender, component tests, or circuit teardown.
+        }
+    }
+
+    private void SelectTab(SchedulingTab tab) => _activeTab = tab;
+
+    private async Task HandleTabKeyDownAsync(KeyboardEventArgs eventArgs, SchedulingTab currentTab)
+    {
+        var currentIndex = Array.FindIndex(Tabs, tab => tab.Tab == currentTab);
+        if (currentIndex < 0)
+        {
+            return;
+        }
+
+        SchedulingTab? targetTab = eventArgs.Key switch
+        {
+            "ArrowRight" => Tabs[(currentIndex + 1) % Tabs.Length].Tab,
+            "ArrowLeft" => Tabs[(currentIndex - 1 + Tabs.Length) % Tabs.Length].Tab,
+            "Home" => Tabs[0].Tab,
+            "End" => Tabs[^1].Tab,
+            _ => null
+        };
+
+        if (targetTab is null)
+        {
+            return;
+        }
+
+        SelectTab(targetTab.Value);
+        await GetTabReference(targetTab.Value).FocusAsync();
+    }
+
+    private ElementReference GetTabReference(SchedulingTab tab) => tab switch
+    {
+        SchedulingTab.VisitTypes => _visitTypesTab,
+        SchedulingTab.ScheduleBlocks => _scheduleBlocksTab,
+        SchedulingTab.CalendarBehavior => _calendarBehaviorTab,
+        SchedulingTab.ClinicHours => _clinicHoursTab,
+        _ => throw new ArgumentOutOfRangeException(nameof(tab), tab, null)
+    };
+
+    private RenderFragment VisitTypesPanel() => @<section class="scheduling-panel" aria-labelledby="visit-types-heading">
+        @PanelHeader("visit-types-heading", "Visit Types", "Configure appointment types and durations", "_content/PTDoc.UI/images/settings/scheduling.svg", "Add Visit Type")
+        <div class="scheduled-item-list">
+            @foreach (var item in VisitTypes)
+            {
+                @ScheduledItemRow(item, "visit type")
+            }
+        </div>
+    </section>;
+
+    private RenderFragment ScheduleBlocksPanel() => @<section class="scheduling-panel" aria-labelledby="schedule-blocks-heading">
+        @PanelHeader("schedule-blocks-heading", "Schedule Blocks", "Configure schedule blocks for admin, lunch, meetings, etc.", "_content/PTDoc.UI/images/settings/scheduling-blocks.svg", "Add Schedule Block")
+        <div class="scheduled-item-list">
+            @foreach (var item in ScheduleBlocks)
+            {
+                @ScheduledItemRow(item, "schedule block")
+            }
+        </div>
+    </section>;
+
+    private RenderFragment CalendarBehaviorPanel() => @<section class="scheduling-panel scheduling-panel--form" aria-labelledby="calendar-behavior-heading">
+        @PanelHeader("calendar-behavior-heading", "Calendar Behavior", "Set default durations and buffer times", "_content/PTDoc.UI/images/settings/scheduling-behavior.svg")
+
+        <div class="scheduling-settings__two-column-fields">
+            @SelectField("default-appointment-duration", "Default Appointment Duration", _defaultAppointmentDuration, AppointmentDurationOptions, value => _defaultAppointmentDuration = value)
+            @SelectField("buffer-time", "Buffer Time Between Appointments", _bufferTime, BufferTimeOptions, value => _bufferTime = value)
+        </div>
+
+        <div class="calendar-setting-list">
+            @ToggleSetting("Allow Double Booking", "Permit overlapping appointments for the same clinician", _allowDoubleBooking, () => _allowDoubleBooking = !_allowDoubleBooking)
+            @ToggleSetting("Auto-Confirm Appointments", "Automatically confirm new appointments without manual review", _autoConfirmAppointments, () => _autoConfirmAppointments = !_autoConfirmAppointments)
+            @ToggleSetting("Enable Click to Create", "Allow users to create appointments by clicking on the calendar", _enableClickToCreate, () => _enableClickToCreate = !_enableClickToCreate)
+            @ToggleSetting("Show Intake Status", "Display intake status on appointments", _showIntakeStatus, () => _showIntakeStatus = !_showIntakeStatus)
+            @ToggleSetting("Allow Cancel from Week View", "Allow users to cancel appointments from the week view", _allowCancelFromWeekView, () => _allowCancelFromWeekView = !_allowCancelFromWeekView)
+            @ToggleSetting("Allow Reschedule from Week View", "Allow users to reschedule appointments from the week view", _allowRescheduleFromWeekView, () => _allowRescheduleFromWeekView = !_allowRescheduleFromWeekView)
+        </div>
+
+        <div class="scheduling-settings__two-column-fields">
+            @SelectField("default-clinician-view", "Default Clinician View", _defaultClinicianView, ClinicianViewOptions, value => _defaultClinicianView = value)
+            @SelectField("default-admin-view", "Default Admin View", _defaultAdminView, AdminViewOptions, value => _defaultAdminView = value)
+        </div>
+
+        <div class="scheduling-settings__color-fields">
+            @BlankField("intake-sent-color", "Intake Sent Color", _intakeSentColor, value => _intakeSentColor = value)
+            @BlankField("intake-incomplete-color", "Intake Incomplete Color", _intakeIncompleteColor, value => _intakeIncompleteColor = value)
+            @BlankField("intake-complete-color", "Intake Complete Color", _intakeCompleteColor, value => _intakeCompleteColor = value)
+        </div>
+    </section>;
+
+    private RenderFragment ClinicHoursPanels() => @<text>
+        <section class="scheduling-panel clinic-hours" aria-labelledby="clinic-hours-heading">
+            @PanelHeader("clinic-hours-heading", "Clinic Hours", "Set operating hours and break times", "_content/PTDoc.UI/images/settings/scheduling-hours.svg")
+            <div class="clinic-hours__labels">
+                <span>Clinic Start Time</span>
+                <span>Clinic End Time</span>
+                <span>Lunch Break Start</span>
+                <span>Lunch Break End</span>
+            </div>
+        </section>
+
+        <section class="scheduling-panel scheduling-panel--form" aria-labelledby="appointment-reminders-heading">
+            @PanelHeader("appointment-reminders-heading", "Appointment Reminders", "Configure automatic patient reminders", "_content/PTDoc.UI/images/settings/scheduling-reminders.svg")
+            @ToggleSetting("Send Appointment Reminders", "Automatically send reminders to patients", _sendAppointmentReminders, () => _sendAppointmentReminders = !_sendAppointmentReminders)
+            @SelectField("send-reminder", "Send Reminder", _reminderTiming, ReminderTimingOptions, value => _reminderTiming = value)
+        </section>
+    </text>;
+
+    private RenderFragment PanelHeader(string id, string title, string description, string iconPath, string? actionLabel = null) => @<header class="scheduling-panel__header">
+        <div class="scheduling-panel__heading">
+            <div class="scheduling-panel__title">
+                <img src="@iconPath" alt="" aria-hidden="true" />
+                <h2 id="@id">@title</h2>
+            </div>
+            <p>@description</p>
+        </div>
+        @if (actionLabel is not null)
+        {
+            <button type="button" class="scheduling-panel__add" disabled>
+                <img src="_content/PTDoc.UI/images/settings/scheduling-add.svg" alt="" aria-hidden="true" />
+                <span><strong>@actionLabel</strong><small>Preview unavailable</small></span>
+            </button>
+        }
+    </header>;
+
+    private RenderFragment ScheduledItemRow(ScheduledItem item, string itemType) => @<article class="scheduled-item">
+        <div class="scheduled-item__copy">
+            <strong>@item.Name</strong>
+            <div class="scheduled-item__metadata">
+                <span class="scheduled-item__duration">
+                    <img src="_content/PTDoc.UI/images/settings/scheduling-clock.svg" alt="" aria-hidden="true" />
+                    <span>@item.Duration</span>
+                </span>
+                @if (item.Badge is not null)
+                {
+                    <span class="scheduled-item__badge">@item.Badge</span>
+                }
+            </div>
+            <small class="scheduled-item__availability">Edit and delete are unavailable in this preview.</small>
+        </div>
+        <div class="scheduled-item__actions">
+            <button type="button" aria-label="Edit @item.Name @itemType (preview unavailable)" disabled>
+                <img src="_content/PTDoc.UI/images/settings/scheduling-edit.svg" alt="" aria-hidden="true" />
+            </button>
+            <button type="button" aria-label="Delete @item.Name @itemType (preview unavailable)" disabled>
+                <img src="_content/PTDoc.UI/images/settings/scheduling-delete.svg" alt="" aria-hidden="true" />
+            </button>
+        </div>
+    </article>;
+
+    private RenderFragment ToggleSetting(string label, string description, bool isEnabled, Action toggle) => @<div class="calendar-setting-row">
+        <div>
+            <strong>@label</strong>
+            <p>@description</p>
+        </div>
+        <button
+            type="button"
+            class="scheduling-switch @(isEnabled ? "is-enabled" : string.Empty)"
+            role="switch"
+            aria-checked="@(isEnabled ? "true" : "false")"
+            aria-label="@label"
+            @onclick="toggle">
+            <span aria-hidden="true"></span>
+        </button>
+    </div>;
+
+    private RenderFragment SelectField(string id, string label, string value, IReadOnlyList<string> options, Action<string> valueChanged) => @<div class="scheduling-field">
+        <label for="@id">@label</label>
+        <select id="@id" value="@value" @onchange="eventArgs => valueChanged(eventArgs.Value?.ToString() ?? string.Empty)">
+            @foreach (var option in options)
+            {
+                <option value="@option">@option</option>
+            }
+        </select>
+    </div>;
+
+    private RenderFragment BlankField(string id, string label, string value, Action<string> valueChanged) => @<div class="scheduling-field">
+        <label for="@id">@label</label>
+        <input id="@id" type="text" aria-label="@label" value="@value" @oninput="eventArgs => valueChanged(eventArgs.Value?.ToString() ?? string.Empty)" />
+    </div>;
+
+    private RenderFragment QuickAdminTools() => @<section class="scheduling-panel quick-admin-tools" aria-labelledby="scheduling-quick-admin-heading">
+        <header class="scheduling-panel__header">
+            <div class="scheduling-panel__heading">
+                <div class="scheduling-panel__title">
+                    <img src="_content/PTDoc.UI/images/settings/scheduling-quick-admin.svg" alt="" aria-hidden="true" />
+                    <h2 id="scheduling-quick-admin-heading">Quick Admin Tools</h2>
+                </div>
+                <p>Additional administrative features and settings</p>
+            </div>
+        </header>
+        <div class="quick-admin-tools__items">
+            @QuickAdminRow("Auto Check-In Messaging", "Configure automated intake form delivery", "_content/PTDoc.UI/images/settings/quick-message.svg")
+            @QuickAdminRow("Kiosk Check-In", "Set up and manage kiosk check-in stations", "_content/PTDoc.UI/images/settings/quick-kiosk.svg")
+        </div>
+    </section>;
+
+    private RenderFragment QuickAdminRow(string label, string description, string iconPath) => @<button type="button" class="quick-admin-tools__row" disabled>
+        <span class="quick-admin-tools__copy">
+            <span class="quick-admin-tools__icon"><img src="@iconPath" alt="" aria-hidden="true" /></span>
+            <span><strong>@label</strong><small>@description · Preview unavailable</small></span>
+        </span>
+        <img class="quick-admin-tools__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
+    </button>;
+
+    private static string GetTabId(SchedulingTab tab) => Tabs.Single(item => item.Tab == tab).TabId;
+
+    private void ResetToDefaults()
+    {
+        ApplySettings(SchedulingSettingsSnapshot.Default);
+        _previewStatus = "Canonical defaults applied to this preview. Changes are not persisted.";
+    }
+
+    private void CancelChanges()
+    {
+        ApplySettings(_savedSettings);
+        _previewStatus = "The last saved preview was restored. Changes are not persisted.";
+    }
+
+    private void SavePreview()
+    {
+        _savedSettings = CaptureSettings();
+        _previewStatus = "Preview baseline updated on this page. Changes are not persisted.";
+        // TODO: Persist scheduling preferences when an application service contract is available.
+    }
+
+    private SchedulingSettingsSnapshot CaptureSettings() => new(
+        _defaultAppointmentDuration,
+        _bufferTime,
+        _defaultClinicianView,
+        _defaultAdminView,
+        _reminderTiming,
+        _intakeSentColor,
+        _intakeIncompleteColor,
+        _intakeCompleteColor,
+        _allowDoubleBooking,
+        _autoConfirmAppointments,
+        _enableClickToCreate,
+        _showIntakeStatus,
+        _allowCancelFromWeekView,
+        _allowRescheduleFromWeekView,
+        _sendAppointmentReminders);
+
+    private void ApplySettings(SchedulingSettingsSnapshot settings)
+    {
+        _defaultAppointmentDuration = settings.DefaultAppointmentDuration;
+        _bufferTime = settings.BufferTime;
+        _defaultClinicianView = settings.DefaultClinicianView;
+        _defaultAdminView = settings.DefaultAdminView;
+        _reminderTiming = settings.ReminderTiming;
+        _intakeSentColor = settings.IntakeSentColor;
+        _intakeIncompleteColor = settings.IntakeIncompleteColor;
+        _intakeCompleteColor = settings.IntakeCompleteColor;
+        _allowDoubleBooking = settings.AllowDoubleBooking;
+        _autoConfirmAppointments = settings.AutoConfirmAppointments;
+        _enableClickToCreate = settings.EnableClickToCreate;
+        _showIntakeStatus = settings.ShowIntakeStatus;
+        _allowCancelFromWeekView = settings.AllowCancelFromWeekView;
+        _allowRescheduleFromWeekView = settings.AllowRescheduleFromWeekView;
+        _sendAppointmentReminders = settings.SendAppointmentReminders;
+    }
+
+    private enum SchedulingTab
+    {
+        VisitTypes,
+        ScheduleBlocks,
+        CalendarBehavior,
+        ClinicHours
+    }
+
+    private sealed record TabDefinition(
+        SchedulingTab Tab,
+        string TabId);
+
+    private sealed record ScheduledItem(string Name, string Duration, string? Badge = null);
+
+    private sealed record SchedulingSettingsSnapshot(
+        string DefaultAppointmentDuration,
+        string BufferTime,
+        string DefaultClinicianView,
+        string DefaultAdminView,
+        string ReminderTiming,
+        string IntakeSentColor,
+        string IntakeIncompleteColor,
+        string IntakeCompleteColor,
+        bool AllowDoubleBooking,
+        bool AutoConfirmAppointments,
+        bool EnableClickToCreate,
+        bool ShowIntakeStatus,
+        bool AllowCancelFromWeekView,
+        bool AllowRescheduleFromWeekView,
+        bool SendAppointmentReminders)
+    {
+        public static SchedulingSettingsSnapshot Default { get; } = new(
+            "45 minutes",
+            "15 minutes",
+            "Week View",
+            "All-Day View",
+            "24 hours before",
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            false,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_keyboardModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _keyboardModule.InvokeVoidAsync("detachKeyboardGuards", _root);
+            await _keyboardModule.DisposeAsync();
+        }
+        catch
+        {
+            // Ignore interop disposal failures during circuit teardown.
+        }
+    }
+}

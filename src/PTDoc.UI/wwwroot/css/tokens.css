@@ -187,6 +187,54 @@
   --success-box-bg: rgba(var(--primary-rgb), 0.1);
   --success-box-border: rgba(var(--primary-rgb), 0.2);
 
+  /* Roles & Permissions settings surfaces */
+  --settings-roles-content-max-width: 60.3125rem;
+  --settings-roles-row-min-height: 6.5rem;
+  --settings-roles-clone-actions-min-width: 17rem;
+  --settings-roles-manage-row-min-height: 4.875rem;
+  --settings-roles-quick-row-min-height: 4.125rem;
+  --settings-panel-border: rgba(var(--primary-rgb), 0.2);
+  --settings-guidance-bg: #faf5ff;
+  --settings-guidance-border: #e9d5ff;
+  --settings-guidance-foreground: #6b21a8;
+  --settings-clone-bg: #eff6ff;
+  --settings-clone-border: #bedbff;
+  --settings-clone-foreground: #1e3a8a;
+  --settings-clone-muted: #1d4ed8;
+  --settings-clone-button-bg: #93c5fd;
+  --settings-summary-bg: #f0fdf4;
+  --settings-summary-border: #bbf7d0;
+  --settings-summary-foreground: #14532d;
+  --settings-compliance-bg: #fff7ed;
+  --settings-compliance-border: #ffd6a8;
+  --settings-compliance-foreground: #7c2d12;
+  --settings-compliance-muted: #9a3412;
+  --settings-action-bar-bg: rgba(38, 38, 38, 0.95);
+  --settings-action-bar-foreground: #e5e5e5;
+  --settings-save-bg: #166534;
+  --settings-save-foreground: #ffffff;
+  --settings-save-icon-filter: brightness(0) invert(1);
+  --settings-scheduling-neutral-icon-filter: none;
+  --settings-scheduling-muted-icon-filter: none;
+  --settings-scheduling-panel-border: var(--border);
+  --settings-scheduling-active-tab-bg: var(--card);
+  --settings-scheduling-action-bar-bg: rgba(255, 255, 255, 0.95);
+  --settings-scheduling-action-bar-foreground: var(--foreground);
+  --settings-scheduling-action-icon-filter: brightness(0);
+  --settings-scheduling-content-max-width: 61rem;
+  --settings-scheduling-item-min-height: 4.75rem;
+  --settings-scheduling-row-min-height: 5rem;
+  --settings-scheduling-clinic-hours-min-height: 14.875rem;
+  --settings-scheduling-quick-row-min-height: 4.625rem;
+  --settings-role-owner: #a855f7;
+  --settings-role-manager: #3b82f6;
+  --settings-role-pt: #22c55e;
+  --settings-role-pta: #14b8a6;
+  --settings-role-aide: #eab308;
+  --settings-role-front-desk: #f97316;
+  --settings-role-billing: #6366f1;
+  --settings-role-patient: #64748b;
+
   /* Dashboard Plan of Care Card Tokens */
   --poc-card-title-width: 12rem;
 }
@@ -262,6 +310,30 @@
 
   --ai-output-text: #e5e5e5;
   --ai-output-background: #2a2a2a;
+  --settings-guidance-bg: #3b2a4a;
+  --settings-guidance-border: #7e22ce;
+  --settings-guidance-foreground: #f3e8ff;
+  --settings-clone-bg: #172a46;
+  --settings-clone-border: #3b82f6;
+  --settings-clone-foreground: #dbeafe;
+  --settings-clone-muted: #93c5fd;
+  --settings-clone-button-bg: #1d4ed8;
+  --settings-summary-bg: #18362a;
+  --settings-summary-border: #15803d;
+  --settings-summary-foreground: #dcfce7;
+  --settings-compliance-bg: #422b1f;
+  --settings-compliance-border: #c2410c;
+  --settings-compliance-foreground: #ffedd5;
+  --settings-compliance-muted: #fdba74;
+  --settings-save-bg: #22c55e;
+  --settings-save-foreground: #000000;
+  --settings-save-icon-filter: none;
+  --settings-scheduling-neutral-icon-filter: brightness(0) invert(1);
+  --settings-scheduling-muted-icon-filter: brightness(0) invert(1);
+  --settings-scheduling-active-tab-bg: transparent;
+  --settings-scheduling-action-bar-bg: rgba(38, 38, 38, 0.95);
+  --settings-scheduling-action-bar-foreground: #e5e5e5;
+  --settings-scheduling-action-icon-filter: none;
 }
 
 /* Action Button Tokens */
