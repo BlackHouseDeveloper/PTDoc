@@ -15,6 +15,7 @@
             role="tab"
             aria-selected="@(_activeTab == SettingsTab.RolePermissions ? "true" : "false")"
             aria-controls="role-permissions-panel"
+            tabindex="@(_activeTab == SettingsTab.RolePermissions ? "0" : "-1")"
             @onclick="() => SelectTab(SettingsTab.RolePermissions)">
             <img src="_content/PTDoc.UI/images/settings/roles-tab.svg" alt="" aria-hidden="true" />
             <span>Role Permissions</span>
@@ -26,6 +27,7 @@
             role="tab"
             aria-selected="@(_activeTab == SettingsTab.SecuritySettings ? "true" : "false")"
             aria-controls="security-settings-panel"
+            tabindex="@(_activeTab == SettingsTab.SecuritySettings ? "0" : "-1")"
             @onclick="() => SelectTab(SettingsTab.SecuritySettings)">
             <img src="_content/PTDoc.UI/images/settings/security-tab.svg" alt="" aria-hidden="true" />
             <span>Security Settings</span>
@@ -142,6 +144,7 @@
                                             role="radio"
                                             aria-checked="@(permission.SelectedLevel == level ? "true" : "false")"
                                             aria-label="@($"{permission.Name}: {level}")"
+                                            tabindex="@(permission.SelectedLevel == level ? "0" : "-1")"
                                             @onclick="() => SetPermissionLevel(permission, level)">
                                             @level
                                         </button>
@@ -232,7 +235,7 @@
                         <img src="_content/PTDoc.UI/images/settings/hipaa-warning.svg" alt="" aria-hidden="true" />
                         <div>
                             <h3 id="hipaa-compliance-title">HIPAA Compliance</h3>
-                            <p>All access controls and audit logs are maintained to ensure HIPAA compliance. Changes to security settings are logged and cannot be deleted.</p>
+                            <p>This preview illustrates controls required for HIPAA-conscious operations. Audit retention and enforcement require backend policy integration; changes here are not yet persisted.</p>
                         </div>
                     </aside>
                 </div>

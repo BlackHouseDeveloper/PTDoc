@@ -13,6 +13,10 @@ public sealed class SchedulingVisitTypesSettingsTests : TestContext
 
         Assert.Equal(12, cut.FindAll(".scheduled-item").Count);
         Assert.Equal("true", cut.Find("#visit-types-tab").GetAttribute("aria-selected"));
+        Assert.Equal("0", cut.Find("#visit-types-tab").GetAttribute("tabindex"));
+        Assert.All(
+            cut.FindAll(".scheduling-settings__tab").Where(tab => tab.GetAttribute("id") != "visit-types-tab"),
+            tab => Assert.Equal("-1", tab.GetAttribute("tabindex")));
         Assert.Contains("Initial Evaluation", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Requires Intake", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Consultation (Non-Billable)", cut.Markup, StringComparison.Ordinal);
@@ -26,6 +30,8 @@ public sealed class SchedulingVisitTypesSettingsTests : TestContext
         var cut = RenderComponent<SchedulingVisitTypesSettings>();
 
         cut.Find("#schedule-blocks-tab").Click();
+        Assert.Equal("0", cut.Find("#schedule-blocks-tab").GetAttribute("tabindex"));
+        Assert.Equal("-1", cut.Find("#visit-types-tab").GetAttribute("tabindex"));
         Assert.Equal(4, cut.FindAll(".scheduled-item").Count);
         Assert.Equal(3, cut.FindAll(".scheduled-item__badge").Count);
         Assert.Contains("Team Meeting", cut.Markup, StringComparison.Ordinal);

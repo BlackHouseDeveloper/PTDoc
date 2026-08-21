@@ -17,6 +17,7 @@
                 role="tab"
                 aria-selected="@(tab.Tab == _activeTab ? "true" : "false")"
                 aria-controls="@tab.PanelId"
+                tabindex="@(tab.Tab == _activeTab ? "0" : "-1")"
                 @onclick="() => SelectTab(tab.Tab)">
                 <img src="@tab.IconPath" alt="" aria-hidden="true" />
                 <span>@tab.Label</span>

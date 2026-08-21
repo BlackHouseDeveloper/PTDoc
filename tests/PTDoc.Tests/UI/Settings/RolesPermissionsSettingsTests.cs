@@ -13,6 +13,10 @@ public sealed class RolesPermissionsSettingsTests : TestContext
 
         Assert.Equal(30, cut.FindAll(".permission-row").Count);
         Assert.Equal("true", cut.Find("button[aria-label='View Clinical Notes: View']").GetAttribute("aria-checked"));
+        Assert.Equal("0", cut.Find("button[aria-label='View Clinical Notes: View']").GetAttribute("tabindex"));
+        Assert.Equal("-1", cut.Find("button[aria-label='View Clinical Notes: None']").GetAttribute("tabindex"));
+        Assert.Equal("0", cut.Find("#role-permissions-tab").GetAttribute("tabindex"));
+        Assert.Equal("-1", cut.Find("#security-settings-tab").GetAttribute("tabindex"));
         Assert.Equal("true", cut.Find("button[aria-label=\"Edit Others' Notes: View\"]").GetAttribute("aria-checked"));
         Assert.Equal("true", cut.Find("button[aria-label='Sign/Submit Notes: Full']").GetAttribute("aria-checked"));
         Assert.Equal("true", cut.Find("button[aria-label='Delete Notes: None']").GetAttribute("aria-checked"));
@@ -33,6 +37,8 @@ public sealed class RolesPermissionsSettingsTests : TestContext
             .Click();
 
         Assert.Equal("true", cut.Find("button[aria-label='View Clinical Notes: None']").GetAttribute("aria-checked"));
+        Assert.Equal("0", cut.Find("button[aria-label='View Clinical Notes: None']").GetAttribute("tabindex"));
+        Assert.Equal("-1", cut.Find("button[aria-label='View Clinical Notes: View']").GetAttribute("tabindex"));
         Assert.Equal(
             "true",
             cut.FindAll(".role-card")
@@ -47,6 +53,9 @@ public sealed class RolesPermissionsSettingsTests : TestContext
         var cut = RenderComponent<RolesPermissionsSettings>();
 
         cut.Find("#security-settings-tab").Click();
+
+        Assert.Equal("-1", cut.Find("#role-permissions-tab").GetAttribute("tabindex"));
+        Assert.Equal("0", cut.Find("#security-settings-tab").GetAttribute("tabindex"));
 
         var switches = cut.FindAll("button[role='switch']");
         Assert.Equal(5, switches.Count);

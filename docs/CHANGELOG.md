@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Settings UI accessibility and compliance copy
+
+- **Settings review follow-up** — Added roving tab stops to Settings tabs and permission radio groups, with regression coverage for active/inactive focusability. Reworded the baseline HIPAA callout so it does not imply local preview changes are already persisted or auditable. Reason: keyboard navigation must avoid unnecessary tab stops, and compliance-critical copy must accurately describe current enforcement.
+
 ### Fixed - branch live-verification failures
 
 - **Isolated live-blocker QA harness** — Added a serial Playwright verification wave that runs the existing API and Web hosts against a disposable SQLite copy behind a loopback-only, nonce-protected, exact-route fault proxy. The harness supports bounded delays/failures, independent concurrency contexts, Development null-delivery diagnostics, run-prefixed synthetic fixtures, purpose-created unsigned note drafts, PHI-safe evidence indexing, process teardown, and database cleanup. It now submits a complete disposable intake, verifies partial policy projection, exercises every documented SOAP intervention state, and checks note-template version pinning across two publications. Added focused Node tests for rule isolation/consumption, redaction, unique ports, process termination, and disposable-database behavior. Reason: failure rollback, stale writes, duplicate submission, retry, and fixture-dependent blocker checks need deterministic localhost evidence without changing public APIs, touching existing localhost processes, or mutating the tracked database.
