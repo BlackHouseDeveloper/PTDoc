@@ -701,6 +701,59 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             migrationBuilder.Sql("""DROP TRIGGER IF EXISTS "TR_Appointments_PreventOverlap_Insert";""");
             migrationBuilder.Sql("""DROP TRIGGER IF EXISTS "TR_Appointments_PreventOverlap_Update";""");
+            migrationBuilder.Sql("PRAGMA foreign_keys = OFF;", suppressTransaction: true);
+            migrationBuilder.Sql(
+                """
+                CREATE TABLE "__temp_Appointments" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_Appointments" PRIMARY KEY,
+                    "LastModifiedUtc" TEXT NOT NULL,
+                    "ModifiedByUserId" TEXT NOT NULL,
+                    "SyncState" INTEGER NOT NULL,
+                    "PatientId" TEXT NOT NULL,
+                    "ClinicalId" TEXT NOT NULL,
+                    "ClinicId" TEXT NULL,
+                    "StartTimeUtc" TEXT NOT NULL,
+                    "EndTimeUtc" TEXT NOT NULL,
+                    "AppointmentType" INTEGER NOT NULL,
+                    "VisitTypeId" TEXT NULL,
+                    "AuthorizedOverlap" INTEGER NOT NULL,
+                    "ClinicalVisitOrdinal" INTEGER NULL,
+                    "Status" INTEGER NOT NULL,
+                    "Notes" TEXT NULL,
+                    "CancelledAt" TEXT NULL,
+                    "CancellationReason" TEXT NULL,
+                    CONSTRAINT "FK_Appointments_Clinics_ClinicId" FOREIGN KEY ("ClinicId") REFERENCES "Clinics" ("Id") ON DELETE RESTRICT,
+                    CONSTRAINT "FK_Appointments_Patients_PatientId" FOREIGN KEY ("PatientId") REFERENCES "Patients" ("Id") ON DELETE RESTRICT,
+                    CONSTRAINT "FK_Appointments_VisitTypes_ClinicId_VisitTypeId" FOREIGN KEY ("ClinicId", "VisitTypeId") REFERENCES "VisitTypes" ("ClinicId", "Id") ON DELETE RESTRICT
+                );
+
+                INSERT INTO "__temp_Appointments"
+                    ("Id", "LastModifiedUtc", "ModifiedByUserId", "SyncState", "PatientId", "ClinicalId",
+                     "StartTimeUtc", "EndTimeUtc", "AppointmentType", "VisitTypeId", "AuthorizedOverlap",
+                     "ClinicalVisitOrdinal", "Status", "Notes", "CancelledAt", "CancellationReason", "ClinicId")
+                SELECT
+                    "Id", "LastModifiedUtc", "ModifiedByUserId", "SyncState", "PatientId", "ClinicalId",
+                    "StartTimeUtc", "EndTimeUtc", "AppointmentType", "VisitTypeId", "AuthorizedOverlap",
+                    "ClinicalVisitOrdinal", "Status", "Notes", "CancelledAt", "CancellationReason", "ClinicId"
+                FROM "Appointments";
+
+                DROP TABLE "Appointments";
+                ALTER TABLE "__temp_Appointments" RENAME TO "Appointments";
+
+                CREATE INDEX "IX_Appointments_ClinicId" ON "Appointments" ("ClinicId") WHERE "ClinicId" IS NOT NULL;
+                CREATE INDEX "IX_Appointments_LastModifiedUtc" ON "Appointments" ("LastModifiedUtc");
+                CREATE INDEX "IX_Appointments_PatientId" ON "Appointments" ("PatientId");
+                CREATE INDEX "IX_Appointments_StartTimeUtc" ON "Appointments" ("StartTimeUtc");
+                CREATE INDEX "IX_Appointments_ClinicId_VisitTypeId" ON "Appointments" ("ClinicId", "VisitTypeId");
+                CREATE INDEX "IX_Appointments_ClinicalId_StartTimeUtc" ON "Appointments" ("ClinicalId", "StartTimeUtc");
+                CREATE UNIQUE INDEX "UX_Appointments_PatientId_ClinicalVisitOrdinal"
+                    ON "Appointments" ("PatientId", "ClinicalVisitOrdinal")
+                    WHERE "ClinicalVisitOrdinal" IS NOT NULL;
+                CREATE INDEX "IX_Appointments_ClinicId_PatientId_ClinicalVisitOrdinal"
+                    ON "Appointments" ("ClinicId", "PatientId", "ClinicalVisitOrdinal");
+                """);
+            migrationBuilder.Sql("PRAGMA foreign_keys = ON;", suppressTransaction: true);
+
             migrationBuilder.Sql(
                 """
                 CREATE TRIGGER "TR_Appointments_PreventOverlap_Insert"
@@ -735,14 +788,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                           AND NEW."StartTimeUtc" < existing."EndTimeUtc");
                 END;
                 """);
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_Appointments_VisitTypes_ClinicId_VisitTypeId",
-                table: "Appointments",
-                columns: new[] { "ClinicId", "VisitTypeId" },
-                principalTable: "VisitTypes",
-                principalColumns: new[] { "ClinicId", "Id" },
-                onDelete: ReferentialAction.Restrict);
         }
 
         /// <inheritdoc />
@@ -750,40 +795,54 @@ namespace PTDoc.Infrastructure.Data.Migrations
         {
             migrationBuilder.Sql("""DROP TRIGGER IF EXISTS "TR_Appointments_PreventOverlap_Insert";""");
             migrationBuilder.Sql("""DROP TRIGGER IF EXISTS "TR_Appointments_PreventOverlap_Update";""");
+            migrationBuilder.Sql("PRAGMA foreign_keys = OFF;", suppressTransaction: true);
             migrationBuilder.Sql(
                 """
-                CREATE TRIGGER "TR_Appointments_PreventOverlap_Insert"
-                BEFORE INSERT ON "Appointments"
-                FOR EACH ROW
-                WHEN NEW."Status" NOT IN (5, 6)
-                BEGIN
-                    SELECT RAISE(ABORT, 'APPOINTMENT_OVERBOOKING: clinician already has an overlapping appointment')
-                    WHERE EXISTS (
-                        SELECT 1 FROM "Appointments" AS existing
-                        WHERE existing."ClinicalId" = NEW."ClinicalId" AND existing."Id" <> NEW."Id"
-                          AND existing."Status" NOT IN (5, 6)
-                          AND existing."StartTimeUtc" < NEW."EndTimeUtc"
-                          AND NEW."StartTimeUtc" < existing."EndTimeUtc");
-                END;
+                CREATE TABLE "__temp_Appointments" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_Appointments" PRIMARY KEY,
+                    "LastModifiedUtc" TEXT NOT NULL,
+                    "ModifiedByUserId" TEXT NOT NULL,
+                    "SyncState" INTEGER NOT NULL,
+                    "PatientId" TEXT NOT NULL,
+                    "ClinicalId" TEXT NOT NULL,
+                    "ClinicId" TEXT NULL,
+                    "StartTimeUtc" TEXT NOT NULL,
+                    "EndTimeUtc" TEXT NOT NULL,
+                    "AppointmentType" INTEGER NOT NULL,
+                    "ClinicalVisitOrdinal" INTEGER NULL,
+                    "Status" INTEGER NOT NULL,
+                    "Notes" TEXT NULL,
+                    "CancelledAt" TEXT NULL,
+                    "CancellationReason" TEXT NULL,
+                    CONSTRAINT "FK_Appointments_Clinics_ClinicId" FOREIGN KEY ("ClinicId") REFERENCES "Clinics" ("Id") ON DELETE RESTRICT,
+                    CONSTRAINT "FK_Appointments_Patients_PatientId" FOREIGN KEY ("PatientId") REFERENCES "Patients" ("Id") ON DELETE RESTRICT
+                );
 
-                CREATE TRIGGER "TR_Appointments_PreventOverlap_Update"
-                BEFORE UPDATE ON "Appointments"
-                FOR EACH ROW
-                WHEN NEW."Status" NOT IN (5, 6)
-                BEGIN
-                    SELECT RAISE(ABORT, 'APPOINTMENT_OVERBOOKING: clinician already has an overlapping appointment')
-                    WHERE EXISTS (
-                        SELECT 1 FROM "Appointments" AS existing
-                        WHERE existing."ClinicalId" = NEW."ClinicalId" AND existing."Id" <> NEW."Id"
-                          AND existing."Status" NOT IN (5, 6)
-                          AND existing."StartTimeUtc" < NEW."EndTimeUtc"
-                          AND NEW."StartTimeUtc" < existing."EndTimeUtc");
-                END;
+                INSERT INTO "__temp_Appointments"
+                    ("Id", "LastModifiedUtc", "ModifiedByUserId", "SyncState", "PatientId", "ClinicalId",
+                     "StartTimeUtc", "EndTimeUtc", "AppointmentType", "ClinicalVisitOrdinal", "Status", "Notes",
+                     "CancelledAt", "CancellationReason", "ClinicId")
+                SELECT
+                    "Id", "LastModifiedUtc", "ModifiedByUserId", "SyncState", "PatientId", "ClinicalId",
+                    "StartTimeUtc", "EndTimeUtc", "AppointmentType", "ClinicalVisitOrdinal", "Status", "Notes",
+                    "CancelledAt", "CancellationReason", "ClinicId"
+                FROM "Appointments";
+
+                DROP TABLE "Appointments";
+                ALTER TABLE "__temp_Appointments" RENAME TO "Appointments";
+
+                CREATE INDEX "IX_Appointments_ClinicId" ON "Appointments" ("ClinicId") WHERE "ClinicId" IS NOT NULL;
+                CREATE INDEX "IX_Appointments_LastModifiedUtc" ON "Appointments" ("LastModifiedUtc");
+                CREATE INDEX "IX_Appointments_PatientId" ON "Appointments" ("PatientId");
+                CREATE INDEX "IX_Appointments_StartTimeUtc" ON "Appointments" ("StartTimeUtc");
+                CREATE INDEX "IX_Appointments_ClinicalId_StartTimeUtc" ON "Appointments" ("ClinicalId", "StartTimeUtc");
+                CREATE UNIQUE INDEX "UX_Appointments_PatientId_ClinicalVisitOrdinal"
+                    ON "Appointments" ("PatientId", "ClinicalVisitOrdinal")
+                    WHERE "ClinicalVisitOrdinal" IS NOT NULL;
+                CREATE INDEX "IX_Appointments_ClinicId_PatientId_ClinicalVisitOrdinal"
+                    ON "Appointments" ("ClinicId", "PatientId", "ClinicalVisitOrdinal");
                 """);
-
-            migrationBuilder.DropForeignKey(
-                name: "FK_Appointments_VisitTypes_ClinicId_VisitTypeId",
-                table: "Appointments");
+            migrationBuilder.Sql("PRAGMA foreign_keys = ON;", suppressTransaction: true);
 
             migrationBuilder.DropTable(
                 name: "AppointmentReminderDispatches");
@@ -824,37 +883,45 @@ namespace PTDoc.Infrastructure.Data.Migrations
             migrationBuilder.DropTable(
                 name: "UserMfaCredentials");
 
-            migrationBuilder.DropIndex(
-                name: "IX_Appointments_ClinicId_VisitTypeId",
-                table: "Appointments");
+            migrationBuilder.Sql(
+                """
+                ALTER TABLE "Users" DROP COLUMN "LegacyPinGraceEndsAtUtc";
+                ALTER TABLE "Users" DROP COLUMN "MustChangePin";
+                ALTER TABLE "Users" DROP COLUMN "PinChangedAtUtc";
+                ALTER TABLE "Clinics" DROP COLUMN "TimeZoneId";
+                ALTER TABLE "Clinics" DROP COLUMN "Version";
+                """);
 
-            migrationBuilder.DropColumn(
-                name: "LegacyPinGraceEndsAtUtc",
-                table: "Users");
+            migrationBuilder.Sql(
+                """
+                CREATE TRIGGER "TR_Appointments_PreventOverlap_Insert"
+                BEFORE INSERT ON "Appointments"
+                FOR EACH ROW
+                WHEN NEW."Status" NOT IN (5, 6)
+                BEGIN
+                    SELECT RAISE(ABORT, 'APPOINTMENT_OVERBOOKING: clinician already has an overlapping appointment')
+                    WHERE EXISTS (
+                        SELECT 1 FROM "Appointments" AS existing
+                        WHERE existing."ClinicalId" = NEW."ClinicalId" AND existing."Id" <> NEW."Id"
+                          AND existing."Status" NOT IN (5, 6)
+                          AND existing."StartTimeUtc" < NEW."EndTimeUtc"
+                          AND NEW."StartTimeUtc" < existing."EndTimeUtc");
+                END;
 
-            migrationBuilder.DropColumn(
-                name: "MustChangePin",
-                table: "Users");
-
-            migrationBuilder.DropColumn(
-                name: "PinChangedAtUtc",
-                table: "Users");
-
-            migrationBuilder.DropColumn(
-                name: "TimeZoneId",
-                table: "Clinics");
-
-            migrationBuilder.DropColumn(
-                name: "Version",
-                table: "Clinics");
-
-            migrationBuilder.DropColumn(
-                name: "AuthorizedOverlap",
-                table: "Appointments");
-
-            migrationBuilder.DropColumn(
-                name: "VisitTypeId",
-                table: "Appointments");
+                CREATE TRIGGER "TR_Appointments_PreventOverlap_Update"
+                BEFORE UPDATE ON "Appointments"
+                FOR EACH ROW
+                WHEN NEW."Status" NOT IN (5, 6)
+                BEGIN
+                    SELECT RAISE(ABORT, 'APPOINTMENT_OVERBOOKING: clinician already has an overlapping appointment')
+                    WHERE EXISTS (
+                        SELECT 1 FROM "Appointments" AS existing
+                        WHERE existing."ClinicalId" = NEW."ClinicalId" AND existing."Id" <> NEW."Id"
+                          AND existing."Status" NOT IN (5, 6)
+                          AND existing."StartTimeUtc" < NEW."EndTimeUtc"
+                          AND NEW."StartTimeUtc" < existing."EndTimeUtc");
+                END;
+                """);
         }
     }
 }

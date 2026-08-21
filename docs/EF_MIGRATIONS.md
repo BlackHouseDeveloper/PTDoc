@@ -200,6 +200,11 @@ The same migration:
 Apply schema changes before enabling the related API/UI paths. Do not make `VisitTypeId` required or
 remove the legacy field until Web and MAUI have completed the compatibility release.
 
+The SQLite provider performs an explicit transactional `Appointments` rebuild while foreign-key
+enforcement is temporarily disabled, re-enables enforcement immediately afterward, and then
+recreates the overlap triggers. Migration validation must run `PRAGMA foreign_key_check` and verify
+both insert/update overlap triggers after upgrade and downgrade.
+
 ### Environment Variables — Runtime API
 
 These variables are read by the API at startup:

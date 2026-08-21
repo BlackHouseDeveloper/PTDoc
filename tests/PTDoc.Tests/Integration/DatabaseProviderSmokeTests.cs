@@ -2,7 +2,6 @@ using System;
 using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Services;
@@ -224,13 +223,10 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
         Assert.Single(savedNote.ObjectiveMetrics);
         Assert.Equal(note.Id, savedOverride.NoteId);
 
-        if (context.Database.IsSqlServer())
-        {
-            await AssertSqlServerAppointmentTriggerAsync(context, clinic.Id, patient.Id, user.Id, appointment);
-        }
+        await AssertAppointmentOverlapGuardAsync(context, clinic.Id, patient.Id, user.Id, appointment);
     }
 
-    private static async Task AssertSqlServerAppointmentTriggerAsync(
+    private static async Task AssertAppointmentOverlapGuardAsync(
         ApplicationDbContext context,
         Guid clinicId,
         Guid patientId,
@@ -247,10 +243,13 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
         try
         {
             await using var command = connection.CreateCommand();
-            command.CommandText =
-                "SELECT CASE WHEN OBJECT_ID(N'[dbo].[TR_Appointments_PreventOverlap]', N'TR') IS NULL THEN 0 ELSE 1 END";
+            command.CommandText = context.Database.IsSqlServer()
+                ? "SELECT CASE WHEN OBJECT_ID(N'[dbo].[TR_Appointments_PreventOverlap]', N'TR') IS NULL THEN 0 ELSE 1 END"
+                : context.Database.IsNpgsql()
+                    ? "SELECT COUNT(*) FROM pg_trigger WHERE tgname = 'TR_Appointments_PreventOverlap' AND NOT tgisinternal"
+                    : "SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name IN ('TR_Appointments_PreventOverlap_Insert', 'TR_Appointments_PreventOverlap_Update')";
             var triggerExists = Convert.ToInt32(await command.ExecuteScalarAsync());
-            Assert.Equal(1, triggerExists);
+            Assert.Equal(context.Database.IsSqlite() ? 2 : 1, triggerExists);
         }
         finally
         {
@@ -275,9 +274,10 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
         });
 
         var exception = await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
-        var sqlException = Assert.IsType<SqlException>(exception.GetBaseException());
-        Assert.Equal(51000, sqlException.Number);
-        Assert.Contains("APPOINTMENT_OVERBOOKING", sqlException.Message, StringComparison.Ordinal);
+        Assert.Contains(
+            "APPOINTMENT_OVERBOOKING",
+            exception.GetBaseException().Message,
+            StringComparison.Ordinal);
     }
 
     private static async Task AssertSchemaQueryableAsync(ApplicationDbContext context)

@@ -1206,50 +1206,78 @@ public class ApplicationDbContext : DbContext
         var actorUserId = IIdentityContextAccessor.SystemUserId;
         foreach (var clinic in newClinics)
         {
-            ClinicSecurityPolicies.Add(new ClinicSecurityPolicy
+            if (!ClinicSecurityPolicies.Local.Any(policy => policy.ClinicId == clinic.Id))
             {
-                ClinicId = clinic.Id,
-                UpdatedByUserId = actorUserId
-            });
-            SchedulingPreferences.Add(new SchedulingPreferences
-            {
-                ClinicId = clinic.Id,
-                UpdatedByUserId = actorUserId
-            });
-            AutoCheckInPolicies.Add(new AutoCheckInPolicy
-            {
-                ClinicId = clinic.Id,
-                UpdatedByUserId = actorUserId
-            });
+                ClinicSecurityPolicies.Add(new ClinicSecurityPolicy
+                {
+                    ClinicId = clinic.Id,
+                    UpdatedByUserId = actorUserId
+                });
+            }
 
-            VisitTypes.AddRange(SchedulingDefaults.VisitTypes.Select(definition => new VisitType
+            if (!SchedulingPreferences.Local.Any(preferences => preferences.ClinicId == clinic.Id))
             {
-                ClinicId = clinic.Id,
-                Code = definition.Code,
-                Name = definition.Name,
-                DurationMinutes = definition.DurationMinutes,
-                RequiresIntake = definition.RequiresIntake,
-                PtaAllowed = definition.PtaAllowed,
-                IsBillable = definition.IsBillable,
-                DisplayOrder = definition.DisplayOrder,
-                UpdatedByUserId = actorUserId
-            }));
+                SchedulingPreferences.Add(new SchedulingPreferences
+                {
+                    ClinicId = clinic.Id,
+                    UpdatedByUserId = actorUserId
+                });
+            }
 
-            ClinicBusinessHours.AddRange(SchedulingDefaults.WeeklyHours.Select(definition => new ClinicBusinessHour
+            if (!AutoCheckInPolicies.Local.Any(policy => policy.ClinicId == clinic.Id))
             {
-                ClinicId = clinic.Id,
-                DayOfWeek = definition.Day,
-                IsOpen = definition.IsOpen,
-                StartLocalTime = definition.IsOpen ? new TimeOnly(8, 0) : null,
-                EndLocalTime = definition.IsOpen ? new TimeOnly(17, 0) : null,
-                LunchStartLocalTime = definition.IsOpen ? new TimeOnly(12, 0) : null,
-                LunchEndLocalTime = definition.IsOpen ? new TimeOnly(13, 0) : null,
-                UpdatedByUserId = actorUserId
-            }));
+                AutoCheckInPolicies.Add(new AutoCheckInPolicy
+                {
+                    ClinicId = clinic.Id,
+                    UpdatedByUserId = actorUserId
+                });
+            }
 
+            var trackedVisitTypeCodes = VisitTypes.Local
+                .Where(visitType => visitType.ClinicId == clinic.Id)
+                .Select(visitType => visitType.Code)
+                .ToHashSet(StringComparer.Ordinal);
+            VisitTypes.AddRange(SchedulingDefaults.VisitTypes
+                .Where(definition => trackedVisitTypeCodes.Add(definition.Code))
+                .Select(definition => new VisitType
+                {
+                    ClinicId = clinic.Id,
+                    Code = definition.Code,
+                    Name = definition.Name,
+                    DurationMinutes = definition.DurationMinutes,
+                    RequiresIntake = definition.RequiresIntake,
+                    PtaAllowed = definition.PtaAllowed,
+                    IsBillable = definition.IsBillable,
+                    DisplayOrder = definition.DisplayOrder,
+                    UpdatedByUserId = actorUserId
+                }));
+
+            var trackedBusinessDays = ClinicBusinessHours.Local
+                .Where(hours => hours.ClinicId == clinic.Id)
+                .Select(hours => hours.DayOfWeek)
+                .ToHashSet();
+            ClinicBusinessHours.AddRange(SchedulingDefaults.WeeklyHours
+                .Where(definition => trackedBusinessDays.Add(definition.Day))
+                .Select(definition => new ClinicBusinessHour
+                {
+                    ClinicId = clinic.Id,
+                    DayOfWeek = definition.Day,
+                    IsOpen = definition.IsOpen,
+                    StartLocalTime = definition.IsOpen ? new TimeOnly(8, 0) : null,
+                    EndLocalTime = definition.IsOpen ? new TimeOnly(17, 0) : null,
+                    LunchStartLocalTime = definition.IsOpen ? new TimeOnly(12, 0) : null,
+                    LunchEndLocalTime = definition.IsOpen ? new TimeOnly(13, 0) : null,
+                    UpdatedByUserId = actorUserId
+                }));
+
+            var trackedPermissions = RoleCapabilityPermissions.Local
+                .Where(permission => permission.ClinicId == clinic.Id)
+                .Select(permission => (permission.RoleKey, permission.CapabilityKey))
+                .ToHashSet();
             RoleCapabilityPermissions.AddRange(
                 from role in RolePermissionCatalog.Roles
                 from capability in RolePermissionCatalog.Capabilities
+                where trackedPermissions.Add((role.Key, capability.Key))
                 select new RoleCapabilityPermission
                 {
                     ClinicId = clinic.Id,
