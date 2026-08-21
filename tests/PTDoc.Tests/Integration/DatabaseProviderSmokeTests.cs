@@ -17,7 +17,7 @@ namespace PTDoc.Tests.Integration;
 [Trait("Category", "DatabaseProvider")]
 public sealed class DatabaseProviderSmokeTests : IDisposable
 {
-    private const string PreviousSettingsMigration = "20260809010000_AddClinicalVisitOrdinal";
+    private const string PreviousSettingsMigration = "AddClinicalVisitOrdinal";
     private const string MigrationsAlreadyAppliedVariable = "CI_DB_MIGRATIONS_ALREADY_APPLIED";
     private const string ProviderVariable = "DB_PROVIDER";
     private SqliteConnection? _sqliteConnection;
