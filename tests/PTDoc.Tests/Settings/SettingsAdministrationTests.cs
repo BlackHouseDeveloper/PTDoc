@@ -195,12 +195,24 @@ public sealed class SettingsAdministrationTests
         sunday.LunchEndLocalTime = null;
         (await context.SchedulingPreferences.SingleAsync(item => item.ClinicId == clinic.Id))
             .AppointmentBufferMinutes = 0;
+        var clinicianId = Guid.NewGuid();
+        context.Appointments.Add(new Appointment
+        {
+            PatientId = Guid.NewGuid(),
+            ClinicId = clinic.Id,
+            ClinicalId = clinicianId,
+            StartTimeUtc = new DateTime(2026, 3, 8, 6, 45, 0, DateTimeKind.Utc),
+            EndTimeUtc = new DateTime(2026, 3, 8, 7, 15, 0, DateTimeKind.Utc),
+            Status = AppointmentStatus.NoShow,
+            LastModifiedUtc = new DateTime(2026, 3, 1, 12, 0, 0, DateTimeKind.Utc),
+            ModifiedByUserId = Guid.NewGuid()
+        });
         await context.SaveChangesAsync();
 
         var service = new SchedulingPolicyEvaluator(context);
         var result = await service.EvaluateAsync(new AvailabilityRequest(
             clinic.Id,
-            Guid.NewGuid(),
+            clinicianId,
             new DateTime(2026, 3, 8, 6, 30, 0, DateTimeKind.Utc),
             new DateTime(2026, 3, 8, 7, 30, 0, DateTimeKind.Utc)));
 
@@ -449,6 +461,48 @@ public sealed class SettingsAdministrationTests
     }
 
     [Fact]
+    public async Task AppointmentReminderProcessor_QueuesCandidatesBeyondFirstPage()
+    {
+        await using var context = CreateContext();
+        var now = new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero);
+        var clinic = new Clinic { Name = "Paged Reminder Clinic", Slug = $"paged-{Guid.NewGuid():N}" };
+        var patient = CreateConsentedPatient(clinic.Id, "paged@example.invalid", now.UtcDateTime);
+        var intake = CreateConsentedIntake(clinic.Id, patient, now.UtcDateTime, submittedAt: null);
+        context.AddRange(clinic, patient, intake);
+        for (var index = 0; index < 501; index++)
+        {
+            context.Appointments.Add(new Appointment
+            {
+                Patient = patient,
+                PatientId = patient.Id,
+                ClinicId = clinic.Id,
+                ClinicalId = Guid.NewGuid(),
+                StartTimeUtc = now.UtcDateTime.AddHours(23).AddSeconds(index),
+                EndTimeUtc = now.UtcDateTime.AddHours(24).AddSeconds(index),
+                Status = AppointmentStatus.Scheduled,
+                LastModifiedUtc = now.UtcDateTime,
+                ModifiedByUserId = Guid.NewGuid()
+            });
+        }
+        await context.SaveChangesAsync();
+
+        var communication = new Mock<ICommunicationService>();
+        communication.Setup(service => service.SendAppointmentReminderEmailAsync(
+                It.IsAny<AppointmentReminderDeliveryRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DeliveryResult { Succeeded = true, Status = DeliveryStatus.Sent });
+        var processor = new AppointmentCommunicationProcessor(
+            context,
+            communication.Object,
+            Mock.Of<IIntakeCommunicationWorkflow>(),
+            new MutableTimeProvider(now),
+            NullLogger<AppointmentCommunicationProcessor>.Instance);
+
+        await processor.ProcessDueAsync();
+
+        Assert.Equal(501, await context.AppointmentReminderDispatches.CountAsync());
+    }
+
+    [Fact]
     public async Task AppointmentReminderProcessor_AtomicallyClaimsDispatchAcrossWorkers()
     {
         var databaseName = $"settings-claims-{Guid.NewGuid():N}";
@@ -642,9 +696,16 @@ public sealed class SettingsAdministrationTests
         context.AddRange(clinic, patient, appointment);
         await context.SaveChangesAsync();
 
+        AuditEvent? tokenCreatedAudit = null;
+        var audit = CreateAuditService();
+        audit.Setup(service => service.LogSettingsEventAsync(
+                It.Is<AuditEvent>(item => item.EventType == "KioskCheckInTokenCreated"),
+                It.IsAny<CancellationToken>()))
+            .Callback<AuditEvent, CancellationToken>((item, _) => tokenCreatedAudit = item)
+            .Returns(Task.CompletedTask);
         var service = new KioskCheckInService(
             context,
-            CreateAuditService().Object,
+            audit.Object,
             new AppointmentCheckInWorkflow(context, TimeProvider.System));
         var station = await service.CreateStationAsync(
             clinic.Id,
@@ -661,6 +722,10 @@ public sealed class SettingsAdministrationTests
 
         Assert.True(numericResult.Succeeded);
         Assert.Equal(AppointmentStatus.CheckedIn, appointment.Status);
+        Assert.NotNull(tokenCreatedAudit);
+        Assert.Equal(nameof(KioskCheckInToken), tokenCreatedAudit.EntityType);
+        Assert.NotEqual(appointment.Id, tokenCreatedAudit.EntityId);
+        Assert.Equal(appointment.Id, tokenCreatedAudit.Metadata["appointmentId"]);
 
         var qrToken = await service.CreateCheckInTokenAsync(
             clinic.Id, appointment.Id, Guid.NewGuid(), "qr-token");

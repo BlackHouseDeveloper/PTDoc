@@ -21,6 +21,7 @@ public sealed class AppointmentCommunicationProcessor(
     ILogger<AppointmentCommunicationProcessor> logger) : IAppointmentCommunicationProcessor
 {
     private const int BatchSize = 100;
+    private const int CandidateBatchSize = 500;
     private const int MaximumAutoCheckInLeadHours = 168;
 
     public async Task ProcessDueAsync(CancellationToken cancellationToken = default)
@@ -55,22 +56,47 @@ public sealed class AppointmentCommunicationProcessor(
     private async Task QueueEligibleAsync(DateTime now, CancellationToken cancellationToken)
     {
         var horizon = now.AddHours(MaximumAutoCheckInLeadHours);
-        var appointments = await context.Appointments
-            .AsNoTracking()
-            .Include(item => item.Patient)
-            .Include(item => item.VisitType)
-            .Where(item => item.ClinicId.HasValue
-                && item.StartTimeUtc > now
-                && item.StartTimeUtc <= horizon
-                && item.Status != AppointmentStatus.Cancelled
-                && item.Status != AppointmentStatus.Completed
-                && item.Status != AppointmentStatus.NoShow)
-            .Take(500)
-            .ToListAsync(cancellationToken);
+        var offset = 0;
+        while (true)
+        {
+            var appointments = await context.Appointments
+                .AsNoTracking()
+                .Include(item => item.Patient)
+                .Include(item => item.VisitType)
+                .Where(item => item.ClinicId.HasValue
+                    && item.StartTimeUtc > now
+                    && item.StartTimeUtc <= horizon
+                    && item.Status != AppointmentStatus.Cancelled
+                    && item.Status != AppointmentStatus.Completed
+                    && item.Status != AppointmentStatus.NoShow)
+                .OrderBy(item => item.StartTimeUtc)
+                .ThenBy(item => item.Id)
+                .Skip(offset)
+                .Take(CandidateBatchSize)
+                .ToListAsync(cancellationToken);
 
-        if (appointments.Count == 0) return;
+            if (appointments.Count == 0)
+            {
+                return;
+            }
+
+            await QueueEligibleBatchAsync(appointments, now, cancellationToken);
+            offset += appointments.Count;
+            if (appointments.Count < CandidateBatchSize)
+            {
+                return;
+            }
+        }
+    }
+
+    private async Task QueueEligibleBatchAsync(
+        IReadOnlyCollection<Appointment> appointments,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
         var clinicIds = appointments.Select(item => item.ClinicId!.Value).Distinct().ToArray();
         var patientIds = appointments.Select(item => item.PatientId).Distinct().ToArray();
+        var appointmentIds = appointments.Select(item => item.Id).ToArray();
         var preferences = await context.SchedulingPreferences
             .AsNoTracking()
             .Where(item => clinicIds.Contains(item.ClinicId))
@@ -93,6 +119,13 @@ public sealed class AppointmentCommunicationProcessor(
             .Where(item => item.SubmittedAt.HasValue)
             .Select(item => item.PatientId)
             .ToHashSet();
+        var existingIdempotencyKeys = new HashSet<string>(
+            await context.AppointmentReminderDispatches
+                .AsNoTracking()
+                .Where(item => appointmentIds.Contains(item.AppointmentId))
+                .Select(item => item.IdempotencyKey)
+                .ToListAsync(cancellationToken),
+            StringComparer.Ordinal);
 
         foreach (var appointment in appointments)
         {
@@ -109,7 +142,8 @@ public sealed class AppointmentCommunicationProcessor(
                     preference.ReminderLeadHours,
                     enableEmail: communicationConsent.EmailAllowed,
                     enableSms: communicationConsent.TextAllowed,
-                    now);
+                    now,
+                    existingIdempotencyKeys);
             }
 
             if (autoPolicies.TryGetValue(clinicId, out var autoPolicy)
@@ -123,7 +157,8 @@ public sealed class AppointmentCommunicationProcessor(
                         autoPolicy.LeadHours,
                         autoPolicy.EnableEmail && communicationConsent.EmailAllowed,
                         autoPolicy.EnableSms && communicationConsent.TextAllowed,
-                        now);
+                        now,
+                        existingIdempotencyKeys);
                 }
             }
         }
@@ -142,12 +177,13 @@ public sealed class AppointmentCommunicationProcessor(
         int leadHours,
         bool enableEmail,
         bool enableSms,
-        DateTime now)
+        DateTime now,
+        ISet<string> existingIdempotencyKeys)
     {
         if (enableEmail && !string.IsNullOrWhiteSpace(appointment.Patient?.Email))
-            Queue(appointment, purpose, leadHours, ReminderChannel.Email, now);
+            Queue(appointment, purpose, leadHours, ReminderChannel.Email, now, existingIdempotencyKeys);
         if (enableSms && !string.IsNullOrWhiteSpace(appointment.Patient?.Phone))
-            Queue(appointment, purpose, leadHours, ReminderChannel.Sms, now);
+            Queue(appointment, purpose, leadHours, ReminderChannel.Sms, now, existingIdempotencyKeys);
     }
 
     private void Queue(
@@ -155,11 +191,12 @@ public sealed class AppointmentCommunicationProcessor(
         ReminderDispatchPurpose purpose,
         int leadHours,
         ReminderChannel channel,
-        DateTime now)
+        DateTime now,
+        ISet<string> existingIdempotencyKeys)
     {
         var version = appointment.LastModifiedUtc == default ? appointment.StartTimeUtc : appointment.LastModifiedUtc;
         var key = $"{purpose}:{appointment.Id:N}:{version.Ticks}:{leadHours}:{channel}";
-        if (context.AppointmentReminderDispatches.Local.Any(item => item.IdempotencyKey == key)) return;
+        if (!existingIdempotencyKeys.Add(key)) return;
         context.AppointmentReminderDispatches.Add(new AppointmentReminderDispatch
         {
             ClinicId = appointment.ClinicId!.Value,

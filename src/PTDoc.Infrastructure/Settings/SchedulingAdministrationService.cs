@@ -690,6 +690,7 @@ public sealed class SchedulingPolicyEvaluator(ApplicationDbContext context) : IS
             item.ClinicalId == request.ClinicianId &&
             (request.ExcludingAppointmentId == null || item.Id != request.ExcludingAppointmentId.Value) &&
             item.Status != AppointmentStatus.Cancelled &&
+            item.Status != AppointmentStatus.NoShow &&
             item.StartTimeUtc < bufferedEnd && item.EndTimeUtc > bufferedStart,
             cancellationToken);
 

@@ -147,7 +147,9 @@ public sealed class KioskCheckInService(
         var enrollment = CreateEnrollmentCode(station);
         context.KioskEnrollmentCodes.Add(enrollment.Entity);
         await context.SaveChangesAsync(cancellationToken);
-        await AuditAsync("KioskStationCreated", clinicId, station.Id, actorUserId, correlationId, cancellationToken);
+        await AuditAsync(
+            "KioskStationCreated", clinicId, nameof(KioskStation), station.Id,
+            actorUserId, correlationId, cancellationToken);
         return SettingsOperationResult<KioskEnrollmentCodeDto>.Success(
             new KioskEnrollmentCodeDto(station.Id, enrollment.PlainText, enrollment.Entity.ExpiresAtUtc));
     }
@@ -181,7 +183,9 @@ public sealed class KioskCheckInService(
         station.UpdatedAtUtc = DateTime.UtcNow;
         try { await context.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return SettingsOperationResult<KioskStationDto>.Conflict(); }
-        await AuditAsync("KioskStationUpdated", clinicId, station.Id, actorUserId, correlationId, cancellationToken);
+        await AuditAsync(
+            "KioskStationUpdated", clinicId, nameof(KioskStation), station.Id,
+            actorUserId, correlationId, cancellationToken);
         return SettingsOperationResult<KioskStationDto>.Success(MapStation(station));
     }
 
@@ -211,7 +215,9 @@ public sealed class KioskCheckInService(
         context.KioskEnrollmentCodes.Add(enrollment.Entity);
         try { await context.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return SettingsOperationResult<KioskEnrollmentCodeDto>.Conflict(); }
-        await AuditAsync("KioskEnrollmentRotated", clinicId, station.Id, actorUserId, correlationId, cancellationToken);
+        await AuditAsync(
+            "KioskEnrollmentRotated", clinicId, nameof(KioskStation), station.Id,
+            actorUserId, correlationId, cancellationToken);
         return SettingsOperationResult<KioskEnrollmentCodeDto>.Success(
             new KioskEnrollmentCodeDto(station.Id, enrollment.PlainText, enrollment.Entity.ExpiresAtUtc));
     }
@@ -236,7 +242,9 @@ public sealed class KioskCheckInService(
         station.UpdatedAtUtc = DateTime.UtcNow;
         try { await context.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException) { return SettingsOperationResult<bool>.Conflict(); }
-        await AuditAsync("KioskStationRevoked", clinicId, station.Id, actorUserId, correlationId, cancellationToken);
+        await AuditAsync(
+            "KioskStationRevoked", clinicId, nameof(KioskStation), station.Id,
+            actorUserId, correlationId, cancellationToken);
         return SettingsOperationResult<bool>.Success(true);
     }
 
@@ -291,7 +299,10 @@ public sealed class KioskCheckInService(
         context.KioskCheckInTokens.Add(token);
         await context.SaveChangesAsync(cancellationToken);
         var payload = $"{token.Id:N}.{numericCode}";
-        await AuditAsync("KioskCheckInTokenCreated", clinicId, appointmentId, actorUserId, correlationId, cancellationToken);
+        await AuditAsync(
+            "KioskCheckInTokenCreated", clinicId, nameof(KioskCheckInToken), token.Id,
+            actorUserId, correlationId, cancellationToken,
+            new Dictionary<string, object> { ["appointmentId"] = appointmentId });
         return SettingsOperationResult<KioskCheckInTokenDto>.Success(
             new KioskCheckInTokenDto(appointmentId, numericCode, payload, token.ExpiresAtUtc));
     }
@@ -394,16 +405,39 @@ public sealed class KioskCheckInService(
         throw new InvalidOperationException("A unique kiosk check-in code could not be generated.");
     }
 
-    private Task AuditAsync(string eventType, Guid clinicId, Guid entityId, Guid actorUserId, string correlationId, CancellationToken cancellationToken) =>
-        auditService.LogSettingsEventAsync(new AuditEvent
+    private Task AuditAsync(
+        string eventType,
+        Guid clinicId,
+        string entityType,
+        Guid entityId,
+        Guid actorUserId,
+        string correlationId,
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, object>? additionalMetadata = null)
+    {
+        var metadata = new Dictionary<string, object>
+        {
+            ["clinicId"] = clinicId,
+            ["entityId"] = entityId
+        };
+        if (additionalMetadata is not null)
+        {
+            foreach (var item in additionalMetadata)
+            {
+                metadata[item.Key] = item.Value;
+            }
+        }
+
+        return auditService.LogSettingsEventAsync(new AuditEvent
         {
             EventType = eventType,
             UserId = actorUserId,
             CorrelationId = correlationId,
-            EntityType = nameof(KioskStation),
+            EntityType = entityType,
             EntityId = entityId,
-            Metadata = new Dictionary<string, object> { ["clinicId"] = clinicId, ["entityId"] = entityId }
+            Metadata = metadata
         }, cancellationToken);
+    }
 
     private static KioskStationDto MapStation(KioskStation station) =>
         new(station.Id, station.Name, station.IsActive, station.LastSeenAtUtc, station.Version);
