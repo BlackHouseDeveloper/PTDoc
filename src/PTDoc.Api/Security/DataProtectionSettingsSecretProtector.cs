@@ -29,8 +29,13 @@ public sealed class DataProtectionSettingsSecretProtector(
         {
             var serialized = GetProtector(purpose).Unprotect(protectedValue);
             var envelope = JsonSerializer.Deserialize<ProtectedEnvelope>(serialized);
-            var age = timeProvider.GetUtcNow() - envelope!.IssuedAtUtc;
-            if (age < TimeSpan.Zero || age > maximumAge || string.IsNullOrEmpty(envelope.Value))
+            if (envelope is null || string.IsNullOrEmpty(envelope.Value))
+            {
+                return false;
+            }
+
+            var age = timeProvider.GetUtcNow() - envelope.IssuedAtUtc;
+            if (age < TimeSpan.Zero || age > maximumAge)
             {
                 return false;
             }

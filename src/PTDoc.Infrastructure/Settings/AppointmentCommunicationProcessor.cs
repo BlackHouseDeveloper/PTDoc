@@ -21,6 +21,7 @@ public sealed class AppointmentCommunicationProcessor(
     ILogger<AppointmentCommunicationProcessor> logger) : IAppointmentCommunicationProcessor
 {
     private const int BatchSize = 100;
+    private const int MaximumAutoCheckInLeadHours = 168;
 
     public async Task ProcessDueAsync(CancellationToken cancellationToken = default)
     {
@@ -29,23 +30,31 @@ public sealed class AppointmentCommunicationProcessor(
         await CancelObsoleteAsync(now, cancellationToken);
         await QueueEligibleAsync(now, cancellationToken);
 
-        var due = await context.AppointmentReminderDispatches
+        var dueIds = await context.AppointmentReminderDispatches
+            .AsNoTracking()
             .Where(item =>
                 (item.Status == ReminderDispatchStatus.Pending || item.Status == ReminderDispatchStatus.RetryScheduled)
                 && item.NextAttemptAtUtc <= now)
             .OrderBy(item => item.NextAttemptAtUtc)
+            .Select(item => item.Id)
             .Take(BatchSize)
             .ToListAsync(cancellationToken);
 
-        foreach (var dispatch in due)
+        foreach (var dispatchId in dueIds)
         {
+            var dispatch = await TryClaimDispatchAsync(dispatchId, now, cancellationToken);
+            if (dispatch is null)
+            {
+                continue;
+            }
+
             await ProcessDispatchAsync(dispatch, cancellationToken);
         }
     }
 
     private async Task QueueEligibleAsync(DateTime now, CancellationToken cancellationToken)
     {
-        var horizon = now.AddHours(49);
+        var horizon = now.AddHours(MaximumAutoCheckInLeadHours);
         var appointments = await context.Appointments
             .AsNoTracking()
             .Include(item => item.Patient)
@@ -70,15 +79,20 @@ public sealed class AppointmentCommunicationProcessor(
             .AsNoTracking()
             .Where(item => clinicIds.Contains(item.ClinicId) && item.IsEnabled)
             .ToDictionaryAsync(item => item.ClinicId, cancellationToken);
-        var intakeConsents = (await context.IntakeForms
-                .AsNoTracking()
-                .Where(item => patientIds.Contains(item.PatientId))
-                .Select(item => new { item.PatientId, item.Consents, item.LastModifiedUtc })
-                .ToListAsync(cancellationToken))
+        var intakeSummaries = await context.IntakeForms
+            .AsNoTracking()
+            .Where(item => patientIds.Contains(item.PatientId))
+            .Select(item => new { item.PatientId, item.Consents, item.LastModifiedUtc, item.SubmittedAt })
+            .ToListAsync(cancellationToken);
+        var intakeConsents = intakeSummaries
             .GroupBy(item => item.PatientId)
             .ToDictionary(
                 group => group.Key,
                 group => group.OrderByDescending(item => item.LastModifiedUtc).First().Consents);
+        var patientsWithCompletedIntake = intakeSummaries
+            .Where(item => item.SubmittedAt.HasValue)
+            .Select(item => item.PatientId)
+            .ToHashSet();
 
         foreach (var appointment in appointments)
         {
@@ -103,10 +117,7 @@ public sealed class AppointmentCommunicationProcessor(
                 && IsDue(appointment.StartTimeUtc, autoPolicy.LeadHours, now)
                 && IsEligibleVisitType(autoPolicy, appointment.VisitTypeId))
             {
-                var hasCompletedIntake = await context.IntakeForms
-                    .AsNoTracking()
-                    .AnyAsync(item => item.PatientId == appointment.PatientId && item.SubmittedAt.HasValue, cancellationToken);
-                if (!hasCompletedIntake)
+                if (!patientsWithCompletedIntake.Contains(appointment.PatientId))
                 {
                     QueueChannels(appointment, ReminderDispatchPurpose.AutoCheckIn,
                         autoPolicy.LeadHours,
@@ -169,11 +180,6 @@ public sealed class AppointmentCommunicationProcessor(
     private async Task ProcessDispatchAsync(AppointmentReminderDispatch dispatch, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        dispatch.Status = ReminderDispatchStatus.Processing;
-        dispatch.AttemptCount++;
-        dispatch.UpdatedAtUtc = now;
-        await context.SaveChangesAsync(cancellationToken);
-
         var appointment = await context.Appointments
             .AsNoTracking()
             .Include(item => item.Patient)
@@ -243,13 +249,16 @@ public sealed class AppointmentCommunicationProcessor(
         var zone = ResolveTimeZone(appointment.Clinic?.TimeZoneId);
         var local = TimeZoneInfo.ConvertTimeFromUtc(
             DateTime.SpecifyKind(appointment.StartTimeUtc, DateTimeKind.Utc), zone);
+        var zoneName = zone.IsDaylightSavingTime(local)
+            ? zone.DaylightName
+            : zone.StandardName;
         var request = new AppointmentReminderDeliveryRequest
         {
             AppointmentId = appointment.Id,
             PatientId = appointment.PatientId,
             ClinicId = dispatch.ClinicId,
             Recipient = dispatch.Channel == ReminderChannel.Email ? appointment.Patient!.Email! : appointment.Patient!.Phone!,
-            AppointmentLocalTime = $"{local:ddd, MMM d 'at' h:mm tt} {zone.StandardName}",
+            AppointmentLocalTime = $"{local:ddd, MMM d 'at' h:mm tt} {zoneName}",
             CorrelationId = dispatch.Id.ToString("N")
         };
         var result = dispatch.Channel == ReminderChannel.Email
@@ -303,6 +312,56 @@ public sealed class AppointmentCommunicationProcessor(
     private async Task<int> GetAutoMaxAttemptsAsync(Guid clinicId, CancellationToken cancellationToken) =>
         await context.AutoCheckInPolicies.Where(item => item.ClinicId == clinicId)
             .Select(item => (int?)item.MaxAttempts).SingleOrDefaultAsync(cancellationToken) ?? 3;
+
+    private async Task<AppointmentReminderDispatch?> TryClaimDispatchAsync(
+        Guid dispatchId,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        if (!context.Database.IsRelational())
+        {
+            var inMemoryDispatch = await context.AppointmentReminderDispatches
+                .SingleOrDefaultAsync(item => item.Id == dispatchId, cancellationToken);
+            if (inMemoryDispatch is null
+                || (inMemoryDispatch.Status != ReminderDispatchStatus.Pending
+                    && inMemoryDispatch.Status != ReminderDispatchStatus.RetryScheduled)
+                || inMemoryDispatch.NextAttemptAtUtc > now)
+            {
+                return null;
+            }
+
+            inMemoryDispatch.Status = ReminderDispatchStatus.Processing;
+            inMemoryDispatch.AttemptCount++;
+            inMemoryDispatch.UpdatedAtUtc = now;
+            await context.SaveChangesAsync(cancellationToken);
+            return inMemoryDispatch;
+        }
+
+        var claimed = await context.AppointmentReminderDispatches
+            .Where(item => item.Id == dispatchId
+                && (item.Status == ReminderDispatchStatus.Pending
+                    || item.Status == ReminderDispatchStatus.RetryScheduled)
+                && item.NextAttemptAtUtc <= now)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Status, ReminderDispatchStatus.Processing)
+                .SetProperty(item => item.AttemptCount, item => item.AttemptCount + 1)
+                .SetProperty(item => item.UpdatedAtUtc, now), cancellationToken);
+        if (claimed == 0)
+        {
+            return null;
+        }
+
+        var trackedEntry = context.ChangeTracker.Entries<AppointmentReminderDispatch>()
+            .SingleOrDefault(entry => entry.Entity.Id == dispatchId);
+        if (trackedEntry is not null)
+        {
+            await trackedEntry.ReloadAsync(cancellationToken);
+            return trackedEntry.Entity;
+        }
+
+        return await context.AppointmentReminderDispatches
+            .SingleAsync(item => item.Id == dispatchId, cancellationToken);
+    }
 
     private async Task RecoverInterruptedAsync(DateTime now, CancellationToken cancellationToken)
     {

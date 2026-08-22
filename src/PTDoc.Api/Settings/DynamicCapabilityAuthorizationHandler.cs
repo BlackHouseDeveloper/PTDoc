@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Application.Settings;
@@ -27,6 +28,9 @@ public sealed class DynamicCapabilityAuthorizationHandler(
         }
 
         var staticAllowed = requirement.StaticAllowedRoles.Contains(role);
+        var cancellationToken = context.Resource is HttpContext httpContext
+            ? httpContext.RequestAborted
+            : CancellationToken.None;
         foreach (var capability in requirement.CapabilityKeys)
         {
             var evaluation = await permissionEvaluator.EvaluateAsync(
@@ -34,7 +38,8 @@ public sealed class DynamicCapabilityAuthorizationHandler(
                 role,
                 capability,
                 requirement.RequiredLevel,
-                staticAllowed);
+                staticAllowed,
+                cancellationToken);
             if (evaluation.EffectiveAllowed)
             {
                 context.Succeed(requirement);

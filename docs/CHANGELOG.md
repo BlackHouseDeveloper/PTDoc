@@ -61,6 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Settings services and API review slice** — Connected the persisted Settings aggregates to clinic-scoped administration services, dynamic authorization, PIN/TOTP step-up authentication, appointment availability, reminders, Auto Check-In, kiosk workflows, API endpoints, and focused server-side regression coverage. Reason: security-sensitive workflow logic is isolated from the generated persistence artifacts so it can be reviewed as a dedicated stacked change.
 
+### Fixed - Settings services and API review follow-up
+
+- **Secure and scale-safe Settings workflows** — Made protected Settings envelopes fail closed on null payloads, propagated aborted requests through dynamic capability evaluation, extended Auto Check-In discovery through its supported 168-hour lead time, prefetched completed-intake state, rendered the correct standard/daylight appointment time-zone label, and atomically claimed due communication dispatches before delivery. Added focused secret, authorization, reminder, Auto Check-In, and multi-worker regression coverage. Reason: malformed secrets must not escape validation, background processing must avoid missed or duplicate delivery and N+1 queries, patient-facing times must reflect daylight-saving state, and disconnected requests must stop permission database work.
+
 ### Fixed - Settings persistence review follow-up
 
 - **SQLite overlap-default compatibility** — Preserved the false database default for `AuthorizedOverlap` through the explicit SQLite appointment-table rebuild, made the default part of the EF model and all provider snapshots, and added a migration-backed legacy-column insert regression. Reason: compatibility clients that do not know the new column must continue to insert appointments with overlap authorization defaulting safely to false on every provider.

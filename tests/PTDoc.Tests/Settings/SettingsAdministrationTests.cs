@@ -2,13 +2,22 @@ using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PTDoc.Api.Auth;
+using PTDoc.Api.Security;
+using PTDoc.Api.Settings;
 using PTDoc.Application.Communication;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
+using PTDoc.Application.Services;
 using PTDoc.Application.Settings;
 using PTDoc.Core.Communication;
 using PTDoc.Core.Models;
@@ -49,6 +58,66 @@ public sealed class SettingsAdministrationTests
         var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("amr", amr)], "test"));
 
         Assert.Equal(expected, ExternalMfaAssuranceMiddleware.HasVerifiedMfaMethod(principal));
+    }
+
+    [Fact]
+    public void SettingsSecretProtector_NullEnvelopeFailsClosed()
+    {
+        var provider = new EphemeralDataProtectionProvider();
+        var time = new MutableTimeProvider(new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero));
+        var protector = new DataProtectionSettingsSecretProtector(provider, time);
+        var protectedNull = provider
+            .CreateProtector("PTDoc.Settings.Security.v1", "challenge")
+            .Protect("null");
+
+        var succeeded = protector.TryUnprotect(
+            "challenge",
+            protectedNull,
+            TimeSpan.FromMinutes(5),
+            out var plaintext);
+
+        Assert.False(succeeded);
+        Assert.Empty(plaintext);
+    }
+
+    [Fact]
+    public async Task DynamicCapabilityAuthorization_PropagatesRequestCancellation()
+    {
+        var clinicId = Guid.NewGuid();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var httpContext = new DefaultHttpContext
+        {
+            RequestAborted = cancellation.Token
+        };
+        var tenantContext = new Mock<ITenantContextAccessor>();
+        tenantContext.Setup(accessor => accessor.GetCurrentClinicId()).Returns(clinicId);
+        var evaluator = new Mock<IPermissionEvaluator>();
+        evaluator.Setup(service => service.EvaluateAsync(
+                clinicId,
+                Roles.Admin,
+                CapabilityKey.ClinicSettingsManage,
+                PermissionLevel.View,
+                true,
+                cancellation.Token))
+            .ReturnsAsync(new PermissionEvaluation(true, true, true, AuthorizationRolloutMode.Enforced, "allowed"));
+        var requirement = new DynamicCapabilityRequirement(
+            [CapabilityKey.ClinicSettingsManage],
+            PermissionLevel.View,
+            [Roles.Admin]);
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.Role, Roles.Admin)],
+            "test"));
+        var authorizationContext = new AuthorizationHandlerContext(
+            [requirement],
+            principal,
+            httpContext);
+
+        await new DynamicCapabilityAuthorizationHandler(tenantContext.Object, evaluator.Object)
+            .HandleAsync(authorizationContext);
+
+        Assert.True(authorizationContext.HasSucceeded);
+        evaluator.VerifyAll();
     }
 
     [Fact]
@@ -280,9 +349,11 @@ public sealed class SettingsAdministrationTests
         context.AddRange(clinic, patient, appointment, intake);
         await context.SaveChangesAsync();
 
+        AppointmentReminderDeliveryRequest? deliveredRequest = null;
         var communication = new Mock<ICommunicationService>();
         communication.Setup(service => service.SendAppointmentReminderEmailAsync(
                 It.IsAny<AppointmentReminderDeliveryRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<AppointmentReminderDeliveryRequest, CancellationToken>((request, _) => deliveredRequest = request)
             .ReturnsAsync(new DeliveryResult { Succeeded = true, Status = DeliveryStatus.Sent });
         communication.Setup(service => service.SendAppointmentReminderSmsAsync(
                 It.IsAny<AppointmentReminderDeliveryRequest>(), It.IsAny<CancellationToken>()))
@@ -300,10 +371,168 @@ public sealed class SettingsAdministrationTests
         var dispatches = await context.AppointmentReminderDispatches.ToListAsync();
         Assert.Single(dispatches);
         Assert.All(dispatches, dispatch => Assert.Equal(ReminderDispatchStatus.Sent, dispatch.Status));
+        var zone = TimeZoneInfo.FindSystemTimeZoneById("America/Los_Angeles");
+        Assert.Contains(zone.DaylightName, deliveredRequest!.AppointmentLocalTime, StringComparison.Ordinal);
         communication.Verify(service => service.SendAppointmentReminderEmailAsync(
             It.IsAny<AppointmentReminderDeliveryRequest>(), It.IsAny<CancellationToken>()), Times.Once);
         communication.Verify(service => service.SendAppointmentReminderSmsAsync(
             It.IsAny<AppointmentReminderDeliveryRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AutoCheckInProcessor_QueuesMaximumLeadWithoutCompletedIntake()
+    {
+        await using var context = CreateContext();
+        var now = new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero);
+        var clinic = new Clinic { Name = "Auto Check-In Clinic", Slug = $"auto-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var visitType = await context.VisitTypes.FirstAsync(item =>
+            item.ClinicId == clinic.Id && item.RequiresIntake && item.IsActive);
+        var scheduling = await context.SchedulingPreferences.SingleAsync(item => item.ClinicId == clinic.Id);
+        scheduling.SendAppointmentReminders = false;
+        var policy = await context.AutoCheckInPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.IsEnabled = true;
+        policy.LeadHours = 168;
+        policy.EnableEmail = true;
+        policy.EnableSms = false;
+        policy.EligibleVisitTypeIdsJson = JsonSerializer.Serialize(new[] { visitType.Id });
+
+        var eligiblePatient = CreateConsentedPatient(clinic.Id, "eligible@example.invalid", now.UtcDateTime);
+        var completedPatient = CreateConsentedPatient(clinic.Id, "completed@example.invalid", now.UtcDateTime);
+        var eligibleAppointment = CreateIntakeAppointment(clinic.Id, eligiblePatient, visitType, now.UtcDateTime.AddHours(167));
+        var completedAppointment = CreateIntakeAppointment(clinic.Id, completedPatient, visitType, now.UtcDateTime.AddHours(167));
+        var eligibleIntake = CreateConsentedIntake(clinic.Id, eligiblePatient, now.UtcDateTime, submittedAt: null);
+        var completedIntake = CreateConsentedIntake(clinic.Id, completedPatient, now.UtcDateTime, submittedAt: now.UtcDateTime);
+        context.AddRange(
+            eligiblePatient,
+            completedPatient,
+            eligibleAppointment,
+            completedAppointment,
+            eligibleIntake,
+            completedIntake);
+        await context.SaveChangesAsync();
+
+        var intakeWorkflow = new Mock<IIntakeCommunicationWorkflow>();
+        intakeWorkflow.Setup(service => service.SendInviteAsync(
+                It.IsAny<IntakeSendInviteRequest>(),
+                It.IsAny<IntakeCommunicationContext>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IntakeSendInviteRequest request, IntakeCommunicationContext? _, CancellationToken _) =>
+                new IntakeDeliverySendResult
+                {
+                    Success = true,
+                    IntakeId = request.IntakeId,
+                    PatientId = eligiblePatient.Id,
+                    Channel = request.Channel
+                });
+        var processor = new AppointmentCommunicationProcessor(
+            context,
+            Mock.Of<ICommunicationService>(),
+            intakeWorkflow.Object,
+            new MutableTimeProvider(now),
+            NullLogger<AppointmentCommunicationProcessor>.Instance);
+
+        await processor.ProcessDueAsync();
+
+        var dispatch = await context.AppointmentReminderDispatches.SingleAsync();
+        Assert.Equal(eligibleAppointment.Id, dispatch.AppointmentId);
+        Assert.Equal(ReminderDispatchPurpose.AutoCheckIn, dispatch.Purpose);
+        Assert.Equal(ReminderDispatchStatus.Sent, dispatch.Status);
+        Assert.DoesNotContain(
+            await context.AppointmentReminderDispatches.ToListAsync(),
+            item => item.AppointmentId == completedAppointment.Id);
+        intakeWorkflow.Verify(service => service.SendInviteAsync(
+            It.IsAny<IntakeSendInviteRequest>(),
+            It.IsAny<IntakeCommunicationContext>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task AppointmentReminderProcessor_AtomicallyClaimsDispatchAcrossWorkers()
+    {
+        var databaseName = $"settings-claims-{Guid.NewGuid():N}";
+        var connectionString = $"Data Source={databaseName};Mode=Memory;Cache=Shared";
+        await using var keeper = new SqliteConnection(connectionString);
+        await keeper.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connectionString)
+            .Options;
+        var now = new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero);
+        Guid dispatchId;
+
+        await using (var seedContext = new ApplicationDbContext(options))
+        {
+            await seedContext.Database.EnsureCreatedAsync();
+            var clinic = new Clinic { Name = "Claim Clinic", Slug = $"claim-{Guid.NewGuid():N}" };
+            seedContext.Clinics.Add(clinic);
+            await seedContext.SaveChangesAsync();
+            (await seedContext.SchedulingPreferences.SingleAsync(item => item.ClinicId == clinic.Id))
+                .SendAppointmentReminders = false;
+            (await seedContext.AutoCheckInPolicies.SingleAsync(item => item.ClinicId == clinic.Id))
+                .IsEnabled = false;
+            var patient = CreateConsentedPatient(clinic.Id, "claim@example.invalid", now.UtcDateTime);
+            var appointment = new Appointment
+            {
+                Patient = patient,
+                PatientId = patient.Id,
+                Clinic = clinic,
+                ClinicId = clinic.Id,
+                ClinicalId = Guid.NewGuid(),
+                StartTimeUtc = now.UtcDateTime.AddHours(24),
+                EndTimeUtc = now.UtcDateTime.AddHours(25),
+                Status = AppointmentStatus.Scheduled,
+                LastModifiedUtc = now.UtcDateTime,
+                ModifiedByUserId = Guid.NewGuid()
+            };
+            var intake = CreateConsentedIntake(clinic.Id, patient, now.UtcDateTime, submittedAt: null);
+            var dispatch = new AppointmentReminderDispatch
+            {
+                ClinicId = clinic.Id,
+                Appointment = appointment,
+                AppointmentId = appointment.Id,
+                AppointmentVersionUtc = appointment.LastModifiedUtc,
+                Purpose = ReminderDispatchPurpose.AppointmentReminder,
+                Channel = ReminderChannel.Email,
+                IdempotencyKey = $"claim:{appointment.Id:N}",
+                Status = ReminderDispatchStatus.Pending,
+                EligibleAtUtc = now.UtcDateTime,
+                NextAttemptAtUtc = now.UtcDateTime,
+                CreatedAtUtc = now.UtcDateTime,
+                UpdatedAtUtc = now.UtcDateTime
+            };
+            dispatchId = dispatch.Id;
+            seedContext.AddRange(patient, appointment, intake, dispatch);
+            await seedContext.SaveChangesAsync();
+        }
+
+        var communication = new Mock<ICommunicationService>();
+        communication.Setup(service => service.SendAppointmentReminderEmailAsync(
+                It.IsAny<AppointmentReminderDeliveryRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DeliveryResult { Succeeded = true, Status = DeliveryStatus.Sent });
+        await using var firstContext = new ApplicationDbContext(options);
+        await using var secondContext = new ApplicationDbContext(options);
+        var first = new AppointmentCommunicationProcessor(
+            firstContext,
+            communication.Object,
+            Mock.Of<IIntakeCommunicationWorkflow>(),
+            new MutableTimeProvider(now),
+            NullLogger<AppointmentCommunicationProcessor>.Instance);
+        var second = new AppointmentCommunicationProcessor(
+            secondContext,
+            communication.Object,
+            Mock.Of<IIntakeCommunicationWorkflow>(),
+            new MutableTimeProvider(now),
+            NullLogger<AppointmentCommunicationProcessor>.Instance);
+
+        await Task.WhenAll(first.ProcessDueAsync(), second.ProcessDueAsync());
+
+        await using var assertionContext = new ApplicationDbContext(options);
+        var saved = await assertionContext.AppointmentReminderDispatches.SingleAsync(item => item.Id == dispatchId);
+        Assert.Equal(ReminderDispatchStatus.Sent, saved.Status);
+        Assert.Equal(1, saved.AttemptCount);
+        communication.Verify(service => service.SendAppointmentReminderEmailAsync(
+            It.IsAny<AppointmentReminderDeliveryRequest>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -442,6 +671,63 @@ public sealed class SettingsAdministrationTests
         Assert.True(qrResult.Succeeded);
         Assert.Equal(2, await context.KioskCheckInTokens.CountAsync(item => item.ConsumedAtUtc != null));
     }
+
+    private static Patient CreateConsentedPatient(Guid clinicId, string email, DateTime now) =>
+        new()
+        {
+            FirstName = "Communication",
+            LastName = "Fixture",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            Email = email,
+            ConsentSigned = true,
+            ClinicId = clinicId,
+            ModifiedByUserId = Guid.NewGuid(),
+            LastModifiedUtc = now
+        };
+
+    private static Appointment CreateIntakeAppointment(
+        Guid clinicId,
+        Patient patient,
+        VisitType visitType,
+        DateTime startTimeUtc) =>
+        new()
+        {
+            Patient = patient,
+            PatientId = patient.Id,
+            ClinicId = clinicId,
+            ClinicalId = Guid.NewGuid(),
+            VisitType = visitType,
+            VisitTypeId = visitType.Id,
+            StartTimeUtc = startTimeUtc,
+            EndTimeUtc = startTimeUtc.AddMinutes(visitType.DurationMinutes),
+            Status = AppointmentStatus.Scheduled,
+            LastModifiedUtc = startTimeUtc.AddDays(-1),
+            ModifiedByUserId = Guid.NewGuid()
+        };
+
+    private static IntakeForm CreateConsentedIntake(
+        Guid clinicId,
+        Patient patient,
+        DateTime now,
+        DateTime? submittedAt) =>
+        new()
+        {
+            Patient = patient,
+            PatientId = patient.Id,
+            ClinicId = clinicId,
+            TemplateVersion = "1.0",
+            AccessToken = "test-token-hash",
+            ResponseJson = "{}",
+            PainMapData = "{}",
+            Consents = IntakeConsentJson.Serialize(new IntakeConsentPacket
+            {
+                CommunicationEmailConsent = true,
+                CommunicationEmail = patient.Email
+            }),
+            SubmittedAt = submittedAt,
+            LastModifiedUtc = now,
+            ModifiedByUserId = Guid.NewGuid()
+        };
 
     private static ApplicationDbContext CreateContext()
     {
