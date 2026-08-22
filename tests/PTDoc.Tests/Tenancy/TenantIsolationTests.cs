@@ -814,6 +814,40 @@ public class TenantIsolationTests
         };
         var clinicianA = Guid.NewGuid();
         var clinicianB = Guid.NewGuid();
+        var userA = new User
+        {
+            Id = clinicianA,
+            Username = "settings-mfa-a",
+            PinHash = "hash-a",
+            FirstName = "MFA",
+            LastName = "A",
+            Role = "PT",
+            ClinicId = ClinicA,
+            CreatedAt = DateTime.UtcNow
+        };
+        var userB = new User
+        {
+            Id = clinicianB,
+            Username = "settings-mfa-b",
+            PinHash = "hash-b",
+            FirstName = "MFA",
+            LastName = "B",
+            Role = "PT",
+            ClinicId = ClinicB,
+            CreatedAt = DateTime.UtcNow
+        };
+        var credentialA = new UserMfaCredential
+        {
+            UserId = userA.Id,
+            EncryptedSecret = "encrypted-a",
+            IsActive = true
+        };
+        var credentialB = new UserMfaCredential
+        {
+            UserId = userB.Id,
+            EncryptedSecret = "encrypted-b",
+            IsActive = true
+        };
         var appointmentA = new Appointment
         {
             PatientId = patientA.Id,
@@ -849,10 +883,30 @@ public class TenantIsolationTests
             UpdatedByUserId = clinicianB
         };
 
-        seedCtx.AddRange(clinicA, clinicB, patientA, patientB, appointmentA, appointmentB);
+        seedCtx.AddRange(
+            clinicA,
+            clinicB,
+            patientA,
+            patientB,
+            userA,
+            userB,
+            appointmentA,
+            appointmentB);
         await seedCtx.SaveChangesAsync();
 
         seedCtx.AddRange(
+            credentialA,
+            credentialB,
+            new UserMfaRecoveryCode
+            {
+                UserMfaCredentialId = credentialA.Id,
+                CodeHash = "recovery-a"
+            },
+            new UserMfaRecoveryCode
+            {
+                UserMfaCredentialId = credentialB.Id,
+                CodeHash = "recovery-b"
+            },
             new ScheduleBlockRule
             {
                 ClinicId = ClinicA,
@@ -926,6 +980,22 @@ public class TenantIsolationTests
         await using var systemCtx = CreateSystemContext(dbName);
         await using var tenantCtx = CreateTenantContext(ClinicA, dbName);
 
+        await AssertSettingsScopeAsync(
+            systemCtx.UserMfaCredentials.Include(row => row.User),
+            tenantCtx.UserMfaCredentials.Include(row => row.User),
+            2,
+            1,
+            row => row.User!.ClinicId!.Value);
+        await AssertSettingsScopeAsync(
+            systemCtx.UserMfaRecoveryCodes
+                .Include(row => row.Credential)
+                .ThenInclude(row => row!.User),
+            tenantCtx.UserMfaRecoveryCodes
+                .Include(row => row.Credential)
+                .ThenInclude(row => row!.User),
+            2,
+            1,
+            row => row.Credential!.User!.ClinicId!.Value);
         await AssertSettingsScopeAsync(systemCtx.RoleCapabilityPermissions, tenantCtx.RoleCapabilityPermissions, 540, 270, row => row.ClinicId);
         await AssertSettingsScopeAsync(systemCtx.ClinicSecurityPolicies, tenantCtx.ClinicSecurityPolicies, 2, 1, row => row.ClinicId);
         await AssertSettingsScopeAsync(systemCtx.VisitTypes, tenantCtx.VisitTypes, 24, 12, row => row.ClinicId);

@@ -1029,6 +1029,11 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<HepTrackingObservation>()
             .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
 
+        modelBuilder.Entity<UserMfaCredential>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.User!.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<UserMfaRecoveryCode>()
+            .HasQueryFilter(e =>
+                CurrentClinicId == null || e.Credential!.User!.ClinicId == CurrentClinicId);
         modelBuilder.Entity<RoleCapabilityPermission>()
             .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
         modelBuilder.Entity<ClinicSecurityPolicy>()
