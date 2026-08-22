@@ -1,0 +1,96 @@
+@page "/kiosk"
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+@rendermode InteractiveServer
+@using PTDoc.Application.Settings
+@inject IServiceProvider Services
+@inject IJSRuntime JS
+
+<main class="kiosk-check-in" aria-labelledby="kiosk-title">
+    <header><h1 id="kiosk-title">Clinic Check-In</h1><p>Enter the appointment code provided by the clinic.</p></header>
+
+    @if (_statusMessage is not null)
+    {
+        <div class="kiosk-check-in__status @(_statusIsError ? "is-error" : string.Empty)" role="@(_statusIsError ? "alert" : "status")">@_statusMessage</div>
+    }
+
+    @if (string.IsNullOrWhiteSpace(_deviceCredential))
+    {
+        <form @onsubmit="Enroll" @onsubmit:preventDefault="true">
+            <h2>Enroll this station</h2>
+            <label>One-time station code<input autocomplete="one-time-code" @bind="_enrollmentCode" /></label>
+            <button type="submit" disabled="@_isBusy">Enroll Station</button>
+        </form>
+    }
+    else
+    {
+        <form @onsubmit="CheckIn" @onsubmit:preventDefault="true">
+            <label>Appointment check-in code<input inputmode="numeric" autocomplete="one-time-code" @bind="_appointmentToken" autofocus /></label>
+            <button type="submit" disabled="@_isBusy">Check In</button>
+        </form>
+    }
+</main>
+
+@code {
+    private const string CredentialStorageKey = "ptdoc.kiosk.deviceCredential";
+    private IKioskCheckInService? _service;
+    private string _deviceCredential = string.Empty;
+    private string _enrollmentCode = string.Empty;
+    private string _appointmentToken = string.Empty;
+    private string? _statusMessage;
+    private bool _statusIsError;
+    private bool _isBusy;
+    private bool _loadedStorage;
+
+    protected override void OnInitialized() =>
+        _service = Services.GetService(typeof(IKioskCheckInService)) as IKioskCheckInService;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _loadedStorage) return;
+        _loadedStorage = true;
+        _deviceCredential = await JS.InvokeAsync<string?>("localStorage.getItem", CredentialStorageKey) ?? string.Empty;
+        StateHasChanged();
+    }
+
+    private async Task Enroll()
+    {
+        if (_service is null) return;
+        _isBusy = true;
+        try
+        {
+            var result = await _service.EnrollAsync(_enrollmentCode);
+            if (!result.Succeeded || result.Value is null)
+            {
+                ShowStatus("The enrollment code is invalid, expired, or already used.", true);
+                return;
+            }
+            _deviceCredential = result.Value.DeviceCredential;
+            await JS.InvokeVoidAsync("localStorage.setItem", CredentialStorageKey, _deviceCredential);
+            _enrollmentCode = string.Empty;
+            ShowStatus("Station enrolled. It can only perform appointment check-in.", false);
+        }
+        catch (Exception) { ShowStatus("This station could not be enrolled. Try again.", true); }
+        finally { _isBusy = false; }
+    }
+
+    private async Task CheckIn()
+    {
+        if (_service is null) return;
+        _isBusy = true;
+        try
+        {
+            var result = await _service.CheckInAsync(_deviceCredential, _appointmentToken);
+            if (!result.Succeeded)
+            {
+                ShowStatus("The check-in code is invalid, expired, already used, or not available at this clinic.", true);
+                return;
+            }
+            _appointmentToken = string.Empty;
+            ShowStatus("Check-in complete. Please have a seat; clinic staff will be with you shortly.", false);
+        }
+        catch (Exception) { ShowStatus("Check-in could not be completed. Please ask clinic staff for help.", true); }
+        finally { _isBusy = false; }
+    }
+
+    private void ShowStatus(string message, bool error) { _statusMessage = message; _statusIsError = error; }
+}

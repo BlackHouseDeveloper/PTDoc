@@ -24,7 +24,7 @@ public sealed class LoginRegistrationTests : TestContext
                 new DateTime(1990, 1, 1),
                 "PT",
                 clinicId,
-                "1234",
+                "12345678",
                 "PT-1001",
                 "MA",
                 It.IsAny<CancellationToken>()))
@@ -42,8 +42,8 @@ public sealed class LoginRegistrationTests : TestContext
         cut.Find("#roleKey").Change("PT");
         cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("#licenseNumber")));
         cut.Find("#clinicId").Change(clinicId.ToString());
-        cut.Find("#pinSignup").Input("1234");
-        cut.Find("#confirmPinSignup").Input("1234");
+        cut.Find("#pinSignup").Input("12345678");
+        cut.Find("#confirmPinSignup").Input("12345678");
         cut.Find("#licenseNumber").Input("PT-1001");
         cut.Find("#licenseState").Change("MA");
 
@@ -57,7 +57,7 @@ public sealed class LoginRegistrationTests : TestContext
                 new DateTime(1990, 1, 1),
                 "PT",
                 clinicId,
-                "1234",
+                "12345678",
                 "PT-1001",
                 "MA",
                 It.IsAny<CancellationToken>()), Times.Once);
@@ -137,8 +137,8 @@ public sealed class LoginRegistrationTests : TestContext
         cut.Find("#email").Input("casey.tester@example.com");
         cut.Find("#roleKey").Change("Owner");
         cut.Find("#clinicId").Change(clinicId.ToString());
-        cut.Find("#pinSignup").Input("1234");
-        cut.Find("#confirmPinSignup").Input("1234");
+        cut.Find("#pinSignup").Input("12345678");
+        cut.Find("#confirmPinSignup").Input("12345678");
 
         cut.Find("form[data-testid='signup-form']").Submit();
 
@@ -187,8 +187,8 @@ public sealed class LoginRegistrationTests : TestContext
         cut.Find("#email").Input("casey.tester@example.com");
         cut.Find("#roleKey").Change("Owner");
         cut.Find("#clinicId").Change(clinicId.ToString());
-        cut.Find("#pinSignup").Input("1234");
-        cut.Find("#confirmPinSignup").Input("1234");
+        cut.Find("#pinSignup").Input("12345678");
+        cut.Find("#confirmPinSignup").Input("12345678");
         cut.Find("form[data-testid='signup-form']").Submit();
 
         cut.WaitForAssertion(() =>

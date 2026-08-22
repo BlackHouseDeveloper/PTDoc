@@ -4,6 +4,7 @@ using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
+using PTDoc.Application.Settings;
 using PTDoc.Core.Services;
 using PTDoc.Infrastructure.Services;
 using PTDoc.Infrastructure.ReferenceData;
@@ -65,6 +66,12 @@ builder.Services.AddScoped<PTDoc.Application.NoteTemplates.INoteTemplateAdminist
 builder.Services.AddScoped<INotificationCenterService, HttpNotificationCenterService>();
 builder.Services.AddScoped<IDashboardAlertService, HttpDashboardAlertService>();
 builder.Services.AddScoped<INavigationBadgeService, HttpNavigationBadgeService>();
+builder.Services.AddScoped<SettingsAdministrationApiClient>();
+builder.Services.AddScoped<IRolePermissionAdministrationService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
+builder.Services.AddScoped<ISecurityPolicyAdministrationService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
+builder.Services.AddScoped<ISchedulingAdministrationService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
+builder.Services.AddScoped<IAutoCheckInAdministrationService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
+builder.Services.AddScoped<IKioskCheckInService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
 builder.Services.AddScoped<INavigationBadgeRefreshNotifier, NavigationBadgeRefreshNotifier>();
 builder.Services.AddScoped<IToastService, ToastService>();
 builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
@@ -401,7 +408,7 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
     {
         validationCodes.Add("pinRequired");
     }
-    else if (pin.Length != 4 || pin.Any(static ch => !char.IsDigit(ch)))
+    else if (pin.Length is < 4 or > 12 || pin.Any(static ch => !char.IsDigit(ch)))
     {
         validationCodes.Add("pinFormat");
     }
@@ -463,13 +470,145 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
             return Results.Redirect("/login?error=1");
         }
 
+        if (authResponse.StatusCode == HttpStatusCode.Accepted)
+        {
+            if (string.IsNullOrWhiteSpace(loginResponse.ChallengeToken))
+            {
+                return Results.Redirect("/login?error=1");
+            }
+
+            SetStepUpCookie(httpContext, loginResponse.ChallengeToken);
+            var mode = loginResponse.Status switch
+            {
+                nameof(AuthStatus.RequiresPinChange) => "pin-change",
+                nameof(AuthStatus.RequiresMfaEnrollment) => "enroll",
+                nameof(AuthStatus.RequiresMfaVerification) => "verify",
+                _ => string.Empty
+            };
+            if (mode.Length == 0) return Results.Redirect("/login?error=1");
+            return Results.Redirect($"/authentication-step-up?mode={mode}&returnUrl={Uri.EscapeDataString(returnUrlValidation.Value)}");
+        }
+
+        if (!IsCompleteLoginResponse(loginResponse))
+        {
+            return Results.Redirect("/login?error=1");
+        }
+
         var principal = CreateWebPrincipal(loginResponse);
         await httpContext.SignInAsync(PTDocAuthSchemes.Cookie, principal);
 
-        return Results.Redirect(ResolvePostLoginRedirect(loginResponse.Role, returnUrlValidation.Value));
+        return Results.Redirect(ResolvePostLoginRedirect(loginResponse.Role!, returnUrlValidation.Value));
     }
 })
 .AllowAnonymous();
+
+app.MapPost("/auth/step-up/pin-change", async (
+    WebPinChangeRequest request,
+    HttpContext httpContext,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryGetStepUpChallenge(httpContext, out var challenge)) return Results.Unauthorized();
+    var client = httpClientFactory.CreateClient("PTDocAuthApi");
+    using var response = await client.PostAsJsonAsync(
+        "/api/v1/auth/pin-change",
+        new { challengeToken = challenge, request.NewPin },
+        cancellationToken);
+    if (response.StatusCode == HttpStatusCode.UnprocessableEntity)
+    {
+        return Results.UnprocessableEntity(new { error = "pin_policy_failed", message = "PIN must contain 8 to 12 numeric digits." });
+    }
+
+    var login = await response.Content.ReadFromJsonAsync<WebPinLoginResponse>(cancellationToken: cancellationToken);
+    if (login is null || !response.IsSuccessStatusCode) return Results.Unauthorized();
+    if (response.StatusCode == HttpStatusCode.Accepted && !string.IsNullOrWhiteSpace(login.ChallengeToken))
+    {
+        SetStepUpCookie(httpContext, login.ChallengeToken);
+        var next = login.Status == nameof(AuthStatus.RequiresMfaEnrollment) ? "enroll" : "verify";
+        return Results.Ok(new { completed = false, next });
+    }
+
+    return await CompleteWebAuthenticationAsync(httpContext, login, request.ReturnUrl);
+}).AllowAnonymous().RequireRateLimiting("MfaAuthentication");
+
+app.MapPost("/auth/step-up/mfa/enroll", async (
+    HttpContext httpContext,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryGetStepUpChallenge(httpContext, out var challenge)) return Results.Unauthorized();
+    var client = httpClientFactory.CreateClient("PTDocAuthApi");
+    using var response = await client.PostAsJsonAsync("/api/v1/auth/mfa/enroll", new { challengeToken = challenge }, cancellationToken);
+    if (!response.IsSuccessStatusCode) return Results.StatusCode((int)response.StatusCode);
+    var enrollment = await response.Content.ReadFromJsonAsync<MfaEnrollmentStart>(cancellationToken: cancellationToken);
+    if (enrollment is null) return Results.Problem("MFA enrollment response was empty.");
+    SetStepUpCookie(httpContext, enrollment.EnrollmentChallengeToken);
+    return Results.Ok(new { enrollment.ManualKey, enrollment.OtpAuthUri, enrollment.QrSvg });
+}).AllowAnonymous().RequireRateLimiting("MfaAuthentication");
+
+app.MapPost("/auth/step-up/mfa/verify-enrollment", async (
+    WebMfaCodeRequest request,
+    HttpContext httpContext,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryGetStepUpChallenge(httpContext, out var challenge)) return Results.Unauthorized();
+    var client = httpClientFactory.CreateClient("PTDocAuthApi");
+    using var response = await client.PostAsJsonAsync(
+        "/api/v1/auth/mfa/verify-enrollment",
+        new { challengeToken = challenge, request.Code },
+        cancellationToken);
+    if (!response.IsSuccessStatusCode) return Results.UnprocessableEntity(new { error = "invalid_code" });
+    var completion = await response.Content.ReadFromJsonAsync<MfaEnrollmentCompletion>(cancellationToken: cancellationToken);
+    if (completion is null) return Results.Problem("MFA enrollment completion response was empty.");
+    var login = await ExchangeCompletionTokenAsync(client, completion.CompletionToken, cancellationToken);
+    if (login is null) return Results.Unauthorized();
+    await SignInWebUserAsync(httpContext, login);
+    ClearStepUpCookie(httpContext);
+    return Results.Ok(new
+    {
+        completed = true,
+        redirectUrl = ResolvePostLoginRedirect(login.Role!, NormalizeStepUpReturnUrl(request.ReturnUrl)),
+        recoveryCodes = completion.RecoveryCodes
+    });
+}).AllowAnonymous().RequireRateLimiting("MfaAuthentication");
+
+app.MapPost("/auth/step-up/mfa/verify", async (
+    WebMfaCodeRequest request,
+    HttpContext httpContext,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken cancellationToken) =>
+    await CompleteMfaVerificationAsync(request.Code, request.ReturnUrl, useRecoveryCode: false, httpContext, httpClientFactory, cancellationToken))
+    .AllowAnonymous().RequireRateLimiting("MfaAuthentication");
+
+app.MapPost("/auth/step-up/mfa/recovery", async (
+    WebMfaRecoveryRequest request,
+    HttpContext httpContext,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken cancellationToken) =>
+    await CompleteMfaVerificationAsync(request.RecoveryCode, request.ReturnUrl, useRecoveryCode: true, httpContext, httpClientFactory, cancellationToken))
+    .AllowAnonymous().RequireRateLimiting("MfaAuthentication");
+
+app.MapPost("/auth/step-up/mfa/recovery-codes/regenerate", async (
+    WebMfaRecoveryCodeRegenerationRequest request,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken cancellationToken) =>
+{
+    var client = httpClientFactory.CreateClient("ServerAPI");
+    using var response = await client.PostAsJsonAsync(
+        "/api/v1/auth/mfa/recovery-codes/regenerate",
+        new { request.Code },
+        cancellationToken);
+    if (!response.IsSuccessStatusCode)
+    {
+        return Results.StatusCode((int)response.StatusCode);
+    }
+
+    var recoveryCodes = await response.Content.ReadFromJsonAsync<MfaRecoveryCodeSet>(cancellationToken: cancellationToken);
+    return recoveryCodes is null
+        ? Results.Problem("MFA recovery-code response was empty.")
+        : Results.Ok(recoveryCodes);
+}).RequireAuthorization().RequireRateLimiting("MfaAuthentication");
 
 app.MapGet("/auth/logout", async (HttpContext httpContext) =>
 {
@@ -993,14 +1132,106 @@ static bool IsStaticAssetRequest(PathString path)
     return false;
 }
 
+static bool IsCompleteLoginResponse(WebPinLoginResponse response) =>
+    response.UserId.HasValue
+    && !string.IsNullOrWhiteSpace(response.Username)
+    && !string.IsNullOrWhiteSpace(response.Token)
+    && response.ExpiresAt.HasValue
+    && !string.IsNullOrWhiteSpace(response.Role);
+
+static async Task<IResult> CompleteWebAuthenticationAsync(
+    HttpContext httpContext,
+    WebPinLoginResponse login,
+    string returnUrl)
+{
+    if (!IsCompleteLoginResponse(login)) return Results.Unauthorized();
+    await SignInWebUserAsync(httpContext, login);
+    ClearStepUpCookie(httpContext);
+    return Results.Ok(new
+    {
+        completed = true,
+        redirectUrl = ResolvePostLoginRedirect(login.Role!, NormalizeStepUpReturnUrl(returnUrl))
+    });
+}
+
+static async Task<IResult> CompleteMfaVerificationAsync(
+    string suppliedValue,
+    string returnUrl,
+    bool useRecoveryCode,
+    HttpContext httpContext,
+    IHttpClientFactory httpClientFactory,
+    CancellationToken cancellationToken)
+{
+    if (!TryGetStepUpChallenge(httpContext, out var challenge)) return Results.Unauthorized();
+    var client = httpClientFactory.CreateClient("PTDocAuthApi");
+    var path = useRecoveryCode ? "/api/v1/auth/mfa/recovery" : "/api/v1/auth/mfa/verify";
+    object payload = useRecoveryCode
+        ? new { challengeToken = challenge, recoveryCode = suppliedValue }
+        : new { challengeToken = challenge, code = suppliedValue };
+    using var response = await client.PostAsJsonAsync(path, payload, cancellationToken);
+    var verification = await response.Content.ReadFromJsonAsync<MfaVerificationResult>(cancellationToken: cancellationToken);
+    if (!response.IsSuccessStatusCode || verification?.Succeeded != true || string.IsNullOrWhiteSpace(verification.CompletionToken))
+    {
+        return Results.UnprocessableEntity(new { error = verification?.ErrorCode ?? "invalid_code" });
+    }
+
+    var login = await ExchangeCompletionTokenAsync(client, verification.CompletionToken, cancellationToken);
+    if (login is null) return Results.Unauthorized();
+    return await CompleteWebAuthenticationAsync(httpContext, login, returnUrl);
+}
+
+static async Task<WebPinLoginResponse?> ExchangeCompletionTokenAsync(
+    HttpClient client,
+    string completionToken,
+    CancellationToken cancellationToken)
+{
+    using var response = await client.PostAsJsonAsync(
+        "/api/v1/auth/complete",
+        new { completionToken },
+        cancellationToken);
+    if (!response.IsSuccessStatusCode) return null;
+    var login = await response.Content.ReadFromJsonAsync<WebPinLoginResponse>(cancellationToken: cancellationToken);
+    return login is not null && IsCompleteLoginResponse(login) ? login : null;
+}
+
+static Task SignInWebUserAsync(HttpContext httpContext, WebPinLoginResponse login) =>
+    httpContext.SignInAsync(PTDocAuthSchemes.Cookie, CreateWebPrincipal(login));
+
+static void SetStepUpCookie(HttpContext httpContext, string challengeToken) =>
+    httpContext.Response.Cookies.Append("ptdoc_step_up", challengeToken, new CookieOptions
+    {
+        HttpOnly = true,
+        Secure = true,
+        SameSite = SameSiteMode.Strict,
+        IsEssential = true,
+        MaxAge = TimeSpan.FromMinutes(10),
+        Path = "/auth/step-up"
+    });
+
+static bool TryGetStepUpChallenge(HttpContext httpContext, out string challengeToken)
+{
+    challengeToken = httpContext.Request.Cookies["ptdoc_step_up"] ?? string.Empty;
+    return !string.IsNullOrWhiteSpace(challengeToken) && challengeToken.Length <= 4096;
+}
+
+static void ClearStepUpCookie(HttpContext httpContext) =>
+    httpContext.Response.Cookies.Delete("ptdoc_step_up", new CookieOptions
+    {
+        Secure = true,
+        SameSite = SameSiteMode.Strict,
+        Path = "/auth/step-up"
+    });
+
+static string NormalizeStepUpReturnUrl(string returnUrl) => ReturnUrlValidator.Normalize(returnUrl).Value;
+
 static ClaimsPrincipal CreateWebPrincipal(WebPinLoginResponse loginResponse)
 {
     var claims = new List<Claim>
     {
-        new(PTDocClaimTypes.InternalUserId, loginResponse.UserId.ToString()),
-        new(ClaimTypes.NameIdentifier, loginResponse.UserId.ToString()),
-        new(ClaimTypes.Name, loginResponse.Username),
-        new(ClaimTypes.Role, loginResponse.Role),
+        new(PTDocClaimTypes.InternalUserId, loginResponse.UserId!.Value.ToString()),
+        new(ClaimTypes.NameIdentifier, loginResponse.UserId.Value.ToString()),
+        new(ClaimTypes.Name, loginResponse.Username!),
+        new(ClaimTypes.Role, loginResponse.Role!),
         new(PTDocClaimTypes.AuthenticationType, "web_cookie")
     };
 
@@ -1009,7 +1240,7 @@ static ClaimsPrincipal CreateWebPrincipal(WebPinLoginResponse loginResponse)
         claims.Add(new Claim(PTDocClaimTypes.ApiAccessToken, loginResponse.Token));
         claims.Add(new Claim(
             PTDocClaimTypes.ApiAccessTokenExpiresAt,
-            new DateTimeOffset(DateTime.SpecifyKind(loginResponse.ExpiresAt, DateTimeKind.Utc)).ToString("O")));
+            new DateTimeOffset(DateTime.SpecifyKind(loginResponse.ExpiresAt!.Value, DateTimeKind.Utc)).ToString("O")));
     }
 
     if (loginResponse.ClinicId.HasValue)
@@ -1073,18 +1304,25 @@ file sealed class WebPinLoginResponse
 {
     public required string Status { get; init; }
 
-    public required Guid UserId { get; init; }
+    public Guid? UserId { get; init; }
 
-    public required string Username { get; init; }
+    public string? Username { get; init; }
 
-    public required string Token { get; init; }
+    public string? Token { get; init; }
 
-    public required DateTime ExpiresAt { get; init; }
+    public DateTime? ExpiresAt { get; init; }
 
-    public required string Role { get; init; }
+    public string? Role { get; init; }
 
     public Guid? ClinicId { get; init; }
+
+    public string? ChallengeToken { get; init; }
 }
+
+file sealed record WebPinChangeRequest(string NewPin, string ReturnUrl);
+file sealed record WebMfaCodeRequest(string Code, string ReturnUrl);
+file sealed record WebMfaRecoveryRequest(string RecoveryCode, string ReturnUrl);
+file sealed record WebMfaRecoveryCodeRegenerationRequest(string Code);
 
 file sealed class WebAuthErrorResponse
 {

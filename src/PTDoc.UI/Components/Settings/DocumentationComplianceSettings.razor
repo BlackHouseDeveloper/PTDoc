@@ -1,0 +1,416 @@
+@inject NavigationManager Navigation
+
+<section class="documentation-settings" aria-labelledby="documentation-settings-title">
+    <header class="documentation-settings__page-header">
+        <img src="_content/PTDoc.UI/images/settings/clinical.svg" alt="" aria-hidden="true" />
+        <div>
+            <h1 id="documentation-settings-title">Documentation &amp; Compliance</h1>
+            <p>Set documentation templates, required fields, and compliance rules.</p>
+        </div>
+    </header>
+
+    <div id="documentation-contract-status" class="documentation-settings__contract-status" role="status">
+        <strong>Configuration preview</strong>
+        <span>These controls are available for review, but saving remains unavailable until the documentation policy contract is approved.</span>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_statusMessage))
+    {
+        <div class="documentation-settings__status" role="status">@_statusMessage</div>
+    }
+
+    <div class="documentation-settings__tabs" role="tablist" aria-label="Documentation and compliance settings">
+        @foreach (var tab in Tabs)
+        {
+            <button
+                type="button"
+                id="@tab.TabId"
+                class="documentation-settings__tab @(tab.Tab == _activeTab ? "is-active" : string.Empty)"
+                role="tab"
+                aria-selected="@(tab.Tab == _activeTab ? "true" : "false")"
+                aria-controls="@tab.PanelId"
+                @onclick="() => SelectTab(tab.Tab)">
+                <span class="documentation-icon" style="@IconStyle(tab.IconPath)" aria-hidden="true"></span>
+                <span>@tab.Label</span>
+            </button>
+        }
+    </div>
+
+    <div
+        id="@GetPanelId(_activeTab)"
+        class="documentation-settings__tabpanel"
+        role="tabpanel"
+        aria-labelledby="@GetTabId(_activeTab)"
+        tabindex="0">
+        @switch (_activeTab)
+        {
+            case DocumentationTab.HardStops:
+                <aside class="documentation-callout is-warning">
+                    <span class="documentation-icon documentation-callout__icon" style="@ShieldAlertIconStyle" aria-hidden="true"></span>
+                    <div><strong>Hard Stop Enforcement</strong><p>These settings prevent note submission until requirements are met. Hard stops ensure compliance and reduce billing denials.</p></div>
+                </aside>
+
+                <section class="documentation-panel">
+                    <header>
+                        <div class="documentation-panel__title"><span class="documentation-icon" style="@FileCheckIconStyle" aria-hidden="true"></span><h2>ICD-10 Code Requirements</h2></div>
+                        <p>Enforce minimum diagnosis code documentation</p>
+                    </header>
+                    <div class="documentation-panel__content">
+                        @ToggleSetting("Require Minimum ICD-10 Codes", "Block note submission without minimum diagnosis codes", _settings.RequireMinimumIcd10Codes, value => Update(settings => settings.RequireMinimumIcd10Codes = value))
+                        @if (_settings.RequireMinimumIcd10Codes)
+                        {
+                            <div class="documentation-field">
+                                <label for="minimum-icd10-codes">Minimum ICD-10 Codes Required</label>
+                                <select id="minimum-icd10-codes" value="@_settings.MinimumIcd10Codes" @onchange="e => Update(settings => settings.MinimumIcd10Codes = ParseInt(e.Value, 2))">
+                                    <option value="1">At least 1 code</option>
+                                    <option value="2">At least 2 codes (Recommended)</option>
+                                    <option value="3">At least 3 codes</option>
+                                    <option value="4">At least 4 codes</option>
+                                </select>
+                                <small><strong>Recommended:</strong> 2 codes minimum helps support medical necessity and reduces claim denials</small>
+                            </div>
+                        }
+                    </div>
+                </section>
+
+                <section class="documentation-panel">
+                    <header>
+                        <div class="documentation-panel__title"><span class="documentation-icon" style="@TrendingUpIconStyle" aria-hidden="true"></span><h2>Plan of Care Requirements</h2></div>
+                        <p>Ensure treatment plans are documented</p>
+                    </header>
+                    <div class="documentation-panel__content">
+                        @ToggleSetting("Require POC Before Signing", "Block note submission until Plan of Care is completed", _settings.RequirePlanOfCareBeforeSigning, value => Update(settings => settings.RequirePlanOfCareBeforeSigning = value))
+                        @ToggleSetting("Require Goals for Evaluations", "Initial and re-evaluations must include treatment goals", _settings.RequireGoalsForEvaluations, value => Update(settings => settings.RequireGoalsForEvaluations = value))
+                    </div>
+                </section>
+
+                <section class="documentation-panel">
+                    <header>
+                        <div class="documentation-panel__title"><span class="documentation-icon" style="@FileTextIconStyle" aria-hidden="true"></span><h2>Other Required Fields</h2></div>
+                        <p>Additional documentation requirements</p>
+                    </header>
+                    <div class="documentation-panel__content">
+                        @ToggleSetting("Require CPT Codes", "Enforce billing code selection before submission", _settings.RequireCptCodes, value => Update(settings => settings.RequireCptCodes = value))
+                        @ToggleSetting("Require Discharge Reason", "Mandatory discharge reason for final notes", _settings.RequireDischargeReason, value => Update(settings => settings.RequireDischargeReason = value))
+                        @ToggleSetting("Block Submission Without Required Fields", "Show hard stop error message instead of allowing submission", _settings.BlockSubmissionWithoutRequiredFields, value => Update(settings => settings.BlockSubmissionWithoutRequiredFields = value))
+                    </div>
+                </section>
+                break;
+            case DocumentationTab.ProgressNotes:
+                <aside class="documentation-callout is-information">
+                    <span class="documentation-icon documentation-callout__icon" style="@ClockIconStyle" aria-hidden="true"></span>
+                    <div><strong>Progress Note Automation</strong><p>Automatically track and remind clinicians when progress notes are due based on visit count or time elapsed.</p></div>
+                </aside>
+
+                <section class="documentation-panel">
+                    <header>
+                        <div class="documentation-panel__title"><span class="documentation-icon" style="@ClockIconStyle" aria-hidden="true"></span><h2>Progress Note Frequency</h2></div>
+                        <p>Configure when progress notes are required</p>
+                    </header>
+                    <div class="documentation-panel__content">
+                        @ToggleSetting("Enable Progress Note Reminders", "Automatically track and notify when progress notes are due", _settings.EnableProgressNoteReminders, value => Update(settings => settings.EnableProgressNoteReminders = value))
+                        @if (_settings.EnableProgressNoteReminders)
+                        {
+                            <fieldset class="documentation-options">
+                                <legend>Progress Note Frequency Rule</legend>
+                                @FrequencyOption("visits", "By Visit Count Only", "Trigger based on number of visits", false)
+                                @FrequencyOption("days", "By Time Elapsed Only", "Trigger based on days since last PN", false)
+                                @FrequencyOption("both", "Both (Whichever Comes First)", "Recommended: Trigger on 10 visits OR 30 days", true)
+                            </fieldset>
+
+                            @if (_settings.ProgressNoteFrequency is "visits" or "both")
+                            {
+                                <div class="documentation-field">
+                                    <label for="progress-note-visit-interval">Progress Note Required Every X Visits</label>
+                                    <select id="progress-note-visit-interval" value="@_settings.ProgressNoteVisitInterval" @onchange="e => Update(settings => settings.ProgressNoteVisitInterval = ParseInt(e.Value, 10))">
+                                        <option value="5">Every 5 visits</option><option value="6">Every 6 visits</option><option value="8">Every 8 visits</option><option value="10">Every 10 visits (Standard)</option><option value="12">Every 12 visits</option>
+                                    </select>
+                                </div>
+                            }
+                            @if (_settings.ProgressNoteFrequency is "days" or "both")
+                            {
+                                <div class="documentation-field">
+                                    <label for="progress-note-day-interval">Progress Note Required Every X Days</label>
+                                    <select id="progress-note-day-interval" value="@_settings.ProgressNoteDayInterval" @onchange="e => Update(settings => settings.ProgressNoteDayInterval = ParseInt(e.Value, 30))">
+                                        <option value="14">Every 14 days</option><option value="21">Every 21 days</option><option value="30">Every 30 days (Standard)</option><option value="45">Every 45 days</option><option value="60">Every 60 days</option>
+                                    </select>
+                                </div>
+                            }
+                            @ToggleSetting("Track Last Progress Note Date", "Display last PN date on patient chart for reference", _settings.TrackLastProgressNoteDate, value => Update(settings => settings.TrackLastProgressNoteDate = value))
+                            @ToggleSetting("Auto-Flag Overdue Progress Notes", "Show warning badge when progress note is overdue", _settings.AutoFlagOverdueProgressNotes, value => Update(settings => settings.AutoFlagOverdueProgressNotes = value))
+                        }
+                    </div>
+                </section>
+                break;
+            case DocumentationTab.PocTracking:
+                <aside class="documentation-callout is-success">
+                    <span class="documentation-icon documentation-callout__icon" style="@CalendarIconStyle" aria-hidden="true"></span>
+                    <div><strong>Plan of Care Tracking</strong><p>Automatically track POC dates, calculate weeks remaining, and prompt for updates during progress notes.</p></div>
+                </aside>
+
+                <section class="documentation-panel">
+                    <header>
+                        <div class="documentation-panel__title"><span class="documentation-icon" style="@CalendarIconStyle" aria-hidden="true"></span><h2>POC Date Management</h2></div>
+                        <p>Configure Plan of Care tracking behavior</p>
+                    </header>
+                    <div class="documentation-panel__content">
+                        @ToggleSetting("Require POC Start & End Dates", "Mandate start and end dates for all Plans of Care", _settings.RequirePocDates, value => Update(settings => settings.RequirePocDates = value))
+                        @ToggleSetting("Auto-Calculate Weeks Remaining", "Automatically calculate and display weeks remaining in POC", _settings.AutoCalculatePocWeeksRemaining, value => Update(settings => settings.AutoCalculatePocWeeksRemaining = value))
+                        @ToggleSetting("Update POC During Progress Notes", "Prompt clinician to review/update POC when writing progress notes", _settings.UpdatePocDuringProgressNotes, value => Update(settings => settings.UpdatePocDuringProgressNotes = value))
+                        @ToggleSetting("Warn When POC Expiring", "Show warning when Plan of Care is approaching end date", _settings.WarnWhenPocExpiring, value => Update(settings => settings.WarnWhenPocExpiring = value))
+                        @if (_settings.WarnWhenPocExpiring)
+                        {
+                            <div class="documentation-field">
+                                <label for="poc-warning-window">Warning Window (Days Before Expiration)</label>
+                                <select id="poc-warning-window" value="@_settings.PocExpirationWarningDays" @onchange="e => Update(settings => settings.PocExpirationWarningDays = ParseInt(e.Value, 14))">
+                                    <option value="7">7 days before</option><option value="14">14 days before (Recommended)</option><option value="21">21 days before</option><option value="30">30 days before</option>
+                                </select>
+                                <small>Display warning badge when POC end date is within this window</small>
+                            </div>
+                        }
+                    </div>
+                </section>
+
+                <section class="documentation-panel documentation-example" aria-labelledby="poc-example-heading">
+                    <header><div class="documentation-panel__title"><span class="documentation-icon" style="@PocExampleIconStyle" aria-hidden="true"></span><h2 id="poc-example-heading">POC Tracking Example</h2></div></header>
+                    <dl>
+                        <div><dt>POC Start Date:</dt><dd>01/15/2025</dd></div><div><dt>POC End Date:</dt><dd>03/15/2025</dd></div><div><dt>Total Duration:</dt><dd>8 weeks</dd></div><div><dt>Weeks Remaining:</dt><dd><span class="documentation-badge">4 weeks</span></dd></div>
+                    </dl>
+                </section>
+                break;
+            case DocumentationTab.NoteBehavior:
+                <aside class="documentation-callout is-accent">
+                    <span class="documentation-icon documentation-callout__icon" style="@RefreshIconStyle" aria-hidden="true"></span>
+                    <div><strong>Note Type &amp; Data Carry-Forward</strong><p>Configure how note types are selected and how data transfers when note type changes.</p></div>
+                </aside>
+
+                <section class="documentation-panel">
+                    <header><div class="documentation-panel__title"><span class="documentation-icon" style="@FileTextIconStyle" aria-hidden="true"></span><h2>Default Note Type</h2></div><p>Automatically select note type based on appointment</p></header>
+                    <div class="documentation-panel__content">
+                        @ToggleSetting("Default Note Type From Schedule", "Automatically use note type assigned to scheduled visit", _settings.DefaultNoteTypeFromSchedule, value => Update(settings => settings.DefaultNoteTypeFromSchedule = value))
+                        @ToggleSetting("Allow Note Type Change", "Let clinicians change note type from default", _settings.AllowNoteTypeChange, value => Update(settings => settings.AllowNoteTypeChange = value))
+                        @if (!_settings.DefaultNoteTypeFromSchedule)
+                        {
+                            <div class="documentation-inline-message is-warning" role="status"><span class="documentation-icon" style="@AlertIconStyle" aria-hidden="true"></span><span>When disabled, clinicians must manually select note type each time.</span></div>
+                        }
+                    </div>
+                </section>
+
+                <section class="documentation-panel">
+                    <header><div class="documentation-panel__title"><span class="documentation-icon" style="@RefreshIconStyle" aria-hidden="true"></span><h2>Data Carry-Forward Rules</h2></div><p>Configure what happens when note type changes</p></header>
+                    <div class="documentation-panel__content">
+                        @ToggleSetting("Carry Forward Data on Type Change", "Transfer existing note data when switching note types", _settings.CarryForwardDataOnTypeChange, value => Update(settings => settings.CarryForwardDataOnTypeChange = value))
+                        @if (_settings.CarryForwardDataOnTypeChange)
+                        {
+                            @ToggleSetting("Confirm Before Carry-Forward", "Ask clinician to confirm before transferring data", _settings.ConfirmBeforeCarryForward, value => Update(settings => settings.ConfirmBeforeCarryForward = value))
+                            <fieldset class="documentation-options documentation-options--checkboxes">
+                                <legend>Select SOAP Sections to Carry Forward</legend>
+                                @SoapOption("carry-forward-subjective", "Subjective (S)", "Patient complaints, history, symptoms", _settings.CarryForwardSubjective, true, value => Update(settings => settings.CarryForwardSubjective = value))
+                                @SoapOption("carry-forward-objective", "Objective (O)", "Measurements, tests, observations", _settings.CarryForwardObjective, true, value => Update(settings => settings.CarryForwardObjective = value))
+                                @SoapOption("carry-forward-assessment", "Assessment (A)", "Clinical interpretation, progress", _settings.CarryForwardAssessment, false, value => Update(settings => settings.CarryForwardAssessment = value))
+                                @SoapOption("carry-forward-plan", "Plan (P)", "Treatment plan, future actions", _settings.CarryForwardPlan, false, value => Update(settings => settings.CarryForwardPlan = value))
+                            </fieldset>
+                            <div class="documentation-inline-message is-information" role="note"><span class="documentation-icon" style="@AlertIconStyle" aria-hidden="true"></span><span><strong>Carry-Forward Example:</strong> When switching from “Daily Note” to “Progress Note,” the system will transfer selected SOAP sections to preserve documentation and reduce re-typing.</span></div>
+                        }
+                    </div>
+                </section>
+
+                <section class="documentation-panel">
+                    <header><div class="documentation-panel__title"><span class="documentation-icon" style="@LockIconStyle" aria-hidden="true"></span><h2>Note Security</h2></div><p>Note locking and auto-save settings</p></header>
+                    <div class="documentation-panel__content">
+                        @ToggleSetting("Lock Notes After Submission", "Prevent editing of signed/submitted notes", _settings.LockNotesAfterSubmission, value => Update(settings => settings.LockNotesAfterSubmission = value))
+                        @ToggleSetting("Require PTA Co-Signature", "PTA notes require supervising PT review", _settings.RequirePtaCoSignature, value => Update(settings => settings.RequirePtaCoSignature = value))
+                        @ToggleSetting("Auto-Save Drafts", "Automatically save note progress", _settings.AutoSaveDrafts, value => Update(settings => settings.AutoSaveDrafts = value))
+                        @if (_settings.AutoSaveDrafts)
+                        {
+                            <div class="documentation-field"><label for="auto-save-interval">Auto-Save Interval</label><select id="auto-save-interval" value="@_settings.AutoSaveIntervalSeconds" @onchange="e => Update(settings => settings.AutoSaveIntervalSeconds = ParseInt(e.Value, 60))"><option value="30">Every 30 seconds</option><option value="60">Every minute</option><option value="120">Every 2 minutes</option><option value="300">Every 5 minutes</option></select></div>
+                        }
+                    </div>
+                </section>
+                break;
+        }
+
+        <section class="documentation-panel quick-admin-tools" aria-labelledby="documentation-quick-admin-title">
+            <header><h2 id="documentation-quick-admin-title">Quick Admin Tools</h2><p>Manage connected patient check-in workflows.</p></header>
+            <div class="quick-admin-tools__items">
+                <button type="button" class="quick-admin-tools__row" @onclick="OpenAutoCheckInMessaging">
+                    <span class="quick-admin-tools__copy"><span class="quick-admin-tools__icon"><img src="_content/PTDoc.UI/images/settings/quick-message.svg" alt="" aria-hidden="true" /></span><span><strong>Auto Check-In Messaging</strong><small>Configure automated intake and check-in messages</small></span></span>
+                    <img class="quick-admin-tools__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
+                </button>
+                <button type="button" class="quick-admin-tools__row" @onclick="OpenKioskCheckIn">
+                    <span class="quick-admin-tools__copy"><span class="quick-admin-tools__icon"><img src="_content/PTDoc.UI/images/settings/quick-kiosk.svg" alt="" aria-hidden="true" /></span><span><strong>Kiosk Check-In</strong><small>Enroll stations and manage kiosk access</small></span></span>
+                    <img class="quick-admin-tools__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
+                </button>
+            </div>
+        </section>
+
+        <footer class="documentation-settings__action-bar" aria-label="Documentation settings actions">
+            <span class="documentation-settings__dirty-state">@(_isDirty ? "Unsaved preview changes" : "Preview matches the loaded defaults")</span>
+            <button type="button" @onclick="ResetToDefaults">
+                <img src="_content/PTDoc.UI/images/settings/reset.svg" alt="" aria-hidden="true" />
+                <span>Reset to Default</span>
+            </button>
+            <button type="button" class="documentation-settings__muted-action" @onclick="CancelChanges">
+                <img src="_content/PTDoc.UI/images/settings/cancel.svg" alt="" aria-hidden="true" />
+                <span>Cancel</span>
+            </button>
+            <button
+                type="button"
+                class="documentation-settings__save-action"
+                disabled
+                aria-describedby="documentation-contract-status"
+                title="Saving requires an approved documentation policy contract">
+                <img src="_content/PTDoc.UI/images/settings/save.svg" alt="" aria-hidden="true" />
+                <span>Save Changes</span>
+            </button>
+        </footer>
+    </div>
+</section>
+
+@code {
+    private DocumentationTab _activeTab = DocumentationTab.HardStops;
+    private DocumentationSettingsState _settings = DocumentationSettingsState.Default();
+    private DocumentationSettingsState _snapshot = DocumentationSettingsState.Default();
+    private bool _isDirty;
+    private string? _statusMessage;
+
+    private static readonly IReadOnlyList<TabDefinition> Tabs =
+    [
+        new(DocumentationTab.HardStops, "Hard Stops", "hard-stops-tab", "hard-stops-panel", DocumentationIcon("shield-alert")),
+        new(DocumentationTab.ProgressNotes, "Progress Notes", "progress-notes-tab", "progress-notes-panel", DocumentationIcon("clock")),
+        new(DocumentationTab.PocTracking, "POC Tracking", "poc-tracking-tab", "poc-tracking-panel", DocumentationIcon("calendar")),
+        new(DocumentationTab.NoteBehavior, "Note Behavior", "note-behavior-tab", "note-behavior-panel", DocumentationIcon("refresh"))
+    ];
+    private static readonly string ShieldAlertIconStyle = IconStyle(DocumentationIcon("shield-alert"));
+    private static readonly string ClockIconStyle = IconStyle(DocumentationIcon("clock"));
+    private static readonly string CalendarIconStyle = IconStyle(DocumentationIcon("calendar"));
+    private static readonly string RefreshIconStyle = IconStyle(DocumentationIcon("refresh"));
+    private static readonly string FileCheckIconStyle = IconStyle(DocumentationIcon("file-check"));
+    private static readonly string TrendingUpIconStyle = IconStyle(DocumentationIcon("trending-up"));
+    private static readonly string FileTextIconStyle = IconStyle(DocumentationIcon("file-text"));
+    private static readonly string PocExampleIconStyle = IconStyle(DocumentationIcon("check-circle"));
+    private static readonly string LockIconStyle = IconStyle(DocumentationIcon("lock"));
+    private static readonly string AlertIconStyle = IconStyle(DocumentationIcon("alert-circle"));
+
+    protected override void OnInitialized()
+    {
+        _snapshot = _settings.Clone();
+    }
+
+    private void SelectTab(DocumentationTab tab) => _activeTab = tab;
+
+    private RenderFragment ToggleSetting(string label, string description, bool enabled, Action<bool> onChanged) => @<div class="documentation-setting-row">
+        <div><strong>@label</strong><p>@description</p></div>
+        <button
+            type="button"
+            class="documentation-switch @(enabled ? "is-enabled" : string.Empty)"
+            role="switch"
+            aria-label="@label"
+            aria-checked="@(enabled ? "true" : "false")"
+            @onclick="() => onChanged(!enabled)">
+            <span aria-hidden="true"></span>
+        </button>
+    </div>;
+
+    private RenderFragment FrequencyOption(string value, string label, string description, bool recommended) => @<label class="documentation-option @(_settings.ProgressNoteFrequency == value ? "is-selected" : string.Empty)">
+        <input type="radio" name="progress-note-frequency" value="@value" checked="@(_settings.ProgressNoteFrequency == value)" @onchange="() => Update(settings => settings.ProgressNoteFrequency = value)" />
+        <span class="documentation-option__copy"><strong>@label</strong><small>@description</small></span>
+        @if (recommended)
+        {
+            <span class="documentation-badge">Recommended</span>
+        }
+    </label>;
+
+    private RenderFragment SoapOption(string id, string label, string description, bool enabled, bool recommended, Action<bool> onChanged) => @<label class="documentation-option documentation-option--checkbox" for="@id">
+        <input id="@id" type="checkbox" checked="@enabled" @onchange="e => onChanged(ParseBool(e.Value))" />
+        <span class="documentation-option__copy"><strong>@label</strong><small>@description</small></span>
+        @if (recommended)
+        {
+            <span class="documentation-badge">Recommended</span>
+        }
+    </label>;
+
+    private void Update(Action<DocumentationSettingsState> change)
+    {
+        change(_settings);
+        _isDirty = true;
+        _statusMessage = null;
+    }
+
+    private void OpenAutoCheckInMessaging() => Navigation.NavigateTo("/settings/auto-check-in");
+    private void OpenKioskCheckIn() => Navigation.NavigateTo("/settings/kiosk");
+
+    private void ResetToDefaults()
+    {
+        _settings = DocumentationSettingsState.Default();
+        _isDirty = !StatesMatch(_settings, _snapshot);
+        _statusMessage = "Canonical defaults were applied to this local preview. They have not been saved.";
+    }
+
+    private void CancelChanges()
+    {
+        _settings = _snapshot.Clone();
+        _isDirty = false;
+        _statusMessage = "Preview changes were discarded.";
+    }
+
+    private static bool StatesMatch(DocumentationSettingsState left, DocumentationSettingsState right) =>
+        left.ToComparisonString() == right.ToComparisonString();
+
+    private static int ParseInt(object? value, int fallback) => int.TryParse(value?.ToString(), out var parsed) ? parsed : fallback;
+    private static bool ParseBool(object? value) => value is bool boolean ? boolean : bool.TryParse(value?.ToString(), out var parsed) && parsed;
+    private static string DocumentationIcon(string name) => $"_content/PTDoc.UI/images/settings/documentation-{name}.svg";
+    private static string IconStyle(string iconPath) => $"--documentation-icon: url('{iconPath}')";
+    private static string GetPanelId(DocumentationTab tab) => Tabs.First(item => item.Tab == tab).PanelId;
+    private static string GetTabId(DocumentationTab tab) => Tabs.First(item => item.Tab == tab).TabId;
+
+    private enum DocumentationTab { HardStops, ProgressNotes, PocTracking, NoteBehavior }
+    private sealed record TabDefinition(DocumentationTab Tab, string Label, string TabId, string PanelId, string IconPath);
+
+    private sealed class DocumentationSettingsState
+    {
+        public bool RequireMinimumIcd10Codes { get; set; } = true;
+        public int MinimumIcd10Codes { get; set; } = 2;
+        public bool RequirePlanOfCareBeforeSigning { get; set; } = true;
+        public bool RequireGoalsForEvaluations { get; set; } = true;
+        public bool RequireCptCodes { get; set; } = true;
+        public bool RequireDischargeReason { get; set; } = true;
+        public bool BlockSubmissionWithoutRequiredFields { get; set; } = true;
+        public bool EnableProgressNoteReminders { get; set; } = true;
+        public string ProgressNoteFrequency { get; set; } = "both";
+        public int ProgressNoteVisitInterval { get; set; } = 10;
+        public int ProgressNoteDayInterval { get; set; } = 30;
+        public bool TrackLastProgressNoteDate { get; set; } = true;
+        public bool AutoFlagOverdueProgressNotes { get; set; } = true;
+        public bool RequirePocDates { get; set; } = true;
+        public bool AutoCalculatePocWeeksRemaining { get; set; } = true;
+        public bool UpdatePocDuringProgressNotes { get; set; } = true;
+        public bool WarnWhenPocExpiring { get; set; } = true;
+        public int PocExpirationWarningDays { get; set; } = 14;
+        public bool DefaultNoteTypeFromSchedule { get; set; } = true;
+        public bool AllowNoteTypeChange { get; set; } = true;
+        public bool CarryForwardDataOnTypeChange { get; set; } = true;
+        public bool ConfirmBeforeCarryForward { get; set; } = true;
+        public bool CarryForwardSubjective { get; set; } = true;
+        public bool CarryForwardObjective { get; set; } = true;
+        public bool CarryForwardAssessment { get; set; }
+        public bool CarryForwardPlan { get; set; }
+        public bool LockNotesAfterSubmission { get; set; } = true;
+        public bool RequirePtaCoSignature { get; set; } = true;
+        public bool AutoSaveDrafts { get; set; } = true;
+        public int AutoSaveIntervalSeconds { get; set; } = 60;
+
+        public static DocumentationSettingsState Default() => new();
+        public DocumentationSettingsState Clone() => (DocumentationSettingsState)MemberwiseClone();
+
+        public string ToComparisonString() => string.Join('|',
+            RequireMinimumIcd10Codes, MinimumIcd10Codes, RequirePlanOfCareBeforeSigning, RequireGoalsForEvaluations,
+            RequireCptCodes, RequireDischargeReason, BlockSubmissionWithoutRequiredFields, EnableProgressNoteReminders,
+            ProgressNoteFrequency, ProgressNoteVisitInterval, ProgressNoteDayInterval, TrackLastProgressNoteDate,
+            AutoFlagOverdueProgressNotes, RequirePocDates, AutoCalculatePocWeeksRemaining, UpdatePocDuringProgressNotes,
+            WarnWhenPocExpiring, PocExpirationWarningDays, DefaultNoteTypeFromSchedule, AllowNoteTypeChange,
+            CarryForwardDataOnTypeChange, ConfirmBeforeCarryForward, CarryForwardSubjective, CarryForwardObjective,
+            CarryForwardAssessment, CarryForwardPlan, LockNotesAfterSubmission, RequirePtaCoSignature,
+            AutoSaveDrafts, AutoSaveIntervalSeconds);
+    }
+}

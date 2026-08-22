@@ -199,9 +199,9 @@ public abstract class LoginBase : ComponentBase, IDisposable
         {
             loginFieldErrors[nameof(loginModel.Pin)] = "PIN is required.";
         }
-        else if (pin.Length != 4 || pin.Any(static ch => !char.IsDigit(ch)))
+        else if (pin.Length is < 4 or > 12 || pin.Any(static ch => !char.IsDigit(ch)))
         {
-            loginFieldErrors[nameof(loginModel.Pin)] = "PIN must be 4 digits.";
+            loginFieldErrors[nameof(loginModel.Pin)] = "PIN must contain 4 to 12 digits during the migration period.";
         }
 
         if (loginFieldErrors.Count > 0)
@@ -312,9 +312,9 @@ public abstract class LoginBase : ComponentBase, IDisposable
             return;
         }
 
-        if (loginModel.Pin.Length != 4 || loginModel.Pin.Any(static ch => !char.IsDigit(ch)))
+        if (loginModel.Pin.Length is < 4 or > 12 || loginModel.Pin.Any(static ch => !char.IsDigit(ch)))
         {
-            errorMessage = "PIN must be 4 digits.";
+            errorMessage = "PIN must contain 4 to 12 digits during the migration period.";
             isLoading = false;
             StateHasChanged();
             return;
@@ -391,7 +391,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
                 errorMessage = result.Status switch
                 {
                     RegistrationStatus.EmailAlreadyExists => "An account with that email already exists.",
-                    RegistrationStatus.InvalidPin => "PIN must be exactly 4 digits.",
+                    RegistrationStatus.InvalidPin => "PIN must be 8 to 12 digits.",
                     RegistrationStatus.InvalidLicenseData => "License information is required for PT/PTA roles.",
                     RegistrationStatus.ClinicNotFound => "Selected clinic is invalid.",
                     RegistrationStatus.ValidationFailed => result.Error ?? "Please complete the required registration fields.",
@@ -641,7 +641,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
             }
             else if (string.Equals(code, "pinFormat", StringComparison.OrdinalIgnoreCase))
             {
-                loginFieldErrors[nameof(loginModel.Pin)] = "PIN must be 4 digits.";
+                loginFieldErrors[nameof(loginModel.Pin)] = "PIN must contain 4 to 12 digits during the migration period.";
             }
         }
     }
@@ -740,7 +740,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
                 },
                 RegistrationStatus.InvalidPin => new Dictionary<string, string[]>
                 {
-                    [nameof(signUpModel.Pin)] = ["PIN must be exactly 4 digits."]
+                    [nameof(signUpModel.Pin)] = ["PIN must be 8 to 12 digits."]
                 },
                 RegistrationStatus.ClinicNotFound => new Dictionary<string, string[]>
                 {
@@ -815,8 +815,8 @@ public abstract class LoginBase : ComponentBase, IDisposable
         public string Username { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "PIN is required")]
-        [StringLength(4, MinimumLength = 4, ErrorMessage = "PIN must be 4 digits")]
-        [RegularExpression(@"^\d{4}$", ErrorMessage = "PIN must be 4 digits")]
+        [StringLength(12, MinimumLength = 4, ErrorMessage = "PIN must contain 4 to 12 digits during the migration period")]
+        [RegularExpression(@"^\d{4,12}$", ErrorMessage = "PIN must contain 4 to 12 digits during the migration period")]
         public string Pin { get; set; } = string.Empty;
     }
 
@@ -840,13 +840,13 @@ public abstract class LoginBase : ComponentBase, IDisposable
         public Guid? ClinicId { get; set; }
 
         [Required(ErrorMessage = "PIN is required")]
-        [StringLength(4, MinimumLength = 4, ErrorMessage = "PIN must be 4 digits")]
-        [RegularExpression(@"^\d{4}$", ErrorMessage = "PIN must be 4 digits")]
+        [StringLength(12, MinimumLength = 8, ErrorMessage = "PIN must be 8 to 12 digits")]
+        [RegularExpression(@"^\d{8,12}$", ErrorMessage = "PIN must be 8 to 12 digits")]
         public string Pin { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "Confirm PIN is required")]
-        [StringLength(4, MinimumLength = 4, ErrorMessage = "PIN must be 4 digits")]
-        [RegularExpression(@"^\d{4}$", ErrorMessage = "PIN must be 4 digits")]
+        [StringLength(12, MinimumLength = 8, ErrorMessage = "PIN must be 8 to 12 digits")]
+        [RegularExpression(@"^\d{8,12}$", ErrorMessage = "PIN must be 8 to 12 digits")]
         public string ConfirmPin { get; set; } = string.Empty;
 
         public string LicenseNumber { get; set; } = string.Empty;
