@@ -25,6 +25,14 @@ public class Clinic
     public bool IsActive { get; set; } = true;
 
     /// <summary>
+    /// IANA time-zone identifier used for clinic-local scheduling rules.
+    /// </summary>
+    public string TimeZoneId { get; set; } = "America/Los_Angeles";
+
+    /// <summary>Optimistic concurrency version for mutable clinic-owned settings.</summary>
+    public long Version { get; set; } = 1;
+
+    /// <summary>
     /// Timestamp when the clinic was created.
     /// </summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

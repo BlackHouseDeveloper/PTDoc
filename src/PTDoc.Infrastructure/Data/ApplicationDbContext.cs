@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Settings;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Communication;
 
@@ -90,14 +91,33 @@ public class ApplicationDbContext : DbContext
     public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
     public DbSet<UserNotificationPreferences> UserNotificationPreferences => Set<UserNotificationPreferences>();
 
+    // Clinic Settings administration
+    public DbSet<RoleCapabilityPermission> RoleCapabilityPermissions => Set<RoleCapabilityPermission>();
+    public DbSet<ClinicSecurityPolicy> ClinicSecurityPolicies => Set<ClinicSecurityPolicy>();
+    public DbSet<UserMfaCredential> UserMfaCredentials => Set<UserMfaCredential>();
+    public DbSet<UserMfaRecoveryCode> UserMfaRecoveryCodes => Set<UserMfaRecoveryCode>();
+    public DbSet<VisitType> VisitTypes => Set<VisitType>();
+    public DbSet<SchedulingPreferences> SchedulingPreferences => Set<SchedulingPreferences>();
+    public DbSet<ClinicBusinessHour> ClinicBusinessHours => Set<ClinicBusinessHour>();
+    public DbSet<ScheduleBlockRule> ScheduleBlockRules => Set<ScheduleBlockRule>();
+    public DbSet<AppointmentReminderDispatch> AppointmentReminderDispatches => Set<AppointmentReminderDispatch>();
+    public DbSet<AutoCheckInPolicy> AutoCheckInPolicies => Set<AutoCheckInPolicy>();
+    public DbSet<KioskStation> KioskStations => Set<KioskStation>();
+    public DbSet<KioskEnrollmentCode> KioskEnrollmentCodes => Set<KioskEnrollmentCode>();
+    public DbSet<KioskCheckInToken> KioskCheckInTokens => Set<KioskCheckInToken>();
+
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
+        SeedTrackedClinicSettings();
+        NormalizeTrackedAppointments();
         NormalizeTrackedUsers();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
+        SeedTrackedClinicSettings();
+        NormalizeTrackedAppointments();
         NormalizeTrackedUsers();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
@@ -105,6 +125,7 @@ public class ApplicationDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        ConfigureSettingsModels(modelBuilder);
 
         // Configure Patient
         modelBuilder.Entity<Patient>(entity =>
@@ -158,15 +179,29 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Notes).HasMaxLength(1000);
             entity.Property(e => e.CancellationReason).HasMaxLength(500);
             entity.Property(e => e.LastModifiedUtc).IsConcurrencyToken();
+            entity.Property(e => e.AuthorizedOverlap).HasDefaultValue(false);
 
-            // SQL Server's optimized OUTPUT-based DML is incompatible with the
-            // TR_Appointments_PreventOverlap AFTER trigger. Keep the trigger as
-            // the database-level scheduling guard and use trigger-compatible DML
-            // for this table only.
-            if (Database.IsSqlServer())
+            entity.HasOne(e => e.VisitType)
+                .WithMany()
+                .HasForeignKey(e => new { e.ClinicId, e.VisitTypeId })
+                .HasPrincipalKey(e => new { e.ClinicId, e.Id })
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.ToTable(table =>
             {
-                entity.ToTable(table => table.UseSqlOutputClause(false));
-            }
+                table.HasCheckConstraint(
+                    "CK_Appointments_VisitTypeRequiresClinic",
+                    VisitTypeClinicCheckConstraint());
+
+                // SQL Server's optimized OUTPUT-based DML is incompatible with the
+                // TR_Appointments_PreventOverlap AFTER trigger. Keep the trigger as
+                // the database-level scheduling guard and use trigger-compatible DML
+                // for this table only.
+                if (Database.IsSqlServer())
+                {
+                    table.UseSqlOutputClause(false);
+                }
+            });
         });
 
         // Configure ClinicalNote
@@ -352,6 +387,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.PhoneNumber).HasMaxLength(30);
             entity.Property(e => e.NormalizedPhoneNumber).HasMaxLength(20);
             entity.Property(e => e.Role).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.MustChangePin).HasDefaultValue(false);
             entity.Property(e => e.LicenseNumber).HasMaxLength(50);
             entity.Property(e => e.LicenseState).HasMaxLength(2);
 
@@ -778,6 +814,11 @@ public class ApplicationDbContext : DbContext
 
             entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
             entity.Property(e => e.Slug).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.TimeZoneId)
+                .HasMaxLength(100)
+                .IsRequired()
+                .HasDefaultValue("America/Los_Angeles");
+            entity.Property(e => e.Version).IsConcurrencyToken();
 
             entity.HasMany(e => e.Users)
                 .WithOne(e => e.Clinic)
@@ -989,6 +1030,182 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<HepTrackingObservation>()
             .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
 
+        modelBuilder.Entity<UserMfaCredential>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.User!.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<UserMfaRecoveryCode>()
+            .HasQueryFilter(e =>
+                CurrentClinicId == null || e.Credential!.User!.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<RoleCapabilityPermission>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<ClinicSecurityPolicy>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<VisitType>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<SchedulingPreferences>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<ClinicBusinessHour>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<ScheduleBlockRule>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<AppointmentReminderDispatch>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<AutoCheckInPolicy>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<KioskStation>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<KioskEnrollmentCode>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        modelBuilder.Entity<KioskCheckInToken>()
+            .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+
+    }
+
+    private static void ConfigureSettingsModels(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<RoleCapabilityPermission>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.ClinicId, e.RoleKey, e.CapabilityKey }).IsUnique();
+            entity.Property(e => e.RoleKey).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Version).IsConcurrencyToken();
+            entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ClinicSecurityPolicy>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ClinicId).IsUnique();
+            entity.Property(e => e.Version).IsConcurrencyToken();
+            entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserMfaCredential>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UserId).IsUnique();
+            entity.Property(e => e.EncryptedSecret).HasMaxLength(2048).IsRequired();
+            entity.Property(e => e.LastAcceptedTimeStep).IsConcurrencyToken();
+            entity.HasOne(e => e.User)
+                .WithOne(e => e.MfaCredential)
+                .HasForeignKey<UserMfaCredential>(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserMfaRecoveryCode>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.UserMfaCredentialId, e.CodeHash }).IsUnique();
+            entity.Property(e => e.CodeHash).HasMaxLength(256).IsRequired();
+            entity.HasOne(e => e.Credential)
+                .WithMany()
+                .HasForeignKey(e => e.UserMfaCredentialId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<VisitType>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasAlternateKey(e => new { e.ClinicId, e.Id });
+            entity.HasIndex(e => new { e.ClinicId, e.Code }).IsUnique();
+            entity.HasIndex(e => new { e.ClinicId, e.IsActive, e.DisplayOrder });
+            entity.Property(e => e.Code).HasMaxLength(80).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(160).IsRequired();
+            entity.Property(e => e.Version).IsConcurrencyToken();
+            entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SchedulingPreferences>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ClinicId).IsUnique();
+            entity.Property(e => e.DefaultClinicianView).HasMaxLength(30).IsRequired();
+            entity.Property(e => e.DefaultAdminView).HasMaxLength(30).IsRequired();
+            entity.Property(e => e.IntakeSentColor).HasMaxLength(7);
+            entity.Property(e => e.IntakeIncompleteColor).HasMaxLength(7);
+            entity.Property(e => e.IntakeCompleteColor).HasMaxLength(7);
+            entity.Property(e => e.Version).IsConcurrencyToken();
+            entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ClinicBusinessHour>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.ClinicId, e.DayOfWeek }).IsUnique();
+            entity.Property(e => e.Version).IsConcurrencyToken();
+            entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ScheduleBlockRule>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.ClinicId, e.IsActive });
+            entity.HasIndex(e => new { e.ClinicId, e.ClinicianId });
+            entity.HasIndex(e => e.ClinicianId);
+            entity.Property(e => e.Name).HasMaxLength(160).IsRequired();
+            entity.Property(e => e.ReasonCode).HasMaxLength(80).IsRequired();
+            entity.Property(e => e.Version).IsConcurrencyToken();
+            entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Cascade);
+            // User.ClinicId is nullable for legacy rows, so provider migrations strengthen this
+            // optional EF relationship to (ClinicId, ClinicianId) at the database boundary.
+            entity.HasOne<User>().WithMany().HasForeignKey(e => e.ClinicianId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<AppointmentReminderDispatch>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.IdempotencyKey).IsUnique();
+            entity.HasIndex(e => new { e.Status, e.NextAttemptAtUtc });
+            entity.Property(e => e.IdempotencyKey).HasMaxLength(160).IsRequired();
+            entity.Property(e => e.LastStatusCode).HasMaxLength(80);
+            entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
+            // Appointment.ClinicId is nullable for legacy rows, so EF cannot model it as a principal
+            // alternate key without making the compatibility column required. Provider migrations
+            // enforce the stronger (ClinicId, AppointmentId) boundary until ClinicId becomes required.
+            entity.HasOne(e => e.Appointment).WithMany().HasForeignKey(e => e.AppointmentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<AutoCheckInPolicy>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ClinicId).IsUnique();
+            entity.Property(e => e.TemplateKey).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.EligibleVisitTypeIdsJson).IsRequired();
+            entity.Property(e => e.Version).IsConcurrencyToken();
+            entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<KioskStation>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasAlternateKey(e => new { e.ClinicId, e.Id });
+            entity.HasIndex(e => new { e.ClinicId, e.Name }).IsUnique();
+            entity.Property(e => e.Name).HasMaxLength(120).IsRequired();
+            entity.Property(e => e.DeviceCredentialHash).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.Version).IsConcurrencyToken();
+            entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<KioskEnrollmentCode>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.CodeHash).IsUnique();
+            entity.Property(e => e.CodeHash).HasMaxLength(256).IsRequired();
+            entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.KioskStation)
+                .WithMany()
+                .HasForeignKey(e => new { e.ClinicId, e.KioskStationId })
+                .HasPrincipalKey(e => new { e.ClinicId, e.Id })
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<KioskCheckInToken>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+            entity.Property(e => e.TokenHash).HasMaxLength(256).IsRequired();
+            entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.Appointment).WithMany().HasForeignKey(e => e.AppointmentId).OnDelete(DeleteBehavior.Cascade);
+        });
     }
 
     /// <summary>
@@ -996,6 +1213,131 @@ public class ApplicationDbContext : DbContext
     /// Evaluated at query execution time, not at model creation time.
     /// </summary>
     private Guid? CurrentClinicId => _tenantContext?.GetCurrentClinicId();
+
+    private void SeedTrackedClinicSettings()
+    {
+        var newClinics = ChangeTracker.Entries<Clinic>()
+            .Where(entry => entry.State == EntityState.Added)
+            .Select(entry => entry.Entity)
+            .ToArray();
+        if (newClinics.Length == 0)
+        {
+            return;
+        }
+
+        var actorUserId = IIdentityContextAccessor.SystemUserId;
+        foreach (var clinic in newClinics)
+        {
+            if (!ClinicSecurityPolicies.Local.Any(policy => policy.ClinicId == clinic.Id))
+            {
+                ClinicSecurityPolicies.Add(new ClinicSecurityPolicy
+                {
+                    ClinicId = clinic.Id,
+                    UpdatedByUserId = actorUserId
+                });
+            }
+
+            if (!SchedulingPreferences.Local.Any(preferences => preferences.ClinicId == clinic.Id))
+            {
+                SchedulingPreferences.Add(new SchedulingPreferences
+                {
+                    ClinicId = clinic.Id,
+                    UpdatedByUserId = actorUserId
+                });
+            }
+
+            if (!AutoCheckInPolicies.Local.Any(policy => policy.ClinicId == clinic.Id))
+            {
+                AutoCheckInPolicies.Add(new AutoCheckInPolicy
+                {
+                    ClinicId = clinic.Id,
+                    UpdatedByUserId = actorUserId
+                });
+            }
+
+            var trackedVisitTypeCodes = VisitTypes.Local
+                .Where(visitType => visitType.ClinicId == clinic.Id)
+                .Select(visitType => visitType.Code)
+                .ToHashSet(StringComparer.Ordinal);
+            VisitTypes.AddRange(SchedulingDefaults.VisitTypes
+                .Where(definition => trackedVisitTypeCodes.Add(definition.Code))
+                .Select(definition => new VisitType
+                {
+                    ClinicId = clinic.Id,
+                    Code = definition.Code,
+                    Name = definition.Name,
+                    DurationMinutes = definition.DurationMinutes,
+                    RequiresIntake = definition.RequiresIntake,
+                    PtaAllowed = definition.PtaAllowed,
+                    IsBillable = definition.IsBillable,
+                    DisplayOrder = definition.DisplayOrder,
+                    UpdatedByUserId = actorUserId
+                }));
+
+            var trackedBusinessDays = ClinicBusinessHours.Local
+                .Where(hours => hours.ClinicId == clinic.Id)
+                .Select(hours => hours.DayOfWeek)
+                .ToHashSet();
+            ClinicBusinessHours.AddRange(SchedulingDefaults.WeeklyHours
+                .Where(definition => trackedBusinessDays.Add(definition.Day))
+                .Select(definition => new ClinicBusinessHour
+                {
+                    ClinicId = clinic.Id,
+                    DayOfWeek = definition.Day,
+                    IsOpen = definition.IsOpen,
+                    StartLocalTime = definition.IsOpen ? new TimeOnly(8, 0) : null,
+                    EndLocalTime = definition.IsOpen ? new TimeOnly(17, 0) : null,
+                    LunchStartLocalTime = definition.IsOpen ? new TimeOnly(12, 0) : null,
+                    LunchEndLocalTime = definition.IsOpen ? new TimeOnly(13, 0) : null,
+                    UpdatedByUserId = actorUserId
+                }));
+
+            var trackedPermissions = RoleCapabilityPermissions.Local
+                .Where(permission => permission.ClinicId == clinic.Id)
+                .Select(permission => (permission.RoleKey, permission.CapabilityKey))
+                .ToHashSet();
+            RoleCapabilityPermissions.AddRange(
+                from role in RolePermissionCatalog.Roles
+                from capability in RolePermissionCatalog.Capabilities
+                where trackedPermissions.Add((role.Key, capability.Key))
+                select new RoleCapabilityPermission
+                {
+                    ClinicId = clinic.Id,
+                    RoleKey = role.Key,
+                    CapabilityKey = capability.Key,
+                    Level = capability.IsSupported
+                        ? RolePermissionCatalog.GetCanonicalLevel(role.Key, capability.Key)
+                        : PermissionLevel.None,
+                    LockedMinimum = RolePermissionCatalog.GetLockedMinimum(role.Key, capability.Key),
+                    UpdatedByUserId = actorUserId
+                });
+        }
+    }
+
+    private void NormalizeTrackedAppointments()
+    {
+        foreach (var entry in ChangeTracker.Entries<Appointment>()
+                     .Where(candidate => candidate.State == EntityState.Modified))
+        {
+            var visitTypeId = entry.Property(appointment => appointment.VisitTypeId);
+            var legacyTypeChanged = entry.Property(appointment => appointment.AppointmentType).IsModified;
+            var clinicChanged = entry.Property(appointment => appointment.ClinicId).IsModified;
+            if ((legacyTypeChanged || clinicChanged) && !visitTypeId.IsModified)
+            {
+                entry.Entity.VisitTypeId = null;
+            }
+
+            var schedulingFieldsChanged =
+                entry.Property(appointment => appointment.ClinicalId).IsModified ||
+                entry.Property(appointment => appointment.StartTimeUtc).IsModified ||
+                entry.Property(appointment => appointment.EndTimeUtc).IsModified;
+            var overlapAuthorization = entry.Property(appointment => appointment.AuthorizedOverlap);
+            if (schedulingFieldsChanged && entry.Entity.AuthorizedOverlap && !overlapAuthorization.IsModified)
+            {
+                entry.Entity.AuthorizedOverlap = false;
+            }
+        }
+    }
 
     public static void ConfigureIntegrationModels(ModelBuilder modelBuilder, bool includeBaseNavigations = true)
     {
@@ -1650,6 +1992,21 @@ public class ApplicationDbContext : DbContext
         }
 
         return "ClinicalVisitOrdinal IS NOT NULL";
+    }
+
+    private string VisitTypeClinicCheckConstraint()
+    {
+        if (Database.ProviderName?.Contains("Npgsql") == true)
+        {
+            return "\"VisitTypeId\" IS NULL OR \"ClinicId\" IS NOT NULL";
+        }
+
+        if (Database.IsSqlServer())
+        {
+            return "[VisitTypeId] IS NULL OR [ClinicId] IS NOT NULL";
+        }
+
+        return "VisitTypeId IS NULL OR ClinicId IS NOT NULL";
     }
 
     private string ActiveInsurancePolicyFilter()

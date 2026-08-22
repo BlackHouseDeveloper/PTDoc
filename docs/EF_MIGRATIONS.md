@@ -181,6 +181,50 @@ compatible with that trigger. Migration
 and intentionally emits no table or trigger DDL. Do not remove or disable the
 overlap trigger when applying or rolling back application releases.
 
+Migration `AddClinicSettingsAdministration` updates that trigger for all three providers. It keeps
+overlap rejection as the default and bypasses it only when the new appointment row has
+`AuthorizedOverlap = true`, which is set only after centralized scheduling policy evaluation.
+The same migration:
+
+- adds clinic security, TOTP/recovery, role-capability, visit-type, scheduling, reminder,
+  Auto Check-In, and kiosk tables;
+- seeds every existing clinic with 270 role-capability rows, 12 visit types, seven business-hour
+  rows, and canonical security/scheduling/Auto Check-In policies;
+- adds nullable `Appointments.VisitTypeId` and backfills all four known values (initial evaluation,
+  follow-up, discharge, and re-evaluation) from the legacy `Appointments.AppointmentType` column;
+- binds appointment visit-type references and kiosk enrollment-code station references through
+  clinic-qualified composite foreign keys, while kiosk enrollment codes and check-in tokens also
+  carry direct clinic foreign keys;
+- binds each reminder dispatch to an appointment through `(ClinicId, AppointmentId)`, backed by a
+  temporary unique `(ClinicId, Id)` appointment index while legacy appointment clinic IDs remain
+  nullable, so reminder processing cannot cross clinic boundaries;
+- binds optional clinician schedule blocks through `(ClinicId, ClinicianId)`, backed by the same
+  temporary clinic-qualified index pattern on legacy nullable user clinic IDs, so block rules cannot
+  retain orphaned or cross-clinic clinician references;
+- leaves `Appointments.AppointmentType` in place for the dual-read/write compatibility release.
+
+Apply schema changes before enabling the related API/UI paths. Do not make `VisitTypeId` required or
+remove the legacy field until Web and MAUI have completed the compatibility release.
+
+The SQLite provider performs an explicit transactional `Appointments` rebuild with deferred
+foreign-key checking. Existing payment rows and clinical-note appointment links are staged and
+restored inside that same transaction before the overlap triggers are recreated; no migration
+phase suppresses the EF transaction. Migration validation must run `PRAGMA foreign_key_check`,
+verify linked data, and verify both insert/update overlap triggers after upgrade and downgrade.
+Current provider overlap guards
+always validate inserts, but update validation runs only when clinician, interval, active/cancelled
+semantics, or the explicit authorization marker changes; ordinary note and metadata updates must
+remain writable after an approved double booking. The shared persistence boundary clears an existing
+authorization marker whenever clinician or interval fields change unless the scheduling workflow
+explicitly supplies a replacement authorization in that same write. It also clears `VisitTypeId`
+when legacy appointment type or clinic fields change without an explicitly updated stable ID, so
+compatibility writers fail safely instead of retaining mismatched references.
+While `Appointment.ClinicId` remains nullable for the compatibility release, all providers enforce
+`VisitTypeId IS NULL OR ClinicId IS NOT NULL` so a stable visit-type reference cannot bypass the
+clinic-qualified foreign key through SQL null semantics.
+The `AuthorizedOverlap` column retains a database default of false on every provider, including
+after SQLite's explicit table rebuild, so compatibility inserts that omit the new column fail safe.
+
 ### Environment Variables — Runtime API
 
 These variables are read by the API at startup:

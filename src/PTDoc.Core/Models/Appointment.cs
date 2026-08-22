@@ -18,6 +18,13 @@ public class Appointment : ISyncTrackedEntity
 
     // Type
     public AppointmentType AppointmentType { get; set; }
+    public Guid? VisitTypeId { get; set; }
+
+    /// <summary>
+    /// True only when an authorized scheduling workflow explicitly permits this overlap.
+    /// Database overlap guards use this marker to distinguish approved double-booking from races.
+    /// </summary>
+    public bool AuthorizedOverlap { get; set; }
 
     /// <summary>
     /// Immutable, one-based clinical visit sequence assigned within the patient record.
@@ -45,6 +52,7 @@ public class Appointment : ISyncTrackedEntity
     // Navigation properties
     public Patient? Patient { get; set; }
     public Clinic? Clinic { get; set; }
+    public VisitType? VisitType { get; set; }
 
     public void AssignClinicalVisitOrdinal(int ordinal)
     {

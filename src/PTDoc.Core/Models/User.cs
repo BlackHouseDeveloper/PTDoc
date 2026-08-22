@@ -11,6 +11,9 @@ public class User
     // Credentials
     public string Username { get; set; } = string.Empty;
     public string PinHash { get; set; } = string.Empty; // BCrypt/Argon2 hash
+    public bool MustChangePin { get; set; }
+    public DateTime? PinChangedAtUtc { get; set; }
+    public DateTime? LegacyPinGraceEndsAtUtc { get; set; }
 
     // Profile
     public string FirstName { get; set; } = string.Empty;
@@ -45,4 +48,5 @@ public class User
     // Navigation properties
     public ICollection<Session> Sessions { get; set; } = new List<Session>();
     public Clinic? Clinic { get; set; }
+    public UserMfaCredential? MfaCredential { get; set; }
 }
