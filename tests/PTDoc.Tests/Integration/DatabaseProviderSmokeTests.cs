@@ -416,9 +416,42 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
         Assert.Single(savedNote.ObjectiveMetrics);
         Assert.Equal(note.Id, savedOverride.NoteId);
 
+        await AssertVisitTypeRequiresClinicAsync(context, patient.Id, user.Id);
         await AssertAppointmentOverlapGuardAsync(context, clinic.Id, patient.Id, user.Id, appointment);
         var otherClinicId = await AssertReminderDispatchClinicBoundaryAsync(context, clinic.Id, appointment);
         await AssertScheduleBlockClinicianBoundaryAsync(context, clinic.Id, otherClinicId, user.Id);
+    }
+
+    private static async Task AssertVisitTypeRequiresClinicAsync(
+        ApplicationDbContext context,
+        Guid patientId,
+        Guid clinicianId)
+    {
+        var visitTypeId = await context.VisitTypes.AsNoTracking()
+            .Select(row => row.Id)
+            .FirstAsync();
+        var unscopedAppointment = new Appointment
+        {
+            PatientId = patientId,
+            ClinicalId = clinicianId,
+            ClinicId = null,
+            VisitTypeId = visitTypeId,
+            StartTimeUtc = new DateTime(2030, 1, 2, 16, 0, 0, DateTimeKind.Utc),
+            EndTimeUtc = new DateTime(2030, 1, 2, 17, 0, 0, DateTimeKind.Utc),
+            AppointmentType = AppointmentType.FollowUp,
+            Status = AppointmentStatus.Scheduled,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = clinicianId,
+            SyncState = SyncState.Pending
+        };
+        context.Appointments.Add(unscopedAppointment);
+
+        var exception = await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+        Assert.Contains(
+            "CK_Appointments_VisitTypeRequiresClinic",
+            exception.GetBaseException().Message,
+            StringComparison.OrdinalIgnoreCase);
+        context.Entry(unscopedAppointment).State = EntityState.Detached;
     }
 
     private static async Task AssertAppointmentOverlapGuardAsync(

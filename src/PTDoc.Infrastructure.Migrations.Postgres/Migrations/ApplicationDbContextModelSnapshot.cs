@@ -101,7 +101,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasDatabaseName("UX_Appointments_PatientId_ClinicalVisitOrdinal")
                         .HasFilter("\"ClinicalVisitOrdinal\" IS NOT NULL");
 
-                    b.ToTable("Appointments");
+                    b.ToTable("Appointments", t =>
+                        {
+                            t.HasCheckConstraint("CK_Appointments_VisitTypeRequiresClinic", "\"VisitTypeId\" IS NULL OR \"ClinicId\" IS NOT NULL");
+                        });
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.AppointmentPaymentTransaction", b =>

@@ -103,6 +103,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.ToTable("Appointments", t =>
                         {
+                            t.HasCheckConstraint("CK_Appointments_VisitTypeRequiresClinic", "[VisitTypeId] IS NULL OR [ClinicId] IS NOT NULL");
+
                             t.UseSqlOutputClause(false);
                         });
                 });

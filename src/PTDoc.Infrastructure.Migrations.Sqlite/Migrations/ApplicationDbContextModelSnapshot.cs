@@ -96,7 +96,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasIndex("ClinicId", "PatientId", "ClinicalVisitOrdinal");
 
-                    b.ToTable("Appointments");
+                    b.ToTable("Appointments", t =>
+                        {
+                            t.HasCheckConstraint("CK_Appointments_VisitTypeRequiresClinic", "VisitTypeId IS NULL OR ClinicId IS NOT NULL");
+                        });
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.AppointmentPaymentTransaction", b =>

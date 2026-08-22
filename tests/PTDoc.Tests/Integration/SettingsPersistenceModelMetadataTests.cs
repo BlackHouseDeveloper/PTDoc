@@ -98,6 +98,13 @@ public sealed class SettingsPersistenceModelMetadataTests
             typeof(VisitType),
             new[] { nameof(Appointment.ClinicId), nameof(Appointment.VisitTypeId) },
             new[] { nameof(VisitType.ClinicId), nameof(VisitType.Id) });
+        var designTimeModel = context.GetService<IDesignTimeModel>().Model;
+        var appointmentType = designTimeModel.FindEntityType(typeof(Appointment));
+        Assert.NotNull(appointmentType);
+        var visitTypeClinicConstraint = Assert.Single(
+            appointmentType!.GetCheckConstraints(),
+            constraint => constraint.Name == "CK_Appointments_VisitTypeRequiresClinic");
+        Assert.Equal("VisitTypeId IS NULL OR ClinicId IS NOT NULL", visitTypeClinicConstraint.Sql);
         AssertForeignKey(
             context.Model,
             typeof(ScheduleBlockRule),
@@ -150,6 +157,29 @@ public sealed class SettingsPersistenceModelMetadataTests
             migrationBuilder.Operations.OfType<SqlOperation>().Select(operation => operation.Sql));
         Assert.Contains("WHEN 3 THEN 're-evaluation'", migrationSql, StringComparison.Ordinal);
         Assert.Contains("IN (0, 1, 2, 3)", migrationSql, StringComparison.Ordinal);
+
+        if (activeProvider == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            Assert.Contains(
+                "CONSTRAINT \"CK_Appointments_VisitTypeRequiresClinic\" CHECK (\"VisitTypeId\" IS NULL OR \"ClinicId\" IS NOT NULL)",
+                migrationSql,
+                StringComparison.Ordinal);
+        }
+        else
+        {
+            var expectedSql = activeProvider == "Microsoft.EntityFrameworkCore.SqlServer"
+                ? "[VisitTypeId] IS NULL OR [ClinicId] IS NOT NULL"
+                : "\"VisitTypeId\" IS NULL OR \"ClinicId\" IS NOT NULL";
+            var addConstraint = Assert.Single(
+                migrationBuilder.Operations.OfType<AddCheckConstraintOperation>(),
+                operation => operation.Name == "CK_Appointments_VisitTypeRequiresClinic");
+            Assert.Equal("Appointments", addConstraint.Table);
+            Assert.Equal(expectedSql, addConstraint.Sql);
+            Assert.Contains(
+                downMigrationBuilder.Operations.OfType<DropCheckConstraintOperation>(),
+                operation => operation.Name == "CK_Appointments_VisitTypeRequiresClinic"
+                    && operation.Table == "Appointments");
+        }
 
         if (activeProvider == "Npgsql.EntityFrameworkCore.PostgreSQL")
         {

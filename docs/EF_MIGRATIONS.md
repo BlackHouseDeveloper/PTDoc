@@ -219,6 +219,9 @@ authorization marker whenever clinician or interval fields change unless the sch
 explicitly supplies a replacement authorization in that same write. It also clears `VisitTypeId`
 when legacy appointment type or clinic fields change without an explicitly updated stable ID, so
 compatibility writers fail safely instead of retaining mismatched references.
+While `Appointment.ClinicId` remains nullable for the compatibility release, all providers enforce
+`VisitTypeId IS NULL OR ClinicId IS NOT NULL` so a stable visit-type reference cannot bypass the
+clinic-qualified foreign key through SQL null semantics.
 
 ### Environment Variables — Runtime API
 

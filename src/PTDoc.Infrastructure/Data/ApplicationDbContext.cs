@@ -186,14 +186,21 @@ public class ApplicationDbContext : DbContext
                 .HasPrincipalKey(e => new { e.ClinicId, e.Id })
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // SQL Server's optimized OUTPUT-based DML is incompatible with the
-            // TR_Appointments_PreventOverlap AFTER trigger. Keep the trigger as
-            // the database-level scheduling guard and use trigger-compatible DML
-            // for this table only.
-            if (Database.IsSqlServer())
+            entity.ToTable(table =>
             {
-                entity.ToTable(table => table.UseSqlOutputClause(false));
-            }
+                table.HasCheckConstraint(
+                    "CK_Appointments_VisitTypeRequiresClinic",
+                    VisitTypeClinicCheckConstraint());
+
+                // SQL Server's optimized OUTPUT-based DML is incompatible with the
+                // TR_Appointments_PreventOverlap AFTER trigger. Keep the trigger as
+                // the database-level scheduling guard and use trigger-compatible DML
+                // for this table only.
+                if (Database.IsSqlServer())
+                {
+                    table.UseSqlOutputClause(false);
+                }
+            });
         });
 
         // Configure ClinicalNote
@@ -1979,6 +1986,21 @@ public class ApplicationDbContext : DbContext
         }
 
         return "ClinicalVisitOrdinal IS NOT NULL";
+    }
+
+    private string VisitTypeClinicCheckConstraint()
+    {
+        if (Database.ProviderName?.Contains("Npgsql") == true)
+        {
+            return "\"VisitTypeId\" IS NULL OR \"ClinicId\" IS NOT NULL";
+        }
+
+        if (Database.IsSqlServer())
+        {
+            return "[VisitTypeId] IS NULL OR [ClinicId] IS NOT NULL";
+        }
+
+        return "VisitTypeId IS NULL OR ClinicId IS NOT NULL";
     }
 
     private string ActiveInsurancePolicyFilter()

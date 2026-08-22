@@ -790,4 +790,168 @@ public class TenantIsolationTests
         Assert.Single(recipients);
         Assert.Equal("15555550101", recipients[0].FaxNumber);
     }
+
+    [Fact]
+    public async Task Settings_QueryFilters_Isolate_Every_ClinicScoped_DbSet()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        await using var seedCtx = CreateSystemContext(dbName);
+        var clinicA = new Clinic { Id = ClinicA, Name = "Settings A", Slug = "settings-a" };
+        var clinicB = new Clinic { Id = ClinicB, Name = "Settings B", Slug = "settings-b" };
+        var patientA = new Patient
+        {
+            FirstName = "Settings",
+            LastName = "A",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = ClinicA
+        };
+        var patientB = new Patient
+        {
+            FirstName = "Settings",
+            LastName = "B",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = ClinicB
+        };
+        var clinicianA = Guid.NewGuid();
+        var clinicianB = Guid.NewGuid();
+        var appointmentA = new Appointment
+        {
+            PatientId = patientA.Id,
+            ClinicalId = clinicianA,
+            ClinicId = ClinicA,
+            StartTimeUtc = new DateTime(2026, 8, 26, 16, 0, 0, DateTimeKind.Utc),
+            EndTimeUtc = new DateTime(2026, 8, 26, 17, 0, 0, DateTimeKind.Utc),
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = clinicianA
+        };
+        var appointmentB = new Appointment
+        {
+            PatientId = patientB.Id,
+            ClinicalId = clinicianB,
+            ClinicId = ClinicB,
+            StartTimeUtc = new DateTime(2026, 8, 26, 16, 0, 0, DateTimeKind.Utc),
+            EndTimeUtc = new DateTime(2026, 8, 26, 17, 0, 0, DateTimeKind.Utc),
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = clinicianB
+        };
+        var stationA = new KioskStation
+        {
+            ClinicId = ClinicA,
+            Name = "Station A",
+            DeviceCredentialHash = "station-a",
+            UpdatedByUserId = clinicianA
+        };
+        var stationB = new KioskStation
+        {
+            ClinicId = ClinicB,
+            Name = "Station B",
+            DeviceCredentialHash = "station-b",
+            UpdatedByUserId = clinicianB
+        };
+
+        seedCtx.AddRange(clinicA, clinicB, patientA, patientB, appointmentA, appointmentB);
+        await seedCtx.SaveChangesAsync();
+
+        seedCtx.AddRange(
+            new ScheduleBlockRule
+            {
+                ClinicId = ClinicA,
+                Name = "Block A",
+                ReasonCode = "test",
+                Weekdays = WeekdayFlags.Monday,
+                StartLocalTime = new TimeOnly(8, 0),
+                EndLocalTime = new TimeOnly(9, 0),
+                EffectiveStartDate = new DateOnly(2026, 8, 1),
+                UpdatedByUserId = clinicianA
+            },
+            new ScheduleBlockRule
+            {
+                ClinicId = ClinicB,
+                Name = "Block B",
+                ReasonCode = "test",
+                Weekdays = WeekdayFlags.Monday,
+                StartLocalTime = new TimeOnly(8, 0),
+                EndLocalTime = new TimeOnly(9, 0),
+                EffectiveStartDate = new DateOnly(2026, 8, 1),
+                UpdatedByUserId = clinicianB
+            },
+            new AppointmentReminderDispatch
+            {
+                ClinicId = ClinicA,
+                AppointmentId = appointmentA.Id,
+                AppointmentVersionUtc = appointmentA.LastModifiedUtc,
+                IdempotencyKey = "reminder-a",
+                EligibleAtUtc = DateTime.UtcNow
+            },
+            new AppointmentReminderDispatch
+            {
+                ClinicId = ClinicB,
+                AppointmentId = appointmentB.Id,
+                AppointmentVersionUtc = appointmentB.LastModifiedUtc,
+                IdempotencyKey = "reminder-b",
+                EligibleAtUtc = DateTime.UtcNow
+            },
+            stationA,
+            stationB,
+            new KioskEnrollmentCode
+            {
+                ClinicId = ClinicA,
+                KioskStationId = stationA.Id,
+                CodeHash = "enrollment-a",
+                ExpiresAtUtc = DateTime.UtcNow.AddMinutes(15)
+            },
+            new KioskEnrollmentCode
+            {
+                ClinicId = ClinicB,
+                KioskStationId = stationB.Id,
+                CodeHash = "enrollment-b",
+                ExpiresAtUtc = DateTime.UtcNow.AddMinutes(15)
+            },
+            new KioskCheckInToken
+            {
+                ClinicId = ClinicA,
+                AppointmentId = appointmentA.Id,
+                TokenHash = "check-in-a",
+                ExpiresAtUtc = DateTime.UtcNow.AddMinutes(15)
+            },
+            new KioskCheckInToken
+            {
+                ClinicId = ClinicB,
+                AppointmentId = appointmentB.Id,
+                TokenHash = "check-in-b",
+                ExpiresAtUtc = DateTime.UtcNow.AddMinutes(15)
+            });
+        await seedCtx.SaveChangesAsync();
+
+        await using var systemCtx = CreateSystemContext(dbName);
+        await using var tenantCtx = CreateTenantContext(ClinicA, dbName);
+
+        await AssertSettingsScopeAsync(systemCtx.RoleCapabilityPermissions, tenantCtx.RoleCapabilityPermissions, 540, 270, row => row.ClinicId);
+        await AssertSettingsScopeAsync(systemCtx.ClinicSecurityPolicies, tenantCtx.ClinicSecurityPolicies, 2, 1, row => row.ClinicId);
+        await AssertSettingsScopeAsync(systemCtx.VisitTypes, tenantCtx.VisitTypes, 24, 12, row => row.ClinicId);
+        await AssertSettingsScopeAsync(systemCtx.SchedulingPreferences, tenantCtx.SchedulingPreferences, 2, 1, row => row.ClinicId);
+        await AssertSettingsScopeAsync(systemCtx.ClinicBusinessHours, tenantCtx.ClinicBusinessHours, 14, 7, row => row.ClinicId);
+        await AssertSettingsScopeAsync(systemCtx.ScheduleBlockRules, tenantCtx.ScheduleBlockRules, 2, 1, row => row.ClinicId);
+        await AssertSettingsScopeAsync(systemCtx.AppointmentReminderDispatches, tenantCtx.AppointmentReminderDispatches, 2, 1, row => row.ClinicId);
+        await AssertSettingsScopeAsync(systemCtx.AutoCheckInPolicies, tenantCtx.AutoCheckInPolicies, 2, 1, row => row.ClinicId);
+        await AssertSettingsScopeAsync(systemCtx.KioskStations, tenantCtx.KioskStations, 2, 1, row => row.ClinicId);
+        await AssertSettingsScopeAsync(systemCtx.KioskEnrollmentCodes, tenantCtx.KioskEnrollmentCodes, 2, 1, row => row.ClinicId);
+        await AssertSettingsScopeAsync(systemCtx.KioskCheckInTokens, tenantCtx.KioskCheckInTokens, 2, 1, row => row.ClinicId);
+    }
+
+    private static async Task AssertSettingsScopeAsync<TEntity>(
+        IQueryable<TEntity> systemQuery,
+        IQueryable<TEntity> tenantQuery,
+        int expectedSystemCount,
+        int expectedTenantCount,
+        Func<TEntity, Guid> clinicIdSelector)
+        where TEntity : class
+    {
+        var systemRows = await systemQuery.ToListAsync();
+        var tenantRows = await tenantQuery.ToListAsync();
+
+        Assert.Equal(expectedSystemCount, systemRows.Count);
+        Assert.Equal(expectedTenantCount, tenantRows.Count);
+        Assert.All(tenantRows, row => Assert.Equal(ClinicA, clinicIdSelector(row)));
+    }
 }

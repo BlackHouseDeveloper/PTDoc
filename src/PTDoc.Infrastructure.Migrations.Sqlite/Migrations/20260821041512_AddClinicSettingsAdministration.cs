@@ -759,6 +759,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     "Notes" TEXT NULL,
                     "CancelledAt" TEXT NULL,
                     "CancellationReason" TEXT NULL,
+                    CONSTRAINT "CK_Appointments_VisitTypeRequiresClinic" CHECK ("VisitTypeId" IS NULL OR "ClinicId" IS NOT NULL),
                     CONSTRAINT "FK_Appointments_Clinics_ClinicId" FOREIGN KEY ("ClinicId") REFERENCES "Clinics" ("Id") ON DELETE RESTRICT,
                     CONSTRAINT "FK_Appointments_Patients_PatientId" FOREIGN KEY ("PatientId") REFERENCES "Patients" ("Id") ON DELETE RESTRICT,
                     CONSTRAINT "FK_Appointments_VisitTypes_ClinicId_VisitTypeId" FOREIGN KEY ("ClinicId", "VisitTypeId") REFERENCES "VisitTypes" ("ClinicId", "Id") ON DELETE RESTRICT

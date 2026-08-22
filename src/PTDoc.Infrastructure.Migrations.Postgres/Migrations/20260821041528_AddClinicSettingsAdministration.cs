@@ -58,6 +58,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 type: "uuid",
                 nullable: true);
 
+            migrationBuilder.AddCheckConstraint(
+                name: "CK_Appointments_VisitTypeRequiresClinic",
+                table: "Appointments",
+                sql: "\"VisitTypeId\" IS NULL OR \"ClinicId\" IS NOT NULL");
+
             // Appointment.ClinicId remains nullable for the compatibility release. This unique
             // index lets reminder dispatches use a clinic-qualified foreign key without making
             // legacy appointments non-nullable prematurely.
@@ -785,6 +790,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             migrationBuilder.DropForeignKey(
                 name: "FK_Appointments_VisitTypes_ClinicId_VisitTypeId",
+                table: "Appointments");
+
+            migrationBuilder.DropCheckConstraint(
+                name: "CK_Appointments_VisitTypeRequiresClinic",
                 table: "Appointments");
 
             migrationBuilder.DropTable(
