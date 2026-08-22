@@ -18,6 +18,16 @@ public static class PinAuthEndpoints
             .AllowAnonymous()
             .WithName("PinLogin");
 
+        authGroup.MapPost("/pin-change", CompletePinChange)
+            .AllowAnonymous()
+            .RequireRateLimiting("MfaAuthentication")
+            .WithName("CompleteRequiredPinChange");
+
+        authGroup.MapPost("/complete", CompleteMfa)
+            .AllowAnonymous()
+            .RequireRateLimiting("MfaAuthentication")
+            .WithName("CompleteMfaAuthentication");
+
         // POST /api/v1/auth/logout
         authGroup.MapPost("/logout", Logout)
             .AllowAnonymous()
@@ -76,6 +86,11 @@ public static class PinAuthEndpoints
             return Results.Json(problemDetails, statusCode: problemDetails.Status);
         }
 
+        if (result.Status is AuthStatus.RequiresPinChange or AuthStatus.RequiresMfaEnrollment or AuthStatus.RequiresMfaVerification)
+        {
+            return Results.Json(ToResponse(result), statusCode: StatusCodes.Status202Accepted);
+        }
+
         // Status == Success: all identity fields are guaranteed non-null on the success path.
         // Guard defensively so a contract violation in the AuthService implementation fails fast.
         if (result.UserId is null || result.Username is null || result.Token is null ||
@@ -84,17 +99,62 @@ public static class PinAuthEndpoints
             return Results.Problem("Authentication service returned an incomplete success result.", statusCode: StatusCodes.Status500InternalServerError);
         }
 
-        return Results.Ok(new PinLoginResponse
-        {
-            Status = result.Status.ToString(),
-            UserId = result.UserId.Value,
-            Username = result.Username,
-            Token = result.Token,
-            ExpiresAt = result.ExpiresAt.Value,
-            Role = result.Role,
-            ClinicId = result.ClinicId
-        });
+        return Results.Ok(ToResponse(result));
     }
+
+    private static async Task<IResult> CompletePinChange(
+        [FromBody] CompletePinChangeRequest request,
+        [FromServices] IAuthService authService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var result = await authService.CompletePinChangeAsync(
+            request.ChallengeToken,
+            request.NewPin,
+            httpContext.Connection.RemoteIpAddress?.ToString(),
+            httpContext.Request.Headers.UserAgent.ToString(),
+            cancellationToken);
+        if (result is null) return Results.Unauthorized();
+        if (result.Status == AuthStatus.RequiresPinChange)
+        {
+            return Results.UnprocessableEntity(new
+            {
+                error = "pin_policy_failed",
+                message = "PIN must contain 8 to 12 numeric digits.",
+                challengeToken = result.ChallengeToken
+            });
+        }
+
+        return result.Status == AuthStatus.Success
+            ? Results.Ok(ToResponse(result))
+            : Results.Json(ToResponse(result), statusCode: StatusCodes.Status202Accepted);
+    }
+
+    private static async Task<IResult> CompleteMfa(
+        [FromBody] CompleteMfaRequest request,
+        [FromServices] IAuthService authService,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var result = await authService.CompleteMfaAsync(
+            request.CompletionToken,
+            httpContext.Connection.RemoteIpAddress?.ToString(),
+            httpContext.Request.Headers.UserAgent.ToString(),
+            cancellationToken);
+        return result is null ? Results.Unauthorized() : Results.Ok(ToResponse(result));
+    }
+
+    private static PinLoginResponse ToResponse(AuthResult result) => new()
+    {
+        Status = result.Status.ToString(),
+        UserId = result.UserId,
+        Username = result.Username,
+        Token = result.Token,
+        ExpiresAt = result.ExpiresAt,
+        Role = result.Role,
+        ClinicId = result.ClinicId,
+        ChallengeToken = result.ChallengeToken
+    };
 
     private static async Task<IResult> Logout(
         HttpContext httpContext,

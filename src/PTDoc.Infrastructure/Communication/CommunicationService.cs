@@ -69,6 +69,16 @@ public sealed class CommunicationService : ICommunicationService
         CancellationToken cancellationToken = default)
         => SendIntakeOtpAsync(request, DeliveryChannel.Sms, cancellationToken);
 
+    public Task<DeliveryResult> SendAppointmentReminderEmailAsync(
+        AppointmentReminderDeliveryRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAppointmentReminderAsync(request, DeliveryChannel.Email, cancellationToken);
+
+    public Task<DeliveryResult> SendAppointmentReminderSmsAsync(
+        AppointmentReminderDeliveryRequest request,
+        CancellationToken cancellationToken = default) =>
+        SendAppointmentReminderAsync(request, DeliveryChannel.Sms, cancellationToken);
+
     private async Task<DeliveryResult> SendPasswordResetAsync(
         PasswordResetDeliveryRequest request,
         DeliveryChannel channel,
@@ -319,6 +329,48 @@ public sealed class CommunicationService : ICommunicationService
         }
 
         await AuditAsync(recipient, result, request.ClinicId, request.PatientId, request.UserId, request.CorrelationId, cancellationToken);
+        return result;
+    }
+
+    private async Task<DeliveryResult> SendAppointmentReminderAsync(
+        AppointmentReminderDeliveryRequest request,
+        DeliveryChannel channel,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var normalization = _contactNormalizer.NormalizeRecipient(request.Recipient, channel);
+        if (!normalization.Succeeded)
+        {
+            return ValidationFailure(channel, DeliveryPurpose.AppointmentReminder, "RecipientInvalid",
+                normalization.SafeErrorMessage ?? "Recipient is invalid.");
+        }
+
+        var values = new Dictionary<string, string> { ["AppointmentLocalTime"] = request.AppointmentLocalTime };
+        DeliveryResult result;
+        if (channel == DeliveryChannel.Email)
+        {
+            var htmlBody = await _templateRenderer.RenderAsync("appointment-reminder-email.html", values, cancellationToken);
+            result = await _emailSender.SendEmailAsync(new EmailMessage
+            {
+                ToAddress = normalization.NormalizedValue,
+                Subject = "PTDoc appointment reminder",
+                PlainTextBody = $"Reminder: you have a PTDoc appointment scheduled for {request.AppointmentLocalTime}.",
+                HtmlBody = htmlBody,
+                Purpose = DeliveryPurpose.AppointmentReminder
+            }, cancellationToken);
+        }
+        else
+        {
+            var body = await _templateRenderer.RenderAsync("appointment-reminder-sms.txt", values, cancellationToken);
+            result = await _smsSender.SendSmsAsync(new SmsMessage
+            {
+                ToNumber = normalization.NormalizedValue,
+                Body = body,
+                Purpose = DeliveryPurpose.AppointmentReminder
+            }, cancellationToken);
+        }
+
+        await AuditAsync(normalization.NormalizedValue, result, request.ClinicId, request.PatientId, null, request.CorrelationId, cancellationToken);
         return result;
     }
 

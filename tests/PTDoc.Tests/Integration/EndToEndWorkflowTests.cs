@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -139,7 +140,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         var auditDb = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         Assert.Equal(auditCountBefore + 1, await auditDb.AuditLogs.CountAsync(log => log.EventType == "LoginFailed"));
         var audit = await auditDb.AuditLogs
-            .Where(log => log.EventType == "LoginFailed" && log.ErrorMessage == "InvalidCredentials")
+            .Where(log => log.EventType == "LoginFailed" && log.ErrorMessage == "UserNotFound")
             .OrderByDescending(log => log.TimestampUtc)
             .FirstAsync();
         Assert.DoesNotContain(username, audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
@@ -2721,6 +2722,12 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
                 })
                 .AddScheme<AuthenticationSchemeOptions, TestRoleAuthHandler>(
                     TestRoleAuthHandler.SchemeName, _ => { });
+
+            // The shared integration factory intentionally runs its DbContext in
+            // system context (no tenant filter). Model the default Static rollout
+            // mode for dynamic capability policies without weakening the production
+            // handler's requirement for a resolved clinic tenant.
+            services.AddScoped<IAuthorizationHandler, TestStaticCapabilityAuthorizationHandler>();
         });
     }
 
@@ -2893,4 +2900,28 @@ file sealed class TestRoleAuthHandler : AuthenticationHandler<AuthenticationSche
         Roles.Patient => new Guid("00000000-0000-0000-0001-000000000008"),
         _ => Guid.NewGuid(),
     };
+}
+
+/// <summary>
+/// Test-only handler for the canonical role decision used while dynamic permissions
+/// are in Static rollout mode. This does not alter the production handler's requirement
+/// for a resolved clinic tenant.
+/// </summary>
+file sealed class TestStaticCapabilityAuthorizationHandler
+    : AuthorizationHandler<DynamicCapabilityRequirement>
+{
+    protected override Task HandleRequirementAsync(
+        AuthorizationHandlerContext context,
+        DynamicCapabilityRequirement requirement)
+    {
+        var role = context.User.FindFirst(ClaimTypes.Role)?.Value;
+        if (context.User.Identity?.IsAuthenticated == true &&
+            !string.IsNullOrWhiteSpace(role) &&
+            requirement.StaticAllowedRoles.Contains(role))
+        {
+            context.Succeed(requirement);
+        }
+
+        return Task.CompletedTask;
+    }
 }

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using PTDoc.Application.Auth;
+using PTDoc.Core.Models;
 
 namespace PTDoc.Application.Services;
 
@@ -109,6 +110,12 @@ public static class AuthorizationPolicies
     public const string NoteTemplateDraftManage = "NoteTemplateDraftManage";
     public const string NoteTemplateClinicalPublish = "NoteTemplateClinicalPublish";
 
+    /// <summary>Read clinic Settings — Admin and Owner.</summary>
+    public const string SettingsRead = "SettingsRead";
+
+    /// <summary>Mutate clinic Settings — recovery Administrator only; Owner remains read-only.</summary>
+    public const string SettingsWrite = "SettingsWrite";
+
     /// <summary>
     /// Registers all PTDoc RBAC policies on <paramref name="options"/>.
     /// Call this from both <c>PTDoc.Api/Program.cs</c> and authorization tests to ensure
@@ -184,8 +191,10 @@ public static class AuthorizationPolicies
 
         // SchedulingAccess: scheduling management — clinical staff (PT, PTA, Admin, Owner), front desk, practice manager
         options.AddPolicy(SchedulingAccess,
-            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.FrontDesk, Roles.Admin,
-                               Roles.Owner, Roles.PracticeManager));
+            p => p.Requirements.Add(new DynamicCapabilityRequirement(
+                [CapabilityKey.ScheduleViewOwn, CapabilityKey.ScheduleViewAll],
+                PermissionLevel.View,
+                [Roles.PT, Roles.PTA, Roles.FrontDesk, Roles.Admin, Roles.Owner, Roles.PracticeManager])));
 
         // NoteCoSign: PT-only endpoint for countersigning PTA-authored notes
         options.AddPolicy(NoteCoSign,
@@ -212,5 +221,34 @@ public static class AuthorizationPolicies
             p => p.RequireRole(Roles.Admin, Roles.Owner));
         options.AddPolicy(NoteTemplateClinicalPublish,
             p => p.RequireRole(Roles.PT));
+
+        options.AddPolicy(SettingsRead,
+            p => p.Requirements.Add(new DynamicCapabilityRequirement(
+                [CapabilityKey.ClinicSettingsManage],
+                PermissionLevel.View,
+                [Roles.Admin, Roles.Owner])));
+
+        options.AddPolicy(SettingsWrite,
+            p => p.Requirements.Add(new DynamicCapabilityRequirement(
+                [CapabilityKey.ClinicSettingsManage],
+                PermissionLevel.Full,
+                [Roles.Admin])));
     }
+}
+
+public sealed class DynamicCapabilityRequirement : IAuthorizationRequirement
+{
+    public DynamicCapabilityRequirement(
+        IReadOnlyList<CapabilityKey> capabilityKeys,
+        PermissionLevel requiredLevel,
+        IEnumerable<string> staticAllowedRoles)
+    {
+        CapabilityKeys = capabilityKeys;
+        RequiredLevel = requiredLevel;
+        StaticAllowedRoles = new HashSet<string>(staticAllowedRoles, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public IReadOnlyList<CapabilityKey> CapabilityKeys { get; }
+    public PermissionLevel RequiredLevel { get; }
+    public IReadOnlySet<string> StaticAllowedRoles { get; }
 }

@@ -5,7 +5,10 @@ public enum AuthStatus
     Success,
     InvalidCredentials,
     PendingApproval,
-    AccountLocked
+    AccountLocked,
+    RequiresPinChange,
+    RequiresMfaEnrollment,
+    RequiresMfaVerification
 }
 
 /// <summary>
@@ -27,6 +30,19 @@ public interface IAuthService
     Task<AuthResult?> AuthenticateAsync(
         string username,
         string pin,
+        string? ipAddress = null,
+        string? userAgent = null,
+        CancellationToken cancellationToken = default);
+
+    Task<AuthResult?> CompletePinChangeAsync(
+        string challengeToken,
+        string newPin,
+        string? ipAddress = null,
+        string? userAgent = null,
+        CancellationToken cancellationToken = default);
+
+    Task<AuthResult?> CompleteMfaAsync(
+        string completionToken,
         string? ipAddress = null,
         string? userAgent = null,
         CancellationToken cancellationToken = default);
@@ -85,6 +101,9 @@ public class AuthResult
 
     /// <summary>Clinic the user belongs to, or null for system accounts. Only set on <see cref="AuthStatus.Success"/>.</summary>
     public Guid? ClinicId { get; init; }
+
+    /// <summary>Short-lived purpose-bound token used before a session is issued.</summary>
+    public string? ChallengeToken { get; init; }
 }
 
 /// <summary>

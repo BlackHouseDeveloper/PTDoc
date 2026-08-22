@@ -38,6 +38,58 @@ Each row records:
 | `Aide` | Support staff — limited access |
 | `Admin` | Internal administrative role (not a PFPT spec role — used internally) |
 
+## Clinic-Scoped Dynamic Settings Matrix
+
+The Settings permission matrix persists one row for every clinic, role, and stable capability key
+(9 roles × 30 capabilities = 270 rows per clinic). `N`, `V`, `E`, and `F` mean None, View, Edit,
+and Full. `—` means the capability is reserved but unsupported; it is persisted as `None` and
+cannot grant access. Owner and Patient rows are read-only. Administrator `UsersManage` and
+`RolesPermissionsManage` have a locked minimum of Full to preserve the recovery administrator.
+
+| # | Capability | Admin | Owner | Manager | PT | PTA | Aide | Front Desk | Billing | Patient |
+|---:|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| 1 | ClinicalNotesView | V | V | N | V | V | N | N | V | N |
+| 2 | ClinicalNotesCreate | N | N | N | E | E | N | N | N | N |
+| 3 | ClinicalNotesEditOwn | N | N | N | E | E | N | N | N | N |
+| 4 | ClinicalNotesEditOthers | — | — | — | — | — | — | — | — | — |
+| 5 | ClinicalNotesSign | N | N | N | F | F | N | N | N | N |
+| 6 | ClinicalNotesCoSignPta | N | N | N | F | N | N | N | N | N |
+| 7 | ClinicalNotesDelete | — | — | — | — | — | — | — | — | — |
+| 8 | ScheduleViewOwn | F | V | V | V | V | V | N | N | N |
+| 9 | ScheduleViewAll | F | V | V | V | V | V | V | N | N |
+| 10 | AppointmentsCreate | F | N | F | E | E | N | E | N | N |
+| 11 | AppointmentsModify | F | N | F | E | E | N | E | N | N |
+| 12 | ClinicianAvailabilityManage | F | N | F | N | N | N | N | N | N |
+| 13 | BillingInformationView | V | V | V | V | V | N | V | V | N |
+| 14 | CptCodesAdd | N | N | N | E | E | N | N | E | N |
+| 15 | InsuranceClaimsSubmit | — | — | — | — | — | — | — | — | — |
+| 16 | PayerInformationManage | — | — | — | — | — | — | — | — | — |
+| 17 | BillingReportsView | — | — | — | — | — | — | — | — | — |
+| 18 | StaffMessagesSend | — | — | — | — | — | — | — | — | — |
+| 19 | PatientMessagesSend | N | N | N | E | E | N | E | N | N |
+| 20 | BroadcastMessagesSend | — | — | — | — | — | — | — | — | — |
+| 21 | ClinicalReportsView | — | — | — | — | — | — | — | — | — |
+| 22 | ProductivityReportsView | — | — | — | — | — | — | — | — | — |
+| 23 | FinancialReportsView | — | — | — | — | — | — | — | — | — |
+| 24 | ComplianceReportsView | V | V | V | N | N | N | N | N | N |
+| 25 | ReportsExport | F | N | N | N | N | N | N | N | N |
+| 26 | UsersManage | F* | N | F | N | N | N | N | N | N |
+| 27 | RolesPermissionsManage | F* | N | N | N | N | N | N | N | N |
+| 28 | ClinicSettingsManage | F | V | F | N | N | N | N | N | N |
+| 29 | DocumentationTemplatesManage | — | — | — | — | — | — | — | — | — |
+| 30 | IntegrationsManage | F | N | F | N | N | N | N | N | N |
+
+The dynamic handler currently binds `SchedulingAccess` to either schedule-view capability at View,
+`SettingsRead` to clinic settings at View, and `SettingsWrite` to clinic settings at Full. In
+`Static` and `Shadow` modes, the named policy's established role list remains authoritative. In
+`Enforced`, the persisted clinic capability is authoritative, while endpoint and domain guards
+remain mandatory. Policies without an exact visible capability continue using their established
+server policy rather than being mapped to an unrelated permission.
+
+Verification: `SettingsAdministrationTests.CanonicalPermissionCatalog_HasStableCompleteMatrixAndRecoveryLocks`,
+`SettingsAdministrationTests.NewClinic_IsSeededWithVersionedTenantSettings`, and the existing RBAC,
+tenancy, and end-to-end policy suites.
+
 ---
 
 ## Patient Demographics

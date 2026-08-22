@@ -233,13 +233,13 @@ public sealed class CommunicationServiceTests
         var first = await resetService.ResetPinAsync(new PasswordResetCompletionRequest
         {
             Token = token!,
-            NewPin = "1234"
+            NewPin = "12345678"
         });
 
         var second = await resetService.ResetPinAsync(new PasswordResetCompletionRequest
         {
             Token = token!,
-            NewPin = "1234"
+            NewPin = "12345678"
         });
 
         Assert.True(first.Succeeded);
@@ -247,6 +247,50 @@ public sealed class CommunicationServiceTests
         Assert.Equal(PasswordResetCompletionStatus.AlreadyUsed, second.Status);
         Assert.NotEqual("old-hash", (await db.Users.SingleAsync()).PinHash);
         Assert.NotNull(await db.PasswordResetTokens.Select(resetToken => resetToken.UsedAtUtc).SingleAsync());
+    }
+
+    [Fact]
+    public async Task PasswordResetTokenService_ValidatesTokenBeforeReturningPinPolicyErrors()
+    {
+        await using var db = CreateDbContext();
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "reset-validation-order",
+            PinHash = "old-hash",
+            FirstName = "Reset",
+            LastName = "Validation",
+            Email = "reset-validation@example.com",
+            Role = "PT",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var emailSender = new FakeEmailSender();
+        var communicationService = CreateService(db, emailSender: emailSender);
+        await communicationService.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest
+        {
+            Recipient = user.Email!
+        });
+
+        var token = ExtractResetToken(emailSender);
+        var resetService = new PasswordResetTokenService(db);
+        var invalidToken = await resetService.ResetPinAsync(new PasswordResetCompletionRequest
+        {
+            Token = "definitely-invalid",
+            NewPin = "1234"
+        });
+        var invalidPin = await resetService.ResetPinAsync(new PasswordResetCompletionRequest
+        {
+            Token = token,
+            NewPin = "1234"
+        });
+
+        Assert.Equal(PasswordResetCompletionStatus.InvalidToken, invalidToken.Status);
+        Assert.Equal(PasswordResetCompletionStatus.InvalidPin, invalidPin.Status);
+        Assert.Null(await db.PasswordResetTokens.Select(resetToken => resetToken.UsedAtUtc).SingleAsync());
     }
 
     [Fact]

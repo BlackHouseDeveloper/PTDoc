@@ -1,0 +1,1 @@
+PTDoc reminder: your appointment is scheduled for {{AppointmentLocalTime}}.

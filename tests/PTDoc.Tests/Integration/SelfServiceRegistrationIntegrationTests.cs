@@ -33,7 +33,7 @@ public sealed class SelfServiceRegistrationIntegrationTests : IClassFixture<PtDo
                 DateOfBirth = new DateTime(1990, 1, 1),
                 RoleKey = "PT",
                 ClinicId = clinicId,
-                Pin = "1234",
+                Pin = "12345678",
                 LicenseNumber = string.Empty,
                 LicenseState = string.Empty
             });
@@ -65,7 +65,7 @@ public sealed class SelfServiceRegistrationIntegrationTests : IClassFixture<PtDo
                 DateOfBirth = new DateTime(1990, 1, 1),
                 RoleKey = "PT",
                 ClinicId = clinicId,
-                Pin = "1234",
+                Pin = "12345678",
                 LicenseNumber = "PT-1001",
                 LicenseState = "MA"
             });
@@ -82,7 +82,7 @@ public sealed class SelfServiceRegistrationIntegrationTests : IClassFixture<PtDo
         Assert.False(user.IsActive);
         Assert.Equal(email, user.Email);
         Assert.Equal("PT", user.Role);
-        Assert.NotEqual("1234", user.PinHash);
+        Assert.NotEqual("12345678", user.PinHash);
     }
 
     private async Task<Guid> SeedClinicAsync()

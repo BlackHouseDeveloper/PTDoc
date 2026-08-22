@@ -75,6 +75,16 @@ public sealed class IntakeOtpDeliveryRequest
     public string? CorrelationId { get; init; }
 }
 
+public sealed class AppointmentReminderDeliveryRequest
+{
+    public Guid AppointmentId { get; init; }
+    public Guid PatientId { get; init; }
+    public Guid ClinicId { get; init; }
+    public string Recipient { get; init; } = string.Empty;
+    public string AppointmentLocalTime { get; init; } = string.Empty;
+    public string? CorrelationId { get; init; }
+}
+
 public sealed class CommunicationAuditWriteRequest
 {
     public Guid? ClinicId { get; init; }

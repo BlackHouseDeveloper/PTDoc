@@ -89,6 +89,11 @@ public class AuditService : IAuditService
         await LogEventAsync(auditEvent, ct);
     }
 
+    public async Task LogSettingsEventAsync(AuditEvent auditEvent, CancellationToken ct = default)
+    {
+        await LogEventAsync(auditEvent, ct);
+    }
+
     private async Task LogEventAsync(AuditEvent auditEvent, CancellationToken ct)
     {
         _context.AuditLogs.Add(CreateAuditLog(auditEvent));

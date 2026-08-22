@@ -6,6 +6,7 @@ using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Integrations;
 using PTDoc.Application.Services;
+using PTDoc.Application.Settings;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using System.Collections.Concurrent;
@@ -174,6 +175,7 @@ public static class AppointmentEndpoints
         [FromServices] IConfiguration configuration,
         [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] IClinicalVisitOrdinalAllocator visitOrdinalAllocator,
+        [FromServices] ISchedulingPolicyEvaluator schedulingPolicyEvaluator,
         CancellationToken cancellationToken)
     {
         var validationErrors = ValidateWriteRequest(
@@ -206,23 +208,41 @@ public static class AppointmentEndpoints
             });
         }
 
-        if (!TryMapAppointmentType(request.AppointmentType, out var appointmentType))
+        var visitTypeResolution = await ResolveVisitTypeAsync(
+            db, patient.ClinicId, request.VisitTypeId, request.AppointmentType, cancellationToken);
+        if (visitTypeResolution is null)
         {
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
-                { nameof(request.AppointmentType), ["Appointment type is not supported."] }
+                { nameof(request.VisitTypeId), ["Visit type is inactive, belongs to another clinic, or is not supported."] }
             });
         }
 
-        var (startUtc, endUtc) = BuildUtcRange(request.AppointmentDate, request.AppointmentTime, request.DurationMinutes);
-        var schedulingConflict = await GetSchedulingConflictAsync(
-            db,
-            clinician.Id,
-            patient.ClinicId,
-            startUtc,
-            endUtc,
-            excludeAppointmentId: null,
-            cancellationToken);
+        var utcRange = await BuildUtcRangeAsync(
+            db, patient.ClinicId, request.AppointmentDate, request.AppointmentTime, request.DurationMinutes, cancellationToken);
+        if (utcRange is null)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.AppointmentTime), ["The selected clinic-local time is invalid or ambiguous because of daylight-saving time."] }
+            });
+        }
+        var (startUtc, endUtc) = utcRange.Value;
+        var availability = request.VisitTypeId.HasValue && patient.ClinicId.HasValue
+            ? await schedulingPolicyEvaluator.EvaluateAsync(
+                new AvailabilityRequest(patient.ClinicId.Value, clinician.Id, startUtc, endUtc), cancellationToken)
+            : null;
+        var schedulingConflict = availability is null
+            ? await GetSchedulingConflictAsync(db, clinician.Id, patient.ClinicId, startUtc, endUtc, null, cancellationToken)
+            : null;
+
+        if (availability is { IsAvailable: false })
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.AppointmentTime), [string.Join(",", availability.ReasonCodes)] }
+            });
+        }
 
         if (schedulingConflict is not null)
         {
@@ -242,7 +262,9 @@ public static class AppointmentEndpoints
                 ClinicalId = clinician.Id,
                 StartTimeUtc = startUtc,
                 EndTimeUtc = endUtc,
-                AppointmentType = appointmentType,
+                AppointmentType = visitTypeResolution.Value.LegacyType,
+                VisitTypeId = visitTypeResolution.Value.VisitTypeId,
+                AuthorizedOverlap = availability?.RequiresAuthorizedOverlap ?? false,
                 Status = AppointmentStatus.Scheduled,
                 Notes = NormalizeNotes(request.Notes),
                 ClinicId = patient.ClinicId,
@@ -283,6 +305,7 @@ public static class AppointmentEndpoints
         [FromServices] ApplicationDbContext db,
         [FromServices] IConfiguration configuration,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] ISchedulingPolicyEvaluator schedulingPolicyEvaluator,
         CancellationToken cancellationToken)
     {
         var validationErrors = ValidateWriteRequest(
@@ -331,23 +354,41 @@ public static class AppointmentEndpoints
             });
         }
 
-        if (!TryMapAppointmentType(request.AppointmentType, out var appointmentType))
+        var visitTypeResolution = await ResolveVisitTypeAsync(
+            db, patient.ClinicId, request.VisitTypeId, request.AppointmentType, cancellationToken);
+        if (visitTypeResolution is null)
         {
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
-                { nameof(request.AppointmentType), ["Appointment type is not supported."] }
+                { nameof(request.VisitTypeId), ["Visit type is inactive, belongs to another clinic, or is not supported."] }
             });
         }
 
-        var (startUtc, endUtc) = BuildUtcRange(request.AppointmentDate, request.AppointmentTime, request.DurationMinutes);
-        var schedulingConflict = await GetSchedulingConflictAsync(
-            db,
-            clinician.Id,
-            patient.ClinicId,
-            startUtc,
-            endUtc,
-            excludeAppointmentId: id,
-            cancellationToken);
+        var utcRange = await BuildUtcRangeAsync(
+            db, patient.ClinicId, request.AppointmentDate, request.AppointmentTime, request.DurationMinutes, cancellationToken);
+        if (utcRange is null)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.AppointmentTime), ["The selected clinic-local time is invalid or ambiguous because of daylight-saving time."] }
+            });
+        }
+        var (startUtc, endUtc) = utcRange.Value;
+        var availability = request.VisitTypeId.HasValue && patient.ClinicId.HasValue
+            ? await schedulingPolicyEvaluator.EvaluateAsync(
+                new AvailabilityRequest(patient.ClinicId.Value, clinician.Id, startUtc, endUtc, id), cancellationToken)
+            : null;
+        var schedulingConflict = availability is null
+            ? await GetSchedulingConflictAsync(db, clinician.Id, patient.ClinicId, startUtc, endUtc, id, cancellationToken)
+            : null;
+
+        if (availability is { IsAvailable: false })
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.AppointmentTime), [string.Join(",", availability.ReasonCodes)] }
+            });
+        }
 
         if (schedulingConflict is not null)
         {
@@ -361,7 +402,9 @@ public static class AppointmentEndpoints
         appointment.ClinicalId = clinician.Id;
         appointment.StartTimeUtc = startUtc;
         appointment.EndTimeUtc = endUtc;
-        appointment.AppointmentType = appointmentType;
+        appointment.AppointmentType = visitTypeResolution.Value.LegacyType;
+        appointment.VisitTypeId = visitTypeResolution.Value.VisitTypeId;
+        appointment.AuthorizedOverlap = availability?.RequiresAuthorizedOverlap ?? false;
         appointment.Notes = NormalizeNotes(request.Notes);
         appointment.ClinicId = patient.ClinicId;
         MarkAppointmentModified(appointment, identityContext.GetCurrentUserId());
@@ -929,6 +972,8 @@ public static class AppointmentEndpoints
             join patient in db.Patients.AsNoTracking() on appointment.PatientId equals patient.Id
             join clinician in db.Users.AsNoTracking() on appointment.ClinicalId equals clinician.Id into clinicianJoin
             from clinician in clinicianJoin.DefaultIfEmpty()
+            join visitType in db.VisitTypes.AsNoTracking() on appointment.VisitTypeId equals visitType.Id into visitTypeJoin
+            from visitType in visitTypeJoin.DefaultIfEmpty()
             where !patient.IsArchived
             select new AppointmentQueryRow
             {
@@ -943,6 +988,9 @@ public static class AppointmentEndpoints
                 EndTimeUtc = appointment.EndTimeUtc,
                 AppointmentType = appointment.AppointmentType,
                 ClinicalVisitOrdinal = appointment.ClinicalVisitOrdinal,
+                VisitTypeId = appointment.VisitTypeId,
+                VisitTypeCode = visitType != null ? visitType.Code : null,
+                VisitTypeName = visitType != null ? visitType.Name : null,
                 AppointmentStatus = appointment.Status,
                 Notes = appointment.Notes,
                 LastModifiedUtc = appointment.LastModifiedUtc,
@@ -1315,13 +1363,77 @@ public static class AppointmentEndpoints
     private static bool TryMapAppointmentType(string appointmentType, out AppointmentType result) =>
         AppointmentTypeCatalog.TryParse(appointmentType, out result);
 
-    private static (DateTime StartUtc, DateTime EndUtc) BuildUtcRange(
+    private static async Task<(Guid? VisitTypeId, AppointmentType LegacyType)?> ResolveVisitTypeAsync(
+        ApplicationDbContext db,
+        Guid? clinicId,
+        Guid? visitTypeId,
+        string appointmentType,
+        CancellationToken cancellationToken)
+    {
+        if (visitTypeId.HasValue)
+        {
+            var visitType = await db.VisitTypes.AsNoTracking().SingleOrDefaultAsync(
+                item => item.Id == visitTypeId.Value && item.ClinicId == clinicId && item.IsActive,
+                cancellationToken);
+            return visitType is null ? null : (visitType.Id, MapVisitTypeToLegacy(visitType.Code));
+        }
+
+        if (!TryMapAppointmentType(appointmentType, out var legacyType))
+        {
+            return null;
+        }
+
+        var legacyCode = legacyType switch
+        {
+            AppointmentType.InitialEvaluation => "initial-evaluation",
+            AppointmentType.ReEvaluation => "re-evaluation",
+            AppointmentType.Discharge => "discharge",
+            _ => "follow-up"
+        };
+        var persistedId = await db.VisitTypes.AsNoTracking()
+            .Where(item => item.ClinicId == clinicId && item.Code == legacyCode && item.IsActive)
+            .Select(item => (Guid?)item.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        return (persistedId, legacyType);
+    }
+
+    private static AppointmentType MapVisitTypeToLegacy(string code) => code switch
+    {
+        "initial-evaluation" => AppointmentType.InitialEvaluation,
+        "re-evaluation" => AppointmentType.ReEvaluation,
+        "discharge" => AppointmentType.Discharge,
+        _ => AppointmentType.FollowUp
+    };
+
+    private static async Task<(DateTime StartUtc, DateTime EndUtc)?> BuildUtcRangeAsync(
+        ApplicationDbContext db,
+        Guid? clinicId,
         DateTime appointmentDate,
         TimeSpan appointmentTime,
-        int durationMinutes)
+        int durationMinutes,
+        CancellationToken cancellationToken)
     {
-        var localStart = DateTime.SpecifyKind(appointmentDate.Date.Add(appointmentTime), DateTimeKind.Local);
-        var startUtc = localStart.ToUniversalTime();
+        var localStart = DateTime.SpecifyKind(appointmentDate.Date.Add(appointmentTime), DateTimeKind.Unspecified);
+        if (!clinicId.HasValue)
+        {
+            var fallbackUtc = DateTime.SpecifyKind(localStart, DateTimeKind.Local).ToUniversalTime();
+            return (fallbackUtc, fallbackUtc.AddMinutes(durationMinutes));
+        }
+
+        var timeZoneId = await db.Clinics.AsNoTracking()
+            .Where(item => item.Id == clinicId.Value)
+            .Select(item => item.TimeZoneId)
+            .SingleOrDefaultAsync(cancellationToken);
+        TimeZoneInfo timeZone;
+        try { timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId ?? "America/Los_Angeles"); }
+        catch (TimeZoneNotFoundException) { return null; }
+        catch (InvalidTimeZoneException) { return null; }
+        if (timeZone.IsInvalidTime(localStart) || timeZone.IsAmbiguousTime(localStart))
+        {
+            return null;
+        }
+
+        var startUtc = TimeZoneInfo.ConvertTimeToUtc(localStart, timeZone);
         return (startUtc, startUtc.AddMinutes(durationMinutes));
     }
 
@@ -1443,7 +1555,9 @@ public static class AppointmentEndpoints
             ClinicianName = BuildClinicianName(row.ClinicianFirstName, row.ClinicianLastName),
             StartTimeUtc = DateTime.SpecifyKind(row.StartTimeUtc, DateTimeKind.Utc),
             EndTimeUtc = DateTime.SpecifyKind(row.EndTimeUtc, DateTimeKind.Utc),
-            AppointmentType = MapAppointmentType(row.AppointmentType),
+            AppointmentType = row.VisitTypeName ?? MapAppointmentType(row.AppointmentType),
+            VisitTypeId = row.VisitTypeId,
+            VisitTypeCode = row.VisitTypeCode,
             AppointmentStatus = MapAppointmentStatus(row.AppointmentStatus),
             VisitWorkflowStatus = visitWorkflowStatus,
             VisitNoteId = ResolveVisitNoteId(row, visitWorkflowStatus),
@@ -1577,6 +1691,9 @@ public static class AppointmentEndpoints
         public DateTime EndTimeUtc { get; init; }
         public AppointmentType AppointmentType { get; init; }
         public int? ClinicalVisitOrdinal { get; init; }
+        public Guid? VisitTypeId { get; init; }
+        public string? VisitTypeCode { get; init; }
+        public string? VisitTypeName { get; init; }
         public AppointmentStatus AppointmentStatus { get; init; }
         public string? Notes { get; init; }
         public DateTime LastModifiedUtc { get; init; }
