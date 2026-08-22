@@ -753,7 +753,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     "EndTimeUtc" TEXT NOT NULL,
                     "AppointmentType" INTEGER NOT NULL,
                     "VisitTypeId" TEXT NULL,
-                    "AuthorizedOverlap" INTEGER NOT NULL,
+                    "AuthorizedOverlap" INTEGER NOT NULL DEFAULT 0,
                     "ClinicalVisitOrdinal" INTEGER NULL,
                     "Status" INTEGER NOT NULL,
                     "Notes" TEXT NULL,

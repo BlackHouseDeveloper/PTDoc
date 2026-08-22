@@ -157,9 +157,18 @@ public sealed class SettingsPersistenceModelMetadataTests
             migrationBuilder.Operations.OfType<SqlOperation>().Select(operation => operation.Sql));
         Assert.Contains("WHEN 3 THEN 're-evaluation'", migrationSql, StringComparison.Ordinal);
         Assert.Contains("IN (0, 1, 2, 3)", migrationSql, StringComparison.Ordinal);
+        var overlapColumn = Assert.Single(
+            migrationBuilder.Operations.OfType<AddColumnOperation>(),
+            operation => operation.Table == "Appointments"
+                && operation.Name == nameof(Appointment.AuthorizedOverlap));
+        Assert.False(Assert.IsType<bool>(overlapColumn.DefaultValue));
 
         if (activeProvider == "Microsoft.EntityFrameworkCore.Sqlite")
         {
+            Assert.Contains(
+                "\"AuthorizedOverlap\" INTEGER NOT NULL DEFAULT 0",
+                migrationSql,
+                StringComparison.Ordinal);
             Assert.Contains(
                 "CONSTRAINT \"CK_Appointments_VisitTypeRequiresClinic\" CHECK (\"VisitTypeId\" IS NULL OR \"ClinicId\" IS NOT NULL)",
                 migrationSql,
@@ -357,6 +366,17 @@ public sealed class SettingsPersistenceModelMetadataTests
             linkedNote.Id,
             linkedPayment.Id);
         await DatabaseProviderSmokeTests.AssertExistingClinicSeedParityAsync(context, clinicId);
+        var legacyCompatibleAppointmentId = Guid.NewGuid();
+        await InsertAppointmentAsync(
+            connection,
+            legacyCompatibleAppointmentId,
+            patientId,
+            clinicianId,
+            clinicId,
+            existingEnd.AddHours(3),
+            existingEnd.AddHours(4),
+            includeAuthorizedOverlap: false);
+        await AssertAuthorizedOverlapDefaultsToFalseAsync(connection, legacyCompatibleAppointmentId);
         await AssertOverlappingInsertRejectedAsync(
             connection,
             patientId,
@@ -516,6 +536,18 @@ public sealed class SettingsPersistenceModelMetadataTests
         await using var reader = await checkCommand.ExecuteReaderAsync();
 
         Assert.False(await reader.ReadAsync());
+    }
+
+    private static async Task AssertAuthorizedOverlapDefaultsToFalseAsync(
+        SqliteConnection connection,
+        Guid appointmentId)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT \"AuthorizedOverlap\" FROM \"Appointments\" WHERE \"Id\" = $appointmentId;";
+        command.Parameters.AddWithValue("$appointmentId", appointmentId);
+
+        Assert.Equal(0L, Convert.ToInt64(await command.ExecuteScalarAsync()));
     }
 
     private static async Task AssertAppointmentDependentsPreservedAsync(

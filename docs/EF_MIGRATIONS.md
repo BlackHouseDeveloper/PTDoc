@@ -222,6 +222,8 @@ compatibility writers fail safely instead of retaining mismatched references.
 While `Appointment.ClinicId` remains nullable for the compatibility release, all providers enforce
 `VisitTypeId IS NULL OR ClinicId IS NOT NULL` so a stable visit-type reference cannot bypass the
 clinic-qualified foreign key through SQL null semantics.
+The `AuthorizedOverlap` column retains a database default of false on every provider, including
+after SQLite's explicit table rebuild, so compatibility inserts that omit the new column fail safe.
 
 ### Environment Variables — Runtime API
 

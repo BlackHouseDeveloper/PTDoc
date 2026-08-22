@@ -179,6 +179,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Notes).HasMaxLength(1000);
             entity.Property(e => e.CancellationReason).HasMaxLength(500);
             entity.Property(e => e.LastModifiedUtc).IsConcurrencyToken();
+            entity.Property(e => e.AuthorizedOverlap).HasDefaultValue(false);
 
             entity.HasOne(e => e.VisitType)
                 .WithMany()

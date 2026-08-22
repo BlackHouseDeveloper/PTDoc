@@ -32,7 +32,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasColumnType("integer");
 
                     b.Property<bool>("AuthorizedOverlap")
-                        .HasColumnType("boolean");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<string>("CancellationReason")
                         .HasMaxLength(500)
