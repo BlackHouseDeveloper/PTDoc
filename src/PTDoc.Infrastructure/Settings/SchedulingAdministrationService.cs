@@ -522,7 +522,9 @@ public sealed partial class SchedulingAdministrationService(
         var errors = new Dictionary<string, string[]>();
         if (!IsIanaTimeZone(request.TimeZoneId))
             errors["timeZoneId"] = ["A valid IANA time-zone identifier is required."];
-        if (request.Hours.Count != 7 || request.Hours.Select(item => item.DayOfWeek).Distinct().Count() != 7)
+        if (request.Hours.Count != 7 ||
+            request.Hours.Any(item => !Enum.IsDefined(item.DayOfWeek)) ||
+            request.Hours.Select(item => item.DayOfWeek).Distinct().Count() != 7)
             errors["hours"] = ["Exactly one clinic-hours row is required for each weekday."];
 
         foreach (var item in request.Hours)

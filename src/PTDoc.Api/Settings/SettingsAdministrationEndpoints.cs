@@ -91,7 +91,7 @@ public static class SettingsAdministrationEndpoints
             return ToResult(await service.UpdateAsync(
                 clinicId.Value, roleKey, request, identity.GetCurrentUserId(),
                 httpContext.TraceIdentifier, cancellationToken));
-        }).RequireAuthorization(AuthorizationPolicies.SettingsWrite);
+        }).RequireAuthorization(AuthorizationPolicies.RolesPermissionsWrite);
 
         group.MapPost("/{targetRoleKey}/clone", async (
             string targetRoleKey,
@@ -107,7 +107,7 @@ public static class SettingsAdministrationEndpoints
             return ToResult(await service.CloneAsync(
                 clinicId.Value, targetRoleKey, request, identity.GetCurrentUserId(),
                 httpContext.TraceIdentifier, cancellationToken));
-        }).RequireAuthorization(AuthorizationPolicies.SettingsWrite);
+        }).RequireAuthorization(AuthorizationPolicies.RolesPermissionsWrite);
     }
 
     private static void MapSecurityEndpoints(IEndpointRouteBuilder app)

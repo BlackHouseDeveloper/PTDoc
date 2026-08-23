@@ -451,6 +451,32 @@ public sealed class SettingsAdministrationTests
     }
 
     [Fact]
+    public async Task ClinicHours_RejectUndefinedWeekdayValues()
+    {
+        await using var context = CreateContext();
+        var service = new SchedulingAdministrationService(context, CreateAuditService().Object);
+        var invalidHours = Enumerable.Range(7, 7)
+            .Select(value => new SaveClinicBusinessHourRequest(
+                (DayOfWeek)value,
+                false,
+                null,
+                null,
+                null,
+                null,
+                1))
+            .ToArray();
+
+        var result = await service.UpdateClinicHoursAsync(
+            Guid.NewGuid(),
+            new UpdateClinicHoursRequest("America/Los_Angeles", 1, invalidHours),
+            Guid.NewGuid(),
+            "invalid-weekdays");
+
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, result.Status);
+        Assert.Contains("hours", Assert.IsAssignableFrom<IReadOnlyDictionary<string, string[]>>(result.ValidationErrors));
+    }
+
+    [Fact]
     public async Task SchedulingPolicy_UsesClinicIanaTimeZoneAcrossDstTransition()
     {
         await using var context = CreateContext();
@@ -924,7 +950,10 @@ public sealed class SettingsAdministrationTests
         var audit = CreateAuthAuditService();
         var mfa = new MfaAuthenticationService(context, new TestSecretProtector(), audit.Object, time);
         var auth = new AuthService(context, NullLogger<AuthService>.Instance, audit.Object, mfa, time);
-        var challenge = mfa.CreateChallenge(user.Id, MfaChallengePurpose.PinChange);
+        var login = await auth.AuthenticateAsync(user.Username, "12345678");
+        Assert.Equal(AuthStatus.RequiresPinChange, login!.Status);
+        Assert.Equal(10, login.MinimumPinLength);
+        var challenge = login.ChallengeToken!;
 
         var rejected = await auth.CompletePinChangeAsync(challenge, "123456789");
         var accepted = await auth.CompletePinChangeAsync(challenge, "1234567890");

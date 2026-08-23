@@ -123,6 +123,9 @@ public static class AuthorizationPolicies
     /// <summary>Mutate clinic Settings — recovery Administrator only; Owner remains read-only.</summary>
     public const string SettingsWrite = "SettingsWrite";
 
+    /// <summary>Mutate role permissions — requires the dedicated role-administration capability.</summary>
+    public const string RolesPermissionsWrite = "RolesPermissionsWrite";
+
     /// <summary>
     /// Registers all PTDoc RBAC policies on <paramref name="options"/>.
     /// Call this from both <c>PTDoc.Api/Program.cs</c> and authorization tests to ensure
@@ -250,6 +253,12 @@ public static class AuthorizationPolicies
         options.AddPolicy(SettingsWrite,
             p => p.Requirements.Add(new DynamicCapabilityRequirement(
                 [CapabilityKey.ClinicSettingsManage],
+                PermissionLevel.Full,
+                [Roles.Admin])));
+
+        options.AddPolicy(RolesPermissionsWrite,
+            p => p.Requirements.Add(new DynamicCapabilityRequirement(
+                [CapabilityKey.RolesPermissionsManage],
                 PermissionLevel.Full,
                 [Roles.Admin])));
     }

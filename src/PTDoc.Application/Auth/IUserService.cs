@@ -114,7 +114,7 @@ namespace PTDoc.Application.Auth
         /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
         /// <param name="roleKey">The staff role key (PT, PTA, Aide, Admin).</param>
         /// <param name="clinicId">The clinic to associate with the user.</param>
-        /// <param name="pin">The user's 4-digit PIN.</param>
+        /// <param name="pin">The user's numeric PIN, including supported legacy credentials during migration.</param>
         /// <returns>A status-aware registration result.</returns>
         Task<RegistrationResult> RegisterAsync(
           string fullName,

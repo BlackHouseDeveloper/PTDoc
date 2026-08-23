@@ -204,7 +204,11 @@ The JWT bearer middleware now fires an `OnAuthenticationFailed` event that write
   authentication-completion challenges are bound to the active credential and backed by a
   single-use pending-session claim before a real session or JWT can be issued.
 - Both primary PIN entry points share a fixed-window, client-IP-partitioned rate limit. Rejections
-  return a generic `429` response without echoing usernames, PINs, or account state.
+  return a generic `429` response without echoing usernames, PINs, or account state. The Web login
+  proxy forwards only its normalized `HttpContext.Connection.RemoteIpAddress`; hosted API
+  deployments must enable forwarded headers and trust the Web proxy address/network so distinct
+  browser clients retain distinct API rate-limit partitions without trusting arbitrary client
+  `X-Forwarded-For` values.
 - Kiosk enrollment and appointment check-in credentials are claimed atomically and cannot
   reactivate a revoked station. Kiosk authentication throttling uses a generic, kiosk-specific
   `429` response without station or appointment details.

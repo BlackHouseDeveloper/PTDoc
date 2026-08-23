@@ -403,7 +403,7 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
     {
         validationCodes.Add("pinRequired");
     }
-    else if (pin.Length != 4 || pin.Any(static ch => !char.IsDigit(ch)))
+    else if (!IsSupportedLoginPin(pin))
     {
         validationCodes.Add("pinFormat");
     }
@@ -418,14 +418,16 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
     try
     {
         var authClient = httpClientFactory.CreateClient("PTDocAuthApi");
-        authResponse = await authClient.PostAsJsonAsync(
+        authResponse = await WebAuthenticationStepFlow.SendAsync(
+            authClient,
+            HttpMethod.Post,
             "/api/v1/auth/pin-login",
             new WebPinLoginRequest
             {
                 Username = username,
                 Pin = pin
             },
-            httpContext.RequestAborted);
+            httpContext);
     }
     catch (HttpRequestException ex)
     {
@@ -458,20 +460,16 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
             return Results.Redirect("/login?error=1");
         }
 
-        var loginResponse = await authResponse.Content.ReadFromJsonAsync<WebPinLoginResponse>(cancellationToken: httpContext.RequestAborted);
-        if (loginResponse is null)
-        {
-            logger.LogWarning("Web login failed because the upstream auth response was empty.");
-            return Results.Redirect("/login?error=1");
-        }
-
-        var principal = CreateWebPrincipal(loginResponse);
-        await httpContext.SignInAsync(PTDocAuthSchemes.Cookie, principal);
-
-        return Results.Redirect(ResolvePostLoginRedirect(loginResponse.Role, returnUrlValidation.Value));
+        return await WebAuthenticationStepFlow.HandleSuccessfulAuthenticationResponseAsync(
+            httpContext,
+            httpClientFactory,
+            authResponse,
+            returnUrlValidation.Value);
     }
 })
 .AllowAnonymous();
+
+app.MapWebAuthenticationStepEndpoints();
 
 app.MapGet("/auth/logout", async (HttpContext httpContext) =>
 {
@@ -995,49 +993,6 @@ static bool IsStaticAssetRequest(PathString path)
     return false;
 }
 
-static ClaimsPrincipal CreateWebPrincipal(WebPinLoginResponse loginResponse)
-{
-    var claims = new List<Claim>
-    {
-        new(PTDocClaimTypes.InternalUserId, loginResponse.UserId.ToString()),
-        new(ClaimTypes.NameIdentifier, loginResponse.UserId.ToString()),
-        new(ClaimTypes.Name, loginResponse.Username),
-        new(ClaimTypes.Role, loginResponse.Role),
-        new(PTDocClaimTypes.AuthenticationType, "web_cookie")
-    };
-
-    if (!string.IsNullOrWhiteSpace(loginResponse.Token))
-    {
-        claims.Add(new Claim(PTDocClaimTypes.ApiAccessToken, loginResponse.Token));
-        claims.Add(new Claim(
-            PTDocClaimTypes.ApiAccessTokenExpiresAt,
-            new DateTimeOffset(DateTime.SpecifyKind(loginResponse.ExpiresAt, DateTimeKind.Utc)).ToString("O")));
-    }
-
-    if (loginResponse.ClinicId.HasValue)
-    {
-        claims.Add(new Claim(HttpTenantContextAccessor.ClinicIdClaimType, loginResponse.ClinicId.Value.ToString()));
-    }
-
-    return new ClaimsPrincipal(new ClaimsIdentity(claims, PTDocAuthSchemes.Cookie));
-}
-
-static string ResolvePostLoginRedirect(string role, string returnUrl)
-{
-    var safeReturnUrl = string.IsNullOrWhiteSpace(returnUrl)
-        ? "/"
-        : returnUrl;
-
-    if (!string.Equals(role, Roles.Patient, StringComparison.OrdinalIgnoreCase))
-    {
-        return safeReturnUrl;
-    }
-
-    return IsClinicianRouteForPatient(safeReturnUrl)
-        ? "/intake"
-        : safeReturnUrl;
-}
-
 static string BuildLoginValidationRedirect(IReadOnlyCollection<string> validationCodes, string returnUrl)
 {
     var query = $"loginValidation={WebUtility.UrlEncode(string.Join(",", validationCodes))}";
@@ -1049,43 +1004,15 @@ static string BuildLoginValidationRedirect(IReadOnlyCollection<string> validatio
     return $"/login?{query}";
 }
 
-static bool IsClinicianRouteForPatient(string returnUrl)
-{
-    var path = returnUrl.Split('?', '#')[0];
-
-    return string.Equals(path, "/", StringComparison.Ordinal)
-        || path.StartsWith("/patients", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWith("/patient/", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWith("/settings", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWith("/notes", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWith("/appointments", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWith("/progress-tracking", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWith("/reports", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWith("/export", StringComparison.OrdinalIgnoreCase);
-}
+static bool IsSupportedLoginPin(string pin) =>
+    (pin.Length == 4 || pin.Length is >= 8 and <= 12) &&
+    pin.All(static ch => char.IsDigit(ch));
 
 file sealed class WebPinLoginRequest
 {
     public required string Username { get; init; }
 
     public required string Pin { get; init; }
-}
-
-file sealed class WebPinLoginResponse
-{
-    public required string Status { get; init; }
-
-    public required Guid UserId { get; init; }
-
-    public required string Username { get; init; }
-
-    public required string Token { get; init; }
-
-    public required DateTime ExpiresAt { get; init; }
-
-    public required string Role { get; init; }
-
-    public Guid? ClinicId { get; init; }
 }
 
 file sealed class WebAuthErrorResponse

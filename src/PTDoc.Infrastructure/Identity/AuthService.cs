@@ -461,7 +461,11 @@ public class AuthService : IAuthService
 
         if (user.MustChangePin)
         {
-            return ChallengeResult(user, AuthStatus.RequiresPinChange, MfaChallengePurpose.PinChange);
+            return ChallengeResult(
+                user,
+                AuthStatus.RequiresPinChange,
+                MfaChallengePurpose.PinChange,
+                policy.MinimumPinLength);
         }
 
         return await ContinueAfterPinComplianceAsync(
@@ -506,7 +510,11 @@ public class AuthService : IAuthService
             attemptedAt);
     }
 
-    private AuthResult ChallengeResult(User user, AuthStatus status, MfaChallengePurpose purpose) => new()
+    private AuthResult ChallengeResult(
+        User user,
+        AuthStatus status,
+        MfaChallengePurpose purpose,
+        int? minimumPinLength = null) => new()
     {
         Status = status,
         UserId = user.Id,
@@ -514,7 +522,8 @@ public class AuthService : IAuthService
         Email = user.Email,
         Role = user.Role,
         ClinicId = user.ClinicId,
-        ChallengeToken = _mfaAuthenticationService?.CreateChallenge(user.Id, purpose)
+        ChallengeToken = _mfaAuthenticationService?.CreateChallenge(user.Id, purpose),
+        MinimumPinLength = minimumPinLength
     };
 
     private async Task<AuthResult> CompleteAuthenticationAsync(

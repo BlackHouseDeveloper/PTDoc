@@ -91,6 +91,23 @@ public class AuthorizationCoverageTests
         Assert.DoesNotContain(Roles.Aide, modify.StaticAllowedRoles);
     }
 
+    [Fact]
+    public void RolePermissionWritePolicy_RequiresDedicatedFullCapability()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddAuthorizationCore(options => options.AddPTDocAuthorizationPolicies());
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AuthorizationOptions>>().Value;
+
+        var requirement = Assert.Single(options.GetPolicy(AuthorizationPolicies.RolesPermissionsWrite)!
+            .Requirements.OfType<DynamicCapabilityRequirement>());
+
+        Assert.Equal(CapabilityKey.RolesPermissionsManage, Assert.Single(requirement.CapabilityKeys));
+        Assert.Equal(PermissionLevel.Full, requirement.RequiredLevel);
+        Assert.Equal(Roles.Admin, Assert.Single(requirement.StaticAllowedRoles));
+    }
+
     /// <summary>
     /// Validates that the inventory contains at least one entry for every major
     /// resource area (patients, intake, notes, compliance, sync, AI, PDF, diagnostics).

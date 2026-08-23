@@ -44,7 +44,7 @@ test.describe('PTDoc audit remediation QA', () => {
     await page.locator('#username').fill('testuser');
     await page.locator('#pin').fill('12');
     await loginSubmit.click();
-    await expect(page.getByText('PIN must be 4 digits.')).toBeVisible();
+    await expect(page.getByText('PIN must be 4 digits or 8 to 12 digits.')).toBeVisible();
 
     await expectProtectedRoutesRequireLogin(browser, ['/dashboard', '/appointments', '/notes', '/audit-missing-route']);
 

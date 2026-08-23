@@ -13,7 +13,7 @@ public class PinLoginRequest
 }
 
 /// <summary>
-/// Response model for successful login
+/// Response model for completed login or a required pre-authentication step
 /// </summary>
 public class PinLoginResponse
 {
@@ -26,6 +26,7 @@ public class PinLoginResponse
     /// <summary>Clinic the user belongs to. Null for system accounts without clinic assignment.</summary>
     public Guid? ClinicId { get; init; }
     public string? ChallengeToken { get; init; }
+    public int? MinimumPinLength { get; init; }
 }
 
 public sealed record CompletePinChangeRequest(string ChallengeToken, string NewPin);

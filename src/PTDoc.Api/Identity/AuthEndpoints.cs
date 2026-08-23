@@ -155,7 +155,8 @@ public static class PinAuthEndpoints
         ExpiresAt = result.ExpiresAt,
         Role = result.Role,
         ClinicId = result.ClinicId,
-        ChallengeToken = result.ChallengeToken
+        ChallengeToken = result.ChallengeToken,
+        MinimumPinLength = result.MinimumPinLength
     };
 
     private static async Task<IResult> Logout(
