@@ -92,6 +92,7 @@ public static class AppointmentEndpoints
         [FromServices] ApplicationDbContext db,
         [FromServices] ITenantContextAccessor tenantContext,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IPermissionEvaluator permissionEvaluator,
         [FromServices] IConfiguration configuration,
         CancellationToken cancellationToken)
     {
@@ -113,8 +114,8 @@ public static class AppointmentEndpoints
             });
         }
         var (rangeStartUtc, rangeEndExclusiveUtc) = utcRange.Value;
-        var restrictedClinicianId = await GetRestrictedClinicianIdAsync(
-            db, currentClinicId, identityContext, cancellationToken);
+        var restrictedClinicianId = await GetRestrictedReadClinicianIdAsync(
+            db, currentClinicId, identityContext, permissionEvaluator, cancellationToken);
         var appointmentQuery = db.Appointments
             .AsNoTracking()
             .Where(appointment => appointment.StartTimeUtc >= rangeStartUtc
@@ -151,6 +152,7 @@ public static class AppointmentEndpoints
         [FromServices] ApplicationDbContext db,
         [FromServices] ITenantContextAccessor tenantContext,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IPermissionEvaluator permissionEvaluator,
         [FromServices] IConfiguration configuration,
         CancellationToken cancellationToken)
     {
@@ -178,8 +180,8 @@ public static class AppointmentEndpoints
             });
         }
         var (rangeStartUtc, rangeEndExclusiveUtc) = utcRange.Value;
-        var restrictedClinicianId = await GetRestrictedClinicianIdAsync(
-            db, currentClinicId, identityContext, cancellationToken);
+        var restrictedClinicianId = await GetRestrictedReadClinicianIdAsync(
+            db, currentClinicId, identityContext, permissionEvaluator, cancellationToken);
         var appointmentQuery = db.Appointments
             .AsNoTracking()
             .Where(appointment => appointment.PatientId == patientId
@@ -208,11 +210,12 @@ public static class AppointmentEndpoints
         [FromServices] ApplicationDbContext db,
         [FromServices] ITenantContextAccessor tenantContext,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IPermissionEvaluator permissionEvaluator,
         CancellationToken cancellationToken)
     {
         var clinicId = tenantContext.GetCurrentClinicId();
-        var restrictedClinicianId = await GetRestrictedClinicianIdAsync(
-            db, clinicId, identityContext, cancellationToken);
+        var restrictedClinicianId = await GetRestrictedReadClinicianIdAsync(
+            db, clinicId, identityContext, permissionEvaluator, cancellationToken);
         var clinicians = await BuildCliniciansQuery(db, clinicId, restrictedClinicianId)
             .ToListAsync(cancellationToken);
         return Results.Ok(clinicians);
@@ -1489,6 +1492,40 @@ public static class AppointmentEndpoints
         var restrictedClinicianId = await GetRestrictedClinicianIdAsync(
             db, clinicId, identityContext, cancellationToken);
         return !restrictedClinicianId.HasValue || restrictedClinicianId.Value == clinicianId;
+    }
+
+    internal static async Task<Guid?> GetRestrictedReadClinicianIdAsync(
+        ApplicationDbContext db,
+        Guid? clinicId,
+        IIdentityContextAccessor identityContext,
+        IPermissionEvaluator permissionEvaluator,
+        CancellationToken cancellationToken)
+    {
+        if (!clinicId.HasValue)
+        {
+            return null;
+        }
+
+        var role = identityContext.GetCurrentUserRole();
+        if (string.IsNullOrWhiteSpace(role))
+        {
+            return identityContext.GetCurrentUserId();
+        }
+
+        var allSchedules = await permissionEvaluator.EvaluateAsync(
+            clinicId.Value,
+            role,
+            CapabilityKey.ScheduleViewAll,
+            PermissionLevel.View,
+            staticAllowed: true,
+            cancellationToken);
+        if (!allSchedules.EffectiveAllowed)
+        {
+            return identityContext.GetCurrentUserId();
+        }
+
+        return await GetRestrictedClinicianIdAsync(
+            db, clinicId, identityContext, cancellationToken);
     }
 
     private static async Task<Guid?> GetRestrictedClinicianIdAsync(

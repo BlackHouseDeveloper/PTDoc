@@ -322,10 +322,11 @@ public sealed class MfaAuthenticationService(
             ? await context.Database.BeginTransactionAsync(cancellationToken)
             : null;
 
-        var accepted = useRecoveryCode
-            ? await ConsumeRecoveryCodeAsync(credential, suppliedCode, cancellationToken)
-            : TryVerifyCode(credential, suppliedCode, out var acceptedTimeStep)
-                && AcceptTimeStep(credential, acceptedTimeStep);
+        var accepted = !string.IsNullOrWhiteSpace(suppliedCode)
+            && (useRecoveryCode
+                ? await ConsumeRecoveryCodeAsync(credential, suppliedCode, cancellationToken)
+                : TryVerifyCode(credential, suppliedCode, out var acceptedTimeStep)
+                    && AcceptTimeStep(credential, acceptedTimeStep));
         if (!accepted)
         {
             await RegisterFailureAsync(credential, cancellationToken);

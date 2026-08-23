@@ -179,19 +179,56 @@ public sealed class RolePermissionAdministrationService(
             .ToDictionary(item => item.CapabilityKey);
         var target = persisted.Where(item => item.RoleKey == targetRole.Key)
             .ToDictionary(item => item.CapabilityKey);
+        var mutableDefinitions = RolePermissionCatalog.Capabilities
+            .Where(definition => definition.IsSupported
+                && RolePermissionCatalog.GetLockedMinimum(targetRole.Key, definition.Key) == PermissionLevel.None)
+            .ToArray();
+        if (request.TargetPermissions is null
+            || request.TargetPermissions.Count != mutableDefinitions.Length
+            || request.TargetPermissions.GroupBy(item => item.CapabilityKey).Any(group => group.Count() != 1))
+        {
+            return SettingsOperationResult<RolePermissionSet>.Validation(
+                new Dictionary<string, string[]>
+                {
+                    ["targetPermissions"] = ["Expected versions are required for every editable target permission."]
+                });
+        }
+
+        var expectedVersions = request.TargetPermissions.ToDictionary(
+            item => item.CapabilityKey,
+            item => item.ExpectedVersion);
+        if (mutableDefinitions.Any(definition => !expectedVersions.ContainsKey(definition.Key))
+            || expectedVersions.Keys.Any(key => mutableDefinitions.All(definition => definition.Key != key)))
+        {
+            return SettingsOperationResult<RolePermissionSet>.Validation(
+                new Dictionary<string, string[]>
+                {
+                    ["targetPermissions"] = ["Expected versions must match the editable target permission set."]
+                });
+        }
+
+        foreach (var definition in mutableDefinitions)
+        {
+            var currentVersion = target.TryGetValue(definition.Key, out var targetPermission)
+                ? targetPermission.Version
+                : 0;
+            if (currentVersion != expectedVersions[definition.Key])
+            {
+                return SettingsOperationResult<RolePermissionSet>.Conflict();
+            }
+        }
+
         var changedKeys = new List<string>();
 
-        foreach (var definition in RolePermissionCatalog.Capabilities)
+        foreach (var definition in mutableDefinitions)
         {
-            if (!definition.IsSupported ||
-                RolePermissionCatalog.GetLockedMinimum(targetRole.Key, definition.Key) > PermissionLevel.None)
-            {
-                continue;
-            }
-
             var sourceLevel = source.TryGetValue(definition.Key, out var sourcePermission)
                 ? sourcePermission.Level
                 : RolePermissionCatalog.GetCanonicalLevel(sourceRole.Key, definition.Key);
+            if (!Enum.IsDefined(sourceLevel))
+            {
+                sourceLevel = RolePermissionCatalog.GetCanonicalLevel(sourceRole.Key, definition.Key);
+            }
 
             if (!target.TryGetValue(definition.Key, out var targetPermission))
             {
@@ -306,9 +343,13 @@ public sealed class RolePermissionAdministrationService(
         var permissions = RolePermissionCatalog.Capabilities.Select(definition =>
         {
             byCapability.TryGetValue(definition.Key, out var item);
+            var canonicalLevel = RolePermissionCatalog.GetCanonicalLevel(role.Key, definition.Key);
+            var configuredLevel = item is null || Enum.IsDefined(item.Level)
+                ? item?.Level ?? canonicalLevel
+                : canonicalLevel;
             var level = definition.IsSupported
                 ? Max(
-                    item?.Level ?? RolePermissionCatalog.GetCanonicalLevel(role.Key, definition.Key),
+                    configuredLevel,
                     RolePermissionCatalog.GetLockedMinimum(role.Key, definition.Key))
                 : PermissionLevel.None;
             return new RolePermissionItem(
@@ -358,15 +399,29 @@ public sealed class PermissionEvaluator(
             ?? AuthorizationRolloutMode.Static;
 
         var definition = RolePermissionCatalog.Capabilities.FirstOrDefault(item => item.Key == capabilityKey);
-        var configuredLevel = definition?.IsSupported == true
+        var canonicalLevel = RolePermissionCatalog.GetCanonicalLevel(normalizedRole, capabilityKey);
+        var persistedLevel = definition?.IsSupported == true
             ? await context.RoleCapabilityPermissions
                 .Where(permission => permission.ClinicId == clinicId &&
                                      permission.RoleKey == normalizedRole &&
                                      permission.CapabilityKey == capabilityKey)
                 .Select(permission => (PermissionLevel?)permission.Level)
                 .SingleOrDefaultAsync(cancellationToken)
-                ?? RolePermissionCatalog.GetCanonicalLevel(normalizedRole, capabilityKey)
+            : null;
+        var configuredLevel = definition?.IsSupported == true
+            ? persistedLevel is null || Enum.IsDefined(persistedLevel.Value)
+                ? persistedLevel ?? canonicalLevel
+                : canonicalLevel
             : PermissionLevel.None;
+        if (persistedLevel.HasValue && !Enum.IsDefined(persistedLevel.Value))
+        {
+            logger.LogWarning(
+                "Invalid persisted permission level ignored. ClinicId={ClinicId} Role={Role} Capability={Capability} PersistedLevel={PersistedLevel}",
+                clinicId,
+                normalizedRole,
+                capabilityKey,
+                (int)persistedLevel.Value);
+        }
 
         var effectiveLevel = Max(
             configuredLevel,

@@ -248,6 +248,105 @@ public sealed class SettingsAdministrationTests
     }
 
     [Fact]
+    public async Task SchedulingReadScope_RestrictsOwnOnlyCapabilityEvenWhenClinicSwitchIsOff()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Own Capability Clinic", Slug = $"own-capability-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.AuthorizationMode = AuthorizationRolloutMode.Enforced;
+        policy.RestrictCliniciansToOwnSchedules = false;
+        var allSchedules = await context.RoleCapabilityPermissions.SingleAsync(item =>
+            item.ClinicId == clinic.Id
+            && item.RoleKey == Roles.PT
+            && item.CapabilityKey == CapabilityKey.ScheduleViewAll);
+        allSchedules.Level = PermissionLevel.None;
+        await context.SaveChangesAsync();
+        var clinicianId = Guid.NewGuid();
+        var identity = new Mock<IIdentityContextAccessor>();
+        identity.Setup(accessor => accessor.GetCurrentUserRole()).Returns(Roles.PT);
+        identity.Setup(accessor => accessor.GetCurrentUserId()).Returns(clinicianId);
+        var evaluator = new PermissionEvaluator(context, NullLogger<PermissionEvaluator>.Instance);
+
+        var ownOnly = await AppointmentEndpoints.GetRestrictedReadClinicianIdAsync(
+            context, clinic.Id, identity.Object, evaluator, CancellationToken.None);
+        allSchedules.Level = PermissionLevel.View;
+        await context.SaveChangesAsync();
+        var all = await AppointmentEndpoints.GetRestrictedReadClinicianIdAsync(
+            context, clinic.Id, identity.Object, evaluator, CancellationToken.None);
+
+        Assert.Equal(clinicianId, ownOnly);
+        Assert.Null(all);
+    }
+
+    [Fact]
+    public async Task PermissionEvaluator_InvalidPersistedLevelFallsBackToCanonicalBaseline()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Invalid Level Clinic", Slug = $"invalid-level-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.AuthorizationMode = AuthorizationRolloutMode.Enforced;
+        var persisted = await context.RoleCapabilityPermissions.SingleAsync(item =>
+            item.ClinicId == clinic.Id
+            && item.RoleKey == Roles.PT
+            && item.CapabilityKey == CapabilityKey.RolesPermissionsManage);
+        persisted.Level = (PermissionLevel)999;
+        await context.SaveChangesAsync();
+        var evaluator = new PermissionEvaluator(context, NullLogger<PermissionEvaluator>.Instance);
+        var administration = new RolePermissionAdministrationService(context, CreateAuditService().Object);
+
+        var evaluation = await evaluator.EvaluateAsync(
+            clinic.Id,
+            Roles.PT,
+            CapabilityKey.RolesPermissionsManage,
+            PermissionLevel.View,
+            staticAllowed: false);
+        var response = await administration.GetAsync(clinic.Id);
+        var displayed = response.Roles.Single(item => item.RoleKey == Roles.PT).Permissions.Single(item =>
+            item.CapabilityKey == CapabilityKey.RolesPermissionsManage);
+
+        Assert.False(evaluation.DynamicAllowed);
+        Assert.False(evaluation.EffectiveAllowed);
+        Assert.Equal(PermissionLevel.None, displayed.Level);
+    }
+
+    [Fact]
+    public async Task RoleClone_RejectsStaleTargetPermissionVersions()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Clone Conflict Clinic", Slug = $"clone-conflict-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var service = new RolePermissionAdministrationService(context, CreateAuditService().Object);
+        var matrix = await service.GetAsync(clinic.Id);
+        var target = matrix.Roles.Single(item => item.RoleKey == Roles.PT);
+        var expectations = target.Permissions
+            .Where(item => item.IsSupported && item.LockedMinimum == PermissionLevel.None)
+            .Select(item => new PermissionVersionExpectation(item.CapabilityKey, item.Version))
+            .ToArray();
+        var concurrent = await context.RoleCapabilityPermissions.SingleAsync(item =>
+            item.ClinicId == clinic.Id
+            && item.RoleKey == Roles.PT
+            && item.CapabilityKey == CapabilityKey.AppointmentsCreate);
+        concurrent.Level = PermissionLevel.Full;
+        concurrent.Version++;
+        await context.SaveChangesAsync();
+
+        var result = await service.CloneAsync(
+            clinic.Id,
+            Roles.PT,
+            new CloneRolePermissionsRequest(Roles.PTA, expectations),
+            Guid.NewGuid(),
+            "stale-clone");
+
+        Assert.Equal(SettingsOperationStatus.Conflict, result.Status);
+        Assert.Equal(PermissionLevel.Full, concurrent.Level);
+    }
+
+    [Fact]
     public async Task SettingsAdministration_RejectsUndefinedPolicyAndPermissionEnums()
     {
         await using var context = CreateContext();
@@ -310,7 +409,7 @@ public sealed class SettingsAdministrationTests
         var clone = await service.CloneAsync(
             clinic.Id,
             Roles.PT,
-            new CloneRolePermissionsRequest(Roles.PTA),
+            new CloneRolePermissionsRequest(Roles.PTA, []),
             Guid.NewGuid(),
             "customization-disabled-clone");
 
@@ -606,6 +705,46 @@ public sealed class SettingsAdministrationTests
         Assert.NotNull(await assertionContext.UserMfaRecoveryCodes
             .Select(item => item.UsedAtUtc)
             .SingleAsync());
+    }
+
+    [Fact]
+    public async Task TotpRecovery_NullCodeReturnsGenericInvalidResult()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Null Recovery Clinic", Slug = $"null-recovery-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = "null-recovery-admin",
+            PinHash = BCrypt.Net.BCrypt.HashPassword("12345678"),
+            FirstName = "Null",
+            LastName = "Recovery",
+            Role = Roles.Admin,
+            ClinicId = clinic.Id,
+            IsActive = true
+        };
+        var protector = new TestSecretProtector();
+        var credential = new UserMfaCredential
+        {
+            User = user,
+            UserId = user.Id,
+            EncryptedSecret = protector.Protect("totp-secret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(20))),
+            IsActive = true
+        };
+        context.AddRange(clinic, user, credential);
+        await context.SaveChangesAsync();
+        var service = new MfaAuthenticationService(
+            context,
+            protector,
+            CreateAuthAuditService().Object,
+            new MutableTimeProvider(new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero)));
+
+        var result = await service.RecoverAsync(
+            service.CreateChallenge(user.Id, MfaChallengePurpose.Verification),
+            null!);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("invalid_code", result.ErrorCode);
+        Assert.Equal(1, credential.FailedAttemptCount);
     }
 
     [Fact]
@@ -1574,6 +1713,53 @@ public sealed class SettingsAdministrationTests
             .Where(item => item.AppointmentId == appointment.Id)
             .Select(item => item.ConsumedAtUtc)
             .SingleAsync());
+    }
+
+    [Fact]
+    public async Task KioskCheckIn_RequiresNormalizedActivePolicyCopay()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Normalized Copay Clinic", Slug = $"normalized-copay-{Guid.NewGuid():N}" };
+        var patient = new Patient
+        {
+            FirstName = "Normalized",
+            LastName = "Copay",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            PayerInfoJson = "{}",
+            ClinicId = clinic.Id,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        var appointment = new Appointment
+        {
+            Patient = patient,
+            PatientId = patient.Id,
+            ClinicId = clinic.Id,
+            ClinicalId = Guid.NewGuid(),
+            StartTimeUtc = DateTime.UtcNow.AddHours(1),
+            EndTimeUtc = DateTime.UtcNow.AddHours(2),
+            Status = AppointmentStatus.Scheduled,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        var insurance = new PatientInsurancePolicy
+        {
+            Patient = patient,
+            PatientId = patient.Id,
+            Clinic = clinic,
+            ClinicId = clinic.Id,
+            CoveragePriority = InsuranceCoveragePriority.Primary,
+            Status = InsurancePolicyStatus.Active,
+            CopayAmount = 35m,
+            ModifiedByUserId = Guid.NewGuid(),
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        context.AddRange(clinic, patient, appointment, insurance);
+        await context.SaveChangesAsync();
+        var workflow = new AppointmentCheckInWorkflow(context, TimeProvider.System);
+
+        var result = await workflow.CheckInAsync(appointment.Id, clinic.Id);
+
+        Assert.Equal(AppointmentCheckInStatus.PaymentRequired, result.Status);
+        Assert.Equal(AppointmentStatus.Scheduled, appointment.Status);
     }
 
     [Fact]

@@ -33,7 +33,17 @@ public sealed class AppointmentCheckInWorkflow(
             .IgnoreQueryFilters()
             .AnyAsync(item => item.AppointmentId == appointment.Id
                 && item.Status == AppointmentPaymentStatus.Succeeded, cancellationToken);
-        if (!hasPaid && TryParseCopay(appointment.Patient.PayerInfoJson) is > 0)
+        var normalizedCopay = await context.PatientInsurancePolicies
+            .IgnoreQueryFilters()
+            .Where(item => item.PatientId == appointment.PatientId
+                && (!requiredClinicId.HasValue || item.ClinicId == requiredClinicId)
+                && !item.IsArchived
+                && item.Status == InsurancePolicyStatus.Active)
+            .OrderBy(item => item.CoveragePriority)
+            .Select(item => item.CopayAmount)
+            .FirstOrDefaultAsync(cancellationToken);
+        var copay = normalizedCopay ?? TryParseCopay(appointment.Patient.PayerInfoJson);
+        if (!hasPaid && copay is > 0)
             return new AppointmentCheckInDecision(AppointmentCheckInStatus.PaymentRequired);
 
         var checkedInAt = timeProvider.GetUtcNow().UtcDateTime;

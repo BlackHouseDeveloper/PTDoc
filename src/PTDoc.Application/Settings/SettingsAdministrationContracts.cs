@@ -65,7 +65,11 @@ public sealed record PermissionUpdate(
 
 public sealed record UpdateRolePermissionsRequest(IReadOnlyList<PermissionUpdate> Permissions);
 
-public sealed record CloneRolePermissionsRequest(string SourceRoleKey);
+public sealed record PermissionVersionExpectation(CapabilityKey CapabilityKey, long ExpectedVersion);
+
+public sealed record CloneRolePermissionsRequest(
+    string SourceRoleKey,
+    IReadOnlyList<PermissionVersionExpectation> TargetPermissions);
 
 public interface IRolePermissionAdministrationService
 {
