@@ -83,15 +83,26 @@
                     <select 
                         id="appointmentType" 
                         class="@GetInputClass(nameof(AppointmentType))"
-                        @bind="AppointmentType"
+                        value="@VisitTypeId"
+                        @onchange="HandleVisitTypeChanged"
                         @ref="appointmentTypeInputRef"
                         aria-required="true"
                         aria-invalid="@AriaInvalid(nameof(AppointmentType))"
                         aria-describedby="@GetFieldDescriptionId(nameof(AppointmentType))">
                         <option value="">Select type...</option>
-                        @foreach (var appointmentType in AppointmentTypeCatalog.All)
+                        @if (AvailableVisitTypes.Count > 0)
                         {
-                            <option value="@appointmentType.FormValue">@appointmentType.DisplayName</option>
+                            @foreach (var visitType in AvailableVisitTypes)
+                            {
+                                <option value="@visitType.Id">@visitType.Name</option>
+                            }
+                        }
+                        else
+                        {
+                            @foreach (var appointmentType in AppointmentTypeCatalog.All)
+                            {
+                                <option value="@appointmentType.FormValue">@appointmentType.DisplayName</option>
+                            }
                         }
                     </select>
                     @RenderFieldError(nameof(AppointmentType))
@@ -258,6 +269,9 @@
     [Parameter]
     public List<ClinicianOption> AvailableClinicians { get; set; } = new();
 
+    [Parameter]
+    public IReadOnlyList<VisitTypeOption> AvailableVisitTypes { get; set; } = [];
+
     private ElementReference firstInputRef;
     private ElementReference appointmentTypeInputRef;
     private ElementReference appointmentDateInputRef;
@@ -276,6 +290,7 @@
 
     private string PatientId { get; set; } = string.Empty;
     private string AppointmentType { get; set; } = string.Empty;
+    private string VisitTypeId { get; set; } = string.Empty;
     private DateTime? AppointmentDate { get; set; } = DateTime.Today;
     private TimeOnly? AppointmentTimeInput { get; set; } = new TimeOnly(9, 0);
     private int DurationMinutes { get; set; } = 45;
@@ -438,6 +453,7 @@
         {
             PatientId = PatientId,
             AppointmentType = AppointmentType,
+            VisitTypeId = Guid.TryParse(VisitTypeId, out var visitTypeId) ? visitTypeId : null,
             AppointmentDate = AppointmentDate ?? DateTime.Today,
             AppointmentTime = parsedTime,
             DurationMinutes = DurationMinutes,
@@ -480,7 +496,7 @@
             validationErrors[nameof(PatientId)] = "Select a patient.";
         }
 
-        if (string.IsNullOrWhiteSpace(AppointmentType))
+        if (string.IsNullOrWhiteSpace(AppointmentType) || (AvailableVisitTypes.Count > 0 && string.IsNullOrWhiteSpace(VisitTypeId)))
         {
             validationErrors[nameof(AppointmentType)] = "Select an appointment type.";
         }
@@ -568,6 +584,7 @@
     {
         public string PatientId { get; set; } = string.Empty;
         public string AppointmentType { get; set; } = string.Empty;
+        public Guid? VisitTypeId { get; set; }
         public DateTime AppointmentDate { get; set; }
         public TimeSpan AppointmentTime { get; set; }
         public int DurationMinutes { get; set; }
@@ -587,6 +604,13 @@
         public string Name { get; set; } = string.Empty;
     }
 
+    public sealed class VisitTypeOption
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public int DurationMinutes { get; set; }
+    }
+
     private IReadOnlyList<PatientOption> GetPatientOptions()
     {
         return AvailablePatients;
@@ -603,6 +627,7 @@
         {
             PatientId = string.Empty;
             AppointmentType = string.Empty;
+            VisitTypeId = string.Empty;
             AppointmentDate = DateTime.Today;
             AppointmentTimeInput = new TimeOnly(9, 0);
             DurationMinutes = 45;
@@ -614,6 +639,7 @@
 
         PatientId = initialValues.PatientId;
         AppointmentType = initialValues.AppointmentType;
+        VisitTypeId = initialValues.VisitTypeId?.ToString() ?? ResolveVisitTypeId(initialValues.AppointmentType);
         AppointmentDate = initialValues.AppointmentDate;
         AppointmentTimeInput = TimeOnly.FromTimeSpan(initialValues.AppointmentTime);
         DurationMinutes = initialValues.DurationMinutes;
@@ -621,6 +647,26 @@
         Notes = initialValues.Notes;
         validationErrors.Clear();
     }
+
+    private void HandleVisitTypeChanged(ChangeEventArgs eventArgs)
+    {
+        VisitTypeId = eventArgs.Value?.ToString() ?? string.Empty;
+        var selected = AvailableVisitTypes.FirstOrDefault(item => item.Id.ToString() == VisitTypeId);
+        if (selected is not null)
+        {
+            AppointmentType = selected.Name;
+            DurationMinutes = selected.DurationMinutes;
+        }
+        else
+        {
+            AppointmentType = VisitTypeId;
+        }
+        validationErrors.Remove(nameof(AppointmentType));
+    }
+
+    private string ResolveVisitTypeId(string appointmentType) => AvailableVisitTypes
+        .FirstOrDefault(item => string.Equals(item.Name, appointmentType, StringComparison.OrdinalIgnoreCase))
+        ?.Id.ToString() ?? appointmentType;
 
     private bool HasValidationError(string fieldName) => validationErrors.ContainsKey(fieldName);
 

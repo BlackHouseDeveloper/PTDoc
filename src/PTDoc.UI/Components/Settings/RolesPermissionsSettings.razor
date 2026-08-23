@@ -1,7 +1,11 @@
+@using PTDoc.Application.Settings
+@using PTDoc.Core.Models
+@inject IServiceProvider Services
+@inject NavigationManager Navigation
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
-<section class="roles-permissions" aria-labelledby="roles-permissions-title" @ref="_root">
+<section class="roles-permissions" aria-labelledby="roles-permissions-title" aria-busy="@_isBusy" @ref="_root">
     <header class="roles-permissions__header">
         <img src="_content/PTDoc.UI/images/settings/role-selector.svg" alt="" aria-hidden="true" />
         <div>
@@ -41,6 +45,18 @@
         </button>
     </div>
 
+    @if (!string.IsNullOrWhiteSpace(_statusMessage))
+    {
+        <div class="roles-permissions__status @(_statusIsError ? "is-error" : "is-success")" role="@(_statusIsError ? "alert" : "status")">
+            @_statusMessage
+        </div>
+    }
+
+    @if (!_canMutate)
+    {
+        <div class="roles-permissions__status" role="status">Owner access is read-only. An Administrator must make permission or security-policy changes.</div>
+    }
+
     @if (_activeTab == SettingsTab.RolePermissions)
     {
         <div
@@ -78,10 +94,6 @@
                     <p>Choose a role to view and edit its permissions</p>
                 </header>
 
-                <p class="role-selector__notice" role="note">
-                    PT / DPT is the only documented permission baseline in this UI preview. Permission selections and the live summary remain local to this page and are not persisted. Other roles remain visible for reference and cannot be configured until authoritative role-specific matrices are connected.
-                </p>
-
                 <div class="role-selector__grid">
                     @foreach (var role in Roles)
                     {
@@ -89,19 +101,13 @@
                             type="button"
                             class="role-card @(role.Name == _selectedRole ? "is-selected" : string.Empty)"
                             aria-pressed="@(role.Name == _selectedRole ? "true" : "false")"
-                            disabled="@(!role.IsConfigurable)"
-                            @onclick="() => SelectRole(role)">
+                            disabled="@_isBusy"
+                            @onclick="() => SelectRole(role.Name)">
                             <span class="role-card__identity">
                                 <span class="role-card__dot @role.DotClass" aria-hidden="true"></span>
-                                <span class="role-card__name">@role.Name</span>
+                                <span class="role-card__name">@role.DisplayName</span>
                             </span>
-                            <span class="role-card__description">
-                                <span>@role.Description</span>
-                                @if (!role.IsConfigurable)
-                                {
-                                    <small>Preview unavailable</small>
-                                }
-                            </span>
+                            <span class="role-card__description">@role.Description</span>
                         </button>
                     }
                 </div>
@@ -111,14 +117,18 @@
                 <img class="clone-permissions__icon" src="_content/PTDoc.UI/images/settings/clone.svg" alt="" aria-hidden="true" />
                 <div class="clone-permissions__copy">
                     <h2 id="clone-permissions-title">Clone Permissions</h2>
-                    <p id="clone-permissions-availability">Role cloning is unavailable until documented source-role baselines are connected.</p>
+                    <p>Copy permissions from another role to @SelectedRoleDisplayName</p>
                 </div>
                 <div class="clone-permissions__actions">
                     <label class="roles-permissions__sr-only" for="clone-role-select">Source role</label>
-                    <select id="clone-role-select" @bind="_cloneSourceRole" aria-describedby="clone-permissions-availability" disabled>
-                        <option value="">Unavailable in preview</option>
+                    <select id="clone-role-select" @bind="_cloneSourceRole" disabled="@(_isBusy || !_canMutate || SelectedRoleIsReadOnly)">
+                        <option value=""></option>
+                        @foreach (var role in Roles.Where(role => role.Name != _selectedRole))
+                        {
+                            <option value="@role.Name">@role.DisplayName</option>
+                        }
                     </select>
-                    <button type="button" aria-describedby="clone-permissions-availability" @onclick="ClonePermissions" disabled>Clone</button>
+                    <button type="button" @onclick="ClonePermissions" disabled="@(_isBusy || !_canMutate || SelectedRoleIsReadOnly || string.IsNullOrWhiteSpace(_cloneSourceRole))">Clone</button>
                 </div>
             </section>
 
@@ -160,7 +170,8 @@
                                             aria-checked="@(permission.SelectedLevel == firstLevel ? "true" : "false")"
                                             aria-label="@($"{permission.Name}: {firstLevel}")"
                                             tabindex="@(permission.SelectedLevel == firstLevel ? "0" : "-1")"
-                                            @onclick="() => SetPermissionLevel(permission, firstLevel)"
+                                            disabled="@(_isBusy || !_canMutate || SelectedRoleIsReadOnly || !permission.IsSupported || permission.LockedMinimum > PermissionLevel.None)"
+                                            @onclick="async () => await SetPermissionLevel(permission, firstLevel)"
                                             @onkeydown="eventArgs => HandlePermissionLevelKeyDownAsync(eventArgs, permission, 0)">
                                             @firstLevel
                                         </button>
@@ -172,7 +183,8 @@
                                             aria-checked="@(permission.SelectedLevel == secondLevel ? "true" : "false")"
                                             aria-label="@($"{permission.Name}: {secondLevel}")"
                                             tabindex="@(permission.SelectedLevel == secondLevel ? "0" : "-1")"
-                                            @onclick="() => SetPermissionLevel(permission, secondLevel)"
+                                            disabled="@(_isBusy || !_canMutate || SelectedRoleIsReadOnly || !permission.IsSupported || permission.LockedMinimum > PermissionLevel.None)"
+                                            @onclick="async () => await SetPermissionLevel(permission, secondLevel)"
                                             @onkeydown="eventArgs => HandlePermissionLevelKeyDownAsync(eventArgs, permission, 1)">
                                             @secondLevel
                                         </button>
@@ -187,13 +199,13 @@
             <section class="permission-summary" aria-labelledby="permission-summary-title">
                 <header class="permission-summary__header">
                     <img src="_content/PTDoc.UI/images/settings/summary.svg" alt="" aria-hidden="true" />
-                    <h2 id="permission-summary-title">Permission Summary for @_selectedRole</h2>
+                    <h2 id="permission-summary-title">Permission Summary for @SelectedRoleDisplayName</h2>
                 </header>
                 <div class="permission-summary__metrics">
-                    <div><strong>@CountPermissionLevel("Full")</strong><span>Full Access</span></div>
-                    <div><strong>@CountPermissionLevel("Edit")</strong><span>Edit Access</span></div>
-                    <div><strong>@CountPermissionLevel("View")</strong><span>View Only</span></div>
-                    <div><strong>@CountPermissionLevel("None")</strong><span>No Access</span></div>
+                    <div><strong>@PermissionCount(PermissionLevel.Full)</strong><span>Full Access</span></div>
+                    <div><strong>@PermissionCount(PermissionLevel.Edit)</strong><span>Edit Access</span></div>
+                    <div><strong>@PermissionCount(PermissionLevel.View)</strong><span>View Only</span></div>
+                    <div><strong>@PermissionCount(PermissionLevel.None)</strong><span>No Access</span></div>
                 </div>
             </section>
 
@@ -216,11 +228,10 @@
                     <p>Configure authentication and security policies</p>
                 </header>
                 <div class="security-card__rows">
-                    @SecurityToggle("Require Multi-Factor Authentication", "All users must enable 2FA for account access", _requireMfa, ToggleMfa)
+                    @SecurityToggle("Require Multi-Factor Authentication", "All users must enroll in TOTP before the effective date", _requireMfa, ToggleMfa)
                     @SecurityToggle("Require PIN Change on First Login", "Force new users to create their own PIN", _requirePinChange, TogglePinChange)
-                    @SecurityInput("auto-lockout-time", "Auto-Lockout Time", "Automatically lock session after inactivity", _autoLockoutTime, value => _autoLockoutTime = value)
-                    @SecurityInput("password-expiration", "Password Expiration", "Require password reset every X days", _passwordExpiration, value => _passwordExpiration = value)
-                    @SecurityInput("minimum-password-length", "Minimum Password Length", "Enforce minimum character count for passwords", _minimumPasswordLength, value => _minimumPasswordLength = value)
+                    @SecurityInput("auto-lockout-time", "Session Inactivity Timeout", "Lock sessions after 5–60 minutes of inactivity", _autoLockoutTime, value => _autoLockoutTime = value)
+                    @SecurityInput("minimum-pin-length", "Minimum PIN Length", "Require 8–12 numeric digits at the next PIN change", _minimumPinLength, value => _minimumPinLength = value)
                 </div>
             </section>
 
@@ -234,8 +245,21 @@
                 </header>
                 <div class="security-card__rows security-card__rows--compact">
                     @SecurityToggle("Allow Role Customization", "Enable admins to customize permissions for clinical roles", _allowRoleCustomization, ToggleRoleCustomization)
-                    @SecurityToggle("Enable Audit Log", "Track all permission changes and role assignments", _enableAuditLog, ToggleAuditLog)
-                    <button type="button" class="manage-roles-row" @onclick="GoToRolesAsync">
+                    <div class="security-setting-row">
+                        <div><strong>Security Audit Log</strong><p>Mandatory auditing of security and permission changes</p></div>
+                        <span aria-label="Security Audit Log enabled and locked">Enabled · Locked</span>
+                    </div>
+                    <button type="button" class="manage-roles-row" @onclick="RegenerateRecoveryCodes">
+                        <span class="manage-roles-row__copy">
+                            <img src="_content/PTDoc.UI/images/settings/security-requirements.svg" alt="" aria-hidden="true" />
+                            <span>
+                                <strong>Regenerate My Recovery Codes</strong>
+                                <small>Verify with TOTP and invalidate your previous recovery-code set</small>
+                            </span>
+                        </span>
+                        <span class="manage-roles-row__action">Regenerate</span>
+                    </button>
+                    <button type="button" class="manage-roles-row" @onclick="GoToRoles">
                         <span class="manage-roles-row__copy">
                             <img src="_content/PTDoc.UI/images/settings/manage-roles.svg" alt="" aria-hidden="true" />
                             <span>
@@ -271,20 +295,17 @@
             @QuickAdminTools()
 
             <div class="security-action-bar" aria-label="Security settings actions">
-                <p id="security-preview-status" class="security-action-bar__preview-status" role="status" aria-live="polite">
-                    @_securityPreviewStatus
-                </p>
-                <button type="button" @onclick="ResetSecuritySettings">
+                <button type="button" @onclick="ResetSecuritySettings" disabled="@(_isBusy || !_canMutate)">
                     <img src="_content/PTDoc.UI/images/settings/reset.svg" alt="" aria-hidden="true" />
                     <span>Reset to Default</span>
                 </button>
-                <button type="button" @onclick="CancelSecurityChanges">
+                <button type="button" @onclick="CancelSecurityChanges" disabled="@_isBusy">
                     <img src="_content/PTDoc.UI/images/settings/cancel.svg" alt="" aria-hidden="true" />
                     <span>Cancel</span>
                 </button>
-                <button type="button" class="security-action-bar__save" aria-describedby="security-preview-status" @onclick="SaveSecurityPreview">
+                <button type="button" class="security-action-bar__save" @onclick="SaveSecurityChanges" disabled="@(_isBusy || !_canMutate)">
                     <img src="_content/PTDoc.UI/images/settings/save.svg" alt="" aria-hidden="true" />
-                    <span>Save Preview</span>
+                    <span>Save Changes</span>
                 </button>
             </div>
         </div>
@@ -297,36 +318,75 @@
     private ElementReference _rolePermissionsTab;
     private ElementReference _securitySettingsTab;
     private IJSObjectReference? _keyboardModule;
-    private string _selectedRole = "PT / DPT";
+    private string _selectedRole = "PT";
     private string _cloneSourceRole = string.Empty;
-    private bool _requireMfa = true;
+    private bool _requireMfa;
     private bool _requirePinChange = true;
     private bool _allowRoleCustomization = true;
-    private bool _enableAuditLog = true;
     private bool _restrictScheduleAccess;
-    private string _autoLockoutTime = string.Empty;
-    private string _passwordExpiration = string.Empty;
-    private string _minimumPasswordLength = "8";
-    private string _securityPreviewStatus = "Preview only: security changes and the Cancel baseline remain on this page and are not persisted.";
-    private SecuritySettingsSnapshot _savedSecuritySettings = SecuritySettingsSnapshot.Default;
+    private string _autoLockoutTime = "15";
+    private string _minimumPinLength = "8";
+    private bool _isBusy;
+    private bool _canMutate = true;
+    private bool _statusIsError;
+    private string? _statusMessage;
+    private long _securityVersion;
+    private SecuritySnapshot _securitySnapshot = SecuritySnapshot.Default;
+    private IRolePermissionAdministrationService? _roleService;
+    private ISecurityPolicyAdministrationService? _securityService;
+    private readonly Dictionary<string, RolePermissionSet> _rolePermissionSets = new(StringComparer.Ordinal);
 
-    private static readonly IReadOnlyList<RoleDefinition> Roles =
+    private IReadOnlyList<RoleDefinition> Roles { get; set; } =
     [
-        new("Owner / Executive Admin", "Full system access and control", "role-card__dot--owner", false),
-        new("Practice Manager", "Manage clinic operations and staff", "role-card__dot--manager", false),
-        new("PT / DPT", "Licensed physical therapist", "role-card__dot--pt", true),
-        new("PTA", "Physical therapist assistant", "role-card__dot--pta", false),
-        new("Therapy Aide / Rehab Tech", "Support staff for therapy sessions", "role-card__dot--aide", false),
-        new("Front Desk / Patient Care Coordinator", "Patient intake and scheduling", "role-card__dot--front-desk", false),
-        new("Billing Specialist", "Handle billing and insurance", "role-card__dot--billing", false),
-        new("Patient", "Patient portal access only", "role-card__dot--patient", false)
+        new("Admin", "Administrator", "Full recovery administration", "role-card__dot--manager", false),
+        new("Owner", "Owner / Executive", "Read-only operational access", "role-card__dot--owner", true),
+        new("PracticeManager", "Practice Manager", "Manage clinic operations and staff", "role-card__dot--manager", false),
+        new("PT", "PT / DPT", "Licensed physical therapist", "role-card__dot--pt", false),
+        new("PTA", "PTA", "Physical therapist assistant", "role-card__dot--pta", false),
+        new("Aide", "Therapy Aide / Rehab Tech", "Support staff for therapy sessions", "role-card__dot--aide", false),
+        new("FrontDesk", "Front Desk / Patient Care Coordinator", "Patient intake and scheduling", "role-card__dot--front-desk", false),
+        new("Billing", "Billing Specialist", "Handle billing and insurance", "role-card__dot--billing", false),
+        new("Patient", "Patient", "Patient portal access only", "role-card__dot--patient", true)
     ];
 
-    private readonly IReadOnlyList<PermissionCategory> _permissionCategories = CreatePermissionCategories();
+    private IReadOnlyList<PermissionCategory> _permissionCategories = CreatePermissionCategories();
 
-    protected override void OnInitialized()
+    private bool SelectedRoleIsReadOnly => Roles.FirstOrDefault(role => role.Name == _selectedRole)?.IsReadOnly ?? false;
+    private string SelectedRoleDisplayName => Roles.FirstOrDefault(role => role.Name == _selectedRole)?.DisplayName ?? _selectedRole;
+
+    protected override async Task OnInitializedAsync()
     {
-        _savedSecuritySettings = CaptureSecuritySettings();
+        if (Services.GetService(typeof(Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider))
+            is Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider authenticationStateProvider)
+        {
+            var authenticationState = await authenticationStateProvider.GetAuthenticationStateAsync();
+            _canMutate = authenticationState.User.IsInRole(PTDoc.Application.Services.Roles.Admin);
+        }
+
+        _roleService = Services.GetService(typeof(IRolePermissionAdministrationService)) as IRolePermissionAdministrationService;
+        _securityService = Services.GetService(typeof(ISecurityPolicyAdministrationService)) as ISecurityPolicyAdministrationService;
+        if (_roleService is null || _securityService is null)
+        {
+            return;
+        }
+
+        _isBusy = true;
+        try
+        {
+            var rolesTask = _roleService.GetAsync(Guid.Empty);
+            var securityTask = _securityService.GetAsync(Guid.Empty);
+            await Task.WhenAll(rolesTask, securityTask);
+            ApplyRoles(await rolesTask);
+            ApplySecurity(await securityTask);
+        }
+        catch (Exception)
+        {
+            ShowStatus("Settings could not be loaded. The documented defaults are shown; retry after the API is available.", true);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -351,7 +411,6 @@
     private void SelectTab(SettingsTab tab)
     {
         _activeTab = tab;
-        // TODO: Connect tab state to application navigation/state management if required.
     }
 
     private async Task HandleTabKeyDownAsync(KeyboardEventArgs eventArgs, SettingsTab currentTab)
@@ -385,29 +444,61 @@
         _ => throw new ArgumentOutOfRangeException(nameof(tab), tab, null)
     };
 
-    private void SelectRole(RoleDefinition role)
+    private void SelectRole(string roleName)
     {
-        if (!role.IsConfigurable)
+        _selectedRole = roleName;
+        _cloneSourceRole = string.Empty;
+        ApplySelectedRolePermissions();
+    }
+
+    private async Task SetPermissionLevel(PermissionDefinition permission, string level)
+    {
+        if (_isBusy || !_canMutate || SelectedRoleIsReadOnly || !permission.IsSupported ||
+            !Enum.TryParse<PermissionLevel>(level, out var parsedLevel))
         {
             return;
         }
 
-        _selectedRole = role.Name;
-        _cloneSourceRole = string.Empty;
-        // TODO: Load role list from application data source.
-    }
-
-    private static void SetPermissionLevel(PermissionDefinition permission, string level)
-    {
+        var previousLevel = permission.SelectedLevel;
         permission.SelectedLevel = level;
-        // TODO: Persist permission changes.
+        if (_roleService is null)
+        {
+            return;
+        }
+
+        _isBusy = true;
+        _statusMessage = null;
+        try
+        {
+            var result = await _roleService.UpdateAsync(
+                Guid.Empty,
+                _selectedRole,
+                new UpdateRolePermissionsRequest([new PermissionUpdate(permission.Key, parsedLevel, permission.Version)]),
+                Guid.Empty,
+                string.Empty);
+            if (!result.Succeeded || result.Value is null)
+            {
+                permission.SelectedLevel = previousLevel;
+                ShowOperationError(result.Status, result.ValidationErrors);
+                return;
+            }
+
+            _rolePermissionSets[_selectedRole] = result.Value;
+            ApplySelectedRolePermissions();
+            ShowStatus("Permission saved.", false);
+        }
+        catch (Exception)
+        {
+            permission.SelectedLevel = previousLevel;
+            ShowStatus("The permission could not be saved. The previous value was restored.", true);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
     }
 
-    private int CountPermissionLevel(string level) => _permissionCategories
-        .SelectMany(category => category.Permissions)
-        .Count(permission => permission.SelectedLevel == level);
-
-    private static async Task HandlePermissionLevelKeyDownAsync(
+    private async Task HandlePermissionLevelKeyDownAsync(
         KeyboardEventArgs eventArgs,
         PermissionDefinition permission,
         int currentIndex)
@@ -426,14 +517,45 @@
             return;
         }
 
-        SetPermissionLevel(permission, permission.AvailableLevels[targetIndex]);
+        await SetPermissionLevel(permission, permission.AvailableLevels[targetIndex]);
         await permission.GetLevelButton(targetIndex).FocusAsync();
     }
 
-    private void ClonePermissions()
+    private async Task ClonePermissions()
     {
-        // TODO: Implement permission cloning once role-specific permission data is available.
-        // TODO: Persist cloned permission changes.
+        if (_roleService is null || !_canMutate || string.IsNullOrWhiteSpace(_cloneSourceRole) || SelectedRoleIsReadOnly)
+        {
+            return;
+        }
+
+        _isBusy = true;
+        try
+        {
+            var result = await _roleService.CloneAsync(
+                Guid.Empty,
+                _selectedRole,
+                new CloneRolePermissionsRequest(_cloneSourceRole),
+                Guid.Empty,
+                string.Empty);
+            if (!result.Succeeded || result.Value is null)
+            {
+                ShowOperationError(result.Status, result.ValidationErrors);
+                return;
+            }
+
+            _rolePermissionSets[_selectedRole] = result.Value;
+            ApplySelectedRolePermissions();
+            _cloneSourceRole = string.Empty;
+            ShowStatus("Editable permissions were cloned; locked permissions were preserved.", false);
+        }
+        catch (Exception)
+        {
+            ShowStatus("Permissions could not be cloned. No local values were changed.", true);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
     }
 
     private void ToggleMfa() => _requireMfa = !_requireMfa;
@@ -442,62 +564,205 @@
 
     private void ToggleRoleCustomization() => _allowRoleCustomization = !_allowRoleCustomization;
 
-    private void ToggleAuditLog() => _enableAuditLog = !_enableAuditLog;
-
     private void ToggleScheduleAccess() => _restrictScheduleAccess = !_restrictScheduleAccess;
 
-    private async Task GoToRolesAsync()
+    private async Task GoToRoles()
     {
-        SelectTab(SettingsTab.RolePermissions);
+        _activeTab = SettingsTab.RolePermissions;
+        await Task.Yield();
         await _rolePermissionsTab.FocusAsync();
     }
 
+    private void OpenAutoCheckInMessaging() => Navigation.NavigateTo("/settings/auto-check-in");
+
+    private void OpenKioskCheckIn() => Navigation.NavigateTo("/settings/kiosk");
+
+    private void RegenerateRecoveryCodes() => Navigation.NavigateTo(
+        "/authentication-step-up?mode=recovery-codes&returnUrl=%2Fsettings");
+
     private void ResetSecuritySettings()
     {
-        ApplySecuritySettings(SecuritySettingsSnapshot.Default);
-        _securityPreviewStatus = "Canonical security defaults applied to this preview. Changes are not persisted.";
+        ApplySecurity(SecurityPolicyDefaults, updateSnapshot: false);
+        _securityVersion = _securitySnapshot.Version;
+        ShowStatus("Canonical defaults applied locally. Select Save Changes to persist them.", false);
     }
 
     private void CancelSecurityChanges()
     {
-        ApplySecuritySettings(_savedSecuritySettings);
-        _securityPreviewStatus = "The last saved security preview was restored. Changes are not persisted.";
+        ApplySecurity(_securitySnapshot.ToDto());
+        ShowStatus("Unsaved security changes were discarded.", false);
     }
 
-    private void SaveSecurityPreview()
+    private async Task SaveSecurityChanges()
     {
-        _savedSecuritySettings = CaptureSecuritySettings();
-        _securityPreviewStatus = "Security preview baseline updated on this page. Changes are not persisted.";
-        // TODO: Load security policy values from the application data source.
-        // TODO: Persist security toggle changes.
-        // TODO: Persist security input values.
-        // TODO: Define security-input validation rules.
-        // TODO: Implement security settings persistence.
-        // TODO: Connect actual audit/compliance behavior.
-        // TODO: Apply application-standard loading/error/success states when backend integration is introduced.
+        if (!_canMutate) return;
+        if (!int.TryParse(_autoLockoutTime, out var inactivityMinutes) ||
+            !int.TryParse(_minimumPinLength, out var minimumPinLength))
+        {
+            ShowStatus("Session timeout and minimum PIN length must be whole numbers.", true);
+            return;
+        }
+
+        if (_securityService is null)
+        {
+            _securitySnapshot = CaptureSecurity();
+            ShowStatus("Security defaults updated locally.", false);
+            return;
+        }
+
+        _isBusy = true;
+        try
+        {
+            var result = await _securityService.UpdateAsync(
+                Guid.Empty,
+                new UpdateSecurityPolicyRequest(
+                    _requireMfa ? MfaEnforcementMode.GracePeriod : MfaEnforcementMode.Off,
+                    _requireMfa ? DateTime.UtcNow.AddDays(14) : null,
+                    _requirePinChange,
+                    minimumPinLength,
+                    inactivityMinutes,
+                    _allowRoleCustomization,
+                    _restrictScheduleAccess,
+                    AuthorizationRolloutMode.Static,
+                    _securityVersion),
+                Guid.Empty,
+                string.Empty);
+            if (!result.Succeeded || result.Value is null)
+            {
+                ShowOperationError(result.Status, result.ValidationErrors);
+                return;
+            }
+
+            ApplySecurity(result.Value);
+            ShowStatus("Security policy saved.", false);
+        }
+        catch (Exception)
+        {
+            ShowStatus("Security settings could not be saved. Your draft is still available to retry.", true);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
     }
 
-    private SecuritySettingsSnapshot CaptureSecuritySettings() => new(
+    private void ApplyRoles(RolePermissionsResponse response)
+    {
+        _rolePermissionSets.Clear();
+        foreach (var role in response.Roles)
+        {
+            _rolePermissionSets[role.RoleKey] = role;
+        }
+
+        Roles = response.Roles.Select(role => new RoleDefinition(
+            role.RoleKey,
+            role.DisplayName,
+            GetRoleDescription(role.RoleKey),
+            GetRoleDotClass(role.RoleKey),
+            role.IsReadOnly)).ToArray();
+        if (!_rolePermissionSets.ContainsKey(_selectedRole))
+        {
+            _selectedRole = response.Roles.FirstOrDefault()?.RoleKey ?? "PT";
+        }
+        ApplySelectedRolePermissions();
+    }
+
+    private void ApplySelectedRolePermissions()
+    {
+        if (!_rolePermissionSets.TryGetValue(_selectedRole, out var role))
+        {
+            return;
+        }
+
+        var byKey = role.Permissions.ToDictionary(item => item.CapabilityKey);
+        foreach (var permission in _permissionCategories.SelectMany(category => category.Permissions))
+        {
+            if (!byKey.TryGetValue(permission.Key, out var persisted))
+            {
+                continue;
+            }
+
+            permission.SelectedLevel = persisted.Level.ToString();
+            permission.Version = persisted.Version;
+            permission.LockedMinimum = persisted.LockedMinimum;
+            permission.IsSupported = persisted.IsSupported;
+        }
+    }
+
+    private int PermissionCount(PermissionLevel level) => _permissionCategories
+        .SelectMany(category => category.Permissions)
+        .Count(permission => Enum.TryParse<PermissionLevel>(permission.SelectedLevel, out var selected) && selected == level);
+
+    private void ApplySecurity(SecurityPolicyDto policy, bool updateSnapshot = true)
+    {
+        _requireMfa = policy.MfaEnforcementMode != MfaEnforcementMode.Off;
+        _requirePinChange = policy.RequirePinChangeOnFirstLogin;
+        _minimumPinLength = policy.MinimumPinLength.ToString();
+        _autoLockoutTime = policy.SessionInactivityMinutes.ToString();
+        _allowRoleCustomization = policy.AllowRoleCustomization;
+        _restrictScheduleAccess = policy.RestrictCliniciansToOwnSchedules;
+        _securityVersion = policy.Version;
+        if (updateSnapshot)
+        {
+            _securitySnapshot = CaptureSecurity();
+        }
+    }
+
+    private SecuritySnapshot CaptureSecurity() => new(
         _requireMfa,
         _requirePinChange,
-        _allowRoleCustomization,
-        _enableAuditLog,
-        _restrictScheduleAccess,
+        _minimumPinLength,
         _autoLockoutTime,
-        _passwordExpiration,
-        _minimumPasswordLength);
+        _allowRoleCustomization,
+        _restrictScheduleAccess,
+        _securityVersion);
 
-    private void ApplySecuritySettings(SecuritySettingsSnapshot settings)
+    private void ShowOperationError(SettingsOperationStatus status, IReadOnlyDictionary<string, string[]>? validationErrors)
     {
-        _requireMfa = settings.RequireMfa;
-        _requirePinChange = settings.RequirePinChange;
-        _allowRoleCustomization = settings.AllowRoleCustomization;
-        _enableAuditLog = settings.EnableAuditLog;
-        _restrictScheduleAccess = settings.RestrictScheduleAccess;
-        _autoLockoutTime = settings.AutoLockoutTime;
-        _passwordExpiration = settings.PasswordExpiration;
-        _minimumPasswordLength = settings.MinimumPasswordLength;
+        var validationMessage = validationErrors?.Values.SelectMany(messages => messages).FirstOrDefault();
+        ShowStatus(status switch
+        {
+            SettingsOperationStatus.Conflict => "These settings changed in another session. Reload before retrying so your draft is not discarded.",
+            SettingsOperationStatus.Forbidden => "Your account has read-only access to these settings.",
+            SettingsOperationStatus.ValidationFailed => validationMessage ?? "One or more settings are invalid.",
+            _ => "The Settings request could not be completed."
+        }, true);
     }
+
+    private void ShowStatus(string message, bool isError)
+    {
+        _statusMessage = message;
+        _statusIsError = isError;
+    }
+
+    private static string GetRoleDescription(string roleKey) => roleKey switch
+    {
+        "Admin" => "Full recovery administration",
+        "Owner" => "Read-only operational access",
+        "PracticeManager" => "Manage clinic operations and staff",
+        "PT" => "Licensed physical therapist",
+        "PTA" => "Physical therapist assistant",
+        "Aide" => "Support staff for therapy sessions",
+        "FrontDesk" => "Patient intake and scheduling",
+        "Billing" => "Handle billing and insurance",
+        _ => "Patient portal access only"
+    };
+
+    private static string GetRoleDotClass(string roleKey) => roleKey switch
+    {
+        "Admin" or "PracticeManager" => "role-card__dot--manager",
+        "Owner" => "role-card__dot--owner",
+        "PT" => "role-card__dot--pt",
+        "PTA" => "role-card__dot--pta",
+        "Aide" => "role-card__dot--aide",
+        "FrontDesk" => "role-card__dot--front-desk",
+        "Billing" => "role-card__dot--billing",
+        _ => "role-card__dot--patient"
+    };
+
+    private static SecurityPolicyDto SecurityPolicyDefaults => new(
+        MfaEnforcementMode.Off, null, true, 8, 15, true, false,
+        AuthorizationRolloutMode.Static, true, 0);
 
     private RenderFragment QuickAdminTools() => @<text>
         <section class="settings-panel quick-admin" aria-labelledby="quick-admin-title">
@@ -506,17 +771,17 @@
                 <p>Additional administrative features and settings</p>
             </header>
             <div class="quick-admin__items">
-                <button type="button" disabled>
+                <button type="button" @onclick="OpenAutoCheckInMessaging">
                     <span class="quick-admin__copy">
                         <span class="quick-admin__icon"><img src="_content/PTDoc.UI/images/settings/quick-message.svg" alt="" aria-hidden="true" /></span>
-                        <span><strong>Auto Check-In Messaging</strong><small>Configure automated intake form delivery · Preview unavailable</small></span>
+                        <span><strong>Auto Check-In Messaging</strong><small>Configure automated intake form delivery</small></span>
                     </span>
                     <img class="quick-admin__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
                 </button>
-                <button type="button" disabled>
+                <button type="button" @onclick="OpenKioskCheckIn">
                     <span class="quick-admin__copy">
                         <span class="quick-admin__icon"><img src="_content/PTDoc.UI/images/settings/quick-kiosk.svg" alt="" aria-hidden="true" /></span>
-                        <span><strong>Kiosk Check-In</strong><small>Set up and manage kiosk check-in stations · Preview unavailable</small></span>
+                        <span><strong>Kiosk Check-In</strong><small>Set up and manage kiosk check-in stations</small></span>
                     </span>
                     <img class="quick-admin__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
                 </button>
@@ -536,6 +801,7 @@
                 role="switch"
                 aria-checked="@(isEnabled ? "true" : "false")"
                 aria-label="@label"
+                disabled="@(_isBusy || !_canMutate)"
                 @onclick="toggle">
                 <span aria-hidden="true"></span>
             </button>
@@ -551,6 +817,7 @@
                 type="text"
                 inputmode="numeric"
                 value="@value"
+                disabled="@(_isBusy || !_canMutate)"
                 @oninput="eventArgs => valueChanged(eventArgs.Value?.ToString() ?? string.Empty)" />
         </div>
     </text>;
@@ -562,66 +829,66 @@
             "Clinical Documentation",
             "_content/PTDoc.UI/images/settings/clinical.svg",
             [
-                new("View Clinical Notes", "Read access to SOAP notes and evaluations", "View", ["None", "View"]),
-                new("Create Clinical Notes", "Write new SOAP notes, evaluations, and progress notes", "Edit", ["None", "Edit"]),
-                new("Edit Own Notes", "Modify notes created by self before signing", "Edit", ["None", "Edit"]),
-                new("Edit Others' Notes", "Modify notes created by other clinicians (admin only)", "View", ["None", "View"]),
-                new("Sign/Submit Notes", "Finalize and submit clinical documentation", "Full", ["None", "Full"], true),
-                new("Co-Sign PTA Notes", "Review and co-sign notes from PTAs", "Full", ["None", "Full"], true),
-                new("Delete Draft Notes", "Remove unsigned draft clinical documentation (audit trail maintained)", "None", ["None", "Full"])
+                new(CapabilityKey.ClinicalNotesView, "View Clinical Notes", "Read access to SOAP notes and evaluations", "View", ["None", "View"]),
+                new(CapabilityKey.ClinicalNotesCreate, "Create Clinical Notes", "Write new SOAP notes, evaluations, and progress notes", "Edit", ["None", "Edit"]),
+                new(CapabilityKey.ClinicalNotesEditOwn, "Edit Own Notes", "Modify notes created by self before signing", "Edit", ["None", "Edit"]),
+                new(CapabilityKey.ClinicalNotesEditOthers, "Edit Others' Notes", "Modify notes created by other clinicians (admin only)", "View", ["None", "View"]),
+                new(CapabilityKey.ClinicalNotesSign, "Sign/Submit Notes", "Finalize and submit clinical documentation", "Full", ["None", "Full"], true),
+                new(CapabilityKey.ClinicalNotesCoSignPta, "Co-Sign PTA Notes", "Review and co-sign notes from PTAs", "Full", ["None", "Full"], true),
+                new(CapabilityKey.ClinicalNotesDelete, "Delete Draft Notes", "Remove unsigned draft clinical documentation (audit trail maintained)", "None", ["None", "Full"])
             ]),
         new(
             "scheduling-title",
             "Scheduling",
             "_content/PTDoc.UI/images/settings/scheduling.svg",
             [
-                new("View Own Schedule", "See personal appointments and availability", "View", ["None", "View"]),
-                new("View All Schedules", "See schedules for all clinicians", "View", ["None", "View"]),
-                new("Create Appointments", "Book new patient appointments", "Edit", ["None", "Edit"]),
-                new("Modify Appointments", "Reschedule or cancel appointments", "Edit", ["None", "Edit"]),
-                new("Manage Clinician Availability", "Set working hours and time-off for staff", "None", ["None", "Full"])
+                new(CapabilityKey.ScheduleViewOwn, "View Own Schedule", "See personal appointments and availability", "View", ["None", "View"]),
+                new(CapabilityKey.ScheduleViewAll, "View All Schedules", "See schedules for all clinicians", "View", ["None", "View"]),
+                new(CapabilityKey.AppointmentsCreate, "Create Appointments", "Book new patient appointments", "Edit", ["None", "Edit"]),
+                new(CapabilityKey.AppointmentsModify, "Modify Appointments", "Reschedule or cancel appointments", "Edit", ["None", "Edit"]),
+                new(CapabilityKey.ClinicianAvailabilityManage, "Manage Clinician Availability", "Set working hours and time-off for staff", "None", ["None", "Full"])
             ]),
         new(
             "billing-coding-title",
             "Billing & Coding",
             "_content/PTDoc.UI/images/settings/billing.svg",
             [
-                new("View Billing Information", "See patient balances and billing codes", "View", ["None", "View"]),
-                new("Add CPT Codes", "Add billing codes to clinical notes", "Edit", ["None", "Edit"]),
-                new("Submit Insurance Claims", "Process and submit claims to payers", "None", ["None", "Full"]),
-                new("Manage Payer Information", "Add/edit insurance companies and contracts", "None", ["None", "Full"]),
-                new("View Billing Reports", "Access financial reports and revenue analytics", "None", ["None", "View"])
+                new(CapabilityKey.BillingInformationView, "View Billing Information", "See patient balances and billing codes", "View", ["None", "View"]),
+                new(CapabilityKey.CptCodesAdd, "Add CPT Codes", "Add billing codes to clinical notes", "Edit", ["None", "Edit"]),
+                new(CapabilityKey.InsuranceClaimsSubmit, "Submit Insurance Claims", "Process and submit claims to payers", "None", ["None", "Full"]),
+                new(CapabilityKey.PayerInformationManage, "Manage Payer Information", "Add/edit insurance companies and contracts", "None", ["None", "Full"]),
+                new(CapabilityKey.BillingReportsView, "View Billing Reports", "Access financial reports and revenue analytics", "None", ["None", "View"])
             ]),
         new(
             "messaging-title",
             "Messaging",
             "_content/PTDoc.UI/images/settings/messaging.svg",
             [
-                new("Internal Staff Messaging", "Send messages to other staff members", "Edit", ["None", "Edit"]),
-                new("Message Patients", "Send HIPAA-compliant messages to patients", "Edit", ["None", "Edit"]),
-                new("Broadcast Messages", "Send announcements to all staff or patients", "None", ["None", "Full"])
+                new(CapabilityKey.StaffMessagesSend, "Internal Staff Messaging", "Send messages to other staff members", "Edit", ["None", "Edit"]),
+                new(CapabilityKey.PatientMessagesSend, "Message Patients", "Send HIPAA-compliant messages to patients", "Edit", ["None", "Edit"]),
+                new(CapabilityKey.BroadcastMessagesSend, "Broadcast Messages", "Send announcements to all staff or patients", "None", ["None", "Full"])
             ]),
         new(
             "reporting-title",
             "Reporting",
             "_content/PTDoc.UI/images/settings/reporting.svg",
             [
-                new("Clinical Reports", "View patient outcomes and treatment analytics", "View", ["None", "View"]),
-                new("Productivity Reports", "View clinician productivity and utilization", "View", ["None", "View"]),
-                new("Financial Reports", "Access revenue, collection, and P&L reports", "None", ["None", "View"]),
-                new("Compliance Reports", "View audit logs and compliance metrics", "None", ["None", "View"]),
-                new("Export Reports", "Download reports as PDF/CSV", "Edit", ["None", "Edit"])
+                new(CapabilityKey.ClinicalReportsView, "Clinical Reports", "View patient outcomes and treatment analytics", "View", ["None", "View"]),
+                new(CapabilityKey.ProductivityReportsView, "Productivity Reports", "View clinician productivity and utilization", "View", ["None", "View"]),
+                new(CapabilityKey.FinancialReportsView, "Financial Reports", "Access revenue, collection, and P&L reports", "None", ["None", "View"]),
+                new(CapabilityKey.ComplianceReportsView, "Compliance Reports", "View audit logs and compliance metrics", "None", ["None", "View"]),
+                new(CapabilityKey.ReportsExport, "Export Reports", "Download reports as PDF/CSV", "Edit", ["None", "Edit"])
             ]),
         new(
             "admin-settings-title",
             "Admin Settings",
             "_content/PTDoc.UI/images/settings/admin.svg",
             [
-                new("Manage Users", "Create, edit, and deactivate user accounts", "None", ["None", "Full"]),
-                new("Manage Roles & Permissions", "Edit role permissions and access levels", "None", ["None", "Full"]),
-                new("Clinic Settings", "Modify clinic information and preferences", "None", ["None", "Full"]),
-                new("Manage Templates", "Create and edit documentation templates", "Edit", ["None", "Edit"]),
-                new("Manage Integrations", "Configure third-party integrations and APIs", "None", ["None", "Full"])
+                new(CapabilityKey.UsersManage, "Manage Users", "Create, edit, and deactivate user accounts", "None", ["None", "Full"]),
+                new(CapabilityKey.RolesPermissionsManage, "Manage Roles & Permissions", "Edit role permissions and access levels", "None", ["None", "Full"]),
+                new(CapabilityKey.ClinicSettingsManage, "Clinic Settings", "Modify clinic information and preferences", "None", ["None", "Full"]),
+                new(CapabilityKey.DocumentationTemplatesManage, "Manage Templates", "Create and edit documentation templates", "Edit", ["None", "Edit"]),
+                new(CapabilityKey.IntegrationsManage, "Manage Integrations", "Configure third-party integrations and APIs", "None", ["None", "Full"])
             ])
     ];
 
@@ -631,28 +898,7 @@
         SecuritySettings
     }
 
-    private sealed record RoleDefinition(string Name, string Description, string DotClass, bool IsConfigurable);
-
-    private sealed record SecuritySettingsSnapshot(
-        bool RequireMfa,
-        bool RequirePinChange,
-        bool AllowRoleCustomization,
-        bool EnableAuditLog,
-        bool RestrictScheduleAccess,
-        string AutoLockoutTime,
-        string PasswordExpiration,
-        string MinimumPasswordLength)
-    {
-        public static SecuritySettingsSnapshot Default { get; } = new(
-            true,
-            true,
-            true,
-            true,
-            false,
-            string.Empty,
-            string.Empty,
-            "8");
-    }
+    private sealed record RoleDefinition(string Name, string DisplayName, string Description, string DotClass, bool IsReadOnly);
 
     private sealed record PermissionCategory(
         string TitleId,
@@ -661,12 +907,15 @@
         IReadOnlyList<PermissionDefinition> Permissions);
 
     private sealed class PermissionDefinition(
+        CapabilityKey key,
         string name,
         string description,
         string selectedLevel,
         IReadOnlyList<string> availableLevels,
         bool isRecommended = false)
     {
+        public CapabilityKey Key { get; } = key;
+
         public string Name { get; } = name;
 
         public string Description { get; } = description;
@@ -687,6 +936,36 @@
             1 => SecondLevelButton,
             _ => throw new ArgumentOutOfRangeException(nameof(index), index, null)
         };
+
+        public long Version { get; set; }
+
+        public PermissionLevel LockedMinimum { get; set; }
+
+        public bool IsSupported { get; set; } = true;
+    }
+
+    private sealed record SecuritySnapshot(
+        bool RequireMfa,
+        bool RequirePinChange,
+        string MinimumPinLength,
+        string InactivityMinutes,
+        bool AllowRoleCustomization,
+        bool RestrictScheduleAccess,
+        long Version)
+    {
+        public static SecuritySnapshot Default { get; } = new(false, true, "8", "15", true, false, 0);
+
+        public SecurityPolicyDto ToDto() => new(
+            RequireMfa ? MfaEnforcementMode.GracePeriod : MfaEnforcementMode.Off,
+            RequireMfa ? DateTime.UtcNow.AddDays(14) : null,
+            RequirePinChange,
+            int.TryParse(MinimumPinLength, out var minimum) ? minimum : 8,
+            int.TryParse(InactivityMinutes, out var timeout) ? timeout : 15,
+            AllowRoleCustomization,
+            RestrictScheduleAccess,
+            AuthorizationRolloutMode.Static,
+            true,
+            Version);
     }
 
     public async ValueTask DisposeAsync()

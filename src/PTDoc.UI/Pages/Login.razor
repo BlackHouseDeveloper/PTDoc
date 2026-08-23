@@ -108,16 +108,16 @@
         </div>
 
         <div class="auth-field">
-          <label for="pin">4-Digit PIN</label>
+          <label for="pin">PIN</label>
           <input id="pin"
                  name="pin"
                  type="password"
                  class="@BuildLoginInputClass(nameof(loginModel.Pin))"
-                 placeholder="Enter 4-digit PIN"
+                 placeholder="Enter your PIN"
                  autocomplete="current-password"
                  inputmode="numeric"
-                 pattern="[0-9]{4}"
-                 maxlength="4"
+                 pattern="[0-9]{4,12}"
+                 maxlength="12"
                  aria-invalid="@HasLoginFieldError(nameof(loginModel.Pin))"
                  aria-describedby="@(HasLoginFieldError(nameof(loginModel.Pin)) ? "pin-validation" : null)"
                  @bind="loginModel.Pin"
@@ -361,18 +361,18 @@
 
         <div class="auth-field">
           <label for="pinSignup">
-            4-Digit PIN
+            8–12 Digit PIN
             <span class="auth-required" aria-label="required">*</span>
           </label>
           <input id="pinSignup"
                  name="pin"
                  type="password"
                  class="@BuildSignUpInputClass(nameof(signUpModel.Pin))"
-                     placeholder="Enter 4-digit PIN"
-                     maxlength="4"
+                     placeholder="Enter 8–12 digit PIN"
+                     maxlength="12"
                      autocomplete="new-password"
                  inputmode="numeric"
-                 pattern="[0-9]{4}"
+                 pattern="[0-9]{8,12}"
                  aria-invalid="@(HasSignUpFieldError(nameof(signUpModel.Pin)) ? "true" : "false")"
                  aria-describedby="@BuildSignUpAriaDescribedBy(nameof(signUpModel.Pin), null, "pinSignup-validation")"
                  @bind="signUpModel.Pin"
@@ -390,11 +390,11 @@
                  name="confirmPin"
                  type="password"
                  class="@BuildSignUpInputClass(nameof(signUpModel.ConfirmPin))"
-                     placeholder="Confirm 4-digit PIN"
-                     maxlength="4"
+                     placeholder="Confirm 8–12 digit PIN"
+                     maxlength="12"
                      autocomplete="new-password"
                  inputmode="numeric"
-                 pattern="[0-9]{4}"
+                 pattern="[0-9]{8,12}"
                  aria-invalid="@(HasSignUpFieldError(nameof(signUpModel.ConfirmPin)) ? "true" : "false")"
                  aria-describedby="@BuildSignUpAriaDescribedBy(nameof(signUpModel.ConfirmPin), null, "confirmPinSignup-validation")"
                  @bind="signUpModel.ConfirmPin"

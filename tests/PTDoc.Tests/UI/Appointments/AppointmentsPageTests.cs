@@ -12,6 +12,7 @@ using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Integrations;
 using PTDoc.Application.Services;
+using PTDoc.Application.Settings;
 using PTDoc.UI.Services;
 
 namespace PTDoc.Tests.UI.Appointments;
@@ -1206,6 +1207,14 @@ public sealed class AppointmentsPageTests : TestContext
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(overview ?? new AppointmentsOverviewResponse());
 
+        var schedulingAdministrationService = new Mock<ISchedulingAdministrationService>(MockBehavior.Strict);
+        schedulingAdministrationService
+            .Setup(service => service.GetVisitTypesAsync(
+                Guid.Empty,
+                false,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<VisitTypeDto>());
+
         var toastService = new Mock<IToastService>(MockBehavior.Loose);
         var defaultIntakeService = new Mock<IIntakeService>(MockBehavior.Strict);
         var defaultIntakeDeliveryService = new Mock<IIntakeDeliveryService>(MockBehavior.Strict);
@@ -1225,6 +1234,7 @@ public sealed class AppointmentsPageTests : TestContext
         Services.AddSingleton(appointmentService.Object);
         Services.AddSingleton(intakeService ?? defaultIntakeService.Object);
         Services.AddSingleton(intakeDeliveryService ?? defaultIntakeDeliveryService.Object);
+        Services.AddSingleton(schedulingAdministrationService.Object);
         Services.AddSingleton(paymentClientService.Object);
         Services.AddSingleton(configuredToastService ?? toastService.Object);
         return appointmentService;

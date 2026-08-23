@@ -1,0 +1,236 @@
+@page "/authentication-step-up"
+@attribute [AllowAnonymous]
+@using System.Text.Json
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Complete sign in - PTDoc</PageTitle>
+
+<main class="step-up-page">
+    <section class="step-up-card" aria-labelledby="step-up-title" aria-busy="@isBusy">
+        <h1 id="step-up-title">@Title</h1>
+        <p>@Description</p>
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="step-up-error" role="alert">@errorMessage</div>
+        }
+
+        @if (recoveryCodes.Count > 0)
+        {
+            <div class="step-up-recovery" role="status">
+                <h2>@(Mode == "recovery-codes" ? "Save your new recovery codes" : "Save your recovery codes")</h2>
+                <p>Each code can be used once. Store them somewhere secure; they will not be shown again.@(Mode == "recovery-codes" ? " Your previous recovery codes are no longer valid." : string.Empty)</p>
+                <ul>
+                    @foreach (var recoveryCode in recoveryCodes)
+                    {
+                        <li><code>@recoveryCode</code></li>
+                    }
+                </ul>
+                <button type="button" class="step-up-primary" @onclick="ContinueAfterEnrollment">@(Mode == "recovery-codes" ? "Return" : "Continue")</button>
+            </div>
+        }
+        else if (Mode == "pin-change")
+        {
+            <form @onsubmit="SubmitPinChange" @onsubmit:preventDefault>
+                <label for="new-pin">New 8–12 digit PIN</label>
+                <input id="new-pin" type="password" inputmode="numeric" pattern="[0-9]{8,12}" maxlength="12"
+                       autocomplete="new-password" @bind="pin" @bind:event="oninput" disabled="@isBusy" />
+                <label for="confirm-pin">Confirm PIN</label>
+                <input id="confirm-pin" type="password" inputmode="numeric" pattern="[0-9]{8,12}" maxlength="12"
+                       autocomplete="new-password" @bind="confirmPin" @bind:event="oninput" disabled="@isBusy" />
+                <button type="submit" class="step-up-primary" disabled="@isBusy">Change PIN</button>
+            </form>
+        }
+        else if (Mode == "enroll")
+        {
+            @if (enrollment is null)
+            {
+                <p role="status">Preparing authenticator enrollment…</p>
+            }
+            else
+            {
+                <div class="step-up-qr" aria-label="Authenticator QR code">@((MarkupString)enrollment.QrSvg)</div>
+                <p>Scan this QR code with your authenticator app, or enter the manual key:</p>
+                <code class="step-up-key">@enrollment.ManualKey</code>
+                <form @onsubmit="SubmitEnrollmentCode" @onsubmit:preventDefault>
+                    @AuthenticatorCodeField()
+                    <button type="submit" class="step-up-primary" disabled="@isBusy">Verify and activate</button>
+                </form>
+            }
+        }
+        else if (Mode == "recovery-codes")
+        {
+            <form @onsubmit="RegenerateRecoveryCodes" @onsubmit:preventDefault>
+                @AuthenticatorCodeField()
+                <button type="submit" class="step-up-primary" disabled="@isBusy">Invalidate and regenerate codes</button>
+            </form>
+        }
+        else
+        {
+            <form @onsubmit="SubmitVerificationCode" @onsubmit:preventDefault>
+                @if (useRecoveryCode)
+                {
+                    <label for="recovery-code">Recovery code</label>
+                    <input id="recovery-code" autocomplete="one-time-code" @bind="recoveryCode" @bind:event="oninput" disabled="@isBusy" />
+                }
+                else
+                {
+                    @AuthenticatorCodeField()
+                }
+                <button type="submit" class="step-up-primary" disabled="@isBusy">Complete sign in</button>
+                <button type="button" class="step-up-link" @onclick="ToggleRecoveryCode" disabled="@isBusy">
+                    @(useRecoveryCode ? "Use authenticator code" : "Use a recovery code")
+                </button>
+            </form>
+        }
+    </section>
+</main>
+
+@code {
+    [SupplyParameterFromQuery(Name = "mode")]
+    public string Mode { get; set; } = "verify";
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string ReturnUrl { get; set; } = "/";
+
+    private bool isBusy;
+    private bool enrollmentRequested;
+    private bool useRecoveryCode;
+    private string pin = string.Empty;
+    private string confirmPin = string.Empty;
+    private string code = string.Empty;
+    private string recoveryCode = string.Empty;
+    private string? errorMessage;
+    private string postEnrollmentRedirect = "/";
+    private EnrollmentView? enrollment;
+    private IReadOnlyList<string> recoveryCodes = [];
+
+    private string Title => Mode switch
+    {
+        "pin-change" => "Change your PIN",
+        "enroll" => "Set up multi-factor authentication",
+        "recovery-codes" => "Regenerate recovery codes",
+        _ => "Verify your identity"
+    };
+
+    private string Description => Mode switch
+    {
+        "pin-change" => "A compliant PIN is required before PTDoc can finish signing you in.",
+        "enroll" => "Use a TOTP authenticator app, then confirm enrollment with the current six-digit code.",
+        "recovery-codes" => "Enter the current code from your authenticator app. Regenerating invalidates every previous recovery code.",
+        _ => "Enter the current code from your authenticator app."
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Mode != "enroll" || enrollmentRequested) return;
+        enrollmentRequested = true;
+        isBusy = true;
+        StateHasChanged();
+        var result = await PostAsync("/auth/step-up/mfa/enroll", new { });
+        isBusy = false;
+        if (result.Ok && result.Body.TryGetProperty("manualKey", out var manualKey)
+            && result.Body.TryGetProperty("qrSvg", out var qrSvg))
+        {
+            enrollment = new EnrollmentView(manualKey.GetString() ?? string.Empty, qrSvg.GetString() ?? string.Empty);
+        }
+        else
+        {
+            errorMessage = "Authenticator enrollment could not be started. Return to sign in and try again.";
+        }
+        StateHasChanged();
+    }
+
+    private RenderFragment AuthenticatorCodeField() => @<text>
+        <label for="authenticator-code">Six-digit authenticator code</label>
+        <input id="authenticator-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+               autocomplete="one-time-code" @bind="code" @bind:event="oninput" disabled="@isBusy" />
+    </text>;
+
+    private async Task SubmitPinChange()
+    {
+        if (pin != confirmPin || pin.Length is < 8 or > 12 || pin.Any(character => !char.IsDigit(character)))
+        {
+            errorMessage = "Enter matching PINs containing 8 to 12 numeric digits.";
+            return;
+        }
+
+        var result = await PostBusyAsync("/auth/step-up/pin-change", new { newPin = pin, returnUrl = ReturnUrl });
+        if (!result.Ok) { errorMessage = "The PIN could not be changed. Try again."; return; }
+        if (result.Body.TryGetProperty("next", out var next))
+        {
+            Navigation.NavigateTo($"/authentication-step-up?mode={next.GetString()}&returnUrl={Uri.EscapeDataString(ReturnUrl)}", forceLoad: true);
+            return;
+        }
+        NavigateFrom(result.Body);
+    }
+
+    private async Task SubmitEnrollmentCode()
+    {
+        if (!IsSixDigitCode(code)) { errorMessage = "Enter the current six-digit code."; return; }
+        var result = await PostBusyAsync("/auth/step-up/mfa/verify-enrollment", new { code, returnUrl = ReturnUrl });
+        if (!result.Ok) { errorMessage = "That code is invalid or expired."; return; }
+        postEnrollmentRedirect = GetRedirect(result.Body);
+        recoveryCodes = result.Body.TryGetProperty("recoveryCodes", out var values)
+            ? values.EnumerateArray().Select(value => value.GetString() ?? string.Empty).Where(value => value.Length > 0).ToArray()
+            : [];
+    }
+
+    private async Task SubmitVerificationCode()
+    {
+        var path = useRecoveryCode ? "/auth/step-up/mfa/recovery" : "/auth/step-up/mfa/verify";
+        object payload = useRecoveryCode
+            ? new { recoveryCode, returnUrl = ReturnUrl }
+            : new { code, returnUrl = ReturnUrl };
+        if (!useRecoveryCode && !IsSixDigitCode(code)) { errorMessage = "Enter the current six-digit code."; return; }
+        var result = await PostBusyAsync(path, payload);
+        if (!result.Ok) { errorMessage = "The supplied code could not be verified."; return; }
+        NavigateFrom(result.Body);
+    }
+
+    private async Task RegenerateRecoveryCodes()
+    {
+        if (!IsSixDigitCode(code)) { errorMessage = "Enter the current six-digit code."; return; }
+        var result = await PostBusyAsync("/auth/step-up/mfa/recovery-codes/regenerate", new { code });
+        if (!result.Ok)
+        {
+            errorMessage = result.Status == 404
+                ? "Multi-factor authentication is not enrolled for this account."
+                : "The supplied code could not be verified.";
+            return;
+        }
+
+        recoveryCodes = result.Body.TryGetProperty("recoveryCodes", out var values)
+            ? values.EnumerateArray().Select(value => value.GetString() ?? string.Empty).Where(value => value.Length > 0).ToArray()
+            : [];
+        postEnrollmentRedirect = SafeReturnUrl(ReturnUrl);
+    }
+
+    private void ToggleRecoveryCode()
+    {
+        useRecoveryCode = !useRecoveryCode;
+        errorMessage = null;
+    }
+
+    private void ContinueAfterEnrollment() => Navigation.NavigateTo(postEnrollmentRedirect, forceLoad: true);
+    private void NavigateFrom(JsonElement body) => Navigation.NavigateTo(GetRedirect(body), forceLoad: true);
+    private static string GetRedirect(JsonElement body) => body.TryGetProperty("redirectUrl", out var value) ? value.GetString() ?? "/" : "/";
+    private static string SafeReturnUrl(string value) => value.StartsWith("/", StringComparison.Ordinal) && !value.StartsWith("//", StringComparison.Ordinal) ? value : "/";
+    private static bool IsSixDigitCode(string value) => value.Length == 6 && value.All(char.IsDigit);
+
+    private async Task<StepUpResponse> PostBusyAsync(string path, object payload)
+    {
+        isBusy = true;
+        errorMessage = null;
+        try { return await PostAsync(path, payload); }
+        finally { isBusy = false; }
+    }
+
+    private async Task<StepUpResponse> PostAsync(string path, object payload) =>
+        await JS.InvokeAsync<StepUpResponse>("ptdocAuth.postStepUp", path, payload);
+
+    private sealed record EnrollmentView(string ManualKey, string QrSvg);
+    private sealed record StepUpResponse(bool Ok, int Status, JsonElement Body);
+}

@@ -1,4 +1,6 @@
 using Bunit;
+using Bunit.TestDoubles;
+using PTDoc.Application.Services;
 using PTDoc.UI.Components.Settings;
 
 namespace PTDoc.Tests.UI.Settings;
@@ -9,6 +11,9 @@ public sealed class SchedulingVisitTypesSettingsTests : TestContext
     public SchedulingVisitTypesSettingsTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("admin-user");
+        authorization.SetRoles(Roles.Admin);
     }
 
     [Fact]
@@ -27,16 +32,10 @@ public sealed class SchedulingVisitTypesSettingsTests : TestContext
         Assert.Contains("Requires Intake", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Consultation (Non-Billable)", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Auto Check-In Messaging", cut.Markup, StringComparison.Ordinal);
-        Assert.Contains("Save Preview", cut.Find(".scheduling-settings__action-bar").TextContent, StringComparison.Ordinal);
-        Assert.Contains("are not persisted", cut.Find("#scheduling-preview-status").TextContent, StringComparison.Ordinal);
-        Assert.True(cut.Find(".scheduling-panel__add").HasAttribute("disabled"));
-        Assert.All(cut.FindAll(".scheduled-item__actions button"), button => Assert.True(button.HasAttribute("disabled")));
-        Assert.All(cut.FindAll(".quick-admin-tools__row"), button => Assert.True(button.HasAttribute("disabled")));
-        Assert.Contains("Edit and delete are unavailable in this preview", cut.Markup, StringComparison.Ordinal);
-        Assert.Equal(2, cut.FindAll(".quick-admin-tools__copy small").Count(item => item.TextContent.Contains("Preview unavailable", StringComparison.Ordinal)));
-        Assert.Equal(
-            "scheduling-preview-status",
-            FindAction(cut, "Save Preview").GetAttribute("aria-describedby"));
+        Assert.Contains("Save Changes", cut.Find(".scheduling-settings__action-bar").TextContent, StringComparison.Ordinal);
+        Assert.False(cut.Find(".scheduling-panel__add").HasAttribute("disabled"));
+        Assert.All(cut.FindAll(".scheduled-item__actions button"), button => Assert.False(button.HasAttribute("disabled")));
+        Assert.All(cut.FindAll(".quick-admin-tools__row"), button => Assert.False(button.HasAttribute("disabled")));
     }
 
     [Fact]
@@ -58,8 +57,9 @@ public sealed class SchedulingVisitTypesSettingsTests : TestContext
         Assert.Equal("true", cut.Find("button[aria-label='Auto-Confirm Appointments']").GetAttribute("aria-checked"));
 
         cut.Find("#clinic-hours-tab").Click();
-        Assert.Contains("Clinic Start Time", cut.Markup, StringComparison.Ordinal);
-        Assert.Contains("Lunch Break End", cut.Markup, StringComparison.Ordinal);
+        Assert.Equal(7, cut.FindAll(".clinic-hours__row").Count);
+        Assert.Contains("Clinic time zone", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Lunch end", cut.Markup, StringComparison.Ordinal);
         Assert.Equal("24 hours before", cut.Find("#send-reminder").GetAttribute("value"));
         Assert.Equal("true", cut.Find("button[aria-label='Send Appointment Reminders']").GetAttribute("aria-checked"));
     }
@@ -87,8 +87,8 @@ public sealed class SchedulingVisitTypesSettingsTests : TestContext
         cut.Find("#default-appointment-duration").Change("60 minutes");
         cut.Find("#intake-sent-color").Input("#123456");
         cut.Find("button[aria-label='Allow Double Booking']").Click();
-        FindAction(cut, "Save Preview").Click();
-        Assert.Contains("Preview baseline updated", cut.Find("#scheduling-preview-status").TextContent, StringComparison.Ordinal);
+        FindAction(cut, "Save Changes").Click();
+        Assert.Contains("Scheduling values updated locally", cut.Markup, StringComparison.Ordinal);
 
         cut.Find("#default-appointment-duration").Change("30 minutes");
         cut.Find("#intake-sent-color").Input("#abcdef");
@@ -98,14 +98,14 @@ public sealed class SchedulingVisitTypesSettingsTests : TestContext
         Assert.Equal("60 minutes", cut.Find("#default-appointment-duration").GetAttribute("value"));
         Assert.Equal("#123456", cut.Find("#intake-sent-color").GetAttribute("value"));
         Assert.Equal("true", cut.Find("button[aria-label='Allow Double Booking']").GetAttribute("aria-checked"));
-        Assert.Contains("last saved preview was restored", cut.Find("#scheduling-preview-status").TextContent, StringComparison.Ordinal);
+        Assert.Contains("Unsaved scheduling changes were discarded", cut.Markup, StringComparison.Ordinal);
 
         FindAction(cut, "Reset to Default").Click();
 
         Assert.Equal("45 minutes", cut.Find("#default-appointment-duration").GetAttribute("value"));
         Assert.Equal(string.Empty, cut.Find("#intake-sent-color").GetAttribute("value"));
         Assert.Equal("false", cut.Find("button[aria-label='Allow Double Booking']").GetAttribute("aria-checked"));
-        Assert.Contains("Canonical defaults applied", cut.Find("#scheduling-preview-status").TextContent, StringComparison.Ordinal);
+        Assert.Contains("Canonical defaults applied locally", cut.Markup, StringComparison.Ordinal);
     }
 
     [Fact]

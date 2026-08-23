@@ -56,8 +56,8 @@ public sealed class LoginBaseValidationTests
         signUpModelType.GetProperty("Email")!.SetValue(signUpModel, "casey@example.com");
         signUpModelType.GetProperty("RoleKey")!.SetValue(signUpModel, roleKey);
         signUpModelType.GetProperty("ClinicId")!.SetValue(signUpModel, Guid.NewGuid());
-        signUpModelType.GetProperty("Pin")!.SetValue(signUpModel, "1234");
-        signUpModelType.GetProperty("ConfirmPin")!.SetValue(signUpModel, "1234");
+        signUpModelType.GetProperty("Pin")!.SetValue(signUpModel, "12345678");
+        signUpModelType.GetProperty("ConfirmPin")!.SetValue(signUpModel, "12345678");
         signUpModelType.GetProperty("LicenseNumber")!.SetValue(signUpModel, string.Empty);
         signUpModelType.GetProperty("LicenseState")!.SetValue(signUpModel, string.Empty);
 
