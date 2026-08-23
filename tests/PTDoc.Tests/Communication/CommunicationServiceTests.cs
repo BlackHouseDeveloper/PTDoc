@@ -6,7 +6,9 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Data.Sqlite;
+using Moq;
 using PTDoc.Application.Communication;
+using PTDoc.Application.Settings;
 using PTDoc.Core.Communication;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Communication;
@@ -19,6 +21,58 @@ namespace PTDoc.Tests.Communication;
 [Trait("Category", "CoreCi")]
 public sealed class CommunicationServiceTests
 {
+    [Fact]
+    public async Task AutoCheckInTemplateKey_SelectsRegisteredIntakeTemplate()
+    {
+        await using var db = CreateDbContext();
+        var renderer = new RecordingTemplateRenderer();
+        var service = CreateService(db, templateRenderer: renderer);
+
+        var result = await service.SendIntakeLinkEmailAsync(new IntakeLinkDeliveryRequest
+        {
+            IntakeId = Guid.NewGuid(),
+            PatientId = Guid.NewGuid(),
+            ClinicId = Guid.NewGuid(),
+            Recipient = "template@example.com",
+            InviteUrl = "https://example.invalid/intake/token",
+            ExpiresAtUtc = DateTimeOffset.UtcNow.AddHours(1),
+            TemplateKey = AutoCheckInTemplateCatalog.Default
+        });
+
+        Assert.True(result.Succeeded);
+        Assert.Contains("intake-link-email.html", renderer.TemplateNames);
+    }
+
+    [Fact]
+    public async Task AppointmentReminder_AcceptedProviderResultDistinguishesAuditFailure()
+    {
+        await using var db = CreateDbContext();
+        var emailSender = new FakeEmailSender();
+        var auditWriter = new Mock<ICommunicationAuditWriter>();
+        auditWriter.Setup(writer => writer.WriteAsync(
+                It.IsAny<CommunicationAuditWriteRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("audit unavailable"));
+        var service = CreateService(
+            db,
+            emailSender: emailSender,
+            templateRenderer: new RecordingTemplateRenderer(),
+            auditWriter: auditWriter.Object);
+
+        var exception = await Assert.ThrowsAsync<DeliveryAcceptedAuditException>(() =>
+            service.SendAppointmentReminderEmailAsync(new AppointmentReminderDeliveryRequest
+            {
+                AppointmentId = Guid.NewGuid(),
+                PatientId = Guid.NewGuid(),
+                ClinicId = Guid.NewGuid(),
+                Recipient = "accepted@example.com",
+                AppointmentLocalTime = "Mon, Aug 24 at 9:00 AM Pacific Time"
+            }));
+
+        Assert.True(exception.DeliveryResult.Succeeded);
+        Assert.Single(emailSender.Messages);
+    }
+
     [Fact]
     public async Task PasswordResetEmail_HashesRecipientAndToken_AndDoesNotStoreRawContact()
     {
@@ -899,7 +953,9 @@ public sealed class CommunicationServiceTests
     private static CommunicationService CreateService(
         ApplicationDbContext db,
         IEmailSender? emailSender = null,
-        ISmsSender? smsSender = null)
+        ISmsSender? smsSender = null,
+        IMessageTemplateRenderer? templateRenderer = null,
+        ICommunicationAuditWriter? auditWriter = null)
     {
         var options = Options.Create(new CommunicationOptions
         {
@@ -914,13 +970,13 @@ public sealed class CommunicationServiceTests
 
         var environment = new TestHostEnvironment { EnvironmentName = Environments.Development };
         var contactNormalizer = new ContactNormalizer();
-        var auditWriter = new CommunicationAuditWriter(db, options, environment, contactNormalizer);
+        auditWriter ??= new CommunicationAuditWriter(db, options, environment, contactNormalizer);
 
         return new CommunicationService(
             db,
             emailSender ?? new FakeEmailSender(),
             smsSender ?? new FakeSmsSender(),
-            new FakeTemplateRenderer(),
+            templateRenderer ?? new FakeTemplateRenderer(),
             auditWriter,
             contactNormalizer,
             options,
@@ -956,6 +1012,20 @@ public sealed class CommunicationServiceTests
             IReadOnlyDictionary<string, string> values,
             CancellationToken cancellationToken = default)
             => Task.FromResult($"{templateName}:{values["Link"]}");
+    }
+
+    private sealed class RecordingTemplateRenderer : IMessageTemplateRenderer
+    {
+        public List<string> TemplateNames { get; } = [];
+
+        public Task<string> RenderAsync(
+            string templateName,
+            IReadOnlyDictionary<string, string> values,
+            CancellationToken cancellationToken = default)
+        {
+            TemplateNames.Add(templateName);
+            return Task.FromResult(templateName);
+        }
     }
 
     public sealed class FakeEmailSender : IEmailSender

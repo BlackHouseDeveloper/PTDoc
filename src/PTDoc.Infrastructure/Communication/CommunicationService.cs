@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PTDoc.Application.Communication;
+using PTDoc.Application.Settings;
 using PTDoc.Core.Communication;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -249,10 +250,18 @@ public sealed class CommunicationService : ICommunicationService
             ["ExpiresAtUtc"] = request.ExpiresAtUtc.ToString("u")
         };
 
+        var templateKey = request.TemplateKey?.Trim();
+        var emailTemplate = string.IsNullOrEmpty(templateKey)
+            ? "intake-link-email.html"
+            : AutoCheckInTemplateCatalog.ResolveEmailTemplate(templateKey);
+        var smsTemplate = string.IsNullOrEmpty(templateKey)
+            ? "intake-link-sms.txt"
+            : AutoCheckInTemplateCatalog.ResolveSmsTemplate(templateKey);
+
         DeliveryResult result;
         if (channel == DeliveryChannel.Email)
         {
-            var htmlBody = await _templateRenderer.RenderAsync("intake-link-email.html", values, cancellationToken);
+            var htmlBody = await _templateRenderer.RenderAsync(emailTemplate, values, cancellationToken);
             var textBody = $"PTDoc: Complete your secure intake form here: {request.InviteUrl}";
             result = await _emailSender.SendEmailAsync(new EmailMessage
             {
@@ -265,7 +274,7 @@ public sealed class CommunicationService : ICommunicationService
         }
         else
         {
-            var body = await _templateRenderer.RenderAsync("intake-link-sms.txt", values, cancellationToken);
+            var body = await _templateRenderer.RenderAsync(smsTemplate, values, cancellationToken);
             result = await _smsSender.SendSmsAsync(new SmsMessage
             {
                 ToNumber = recipient,
@@ -274,7 +283,14 @@ public sealed class CommunicationService : ICommunicationService
             }, cancellationToken);
         }
 
-        await AuditAsync(recipient, result, request.ClinicId, request.PatientId, request.UserId, request.CorrelationId, cancellationToken);
+        try
+        {
+            await AuditAsync(recipient, result, request.ClinicId, request.PatientId, request.UserId, request.CorrelationId, cancellationToken);
+        }
+        catch (Exception exception) when (result.Succeeded)
+        {
+            throw new DeliveryAcceptedAuditException(result, exception);
+        }
         return result;
     }
 
@@ -370,7 +386,14 @@ public sealed class CommunicationService : ICommunicationService
             }, cancellationToken);
         }
 
-        await AuditAsync(normalization.NormalizedValue, result, request.ClinicId, request.PatientId, null, request.CorrelationId, cancellationToken);
+        try
+        {
+            await AuditAsync(normalization.NormalizedValue, result, request.ClinicId, request.PatientId, null, request.CorrelationId, cancellationToken);
+        }
+        catch (Exception exception) when (result.Succeeded)
+        {
+            throw new DeliveryAcceptedAuditException(result, exception);
+        }
         return result;
     }
 

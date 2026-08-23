@@ -149,14 +149,19 @@ public class AuthService : IAuthService
 
         var user = await _context.Users
             .IgnoreQueryFilters()
-            .SingleOrDefaultAsync(item => item.Id == principal.UserId && item.IsActive, cancellationToken);
+            .SingleOrDefaultAsync(
+                item => item.Id == principal.UserId && item.IsActive && item.MustChangePin,
+                cancellationToken);
         if (user is null)
         {
             return null;
         }
 
         var policy = await GetSecurityPolicyAsync(user.ClinicId, cancellationToken);
-        if (newPin.Length < policy.MinimumPinLength || newPin.Length > 12 || newPin.Any(character => !char.IsDigit(character)))
+        if (string.IsNullOrEmpty(newPin)
+            || newPin.Length < policy.MinimumPinLength
+            || newPin.Length > 12
+            || newPin.Any(character => !char.IsDigit(character)))
         {
             return new AuthResult
             {
@@ -166,15 +171,43 @@ public class AuthService : IAuthService
                 Email = user.Email,
                 Role = user.Role,
                 ClinicId = user.ClinicId,
-                ChallengeToken = challengeToken
+                ChallengeToken = challengeToken,
+                MinimumPinLength = policy.MinimumPinLength
             };
         }
 
-        user.PinHash = HashPin(newPin);
-        user.MustChangePin = false;
-        user.PinChangedAtUtc = _timeProvider.GetUtcNow().UtcDateTime;
-        user.LegacyPinGraceEndsAtUtc = null;
-        await _context.SaveChangesAsync(cancellationToken);
+        var newPinHash = HashPin(newPin);
+        var changedAtUtc = _timeProvider.GetUtcNow().UtcDateTime;
+        await using var transaction = _context.Database.IsRelational()
+            ? await _context.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+
+        if (_context.Database.IsRelational())
+        {
+            var claimed = await _context.Users
+                .IgnoreQueryFilters()
+                .Where(item => item.Id == principal.UserId && item.IsActive && item.MustChangePin)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(item => item.PinHash, newPinHash)
+                        .SetProperty(item => item.MustChangePin, false)
+                        .SetProperty(item => item.PinChangedAtUtc, changedAtUtc)
+                        .SetProperty(item => item.LegacyPinGraceEndsAtUtc, (DateTime?)null),
+                    cancellationToken);
+            if (claimed != 1)
+            {
+                return null;
+            }
+
+            await _context.Entry(user).ReloadAsync(cancellationToken);
+        }
+        else
+        {
+            user.PinHash = newPinHash;
+            user.MustChangePin = false;
+            user.PinChangedAtUtc = changedAtUtc;
+            user.LegacyPinGraceEndsAtUtc = null;
+        }
 
         await _auditService.LogAuthEventAsync(new AuditEvent
         {
@@ -188,6 +221,11 @@ public class AuthService : IAuthService
                 ["reasonCode"] = "authentication_required_change"
             }
         }, cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
 
         return await ContinueAfterPinComplianceAsync(user, policy, ipAddress, userAgent, cancellationToken);
     }
@@ -198,11 +236,19 @@ public class AuthService : IAuthService
         string? userAgent = null,
         CancellationToken cancellationToken = default)
     {
-        if (_mfaAuthenticationService is null || !_mfaAuthenticationService.TryValidateChallenge(
-                completionToken,
-                MfaChallengePurpose.AuthenticationCompletion,
-                AuthenticationChallengeLifetime,
-                out var principal))
+        if (_mfaAuthenticationService is null)
+        {
+            return null;
+        }
+
+        await using var transaction = _context.Database.IsRelational()
+            ? await _context.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        var principal = await _mfaAuthenticationService.ConsumeAuthenticationCompletionChallengeAsync(
+            completionToken,
+            AuthenticationChallengeLifetime,
+            cancellationToken);
+        if (principal is null)
         {
             return null;
         }
@@ -210,9 +256,17 @@ public class AuthService : IAuthService
         var user = await _context.Users
             .IgnoreQueryFilters()
             .SingleOrDefaultAsync(item => item.Id == principal.UserId && item.IsActive, cancellationToken);
-        return user is null
-            ? null
-            : await IssueSessionAsync(user, ipAddress, userAgent, cancellationToken);
+        if (user is null)
+        {
+            return null;
+        }
+
+        var result = await IssueSessionAsync(user, ipAddress, userAgent, cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+        return result;
     }
 
     public async Task<SessionInfo?> ValidateSessionAsync(
@@ -330,16 +384,31 @@ public class AuthService : IAuthService
             .Where(s => !s.IsRevoked && s.ExpiresAt < now)
             .ToListAsync(cancellationToken);
 
+        var expiredAuthenticationChallenges = await _context.Sessions
+            .Where(s => s.IsRevoked
+                && s.RevokedAt == null
+                && s.LastActivityAt == null
+                && s.ExpiresAt < now)
+            .ToListAsync(cancellationToken);
+
         foreach (var session in expiredSessions)
         {
             session.IsRevoked = true;
             session.RevokedAt = now;
         }
 
-        if (expiredSessions.Any())
+        if (expiredAuthenticationChallenges.Count > 0)
+        {
+            _context.Sessions.RemoveRange(expiredAuthenticationChallenges);
+        }
+
+        if (expiredSessions.Count > 0 || expiredAuthenticationChallenges.Count > 0)
         {
             await _context.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("Cleaned up {Count} expired sessions", expiredSessions.Count);
+            _logger.LogInformation(
+                "Cleaned up {SessionCount} expired sessions and {ChallengeCount} authentication challenges",
+                expiredSessions.Count,
+                expiredAuthenticationChallenges.Count);
         }
     }
 

@@ -43,8 +43,9 @@ Each row records:
 The Settings permission matrix persists one row for every clinic, role, and stable capability key
 (9 roles × 30 capabilities = 270 rows per clinic). `N`, `V`, `E`, and `F` mean None, View, Edit,
 and Full. `—` means the capability is reserved but unsupported; it is persisted as `None` and
-cannot grant access. Owner and Patient rows are read-only. Administrator `UsersManage` and
-`RolesPermissionsManage` have a locked minimum of Full to preserve the recovery administrator.
+cannot grant access. Owner and Patient rows are read-only. Administrator `UsersManage`,
+`RolesPermissionsManage`, and `ClinicSettingsManage` have a locked minimum of Full to preserve
+both permission recovery and access to the Settings write surface.
 
 | # | Capability | Admin | Owner | Manager | PT | PTA | Aide | Front Desk | Billing | Patient |
 |---:|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|

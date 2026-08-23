@@ -276,12 +276,25 @@ public sealed class AppointmentCommunicationProcessor(
                     dispatch.Purpose == ReminderDispatchPurpose.AutoCheckIn ? await GetAutoMaxAttemptsAsync(dispatch.ClinicId, cancellationToken) : 5);
             }
         }
+        catch (DeliveryAcceptedAuditException exception)
+        {
+            logger.LogError(exception,
+                "Appointment communication was accepted by the provider but audit persistence failed. DispatchId={DispatchId} AppointmentId={AppointmentId} ClinicId={ClinicId} Purpose={Purpose} Channel={Channel}",
+                dispatch.Id, dispatch.AppointmentId, dispatch.ClinicId, dispatch.Purpose, dispatch.Channel);
+            dispatch.Status = ReminderDispatchStatus.Sent;
+            dispatch.CompletedAtUtc = now;
+            dispatch.LastStatusCode = exception.DeliveryResult.ErrorCode
+                ?? exception.DeliveryResult.Status.ToString();
+        }
         catch (Exception exception)
         {
             logger.LogWarning(exception,
                 "Appointment communication failed. DispatchId={DispatchId} AppointmentId={AppointmentId} ClinicId={ClinicId} Purpose={Purpose} Channel={Channel}",
                 dispatch.Id, dispatch.AppointmentId, dispatch.ClinicId, dispatch.Purpose, dispatch.Channel);
-            ScheduleRetry(dispatch, "delivery_exception", now, 5);
+            var maximumAttempts = dispatch.Purpose == ReminderDispatchPurpose.AutoCheckIn
+                ? await GetAutoMaxAttemptsAsync(dispatch.ClinicId, cancellationToken)
+                : 5;
+            ScheduleRetry(dispatch, "delivery_exception", now, maximumAttempts);
         }
 
         dispatch.UpdatedAtUtc = now;
@@ -319,6 +332,12 @@ public sealed class AppointmentCommunicationProcessor(
         Appointment appointment,
         CancellationToken cancellationToken)
     {
+        var templateKey = await context.AutoCheckInPolicies
+            .Where(item => item.ClinicId == dispatch.ClinicId)
+            .Select(item => item.TemplateKey)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? AutoCheckInTemplateCatalog.Default;
+
         var intake = await context.IntakeForms
             .Where(item => item.PatientId == appointment.PatientId && !item.IsLocked && !item.SubmittedAt.HasValue)
             .OrderByDescending(item => item.LastModifiedUtc)
@@ -347,7 +366,8 @@ public sealed class AppointmentCommunicationProcessor(
             IntakeId = intake.Id,
             Channel = dispatch.Channel == ReminderChannel.Email
                 ? IntakeDeliveryChannel.Email
-                : IntakeDeliveryChannel.Sms
+                : IntakeDeliveryChannel.Sms,
+            TemplateKey = templateKey
         }, new IntakeCommunicationContext
         {
             UserId = IIdentityContextAccessor.SystemUserId,

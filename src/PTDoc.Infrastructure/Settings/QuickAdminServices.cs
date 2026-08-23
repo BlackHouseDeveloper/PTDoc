@@ -32,8 +32,8 @@ public sealed class AutoCheckInAdministrationService(
             errors["leadHours"] = ["Lead time must be between 1 and 168 hours."];
         if (request.IsEnabled && !request.EnableEmail && !request.EnableSms)
             errors["channels"] = ["At least one consented delivery channel is required when Auto Check-In is enabled."];
-        if (string.IsNullOrWhiteSpace(request.TemplateKey) || request.TemplateKey.Trim().Length > 100)
-            errors["templateKey"] = ["A template key of 100 characters or fewer is required."];
+        if (!AutoCheckInTemplateCatalog.IsSupported(request.TemplateKey))
+            errors["templateKey"] = ["Select a supported Auto Check-In template."];
         if (request.MaxAttempts is < 1 or > 10)
             errors["maxAttempts"] = ["Retry attempts must be between 1 and 10."];
 
@@ -99,7 +99,7 @@ public sealed class AutoCheckInAdministrationService(
         return SettingsOperationResult<AutoCheckInPolicyDto>.Success(Map(policy));
     }
 
-    private static AutoCheckInPolicyDto Defaults() => new(false, 24, true, true, "default-intake-invite", 3, [], 0);
+    private static AutoCheckInPolicyDto Defaults() => new(false, 24, true, true, AutoCheckInTemplateCatalog.Default, 3, [], 0);
 
     private static AutoCheckInPolicyDto Map(AutoCheckInPolicy policy)
     {

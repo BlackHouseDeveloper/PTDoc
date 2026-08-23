@@ -118,10 +118,11 @@ public static class PinAuthEndpoints
         if (result is null) return Results.Unauthorized();
         if (result.Status == AuthStatus.RequiresPinChange)
         {
+            var minimumPinLength = result.MinimumPinLength ?? 8;
             return Results.UnprocessableEntity(new
             {
                 error = "pin_policy_failed",
-                message = "PIN must contain 8 to 12 numeric digits.",
+                message = $"PIN must contain {minimumPinLength} to 12 numeric digits.",
                 challengeToken = result.ChallengeToken
             });
         }

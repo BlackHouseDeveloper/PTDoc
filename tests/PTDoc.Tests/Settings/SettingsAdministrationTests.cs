@@ -23,6 +23,7 @@ using PTDoc.Application.Settings;
 using PTDoc.Core.Communication;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Identity;
 using PTDoc.Infrastructure.Settings;
 using Xunit;
 
@@ -45,6 +46,8 @@ public sealed class SettingsAdministrationTests
             RolePermissionCatalog.GetLockedMinimum("Admin", CapabilityKey.UsersManage));
         Assert.Equal(PermissionLevel.Full,
             RolePermissionCatalog.GetLockedMinimum("Admin", CapabilityKey.RolesPermissionsManage));
+        Assert.Equal(PermissionLevel.Full,
+            RolePermissionCatalog.GetLockedMinimum("Admin", CapabilityKey.ClinicSettingsManage));
         Assert.Equal(PermissionLevel.None,
             RolePermissionCatalog.GetCanonicalLevel("Patient", CapabilityKey.ClinicalNotesView));
     }
@@ -192,11 +195,60 @@ public sealed class SettingsAdministrationTests
                 [new PermissionUpdate(CapabilityKey.UsersManage, PermissionLevel.View, 1)]),
             Guid.NewGuid(),
             "admin-recovery-lock");
+        var settingsRecoveryResult = await service.UpdateAsync(
+            clinic.Id,
+            "Admin",
+            new UpdateRolePermissionsRequest(
+                [new PermissionUpdate(CapabilityKey.ClinicSettingsManage, PermissionLevel.Edit, 1)]),
+            Guid.NewGuid(),
+            "settings-recovery-lock");
 
         Assert.Equal(SettingsOperationStatus.Forbidden, ownerResult.Status);
         Assert.Equal("role_read_only", ownerResult.ErrorCode);
         Assert.Equal(SettingsOperationStatus.ValidationFailed, adminResult.Status);
         Assert.Contains("permissions.UsersManage", adminResult.ValidationErrors!.Keys);
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, settingsRecoveryResult.Status);
+        Assert.Contains("permissions.ClinicSettingsManage", settingsRecoveryResult.ValidationErrors!.Keys);
+    }
+
+    [Fact]
+    public async Task SettingsAdministration_RejectsUndefinedPolicyAndPermissionEnums()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Enum Validation Clinic", Slug = $"enum-validation-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+
+        var security = new SecurityPolicyAdministrationService(context, CreateAuditService().Object);
+        var securityResult = await security.UpdateAsync(
+            clinic.Id,
+            new UpdateSecurityPolicyRequest(
+                (MfaEnforcementMode)999,
+                null,
+                true,
+                8,
+                15,
+                true,
+                false,
+                (AuthorizationRolloutMode)999,
+                1),
+            Guid.NewGuid(),
+            "undefined-security-enums");
+
+        var roles = new RolePermissionAdministrationService(context, CreateAuditService().Object);
+        var permissionResult = await roles.UpdateAsync(
+            clinic.Id,
+            Roles.PT,
+            new UpdateRolePermissionsRequest(
+                [new PermissionUpdate(CapabilityKey.AppointmentsCreate, (PermissionLevel)999, 1)]),
+            Guid.NewGuid(),
+            "undefined-permission-level");
+
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, securityResult.Status);
+        Assert.Contains("mfaEnforcementMode", securityResult.ValidationErrors!.Keys);
+        Assert.Contains("authorizationMode", securityResult.ValidationErrors.Keys);
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, permissionResult.Status);
+        Assert.Contains("permissions.AppointmentsCreate", permissionResult.ValidationErrors!.Keys);
     }
 
     [Fact]
@@ -534,6 +586,188 @@ public sealed class SettingsAdministrationTests
     }
 
     [Fact]
+    public async Task TotpFailures_UseLatestPersistedCountAcrossStaleContexts()
+    {
+        var connectionString = $"Data Source=mfa-failure-{Guid.NewGuid():N};Mode=Memory;Cache=Shared";
+        await using var keeper = new SqliteConnection(connectionString);
+        await keeper.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connectionString)
+            .Options;
+        var time = new MutableTimeProvider(new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero));
+        var protector = new TestSecretProtector();
+        var secret = RandomNumberGenerator.GetBytes(20);
+        Guid userId;
+
+        await using (var seed = new ApplicationDbContext(options))
+        {
+            await seed.Database.EnsureCreatedAsync();
+            var clinic = new Clinic { Name = "MFA Failure Clinic", Slug = $"mfa-failure-{Guid.NewGuid():N}" };
+            var user = new User
+            {
+                Username = "mfa-failure-admin",
+                PinHash = BCrypt.Net.BCrypt.HashPassword("12345678"),
+                FirstName = "Mfa",
+                LastName = "Failure",
+                Role = Roles.Admin,
+                ClinicId = clinic.Id,
+                IsActive = true
+            };
+            seed.AddRange(
+                clinic,
+                user,
+                new UserMfaCredential
+                {
+                    User = user,
+                    UserId = user.Id,
+                    EncryptedSecret = protector.Protect("totp-secret", Convert.ToBase64String(secret)),
+                    IsActive = true,
+                    LastAcceptedTimeStep = -1,
+                    FailedAttemptCount = 3
+                });
+            userId = user.Id;
+            await seed.SaveChangesAsync();
+        }
+
+        await using var firstContext = new ApplicationDbContext(options);
+        await using var secondContext = new ApplicationDbContext(options);
+        await firstContext.UserMfaCredentials.SingleAsync();
+        await secondContext.UserMfaCredentials.SingleAsync();
+        var firstService = new MfaAuthenticationService(firstContext, protector, CreateAuditService().Object, time);
+        var secondService = new MfaAuthenticationService(secondContext, protector, CreateAuditService().Object, time);
+        var validCode = ComputeTotp(secret, time.GetUtcNow());
+        var invalidCode = validCode == "000000" ? "000001" : "000000";
+
+        await firstService.VerifyAsync(
+            firstService.CreateChallenge(userId, MfaChallengePurpose.Verification),
+            invalidCode);
+        await secondService.VerifyAsync(
+            secondService.CreateChallenge(userId, MfaChallengePurpose.Verification),
+            invalidCode);
+
+        await using var assertionContext = new ApplicationDbContext(options);
+        var credential = await assertionContext.UserMfaCredentials.SingleAsync();
+        Assert.Equal(0, credential.FailedAttemptCount);
+        Assert.True(credential.LockedUntilUtc > time.GetUtcNow().UtcDateTime);
+    }
+
+    [Fact]
+    public async Task AuthenticationCompletionToken_IsSingleUseAndBoundToActiveCredential()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "MFA Completion Clinic", Slug = $"mfa-completion-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = "mfa-completion-admin",
+            PinHash = BCrypt.Net.BCrypt.HashPassword("12345678"),
+            FirstName = "Mfa",
+            LastName = "Completion",
+            Role = Roles.Admin,
+            ClinicId = clinic.Id,
+            IsActive = true
+        };
+        context.AddRange(clinic, user);
+        await context.SaveChangesAsync();
+        var time = new MutableTimeProvider(new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero));
+        var audit = CreateAuthAuditService();
+        var mfa = new MfaAuthenticationService(context, new TestSecretProtector(), audit.Object, time);
+        var start = await mfa.BeginEnrollmentAsync(mfa.CreateChallenge(user.Id, MfaChallengePurpose.Enrollment));
+        var completion = await mfa.VerifyEnrollmentAsync(
+            start.Value!.EnrollmentChallengeToken,
+            ComputeTotp(DecodeBase32(start.Value.ManualKey), time.GetUtcNow()));
+        var auth = new AuthService(context, NullLogger<AuthService>.Instance, audit.Object, mfa, time);
+
+        var first = await auth.CompleteMfaAsync(completion.Value!.CompletionToken);
+        var replay = await auth.CompleteMfaAsync(completion.Value.CompletionToken);
+
+        Assert.Equal(AuthStatus.Success, first!.Status);
+        Assert.Null(replay);
+        Assert.Single(await context.Sessions.Where(item => !item.IsRevoked).ToListAsync());
+        Assert.Empty(await context.Sessions.Where(item =>
+            item.IsRevoked && item.RevokedAt == null && item.LastActivityAt == null).ToListAsync());
+    }
+
+    [Fact]
+    public async Task PinChangeChallenge_CannotReplayAfterSuccessfulChange()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "PIN Replay Clinic", Slug = $"pin-replay-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = "pin-replay-admin",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Pin",
+            LastName = "Replay",
+            Role = Roles.Admin,
+            ClinicId = clinic.Id,
+            IsActive = true,
+            MustChangePin = true
+        };
+        context.AddRange(clinic, user);
+        await context.SaveChangesAsync();
+        var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.MinimumPinLength = 10;
+        await context.SaveChangesAsync();
+        var time = new MutableTimeProvider(new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero));
+        var audit = CreateAuthAuditService();
+        var mfa = new MfaAuthenticationService(context, new TestSecretProtector(), audit.Object, time);
+        var auth = new AuthService(context, NullLogger<AuthService>.Instance, audit.Object, mfa, time);
+        var challenge = mfa.CreateChallenge(user.Id, MfaChallengePurpose.PinChange);
+
+        var rejected = await auth.CompletePinChangeAsync(challenge, "123456789");
+        var accepted = await auth.CompletePinChangeAsync(challenge, "1234567890");
+        var replay = await auth.CompletePinChangeAsync(challenge, "0987654321");
+
+        Assert.Equal(AuthStatus.RequiresPinChange, rejected!.Status);
+        Assert.Equal(10, rejected.MinimumPinLength);
+        Assert.Equal(AuthStatus.Success, accepted!.Status);
+        Assert.Null(replay);
+        Assert.True(BCrypt.Net.BCrypt.Verify("1234567890", user.PinHash));
+    }
+
+    [Fact]
+    public async Task PinChangeAuditFailure_RollsBackCredentialMutation()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var clinic = new Clinic { Name = "PIN Audit Clinic", Slug = $"pin-audit-{Guid.NewGuid():N}" };
+        var originalHash = AuthService.HashPin("12345678");
+        var user = new User
+        {
+            Username = "pin-audit-admin",
+            PinHash = originalHash,
+            FirstName = "Pin",
+            LastName = "Audit",
+            Role = Roles.Admin,
+            ClinicId = clinic.Id,
+            IsActive = true,
+            MustChangePin = true
+        };
+        context.AddRange(clinic, user);
+        await context.SaveChangesAsync();
+        var time = new MutableTimeProvider(new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero));
+        var audit = CreateAuthAuditService();
+        audit.Setup(service => service.LogAuthEventAsync(
+                It.Is<AuditEvent>(item => item.EventType == "PinChanged"),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("audit unavailable"));
+        var mfa = new MfaAuthenticationService(context, new TestSecretProtector(), audit.Object, time);
+        var auth = new AuthService(context, NullLogger<AuthService>.Instance, audit.Object, mfa, time);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => auth.CompletePinChangeAsync(
+            mfa.CreateChallenge(user.Id, MfaChallengePurpose.PinChange),
+            "1234567890"));
+
+        context.ChangeTracker.Clear();
+        var persisted = await context.Users.IgnoreQueryFilters().SingleAsync(item => item.Id == user.Id);
+        Assert.Equal(originalHash, persisted.PinHash);
+        Assert.True(persisted.MustChangePin);
+    }
+
+    [Fact]
     public async Task AppointmentReminderProcessor_QueuesConsentedChannelsOnlyOnce()
     {
         await using var context = CreateContext();
@@ -649,19 +883,23 @@ public sealed class SettingsAdministrationTests
             completedIntake);
         await context.SaveChangesAsync();
 
+        IntakeSendInviteRequest? deliveredRequest = null;
         var intakeWorkflow = new Mock<IIntakeCommunicationWorkflow>();
         intakeWorkflow.Setup(service => service.SendInviteAsync(
                 It.IsAny<IntakeSendInviteRequest>(),
                 It.IsAny<IntakeCommunicationContext>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((IntakeSendInviteRequest request, IntakeCommunicationContext? _, CancellationToken _) =>
-                new IntakeDeliverySendResult
+            {
+                deliveredRequest = request;
+                return new IntakeDeliverySendResult
                 {
                     Success = true,
                     IntakeId = request.IntakeId,
                     PatientId = eligiblePatient.Id,
                     Channel = request.Channel
-                });
+                };
+            });
         var processor = new AppointmentCommunicationProcessor(
             context,
             Mock.Of<ICommunicationService>(),
@@ -678,10 +916,114 @@ public sealed class SettingsAdministrationTests
         Assert.DoesNotContain(
             await context.AppointmentReminderDispatches.ToListAsync(),
             item => item.AppointmentId == completedAppointment.Id);
+        Assert.Equal(AutoCheckInTemplateCatalog.Default, deliveredRequest!.TemplateKey);
         intakeWorkflow.Verify(service => service.SendInviteAsync(
             It.IsAny<IntakeSendInviteRequest>(),
             It.IsAny<IntakeCommunicationContext>(),
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task AutoCheckInProcessor_ExceptionHonorsClinicMaximumAttempts()
+    {
+        await using var context = CreateContext();
+        var now = new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero);
+        var clinic = new Clinic { Name = "Auto Check-In Retry Clinic", Slug = $"auto-retry-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var visitType = await context.VisitTypes.FirstAsync(item =>
+            item.ClinicId == clinic.Id && item.RequiresIntake && item.IsActive);
+        (await context.SchedulingPreferences.SingleAsync(item => item.ClinicId == clinic.Id))
+            .SendAppointmentReminders = false;
+        var policy = await context.AutoCheckInPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.IsEnabled = true;
+        policy.LeadHours = 24;
+        policy.EnableEmail = true;
+        policy.EnableSms = false;
+        policy.MaxAttempts = 1;
+        policy.EligibleVisitTypeIdsJson = JsonSerializer.Serialize(new[] { visitType.Id });
+        var patient = CreateConsentedPatient(clinic.Id, "auto-retry@example.invalid", now.UtcDateTime);
+        var appointment = CreateIntakeAppointment(clinic.Id, patient, visitType, now.UtcDateTime.AddHours(24));
+        var intake = CreateConsentedIntake(clinic.Id, patient, now.UtcDateTime, submittedAt: null);
+        context.AddRange(patient, appointment, intake);
+        await context.SaveChangesAsync();
+        var intakeWorkflow = new Mock<IIntakeCommunicationWorkflow>();
+        intakeWorkflow.Setup(service => service.SendInviteAsync(
+                It.IsAny<IntakeSendInviteRequest>(),
+                It.IsAny<IntakeCommunicationContext>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("provider unavailable"));
+        var processor = new AppointmentCommunicationProcessor(
+            context,
+            Mock.Of<ICommunicationService>(),
+            intakeWorkflow.Object,
+            new MutableTimeProvider(now),
+            NullLogger<AppointmentCommunicationProcessor>.Instance);
+
+        await processor.ProcessDueAsync();
+
+        var dispatch = await context.AppointmentReminderDispatches.SingleAsync();
+        Assert.Equal(ReminderDispatchStatus.DeadLetter, dispatch.Status);
+        Assert.Equal(1, dispatch.AttemptCount);
+        Assert.Equal("delivery_exception", dispatch.LastStatusCode);
+    }
+
+    [Fact]
+    public async Task AppointmentReminderProcessor_DoesNotRetryProviderAcceptedAuditFailure()
+    {
+        await using var context = CreateContext();
+        var now = new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero);
+        var clinic = new Clinic { Name = "Accepted Reminder Clinic", Slug = $"accepted-reminder-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var scheduling = await context.SchedulingPreferences.SingleAsync(item => item.ClinicId == clinic.Id);
+        scheduling.SendAppointmentReminders = true;
+        scheduling.ReminderLeadHours = 24;
+        var patient = CreateConsentedPatient(clinic.Id, "accepted@example.invalid", now.UtcDateTime);
+        var appointment = new Appointment
+        {
+            Patient = patient,
+            PatientId = patient.Id,
+            Clinic = clinic,
+            ClinicId = clinic.Id,
+            ClinicalId = Guid.NewGuid(),
+            StartTimeUtc = now.UtcDateTime.AddHours(24),
+            EndTimeUtc = now.UtcDateTime.AddHours(25),
+            Status = AppointmentStatus.Scheduled,
+            LastModifiedUtc = now.UtcDateTime,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        var intake = CreateConsentedIntake(clinic.Id, patient, now.UtcDateTime, submittedAt: null);
+        context.AddRange(patient, appointment, intake);
+        await context.SaveChangesAsync();
+        var communication = new Mock<ICommunicationService>();
+        communication.Setup(service => service.SendAppointmentReminderEmailAsync(
+                It.IsAny<AppointmentReminderDeliveryRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DeliveryAcceptedAuditException(
+                new DeliveryResult
+                {
+                    Succeeded = true,
+                    Status = DeliveryStatus.Sent,
+                    Provider = "TestProvider",
+                    ProviderMessageId = "accepted-1"
+                },
+                new InvalidOperationException("audit unavailable")));
+        var processor = new AppointmentCommunicationProcessor(
+            context,
+            communication.Object,
+            Mock.Of<IIntakeCommunicationWorkflow>(),
+            new MutableTimeProvider(now),
+            NullLogger<AppointmentCommunicationProcessor>.Instance);
+
+        await processor.ProcessDueAsync();
+        await processor.ProcessDueAsync();
+
+        var dispatch = await context.AppointmentReminderDispatches.SingleAsync();
+        Assert.Equal(ReminderDispatchStatus.Sent, dispatch.Status);
+        Assert.Equal(1, dispatch.AttemptCount);
+        communication.Verify(service => service.SendAppointmentReminderEmailAsync(
+            It.IsAny<AppointmentReminderDeliveryRequest>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -1165,6 +1507,14 @@ public sealed class SettingsAdministrationTests
     {
         var audit = new Mock<IAuditService>();
         audit.Setup(service => service.LogSettingsEventAsync(It.IsAny<AuditEvent>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        return audit;
+    }
+
+    private static Mock<IAuditService> CreateAuthAuditService()
+    {
+        var audit = CreateAuditService();
+        audit.Setup(service => service.LogAuthEventAsync(It.IsAny<AuditEvent>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         return audit;
     }

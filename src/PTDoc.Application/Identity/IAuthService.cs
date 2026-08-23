@@ -107,6 +107,9 @@ public class AuthResult
 
     /// <summary>Short-lived purpose-bound token used before a session is issued.</summary>
     public string? ChallengeToken { get; init; }
+
+    /// <summary>Clinic-specific minimum PIN length for a PIN-policy validation response.</summary>
+    public int? MinimumPinLength { get; init; }
 }
 
 /// <summary>

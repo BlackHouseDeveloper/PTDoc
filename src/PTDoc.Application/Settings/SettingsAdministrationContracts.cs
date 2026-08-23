@@ -175,7 +175,10 @@ public enum MfaChallengePurpose
     AuthenticationCompletion = 3
 }
 
-public sealed record MfaChallengePrincipal(Guid UserId, MfaChallengePurpose Purpose);
+public sealed record MfaChallengePrincipal(
+    Guid UserId,
+    MfaChallengePurpose Purpose,
+    Guid? CredentialId = null);
 
 public interface ISettingsSecretProtector
 {
@@ -192,6 +195,11 @@ public interface IMfaAuthenticationService
         MfaChallengePurpose purpose,
         TimeSpan maximumAge,
         out MfaChallengePrincipal principal);
+
+    Task<MfaChallengePrincipal?> ConsumeAuthenticationCompletionChallengeAsync(
+        string completionToken,
+        TimeSpan maximumAge,
+        CancellationToken cancellationToken = default);
 
     Task<SettingsOperationResult<MfaEnrollmentStart>> BeginEnrollmentAsync(
         string loginChallengeToken,
@@ -371,6 +379,24 @@ public sealed record UpdateAutoCheckInPolicyRequest(
     int MaxAttempts,
     IReadOnlyList<Guid> EligibleVisitTypeIds,
     long ExpectedVersion);
+
+public static class AutoCheckInTemplateCatalog
+{
+    public const string Default = "default-intake-invite";
+
+    public static bool IsSupported(string? templateKey) =>
+        string.Equals(templateKey?.Trim(), Default, StringComparison.Ordinal);
+
+    public static string ResolveEmailTemplate(string templateKey) =>
+        IsSupported(templateKey)
+            ? "intake-link-email.html"
+            : throw new ArgumentOutOfRangeException(nameof(templateKey), "Unsupported Auto Check-In template key.");
+
+    public static string ResolveSmsTemplate(string templateKey) =>
+        IsSupported(templateKey)
+            ? "intake-link-sms.txt"
+            : throw new ArgumentOutOfRangeException(nameof(templateKey), "Unsupported Auto Check-In template key.");
+}
 
 public interface IAutoCheckInAdministrationService
 {

@@ -275,6 +275,12 @@ public sealed class RolePermissionAdministrationService(
                 continue;
             }
 
+            if (!Enum.IsDefined(update.Level))
+            {
+                errors[$"permissions.{update.CapabilityKey}"] = ["Unknown permission level."];
+                continue;
+            }
+
             if (!definition.IsSupported && update.Level != PermissionLevel.None)
             {
                 errors[$"permissions.{update.CapabilityKey}"] = ["This capability is not supported by a server endpoint."];
@@ -308,7 +314,9 @@ public sealed class RolePermissionAdministrationService(
                 definition.Name,
                 definition.Description,
                 level,
-                item?.LockedMinimum ?? RolePermissionCatalog.GetLockedMinimum(role.Key, definition.Key),
+                Max(
+                    item?.LockedMinimum ?? PermissionLevel.None,
+                    RolePermissionCatalog.GetLockedMinimum(role.Key, definition.Key)),
                 definition.IsSupported,
                 item?.Version ?? 0);
         }).ToArray();
@@ -323,6 +331,9 @@ public sealed class RolePermissionAdministrationService(
             permissions.Count(item => item.Level == PermissionLevel.Edit),
             permissions.Count(item => item.Level == PermissionLevel.Full));
     }
+
+    private static PermissionLevel Max(PermissionLevel left, PermissionLevel right) =>
+        left >= right ? left : right;
 }
 
 public sealed class PermissionEvaluator(

@@ -199,7 +199,10 @@ The JWT bearer middleware now fires an `OnAuthenticationFailed` event that write
   TOTP code through `POST /api/v1/auth/mfa/recovery-codes/regenerate`; the Web step-up proxy never
   returns the prior set after replacement.
 - Web sessions and API/MAUI JWTs are issued only after required PIN-change and MFA steps complete.
-  Pre-authentication challenges are short-lived and purpose-bound.
+  Pre-authentication challenges are short-lived and purpose-bound. A successful required PIN
+  change atomically clears the force-change state, so its challenge cannot be replayed. MFA
+  authentication-completion challenges are bound to the active credential and backed by a
+  single-use pending-session claim before a real session or JWT can be issued.
 - Both primary PIN entry points share a fixed-window, client-IP-partitioned rate limit. Rejections
   return a generic `429` response without echoing usernames, PINs, or account state.
 - Kiosk enrollment and appointment check-in credentials are claimed atomically and cannot

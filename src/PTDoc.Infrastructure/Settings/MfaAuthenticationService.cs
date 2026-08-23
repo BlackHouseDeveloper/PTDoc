@@ -41,8 +41,65 @@ public sealed class MfaAuthenticationService(
             return false;
         }
 
-        principal = new MfaChallengePrincipal(payload.UserId, payload.Purpose);
+        principal = new MfaChallengePrincipal(payload.UserId, payload.Purpose, payload.CredentialId);
         return true;
+    }
+
+    public async Task<MfaChallengePrincipal?> ConsumeAuthenticationCompletionChallengeAsync(
+        string completionToken,
+        TimeSpan maximumAge,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryReadChallenge(completionToken, maximumAge, out var payload)
+            || payload.Purpose != MfaChallengePurpose.AuthenticationCompletion
+            || payload.CredentialId is null)
+        {
+            return null;
+        }
+
+        var credentialIsCurrent = await context.UserMfaCredentials
+            .AsNoTracking()
+            .AnyAsync(item => item.Id == payload.CredentialId.Value
+                && item.UserId == payload.UserId
+                && item.IsActive,
+                cancellationToken);
+        if (!credentialIsCurrent)
+        {
+            return null;
+        }
+
+        var tokenHash = HashChallengeToken(completionToken);
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        if (context.Database.IsRelational())
+        {
+            var consumed = await context.Sessions
+                .Where(item => item.UserId == payload.UserId
+                    && item.TokenHash == tokenHash
+                    && item.IsRevoked
+                    && item.RevokedAt == null
+                    && item.LastActivityAt == null
+                    && item.ExpiresAt > now)
+                .ExecuteDeleteAsync(cancellationToken);
+            return consumed == 1
+                ? new MfaChallengePrincipal(payload.UserId, payload.Purpose, payload.CredentialId)
+                : null;
+        }
+
+        var pendingChallenge = await context.Sessions.SingleOrDefaultAsync(
+            item => item.UserId == payload.UserId
+                && item.TokenHash == tokenHash
+                && item.IsRevoked
+                && item.RevokedAt == null
+                && item.LastActivityAt == null
+                && item.ExpiresAt > now,
+            cancellationToken);
+        if (pendingChallenge is null)
+        {
+            return null;
+        }
+
+        context.Sessions.Remove(pendingChallenge);
+        return new MfaChallengePrincipal(payload.UserId, payload.Purpose, payload.CredentialId);
     }
 
     public async Task<SettingsOperationResult<MfaEnrollmentStart>> BeginEnrollmentAsync(
@@ -69,6 +126,13 @@ public sealed class MfaAuthenticationService(
         {
             return SettingsOperationResult<MfaEnrollmentStart>.Forbidden("mfa_already_enrolled");
         }
+
+        var pendingCompletionChallenges = context.Sessions.Where(item =>
+            item.UserId == user.Id
+            && item.IsRevoked
+            && item.RevokedAt == null
+            && item.LastActivityAt == null);
+        context.Sessions.RemoveRange(pendingCompletionChallenges);
 
         var secret = RandomNumberGenerator.GetBytes(20);
         var manualKey = Base32Encode(secret);
@@ -134,7 +198,7 @@ public sealed class MfaAuthenticationService(
 
         if (!TryVerifyCode(credential, code, out var acceptedTimeStep))
         {
-            RegisterFailure(credential);
+            await RegisterFailureAsync(credential, cancellationToken);
             await AuditAsync("MfaEnrollmentFailed", credential.User, credential.Id, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
             return SettingsOperationResult<MfaEnrollmentCompletion>.Validation(
@@ -158,9 +222,9 @@ public sealed class MfaAuthenticationService(
             });
         }
 
+        var completion = CreateAuthenticationCompletionChallenge(credential);
         await AuditAsync("MfaEnrollmentCompleted", credential.User, credential.Id, cancellationToken);
         await context.SaveChangesAsync(cancellationToken);
-        var completion = CreateChallenge(credential.UserId, MfaChallengePurpose.AuthenticationCompletion);
         return SettingsOperationResult<MfaEnrollmentCompletion>.Success(new MfaEnrollmentCompletion(recoveryCodes, completion));
     }
 
@@ -198,7 +262,7 @@ public sealed class MfaAuthenticationService(
         if (!TryVerifyCode(credential, currentTotpCode, out var acceptedTimeStep)
             || !AcceptTimeStep(credential, acceptedTimeStep))
         {
-            RegisterFailure(credential);
+            await RegisterFailureAsync(credential, cancellationToken);
             await AuditAsync("MfaRecoveryCodesRegenerationFailed", credential.User, credential.Id, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
             return SettingsOperationResult<MfaRecoveryCodeSet>.Validation(
@@ -264,7 +328,7 @@ public sealed class MfaAuthenticationService(
                 && AcceptTimeStep(credential, acceptedTimeStep);
         if (!accepted)
         {
-            RegisterFailure(credential);
+            await RegisterFailureAsync(credential, cancellationToken);
             await AuditAsync(useRecoveryCode ? "MfaRecoveryFailed" : "MfaVerificationFailed", credential.User, credential.Id, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
@@ -276,6 +340,7 @@ public sealed class MfaAuthenticationService(
 
         credential.FailedAttemptCount = 0;
         credential.LockedUntilUtc = null;
+        var completion = CreateAuthenticationCompletionChallenge(credential);
         await AuditAsync(useRecoveryCode ? "MfaRecoveryUsed" : "MfaVerified", credential.User, credential.Id, cancellationToken);
         await context.SaveChangesAsync(cancellationToken);
         if (transaction is not null)
@@ -283,7 +348,6 @@ public sealed class MfaAuthenticationService(
             await transaction.CommitAsync(cancellationToken);
         }
 
-        var completion = CreateChallenge(credential.UserId, MfaChallengePurpose.AuthenticationCompletion);
         return new MfaVerificationResult(true, completion);
     }
 
@@ -380,8 +444,34 @@ public sealed class MfaAuthenticationService(
         return true;
     }
 
-    private void RegisterFailure(UserMfaCredential credential)
+    private async Task RegisterFailureAsync(
+        UserMfaCredential credential,
+        CancellationToken cancellationToken)
     {
+        if (context.Database.IsRelational())
+        {
+            var now = timeProvider.GetUtcNow().UtcDateTime;
+            var lockedUntil = now.Add(LockoutDuration);
+            await context.UserMfaCredentials
+                .Where(item => item.Id == credential.Id
+                    && (item.LockedUntilUtc == null || item.LockedUntilUtc <= now))
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(
+                            item => item.FailedAttemptCount,
+                            item => item.FailedAttemptCount >= MaximumFailedAttempts - 1
+                                ? 0
+                                : item.FailedAttemptCount + 1)
+                        .SetProperty(
+                            item => item.LockedUntilUtc,
+                            item => item.FailedAttemptCount >= MaximumFailedAttempts - 1
+                                ? lockedUntil
+                                : item.LockedUntilUtc),
+                    cancellationToken);
+            await context.Entry(credential).ReloadAsync(cancellationToken);
+            return;
+        }
+
         credential.FailedAttemptCount++;
         if (credential.FailedAttemptCount >= MaximumFailedAttempts)
         {
@@ -389,6 +479,29 @@ public sealed class MfaAuthenticationService(
             credential.LockedUntilUtc = timeProvider.GetUtcNow().UtcDateTime.Add(LockoutDuration);
         }
     }
+
+    private string CreateAuthenticationCompletionChallenge(UserMfaCredential credential)
+    {
+        var token = ProtectChallenge(new ChallengePayload(
+            credential.UserId,
+            MfaChallengePurpose.AuthenticationCompletion,
+            credential.Id));
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        context.Sessions.Add(new Session
+        {
+            UserId = credential.UserId,
+            TokenHash = HashChallengeToken(token),
+            CreatedAt = now,
+            LastActivityAt = null,
+            ExpiresAt = now.Add(LoginChallengeLifetime),
+            IsRevoked = true,
+            RevokedAt = null
+        });
+        return token;
+    }
+
+    private static string HashChallengeToken(string token) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
     private string ProtectChallenge(ChallengePayload payload)
     {

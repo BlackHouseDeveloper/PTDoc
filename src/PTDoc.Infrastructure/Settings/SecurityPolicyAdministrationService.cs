@@ -164,6 +164,13 @@ public sealed class SecurityPolicyAdministrationService(
             context.UserMfaRecoveryCodes.RemoveRange(recoveryCodes);
         }
 
+        var pendingCompletionChallenges = context.Sessions.Where(item =>
+            item.UserId == userId
+            && item.IsRevoked
+            && item.RevokedAt == null
+            && item.LastActivityAt == null);
+        context.Sessions.RemoveRange(pendingCompletionChallenges);
+
         await AuditUserActionAsync("MfaReset", clinicId, userId, actorUserId, correlationId, cancellationToken);
         await context.SaveChangesAsync(cancellationToken);
         return SettingsOperationResult<bool>.Success(true);
@@ -195,6 +202,16 @@ public sealed class SecurityPolicyAdministrationService(
     private static Dictionary<string, string[]> Validate(UpdateSecurityPolicyRequest request)
     {
         var errors = new Dictionary<string, string[]>();
+        if (!Enum.IsDefined(request.MfaEnforcementMode))
+        {
+            errors["mfaEnforcementMode"] = ["MFA enforcement mode is invalid."];
+        }
+
+        if (!Enum.IsDefined(request.AuthorizationMode))
+        {
+            errors["authorizationMode"] = ["Authorization rollout mode is invalid."];
+        }
+
         if (request.MinimumPinLength is < 8 or > 12)
         {
             errors["minimumPinLength"] = ["Minimum PIN length must be between 8 and 12 digits."];
