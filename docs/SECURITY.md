@@ -198,6 +198,10 @@ The JWT bearer middleware now fires an `OnAuthenticationFailed` event that write
   returns the prior set after replacement.
 - Web sessions and API/MAUI JWTs are issued only after required PIN-change and MFA steps complete.
   Pre-authentication challenges are short-lived and purpose-bound.
+- Both primary PIN entry points share a fixed-window, client-IP-partitioned rate limit. Rejections
+  return a generic `429` response without echoing usernames, PINs, or account state.
+- The legacy JWT token endpoint returns a non-success response with a purpose-bound challenge when
+  step-up is required. Token clients deserialize issued credentials only from `200 OK` responses.
 - An Entra External ID token satisfies an enforced clinic MFA policy only when its validated
   `amr` claim explicitly includes `mfa`; otherwise the external request is denied.
 

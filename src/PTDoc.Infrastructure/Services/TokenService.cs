@@ -1,5 +1,6 @@
 namespace PTDoc.Infrastructure.Services;
 
+using System.Net;
 using System.Net.Http.Json;
 using PTDoc.Application.Auth;
 
@@ -15,7 +16,7 @@ public sealed class TokenService : ITokenService
     public async Task<TokenResponse?> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
     {
         using var response = await httpClient.PostAsJsonAsync("/auth/token", request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        if (response.StatusCode != HttpStatusCode.OK)
         {
             return null;
         }

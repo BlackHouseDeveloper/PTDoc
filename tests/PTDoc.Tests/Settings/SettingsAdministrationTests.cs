@@ -120,6 +120,31 @@ public sealed class SettingsAdministrationTests
         evaluator.VerifyAll();
     }
 
+    [Theory]
+    [InlineData(Roles.Admin, true)]
+    [InlineData(Roles.Owner, true)]
+    [InlineData(Roles.Billing, false)]
+    public async Task ClientCapabilityAuthorization_PreservesStaticRoleDecision(
+        string role,
+        bool expectedAllowed)
+    {
+        var requirement = new DynamicCapabilityRequirement(
+            [CapabilityKey.ClinicSettingsManage],
+            PermissionLevel.View,
+            [Roles.Admin, Roles.Owner]);
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.Role, role)],
+            "test"));
+        var authorizationContext = new AuthorizationHandlerContext(
+            [requirement],
+            principal,
+            resource: null);
+
+        await new ClientStaticCapabilityAuthorizationHandler().HandleAsync(authorizationContext);
+
+        Assert.Equal(expectedAllowed, authorizationContext.HasSucceeded);
+    }
+
     [Fact]
     public async Task NewClinic_IsSeededWithVersionedTenantSettings()
     {

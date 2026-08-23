@@ -150,6 +150,44 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
+    public async Task LegacyTokenLogin_RequiredStepUp_ReturnsNonSuccessChallenge()
+    {
+        using var client = _factory.CreateUnauthenticatedClient();
+        var username = $"legacy-step-up-{Guid.NewGuid():N}";
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Users.Add(new User
+            {
+                Id = Guid.NewGuid(),
+                Username = username,
+                Email = $"{username}@example.com",
+                PinHash = AuthService.HashPin("24681357"),
+                FirstName = "Legacy",
+                LastName = "StepUp",
+                Role = Roles.PT,
+                CreatedAt = DateTime.UtcNow,
+                IsActive = true,
+                MustChangePin = true
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var response = await client.PostAsync("/auth/token", JsonContent(new
+        {
+            username,
+            password = "24681357"
+        }));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("RequiresPinChange", document.RootElement.GetProperty("status").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(
+            document.RootElement.GetProperty("challengeToken").GetString()));
+    }
+
+    [Fact]
     public async Task Billing_Cannot_Write_Notes_Returns_403()
     {
         using var client = _factory.CreateClientWithRole(Roles.Billing);

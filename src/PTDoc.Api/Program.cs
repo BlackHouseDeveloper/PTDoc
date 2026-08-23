@@ -206,6 +206,17 @@ builder.Services.AddRateLimiter(options =>
                 AutoReplenishment = true
             }));
 
+    options.AddPolicy("PinAuthentication", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            GetAnonymousRequestRateLimitPartitionKey(httpContext, builder.Configuration, builder.Environment),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(5),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+
     options.AddPolicy("MfaAuthentication", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
             GetAnonymousRequestRateLimitPartitionKey(httpContext, builder.Configuration, builder.Environment),
@@ -220,6 +231,8 @@ builder.Services.AddRateLimiter(options =>
     options.OnRejected = (context, cancellationToken) =>
         new ValueTask(UsesAiGenerationRateLimitPolicy(context.HttpContext)
             ? AiRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken)
+            : UsesPinAuthenticationRateLimitPolicy(context.HttpContext)
+                ? PinAuthenticationRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken)
             : UsesMfaAuthenticationRateLimitPolicy(context.HttpContext)
                 ? MfaRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken)
             : UsesIntakeOtpDeliveryRateLimitPolicy(context.HttpContext)
@@ -1236,6 +1249,10 @@ static bool UsesIntakeOtpDeliveryRateLimitPolicy(HttpContext httpContext) =>
 static bool UsesMfaAuthenticationRateLimitPolicy(HttpContext httpContext) =>
     httpContext.GetEndpoint()?.Metadata.GetOrderedMetadata<EnableRateLimitingAttribute>()
         .Any(metadata => string.Equals(metadata.PolicyName, "MfaAuthentication", StringComparison.Ordinal)) == true;
+
+static bool UsesPinAuthenticationRateLimitPolicy(HttpContext httpContext) =>
+    httpContext.GetEndpoint()?.Metadata.GetOrderedMetadata<EnableRateLimitingAttribute>()
+        .Any(metadata => string.Equals(metadata.PolicyName, "PinAuthentication", StringComparison.Ordinal)) == true;
 
 static bool IsValidBetaAccessSeedPin(string? seedPin) =>
     !string.IsNullOrWhiteSpace(seedPin)

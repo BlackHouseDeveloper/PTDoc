@@ -38,9 +38,10 @@ public static class AuthEndpoints
 
             return result.Status == AuthStatus.Success
                 ? await IssueJwtAsync(result, issuer, cancellationToken)
-                : Results.Json(ToStepUpResponse(result), statusCode: StatusCodes.Status202Accepted);
+                : Results.Json(ToStepUpResponse(result), statusCode: StatusCodes.Status403Forbidden);
         })
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .RequireRateLimiting("PinAuthentication");
 
         app.MapPost("/auth/pin-change", async (
             JwtPinChangeRequest request,

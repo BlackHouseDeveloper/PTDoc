@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using PTDoc.Application.Auth;
 using PTDoc.Core.Models;
+using System.Security.Claims;
 
 namespace PTDoc.Application.Services;
 
@@ -251,4 +252,28 @@ public sealed class DynamicCapabilityRequirement : IAuthorizationRequirement
     public IReadOnlyList<CapabilityKey> CapabilityKeys { get; }
     public PermissionLevel RequiredLevel { get; }
     public IReadOnlySet<string> StaticAllowedRoles { get; }
+}
+
+/// <summary>
+/// Preserves the canonical static role decision for presentation hosts that cannot
+/// evaluate clinic permissions locally. Register this handler in Web and MAUI only;
+/// the API must use its tenant-aware dynamic capability handler for enforcement.
+/// </summary>
+public sealed class ClientStaticCapabilityAuthorizationHandler
+    : AuthorizationHandler<DynamicCapabilityRequirement>
+{
+    protected override Task HandleRequirementAsync(
+        AuthorizationHandlerContext context,
+        DynamicCapabilityRequirement requirement)
+    {
+        var role = context.User.FindFirst(ClaimTypes.Role)?.Value;
+        if (context.User.Identity?.IsAuthenticated == true
+            && !string.IsNullOrWhiteSpace(role)
+            && requirement.StaticAllowedRoles.Contains(role))
+        {
+            context.Succeed(requirement);
+        }
+
+        return Task.CompletedTask;
+    }
 }

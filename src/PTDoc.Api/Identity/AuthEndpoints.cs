@@ -16,6 +16,7 @@ public static class PinAuthEndpoints
         // POST /api/v1/auth/pin-login
         authGroup.MapPost("/pin-login", PinLogin)
             .AllowAnonymous()
+            .RequireRateLimiting("PinAuthentication")
             .WithName("PinLogin");
 
         authGroup.MapPost("/pin-change", CompletePinChange)
