@@ -433,6 +433,7 @@ public class AuthService : IAuthService
             if (user.LegacyPinGraceEndsAtUtc <= now)
             {
                 user.MustChangePin = true;
+                await _context.SaveChangesAsync(cancellationToken);
             }
         }
 

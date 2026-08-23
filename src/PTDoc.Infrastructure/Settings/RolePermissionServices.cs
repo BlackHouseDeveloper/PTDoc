@@ -307,7 +307,9 @@ public sealed class RolePermissionAdministrationService(
         {
             byCapability.TryGetValue(definition.Key, out var item);
             var level = definition.IsSupported
-                ? item?.Level ?? RolePermissionCatalog.GetCanonicalLevel(role.Key, definition.Key)
+                ? Max(
+                    item?.Level ?? RolePermissionCatalog.GetCanonicalLevel(role.Key, definition.Key),
+                    RolePermissionCatalog.GetLockedMinimum(role.Key, definition.Key))
                 : PermissionLevel.None;
             return new RolePermissionItem(
                 definition.Key,
@@ -366,7 +368,10 @@ public sealed class PermissionEvaluator(
                 ?? RolePermissionCatalog.GetCanonicalLevel(normalizedRole, capabilityKey)
             : PermissionLevel.None;
 
-        var dynamicAllowed = configuredLevel >= requiredLevel;
+        var effectiveLevel = Max(
+            configuredLevel,
+            RolePermissionCatalog.GetLockedMinimum(normalizedRole, capabilityKey));
+        var dynamicAllowed = effectiveLevel >= requiredLevel;
         if (mode == AuthorizationRolloutMode.Shadow && dynamicAllowed != staticAllowed)
         {
             logger.LogWarning(
@@ -387,4 +392,7 @@ public sealed class PermissionEvaluator(
             mode,
             effectiveAllowed ? "allowed" : "insufficient_capability");
     }
+
+    private static PermissionLevel Max(PermissionLevel left, PermissionLevel right) =>
+        left >= right ? left : right;
 }

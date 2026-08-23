@@ -103,8 +103,16 @@ public static class AppointmentEndpoints
             return validationProblem!;
         }
 
-        var rangeStartUtc = DateTime.SpecifyKind(normalizedStartDate, DateTimeKind.Utc);
-        var rangeEndExclusiveUtc = DateTime.SpecifyKind(normalizedEndDate.AddDays(1), DateTimeKind.Utc);
+        var utcRange = await BuildUtcDateRangeAsync(
+            db, currentClinicId, normalizedStartDate, normalizedEndDate, cancellationToken);
+        if (utcRange is null)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["clinicTimeZone"] = ["The clinic time zone could not be used for this date range."]
+            });
+        }
+        var (rangeStartUtc, rangeEndExclusiveUtc) = utcRange.Value;
         var restrictedClinicianId = await GetRestrictedClinicianIdAsync(
             db, currentClinicId, identityContext, cancellationToken);
         var appointmentQuery = db.Appointments
@@ -159,10 +167,19 @@ public static class AppointmentEndpoints
             return validationProblem!;
         }
 
-        var rangeStartUtc = DateTime.SpecifyKind(normalizedStartDate, DateTimeKind.Utc);
-        var rangeEndExclusiveUtc = DateTime.SpecifyKind(normalizedEndDate.AddDays(1), DateTimeKind.Utc);
+        var currentClinicId = tenantContext.GetCurrentClinicId();
+        var utcRange = await BuildUtcDateRangeAsync(
+            db, currentClinicId, normalizedStartDate, normalizedEndDate, cancellationToken);
+        if (utcRange is null)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["clinicTimeZone"] = ["The clinic time zone could not be used for this date range."]
+            });
+        }
+        var (rangeStartUtc, rangeEndExclusiveUtc) = utcRange.Value;
         var restrictedClinicianId = await GetRestrictedClinicianIdAsync(
-            db, tenantContext.GetCurrentClinicId(), identityContext, cancellationToken);
+            db, currentClinicId, identityContext, cancellationToken);
         var appointmentQuery = db.Appointments
             .AsNoTracking()
             .Where(appointment => appointment.PatientId == patientId
@@ -1393,6 +1410,53 @@ public static class AppointmentEndpoints
 
         validationProblem = null;
         return true;
+    }
+
+    internal static async Task<(DateTime StartUtc, DateTime EndExclusiveUtc)?> BuildUtcDateRangeAsync(
+        ApplicationDbContext db,
+        Guid? clinicId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken)
+    {
+        if (!clinicId.HasValue)
+        {
+            return (
+                DateTime.SpecifyKind(startDate.Date, DateTimeKind.Utc),
+                DateTime.SpecifyKind(endDate.Date.AddDays(1), DateTimeKind.Utc));
+        }
+
+        var timeZoneId = await db.Clinics.AsNoTracking()
+            .Where(item => item.Id == clinicId.Value)
+            .Select(item => item.TimeZoneId)
+            .SingleOrDefaultAsync(cancellationToken);
+        TimeZoneInfo timeZone;
+        try
+        {
+            timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId ?? "America/Los_Angeles");
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return null;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return null;
+        }
+
+        var localStart = DateTime.SpecifyKind(startDate.Date, DateTimeKind.Unspecified);
+        var localEndExclusive = DateTime.SpecifyKind(endDate.Date.AddDays(1), DateTimeKind.Unspecified);
+        if (timeZone.IsInvalidTime(localStart)
+            || timeZone.IsAmbiguousTime(localStart)
+            || timeZone.IsInvalidTime(localEndExclusive)
+            || timeZone.IsAmbiguousTime(localEndExclusive))
+        {
+            return null;
+        }
+
+        return (
+            TimeZoneInfo.ConvertTimeToUtc(localStart, timeZone),
+            TimeZoneInfo.ConvertTimeToUtc(localEndExclusive, timeZone));
     }
 
     private static IQueryable<AppointmentClinicianResponse> BuildCliniciansQuery(

@@ -437,9 +437,8 @@ public sealed class AppointmentCommunicationProcessor(
             .ToListAsync(cancellationToken);
         foreach (var item in stale)
         {
-            item.Status = ReminderDispatchStatus.RetryScheduled;
-            item.NextAttemptAtUtc = now;
-            item.LastStatusCode = "interrupted";
+            item.Status = ReminderDispatchStatus.DeadLetter;
+            item.LastStatusCode = "delivery_outcome_unknown";
             item.UpdatedAtUtc = now;
         }
         if (stale.Count > 0) await context.SaveChangesAsync(cancellationToken);

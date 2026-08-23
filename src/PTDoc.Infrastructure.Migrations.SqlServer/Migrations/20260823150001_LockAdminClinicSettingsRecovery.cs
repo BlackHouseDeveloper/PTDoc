@@ -13,7 +13,7 @@ public sealed class LockAdminClinicSettingsRecovery : Migration
     {
         migrationBuilder.Sql("""
             UPDATE [RoleCapabilityPermissions]
-            SET [LockedMinimum] = 3
+            SET [Level] = 3, [LockedMinimum] = 3
             WHERE [RoleKey] = 'Admin' AND [CapabilityKey] = 28;
             """);
     }

@@ -26,7 +26,7 @@ public sealed class AppointmentCheckInWorkflow(
             .SingleOrDefaultAsync(item => item.Id == appointmentId
                 && (!requiredClinicId.HasValue || item.ClinicId == requiredClinicId), cancellationToken);
         if (appointment?.Patient is null) return new AppointmentCheckInDecision(AppointmentCheckInStatus.NotFound);
-        if (appointment.Status is AppointmentStatus.Cancelled or AppointmentStatus.NoShow)
+        if (appointment.Status is AppointmentStatus.Cancelled or AppointmentStatus.NoShow or AppointmentStatus.Completed)
             return new AppointmentCheckInDecision(AppointmentCheckInStatus.Ineligible);
 
         var hasPaid = await context.AppointmentPaymentTransactions
@@ -37,7 +37,7 @@ public sealed class AppointmentCheckInWorkflow(
             return new AppointmentCheckInDecision(AppointmentCheckInStatus.PaymentRequired);
 
         var checkedInAt = timeProvider.GetUtcNow().UtcDateTime;
-        if (appointment.Status is not (AppointmentStatus.CheckedIn or AppointmentStatus.InProgress or AppointmentStatus.Completed))
+        if (appointment.Status is not (AppointmentStatus.CheckedIn or AppointmentStatus.InProgress))
         {
             appointment.Status = AppointmentStatus.CheckedIn;
             appointment.LastModifiedUtc = checkedInAt;
