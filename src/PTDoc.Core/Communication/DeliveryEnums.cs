@@ -20,5 +20,7 @@ public enum DeliveryPurpose
 {
     PasswordReset = 0,
     IntakeLink = 1,
-    IntakeOtp = 2
+    IntakeOtp = 2,
+    AppointmentReminder = 3,
+    AutoCheckIn = 4
 }

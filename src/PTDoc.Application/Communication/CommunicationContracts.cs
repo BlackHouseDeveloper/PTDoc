@@ -42,6 +42,14 @@ public interface ICommunicationService
     Task<DeliveryResult> SendIntakeOtpSmsAsync(
         IntakeOtpDeliveryRequest request,
         CancellationToken cancellationToken = default);
+
+    Task<DeliveryResult> SendAppointmentReminderEmailAsync(
+        AppointmentReminderDeliveryRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<DeliveryResult> SendAppointmentReminderSmsAsync(
+        AppointmentReminderDeliveryRequest request,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IContactNormalizer

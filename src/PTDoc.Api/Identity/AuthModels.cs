@@ -18,14 +18,18 @@ public class PinLoginRequest
 public class PinLoginResponse
 {
     public required string Status { get; init; }
-    public required Guid UserId { get; init; }
-    public required string Username { get; init; }
-    public required string Token { get; init; }
-    public required DateTime ExpiresAt { get; init; }
-    public required string Role { get; init; }
+    public Guid? UserId { get; init; }
+    public string? Username { get; init; }
+    public string? Token { get; init; }
+    public DateTime? ExpiresAt { get; init; }
+    public string? Role { get; init; }
     /// <summary>Clinic the user belongs to. Null for system accounts without clinic assignment.</summary>
     public Guid? ClinicId { get; init; }
+    public string? ChallengeToken { get; init; }
 }
+
+public sealed record CompletePinChangeRequest(string ChallengeToken, string NewPin);
+public sealed record CompleteMfaRequest(string CompletionToken);
 
 /// <summary>
 /// Response model for the /me endpoint

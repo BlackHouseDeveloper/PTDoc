@@ -185,6 +185,34 @@ The JWT bearer middleware now fires an `OnAuthenticationFailed` event that write
 
 **Implementation:** `src/PTDoc.Api/Program.cs` (`AddJwtBearer` → `options.Events`)
 
+### PIN and TOTP Policy
+
+- New, reset, and force-changed staff PINs use the target clinic's configured numeric minimum,
+  constrained to 8–12 digits. Existing four-digit credentials are grandfathered for a 14-day
+  migration grace period only.
+- PINs do not expire periodically. First login, reset, suspected compromise, and an audited
+  administrator action can require a change.
+- TOTP secrets are encrypted at rest. Enrollment must be verified before activation; accepted
+  time steps cannot be replayed; enrollment and verification lockouts are enforced; recovery
+  codes are BCrypt-hashed, atomically single-use, and replaced as a
+  set when regenerated. Self-service regeneration requires an authenticated session plus a fresh
+  TOTP code through `POST /api/v1/auth/mfa/recovery-codes/regenerate`; the Web step-up proxy never
+  returns the prior set after replacement.
+- Web sessions and API/MAUI JWTs are issued only after required PIN-change and MFA steps complete.
+  Pre-authentication challenges are short-lived and purpose-bound. A successful required PIN
+  change atomically clears the force-change state, so its challenge cannot be replayed. MFA
+  authentication-completion challenges are bound to the active credential and backed by a
+  single-use pending-session claim before a real session or JWT can be issued.
+- Both primary PIN entry points share a fixed-window, client-IP-partitioned rate limit. Rejections
+  return a generic `429` response without echoing usernames, PINs, or account state.
+- Kiosk enrollment and appointment check-in credentials are claimed atomically and cannot
+  reactivate a revoked station. Kiosk authentication throttling uses a generic, kiosk-specific
+  `429` response without station or appointment details.
+- The legacy JWT token endpoint returns a non-success response with a purpose-bound challenge when
+  step-up is required. Token clients deserialize issued credentials only from `200 OK` responses.
+- An Entra External ID token satisfies an enforced clinic MFA policy only when its validated
+  `amr` claim explicitly includes `mfa`; otherwise the external request is denied.
+
 ### PHI Safety Rules (Logging)
 
 The following rules apply across all logging and telemetry:
@@ -318,7 +346,7 @@ Implement monitoring for:
 2. **Rotate JWT signing keys** periodically
 3. **Monitor authentication logs** for suspicious activity
 4. **Implement rate limiting** on login endpoints
-5. **Use strong PIN policies** (minimum length, complexity)
+5. **Use the clinic PIN policy** (8–12 numeric digits; no periodic expiration)
 6. **Enable MFA** for administrative access
 7. **Regular security audits** of authentication flow
 8. **HIPAA audit trail** for all patient data access

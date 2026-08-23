@@ -37,7 +37,7 @@ public class UserRegistrationServiceTests
             new DateTime(1990, 1, 1),
             "PT",
             clinic.Id,
-            "1234",
+            "12345678",
             "PT12345",
             "CA"));
 
@@ -67,7 +67,7 @@ public class UserRegistrationServiceTests
             new DateTime(1990, 1, 1),
             "PT",
             clinic.Id,
-            "1234",
+            "12345678",
             null,
             null));
 
@@ -102,7 +102,7 @@ public class UserRegistrationServiceTests
             new DateTime(1992, 3, 3),
             "FrontDesk",
             clinic.Id,
-            "1234",
+            "12345678",
             null,
             null));
 
@@ -132,6 +132,42 @@ public class UserRegistrationServiceTests
         Assert.Equal(RegistrationStatus.InvalidPin, result.Status);
     }
 
+    [Fact]
+    public async Task RegisterAsync_UsesClinicMinimumPinLength()
+    {
+        await using var context = CreateInMemoryContext();
+        var clinic = new Clinic { Name = "PIN Policy Clinic", Slug = "pin-policy", IsActive = true };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.MinimumPinLength = 10;
+        await context.SaveChangesAsync();
+
+        var sut = new UserRegistrationService(context, NullLogger<UserRegistrationService>.Instance);
+        var rejected = await sut.RegisterAsync(new UserRegistrationRequest(
+            "Policy User",
+            "policy-user@clinic.com",
+            new DateTime(1992, 3, 3),
+            "FrontDesk",
+            clinic.Id,
+            "12345678",
+            null,
+            null));
+        var accepted = await sut.RegisterAsync(new UserRegistrationRequest(
+            "Policy User",
+            "policy-user@clinic.com",
+            new DateTime(1992, 3, 3),
+            "FrontDesk",
+            clinic.Id,
+            "1234567890",
+            null,
+            null));
+
+        Assert.Equal(RegistrationStatus.InvalidPin, rejected.Status);
+        Assert.Contains("10 to 12", rejected.Error!, StringComparison.Ordinal);
+        Assert.Equal(RegistrationStatus.PendingApproval, accepted.Status);
+    }
+
     [Theory]
     [InlineData("Billing", "billing@clinic.com")]
     [InlineData("Patient", "patient@clinic.com")]
@@ -150,7 +186,7 @@ public class UserRegistrationServiceTests
             new DateTime(1992, 3, 3),
             roleKey,
             clinic.Id,
-            "1234",
+            "12345678",
             null,
             null));
 
@@ -204,7 +240,7 @@ public class UserRegistrationServiceTests
             new DateTime(1991, 4, 4),
             "FrontDesk",
             clinic.Id,
-            "1234",
+            "12345678",
             null,
             null));
 

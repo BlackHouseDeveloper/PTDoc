@@ -217,6 +217,8 @@ else
 }
 
 builder.Services.AddAuthorization(options => options.AddPTDocAuthorizationPolicies());
+builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler,
+    ClientStaticCapabilityAuthorizationHandler>();
 builder.Services.AddCascadingAuthenticationState();
 
 builder.Services

@@ -149,6 +149,7 @@ public sealed class IntakeCommunicationWorkflow : IIntakeCommunicationWorkflow
             Recipient = normalizedDestination.NormalizedValue,
             InviteUrl = inviteUrl,
             ExpiresAtUtc = invite.ExpiresAt.Value,
+            TemplateKey = request.TemplateKey,
             CorrelationId = context?.CorrelationId
         };
 
@@ -157,18 +158,25 @@ public sealed class IntakeCommunicationWorkflow : IIntakeCommunicationWorkflow
             : await _communicationService.SendIntakeLinkSmsAsync(deliveryRequest, cancellationToken);
 
         var maskedDestination = MaskDestination(normalizedDestination.NormalizedValue);
-        await LogInviteEventAsync(
-            intake.Id,
-            intake.PatientId,
-            deliveryResult.Succeeded ? "IntakeInviteDelivered" : "IntakeInviteDeliveryFailed",
-            request.Channel,
-            deliveryResult.Succeeded,
-            maskedDestination,
-            deliveryResult.Provider ?? "Unknown",
-            deliveryResult.ProviderMessageId,
-            invite.ExpiresAt,
-            deliveryResult.SafeErrorMessage,
-            cancellationToken);
+        try
+        {
+            await LogInviteEventAsync(
+                intake.Id,
+                intake.PatientId,
+                deliveryResult.Succeeded ? "IntakeInviteDelivered" : "IntakeInviteDeliveryFailed",
+                request.Channel,
+                deliveryResult.Succeeded,
+                maskedDestination,
+                deliveryResult.Provider ?? "Unknown",
+                deliveryResult.ProviderMessageId,
+                invite.ExpiresAt,
+                deliveryResult.SafeErrorMessage,
+                cancellationToken);
+        }
+        catch (Exception exception) when (deliveryResult.Succeeded)
+        {
+            throw new DeliveryAcceptedAuditException(deliveryResult, exception);
+        }
 
         return new IntakeDeliverySendResult
         {
