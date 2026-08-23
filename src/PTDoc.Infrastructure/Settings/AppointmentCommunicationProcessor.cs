@@ -108,14 +108,20 @@ public sealed class AppointmentCommunicationProcessor(
         var intakeSummaries = await context.IntakeForms
             .AsNoTracking()
             .Where(item => patientIds.Contains(item.PatientId))
-            .Select(item => new { item.PatientId, item.Consents, item.LastModifiedUtc, item.SubmittedAt })
+            .Select(item => new { item.Id, item.PatientId, item.Consents, item.LastModifiedUtc, item.SubmittedAt })
             .ToListAsync(cancellationToken);
-        var intakeConsents = intakeSummaries
+        var latestIntakes = intakeSummaries
             .GroupBy(item => item.PatientId)
             .ToDictionary(
                 group => group.Key,
-                group => group.OrderByDescending(item => item.LastModifiedUtc).First().Consents);
-        var patientsWithCompletedIntake = intakeSummaries
+                group => group
+                    .OrderByDescending(item => item.LastModifiedUtc)
+                    .ThenByDescending(item => item.Id)
+                    .First());
+        var intakeConsents = latestIntakes.ToDictionary(
+            item => item.Key,
+            item => item.Value.Consents);
+        var patientsWithCompletedIntake = latestIntakes.Values
             .Where(item => item.SubmittedAt.HasValue)
             .Select(item => item.PatientId)
             .ToHashSet();
@@ -246,6 +252,7 @@ public sealed class AppointmentCommunicationProcessor(
             .AsNoTracking()
             .Where(item => item.PatientId == appointment.PatientId)
             .OrderByDescending(item => item.LastModifiedUtc)
+            .ThenByDescending(item => item.Id)
             .Select(item => item.Consents)
             .FirstOrDefaultAsync(cancellationToken);
         var communicationConsent = ResolveCommunicationConsent(latestConsentJson, appointment.Patient);
@@ -255,6 +262,17 @@ public sealed class AppointmentCommunicationProcessor(
         if (appointment.Patient.ConsentSigned != true || !channelAllowed)
         {
             Suppress(dispatch, "communication_consent_unavailable", now);
+            await context.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        var obsoletePolicyReason = await GetObsoletePolicyReasonAsync(
+            dispatch,
+            appointment,
+            cancellationToken);
+        if (obsoletePolicyReason is not null)
+        {
+            Suppress(dispatch, obsoletePolicyReason, now);
             await context.SaveChangesAsync(cancellationToken);
             return;
         }
@@ -379,6 +397,49 @@ public sealed class AppointmentCommunicationProcessor(
     private async Task<int> GetAutoMaxAttemptsAsync(Guid clinicId, CancellationToken cancellationToken) =>
         await context.AutoCheckInPolicies.Where(item => item.ClinicId == clinicId)
             .Select(item => (int?)item.MaxAttempts).SingleOrDefaultAsync(cancellationToken) ?? 3;
+
+    private async Task<string?> GetObsoletePolicyReasonAsync(
+        AppointmentReminderDispatch dispatch,
+        Appointment appointment,
+        CancellationToken cancellationToken)
+    {
+        if (dispatch.Purpose == ReminderDispatchPurpose.AppointmentReminder)
+        {
+            var preference = await context.SchedulingPreferences
+                .AsNoTracking()
+                .SingleOrDefaultAsync(item => item.ClinicId == dispatch.ClinicId, cancellationToken);
+            return preference is null
+                || !preference.SendAppointmentReminders
+                || preference.ReminderLeadHours != dispatch.ReminderLeadHours
+                    ? "reminder_policy_changed"
+                    : null;
+        }
+
+        var policy = await context.AutoCheckInPolicies
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item => item.ClinicId == dispatch.ClinicId, cancellationToken);
+        var channelEnabled = dispatch.Channel == ReminderChannel.Email
+            ? policy?.EnableEmail == true
+            : policy?.EnableSms == true;
+        if (policy is null
+            || !policy.IsEnabled
+            || !channelEnabled
+            || policy.LeadHours != dispatch.ReminderLeadHours
+            || appointment.VisitType?.RequiresIntake != true
+            || !IsEligibleVisitType(policy, appointment.VisitTypeId))
+        {
+            return "auto_check_in_policy_changed";
+        }
+
+        var latestSubmittedAt = await context.IntakeForms
+            .AsNoTracking()
+            .Where(item => item.PatientId == appointment.PatientId)
+            .OrderByDescending(item => item.LastModifiedUtc)
+            .ThenByDescending(item => item.Id)
+            .Select(item => item.SubmittedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        return latestSubmittedAt.HasValue ? "intake_completed" : null;
+    }
 
     private async Task<AppointmentReminderDispatch?> TryClaimDispatchAsync(
         Guid dispatchId,

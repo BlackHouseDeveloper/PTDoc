@@ -280,7 +280,7 @@ public sealed class KioskCheckInService(
     }
 
     public async Task<SettingsOperationResult<KioskEnrollmentResult>> EnrollAsync(
-        string enrollmentCode,
+        string? enrollmentCode,
         CancellationToken cancellationToken = default)
     {
         if (!TrySplitToken(enrollmentCode, out var codeId, out var secret))
@@ -410,11 +410,13 @@ public sealed class KioskCheckInService(
     }
 
     public async Task<SettingsOperationResult<KioskCheckInResult>> CheckInAsync(
-        string deviceCredential,
-        string appointmentToken,
+        string? deviceCredential,
+        string? appointmentToken,
         CancellationToken cancellationToken = default)
     {
-        if (!TrySplitToken(deviceCredential, out var stationId, out _))
+        if (string.IsNullOrWhiteSpace(deviceCredential)
+            || string.IsNullOrWhiteSpace(appointmentToken)
+            || !TrySplitToken(deviceCredential, out var stationId, out _))
             return SettingsOperationResult<KioskCheckInResult>.NotFound();
 
         var station = await context.KioskStations.IgnoreQueryFilters()
@@ -590,10 +592,11 @@ public sealed class KioskCheckInService(
         return $"{id:N}.{secret}";
     }
 
-    private static bool TrySplitToken(string value, out Guid id, out string secret)
+    private static bool TrySplitToken(string? value, out Guid id, out string secret)
     {
         id = Guid.Empty;
         secret = string.Empty;
+        if (string.IsNullOrWhiteSpace(value)) return false;
         var separator = value.IndexOf('.');
         if (separator <= 0 || separator == value.Length - 1) return false;
         if (!Guid.TryParseExact(value[..separator], "N", out id)) return false;

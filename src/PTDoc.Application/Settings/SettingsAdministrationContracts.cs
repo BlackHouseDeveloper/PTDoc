@@ -423,7 +423,7 @@ public interface IKioskCheckInService
     Task<SettingsOperationResult<KioskStationDto>> UpdateStationAsync(Guid clinicId, Guid stationId, UpdateKioskStationRequest request, Guid actorUserId, string correlationId, CancellationToken cancellationToken = default);
     Task<SettingsOperationResult<KioskEnrollmentCodeDto>> RotateEnrollmentAsync(Guid clinicId, Guid stationId, long expectedVersion, Guid actorUserId, string correlationId, CancellationToken cancellationToken = default);
     Task<SettingsOperationResult<bool>> RevokeStationAsync(Guid clinicId, Guid stationId, long expectedVersion, Guid actorUserId, string correlationId, CancellationToken cancellationToken = default);
-    Task<SettingsOperationResult<KioskEnrollmentResult>> EnrollAsync(string enrollmentCode, CancellationToken cancellationToken = default);
+    Task<SettingsOperationResult<KioskEnrollmentResult>> EnrollAsync(string? enrollmentCode, CancellationToken cancellationToken = default);
     Task<SettingsOperationResult<KioskCheckInTokenDto>> CreateCheckInTokenAsync(Guid clinicId, Guid appointmentId, Guid actorUserId, string correlationId, CancellationToken cancellationToken = default);
-    Task<SettingsOperationResult<KioskCheckInResult>> CheckInAsync(string deviceCredential, string appointmentToken, CancellationToken cancellationToken = default);
+    Task<SettingsOperationResult<KioskCheckInResult>> CheckInAsync(string? deviceCredential, string? appointmentToken, CancellationToken cancellationToken = default);
 }

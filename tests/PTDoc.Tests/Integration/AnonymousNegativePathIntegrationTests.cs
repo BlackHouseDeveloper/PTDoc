@@ -149,6 +149,23 @@ public sealed class AnonymousNegativePathIntegrationTests : IClassFixture<PtDocA
     }
 
     [Theory]
+    [InlineData("/api/v1/kiosk/enroll", "{}")]
+    [InlineData("/api/v1/kiosk/enroll", "{\"enrollmentCode\":null}")]
+    [InlineData("/api/v1/kiosk/check-in", "{}")]
+    [InlineData("/api/v1/kiosk/check-in", "{\"deviceCredential\":null,\"appointmentToken\":\"12345678\"}")]
+    [InlineData("/api/v1/kiosk/check-in", "{\"deviceCredential\":\"00000000000000000000000000000000.device\",\"appointmentToken\":null}")]
+    public async Task KioskAuthentication_MissingCredentialsReturnGenericNotFound(
+        string endpoint,
+        string body)
+    {
+        using var client = _factory.CreateUnauthenticatedClient();
+
+        using var response = await client.PostAsync(endpoint, Json(body));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Theory]
     [InlineData("{")]
     [InlineData("[]")]
     [InlineData("""{"token":"definitely-invalid","newPin":"1234"}""")]

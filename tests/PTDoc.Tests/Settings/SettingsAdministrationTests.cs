@@ -781,9 +781,20 @@ public sealed class SettingsAdministrationTests
 
         var locked = await service.VerifyEnrollmentAsync(
             start.Value.EnrollmentChallengeToken, validCode);
+        var credentialBeforeRestart = await context.UserMfaCredentials.SingleAsync();
+        var encryptedSecretBeforeRestart = credentialBeforeRestart.EncryptedSecret;
+        var lockedUntilBeforeRestart = credentialBeforeRestart.LockedUntilUtc;
+        var restarted = await service.BeginEnrollmentAsync(
+            service.CreateChallenge(user.Id, MfaChallengePurpose.Enrollment));
+
         Assert.Equal(SettingsOperationStatus.Forbidden, locked.Status);
         Assert.Equal("mfa_temporarily_locked", locked.ErrorCode);
-        Assert.False((await context.UserMfaCredentials.SingleAsync()).IsActive);
+        Assert.Equal(SettingsOperationStatus.Forbidden, restarted.Status);
+        Assert.Equal("mfa_temporarily_locked", restarted.ErrorCode);
+        var credentialAfterRestart = await context.UserMfaCredentials.SingleAsync();
+        Assert.False(credentialAfterRestart.IsActive);
+        Assert.Equal(encryptedSecretBeforeRestart, credentialAfterRestart.EncryptedSecret);
+        Assert.Equal(lockedUntilBeforeRestart, credentialAfterRestart.LockedUntilUtc);
     }
 
     [Fact]
@@ -1129,6 +1140,11 @@ public sealed class SettingsAdministrationTests
         var completedPatient = CreateConsentedPatient(clinic.Id, "completed@example.invalid", now.UtcDateTime);
         var eligibleAppointment = CreateIntakeAppointment(clinic.Id, eligiblePatient, visitType, now.UtcDateTime.AddHours(167));
         var completedAppointment = CreateIntakeAppointment(clinic.Id, completedPatient, visitType, now.UtcDateTime.AddHours(167));
+        var historicalCompletedIntake = CreateConsentedIntake(
+            clinic.Id,
+            eligiblePatient,
+            now.UtcDateTime.AddDays(-1),
+            submittedAt: now.UtcDateTime.AddDays(-1));
         var eligibleIntake = CreateConsentedIntake(clinic.Id, eligiblePatient, now.UtcDateTime, submittedAt: null);
         var completedIntake = CreateConsentedIntake(clinic.Id, completedPatient, now.UtcDateTime, submittedAt: now.UtcDateTime);
         context.AddRange(
@@ -1136,6 +1152,7 @@ public sealed class SettingsAdministrationTests
             completedPatient,
             eligibleAppointment,
             completedAppointment,
+            historicalCompletedIntake,
             eligibleIntake,
             completedIntake);
         await context.SaveChangesAsync();
@@ -1223,6 +1240,137 @@ public sealed class SettingsAdministrationTests
         Assert.Equal(ReminderDispatchStatus.DeadLetter, dispatch.Status);
         Assert.Equal(1, dispatch.AttemptCount);
         Assert.Equal("delivery_exception", dispatch.LastStatusCode);
+    }
+
+    [Fact]
+    public async Task AppointmentReminderProcessor_SuppressesRetryWhenReminderPolicyIsDisabled()
+    {
+        await using var context = CreateContext();
+        var now = new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero);
+        var time = new MutableTimeProvider(now);
+        var clinic = new Clinic { Name = "Disabled Reminder Clinic", Slug = $"disabled-reminder-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var preference = await context.SchedulingPreferences.SingleAsync(item => item.ClinicId == clinic.Id);
+        preference.SendAppointmentReminders = true;
+        preference.ReminderLeadHours = 24;
+        var patient = CreateConsentedPatient(clinic.Id, "disabled-reminder@example.invalid", now.UtcDateTime);
+        var appointment = new Appointment
+        {
+            Patient = patient,
+            PatientId = patient.Id,
+            Clinic = clinic,
+            ClinicId = clinic.Id,
+            ClinicalId = Guid.NewGuid(),
+            StartTimeUtc = now.UtcDateTime.AddHours(24),
+            EndTimeUtc = now.UtcDateTime.AddHours(25),
+            Status = AppointmentStatus.Scheduled,
+            LastModifiedUtc = now.UtcDateTime,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.AddRange(
+            patient,
+            appointment,
+            CreateConsentedIntake(clinic.Id, patient, now.UtcDateTime, submittedAt: null));
+        await context.SaveChangesAsync();
+        var communication = new Mock<ICommunicationService>();
+        communication.Setup(service => service.SendAppointmentReminderEmailAsync(
+                It.IsAny<AppointmentReminderDeliveryRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DeliveryResult { Succeeded = false, Status = DeliveryStatus.Failed });
+        var processor = new AppointmentCommunicationProcessor(
+            context,
+            communication.Object,
+            Mock.Of<IIntakeCommunicationWorkflow>(),
+            time,
+            NullLogger<AppointmentCommunicationProcessor>.Instance);
+
+        await processor.ProcessDueAsync();
+        var dispatch = await context.AppointmentReminderDispatches.SingleAsync();
+        Assert.Equal(ReminderDispatchStatus.RetryScheduled, dispatch.Status);
+        preference.SendAppointmentReminders = false;
+        await context.SaveChangesAsync();
+        time.Advance(TimeSpan.FromMinutes(6));
+
+        await processor.ProcessDueAsync();
+
+        Assert.Equal(ReminderDispatchStatus.Suppressed, dispatch.Status);
+        Assert.Equal("reminder_policy_changed", dispatch.LastStatusCode);
+        communication.Verify(service => service.SendAppointmentReminderEmailAsync(
+            It.IsAny<AppointmentReminderDeliveryRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(true, "auto_check_in_policy_changed")]
+    [InlineData(false, "intake_completed")]
+    public async Task AutoCheckInProcessor_SuppressesRetryWhenPolicyOrLatestIntakeBecomesIneligible(
+        bool disablePolicy,
+        string expectedReason)
+    {
+        await using var context = CreateContext();
+        var now = new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero);
+        var time = new MutableTimeProvider(now);
+        var clinic = new Clinic { Name = "Completed Retry Intake Clinic", Slug = $"completed-retry-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var visitType = await context.VisitTypes.FirstAsync(item =>
+            item.ClinicId == clinic.Id && item.RequiresIntake && item.IsActive);
+        (await context.SchedulingPreferences.SingleAsync(item => item.ClinicId == clinic.Id))
+            .SendAppointmentReminders = false;
+        var policy = await context.AutoCheckInPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.IsEnabled = true;
+        policy.LeadHours = 24;
+        policy.EnableEmail = true;
+        policy.EnableSms = false;
+        policy.MaxAttempts = 3;
+        policy.EligibleVisitTypeIdsJson = JsonSerializer.Serialize(new[] { visitType.Id });
+        var patient = CreateConsentedPatient(clinic.Id, "completed-retry@example.invalid", now.UtcDateTime);
+        var appointment = CreateIntakeAppointment(clinic.Id, patient, visitType, now.UtcDateTime.AddHours(24));
+        var intake = CreateConsentedIntake(clinic.Id, patient, now.UtcDateTime, submittedAt: null);
+        context.AddRange(patient, appointment, intake);
+        await context.SaveChangesAsync();
+        var intakeWorkflow = new Mock<IIntakeCommunicationWorkflow>();
+        intakeWorkflow.Setup(service => service.SendInviteAsync(
+                It.IsAny<IntakeSendInviteRequest>(),
+                It.IsAny<IntakeCommunicationContext>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IntakeSendInviteRequest request, IntakeCommunicationContext? _, CancellationToken _) =>
+                new IntakeDeliverySendResult
+                {
+                    Success = false,
+                    IntakeId = request.IntakeId,
+                    PatientId = patient.Id,
+                    Channel = request.Channel
+                });
+        var processor = new AppointmentCommunicationProcessor(
+            context,
+            Mock.Of<ICommunicationService>(),
+            intakeWorkflow.Object,
+            time,
+            NullLogger<AppointmentCommunicationProcessor>.Instance);
+
+        await processor.ProcessDueAsync();
+        var dispatch = await context.AppointmentReminderDispatches.SingleAsync();
+        Assert.Equal(ReminderDispatchStatus.RetryScheduled, dispatch.Status);
+        if (disablePolicy)
+        {
+            policy.IsEnabled = false;
+        }
+        else
+        {
+            intake.SubmittedAt = now.UtcDateTime.AddMinutes(1);
+            intake.LastModifiedUtc = now.UtcDateTime.AddMinutes(1);
+        }
+        await context.SaveChangesAsync();
+        time.Advance(TimeSpan.FromMinutes(6));
+
+        await processor.ProcessDueAsync();
+
+        Assert.Equal(ReminderDispatchStatus.Suppressed, dispatch.Status);
+        Assert.Equal(expectedReason, dispatch.LastStatusCode);
+        intakeWorkflow.Verify(service => service.SendInviteAsync(
+            It.IsAny<IntakeSendInviteRequest>(),
+            It.IsAny<IntakeCommunicationContext>(),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -1382,8 +1530,9 @@ public sealed class SettingsAdministrationTests
             var clinic = new Clinic { Name = "Claim Clinic", Slug = $"claim-{Guid.NewGuid():N}" };
             seedContext.Clinics.Add(clinic);
             await seedContext.SaveChangesAsync();
-            (await seedContext.SchedulingPreferences.SingleAsync(item => item.ClinicId == clinic.Id))
-                .SendAppointmentReminders = false;
+            var preference = await seedContext.SchedulingPreferences.SingleAsync(item => item.ClinicId == clinic.Id);
+            preference.SendAppointmentReminders = true;
+            preference.ReminderLeadHours = 24;
             (await seedContext.AutoCheckInPolicies.SingleAsync(item => item.ClinicId == clinic.Id))
                 .IsEnabled = false;
             var patient = CreateConsentedPatient(clinic.Id, "claim@example.invalid", now.UtcDateTime);
@@ -1409,7 +1558,8 @@ public sealed class SettingsAdministrationTests
                 AppointmentVersionUtc = appointment.LastModifiedUtc,
                 Purpose = ReminderDispatchPurpose.AppointmentReminder,
                 Channel = ReminderChannel.Email,
-                IdempotencyKey = $"claim:{appointment.Id:N}",
+                ReminderLeadHours = 24,
+                IdempotencyKey = $"{ReminderDispatchPurpose.AppointmentReminder}:{appointment.Id:N}:{appointment.LastModifiedUtc.Ticks}:24:{ReminderChannel.Email}",
                 Status = ReminderDispatchStatus.Pending,
                 EligibleAtUtc = now.UtcDateTime,
                 NextAttemptAtUtc = now.UtcDateTime,
@@ -1588,6 +1738,26 @@ public sealed class SettingsAdministrationTests
         Assert.Equal(ReminderDispatchStatus.Sent, replacement.Status);
         communication.Verify(service => service.SendAppointmentReminderEmailAsync(
             It.IsAny<AppointmentReminderDeliveryRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task KioskService_MalformedAnonymousCredentialsFailClosed()
+    {
+        await using var context = CreateContext();
+        var service = new KioskCheckInService(
+            context,
+            CreateAuditService().Object,
+            new AppointmentCheckInWorkflow(context, TimeProvider.System));
+
+        var nullEnrollment = await service.EnrollAsync(null);
+        var blankEnrollment = await service.EnrollAsync(" ");
+        var nullDevice = await service.CheckInAsync(null, "12345678");
+        var nullAppointment = await service.CheckInAsync($"{Guid.NewGuid():N}.device", null);
+
+        Assert.Equal(SettingsOperationStatus.NotFound, nullEnrollment.Status);
+        Assert.Equal(SettingsOperationStatus.NotFound, blankEnrollment.Status);
+        Assert.Equal(SettingsOperationStatus.NotFound, nullDevice.Status);
+        Assert.Equal(SettingsOperationStatus.NotFound, nullAppointment.Status);
     }
 
     [Fact]

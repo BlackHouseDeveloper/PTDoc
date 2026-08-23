@@ -27,7 +27,8 @@ public static class AuthEndpoints
                 request.Password,
                 GetRemoteIpAddress(httpContext),
                 httpContext.Request.Headers.UserAgent.ToString(),
-                cancellationToken);
+                cancellationToken,
+                AuthSessionMode.IdentityOnly);
 
             if (result is null || result.Status == AuthStatus.InvalidCredentials)
             {
@@ -60,7 +61,8 @@ public static class AuthEndpoints
                 request.NewPin,
                 GetRemoteIpAddress(httpContext),
                 httpContext.Request.Headers.UserAgent.ToString(),
-                cancellationToken);
+                cancellationToken,
+                AuthSessionMode.IdentityOnly);
             if (result is null)
             {
                 return Results.Unauthorized();
@@ -96,7 +98,8 @@ public static class AuthEndpoints
                 request.CompletionToken,
                 GetRemoteIpAddress(httpContext),
                 httpContext.Request.Headers.UserAgent.ToString(),
-                cancellationToken);
+                cancellationToken,
+                AuthSessionMode.IdentityOnly);
             return result is null
                 ? Results.Unauthorized()
                 : await IssueJwtAsync(result, issuer, cancellationToken);

@@ -410,11 +410,23 @@ public static class SettingsAdministrationEndpoints
             return ToResult(await service.CreateCheckInTokenAsync(clinicId.Value, appointmentId, identity.GetCurrentUserId(), httpContext.TraceIdentifier, ct));
         }).RequireAuthorization(AuthorizationPolicies.SettingsWrite);
 
-        app.MapPost("/api/v1/kiosk/enroll", async ([FromBody] KioskEnrollRequest request, IKioskCheckInService service, CancellationToken ct) =>
-                ToResult(await service.EnrollAsync(request.EnrollmentCode, ct)))
+        app.MapPost("/api/v1/kiosk/enroll", async ([FromBody] KioskEnrollRequest? request, IKioskCheckInService service, CancellationToken ct) =>
+        {
+            if (request is null || string.IsNullOrWhiteSpace(request.EnrollmentCode)) return Results.NotFound();
+            return ToResult(await service.EnrollAsync(request.EnrollmentCode, ct));
+        })
             .WithTags("Kiosk").AllowAnonymous().RequireRateLimiting("KioskAuthentication");
-        app.MapPost("/api/v1/kiosk/check-in", async ([FromBody] KioskCheckInRequest request, IKioskCheckInService service, CancellationToken ct) =>
-                ToResult(await service.CheckInAsync(request.DeviceCredential, request.AppointmentToken, ct)))
+        app.MapPost("/api/v1/kiosk/check-in", async ([FromBody] KioskCheckInRequest? request, IKioskCheckInService service, CancellationToken ct) =>
+        {
+            if (request is null
+                || string.IsNullOrWhiteSpace(request.DeviceCredential)
+                || string.IsNullOrWhiteSpace(request.AppointmentToken))
+            {
+                return Results.NotFound();
+            }
+
+            return ToResult(await service.CheckInAsync(request.DeviceCredential, request.AppointmentToken, ct));
+        })
             .WithTags("Kiosk").AllowAnonymous().RequireRateLimiting("KioskAuthentication");
     }
 
@@ -439,8 +451,8 @@ public static class SettingsAdministrationEndpoints
         : Results.UnprocessableEntity(result);
 
     public sealed record ExpectedVersionRequest(long ExpectedVersion);
-    public sealed record KioskEnrollRequest(string EnrollmentCode);
-    public sealed record KioskCheckInRequest(string DeviceCredential, string AppointmentToken);
+    public sealed record KioskEnrollRequest(string? EnrollmentCode);
+    public sealed record KioskCheckInRequest(string? DeviceCredential, string? AppointmentToken);
     public sealed record MfaChallengeRequest(string ChallengeToken);
     public sealed record MfaCodeRequest(string ChallengeToken, string Code);
     public sealed record MfaRecoveryRequest(string ChallengeToken, string RecoveryCode);

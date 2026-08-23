@@ -46,7 +46,8 @@ public class AuthService : IAuthService
         string pin,
         string? ipAddress = null,
         string? userAgent = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        AuthSessionMode sessionMode = AuthSessionMode.Stateful)
     {
         var attemptedAt = DateTime.UtcNow;
         var normalizedIdentifier = username.Trim();
@@ -122,7 +123,14 @@ public class AuthService : IAuthService
                 return null;
             }
 
-            return await ContinueAfterPrimaryAsync(user, pin, ipAddress, userAgent, attemptedAt, cancellationToken);
+            return await ContinueAfterPrimaryAsync(
+                user,
+                pin,
+                ipAddress,
+                userAgent,
+                attemptedAt,
+                sessionMode,
+                cancellationToken);
         }
         catch (Exception ex)
         {
@@ -136,7 +144,8 @@ public class AuthService : IAuthService
         string newPin,
         string? ipAddress = null,
         string? userAgent = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        AuthSessionMode sessionMode = AuthSessionMode.Stateful)
     {
         if (_mfaAuthenticationService is null || !_mfaAuthenticationService.TryValidateChallenge(
                 challengeToken,
@@ -227,14 +236,21 @@ public class AuthService : IAuthService
             await transaction.CommitAsync(cancellationToken);
         }
 
-        return await ContinueAfterPinComplianceAsync(user, policy, ipAddress, userAgent, cancellationToken);
+        return await ContinueAfterPinComplianceAsync(
+            user,
+            policy,
+            ipAddress,
+            userAgent,
+            sessionMode,
+            cancellationToken);
     }
 
     public async Task<AuthResult?> CompleteMfaAsync(
         string completionToken,
         string? ipAddress = null,
         string? userAgent = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        AuthSessionMode sessionMode = AuthSessionMode.Stateful)
     {
         if (_mfaAuthenticationService is null)
         {
@@ -261,7 +277,12 @@ public class AuthService : IAuthService
             return null;
         }
 
-        var result = await IssueSessionAsync(user, ipAddress, userAgent, cancellationToken);
+        var result = await CompleteAuthenticationAsync(
+            user,
+            ipAddress,
+            userAgent,
+            sessionMode,
+            cancellationToken);
         if (transaction is not null)
         {
             await transaction.CommitAsync(cancellationToken);
@@ -418,6 +439,7 @@ public class AuthService : IAuthService
         string? ipAddress,
         string? userAgent,
         DateTime attemptedAt,
+        AuthSessionMode sessionMode,
         CancellationToken cancellationToken)
     {
         var policy = await GetSecurityPolicyAsync(user.ClinicId, cancellationToken);
@@ -442,7 +464,14 @@ public class AuthService : IAuthService
             return ChallengeResult(user, AuthStatus.RequiresPinChange, MfaChallengePurpose.PinChange);
         }
 
-        return await ContinueAfterPinComplianceAsync(user, policy, ipAddress, userAgent, cancellationToken, attemptedAt);
+        return await ContinueAfterPinComplianceAsync(
+            user,
+            policy,
+            ipAddress,
+            userAgent,
+            sessionMode,
+            cancellationToken,
+            attemptedAt);
     }
 
     private async Task<AuthResult> ContinueAfterPinComplianceAsync(
@@ -450,6 +479,7 @@ public class AuthService : IAuthService
         ClinicSecurityPolicy policy,
         string? ipAddress,
         string? userAgent,
+        AuthSessionMode sessionMode,
         CancellationToken cancellationToken,
         DateTime? attemptedAt = null)
     {
@@ -467,7 +497,13 @@ public class AuthService : IAuthService
                 enrolled ? MfaChallengePurpose.Verification : MfaChallengePurpose.Enrollment);
         }
 
-        return await IssueSessionAsync(user, ipAddress, userAgent, cancellationToken, attemptedAt);
+        return await CompleteAuthenticationAsync(
+            user,
+            ipAddress,
+            userAgent,
+            sessionMode,
+            cancellationToken,
+            attemptedAt);
     }
 
     private AuthResult ChallengeResult(User user, AuthStatus status, MfaChallengePurpose purpose) => new()
@@ -481,28 +517,33 @@ public class AuthService : IAuthService
         ChallengeToken = _mfaAuthenticationService?.CreateChallenge(user.Id, purpose)
     };
 
-    private async Task<AuthResult> IssueSessionAsync(
+    private async Task<AuthResult> CompleteAuthenticationAsync(
         User user,
         string? ipAddress,
         string? userAgent,
+        AuthSessionMode sessionMode,
         CancellationToken cancellationToken,
         DateTime? attemptedAt = null)
     {
-        var token = GenerateSecureToken();
-        var tokenHash = HashToken(token);
         var now = _timeProvider.GetUtcNow().UtcDateTime;
-        var session = new Session
+        string? token = null;
+        DateTime? expiresAt = null;
+        if (sessionMode == AuthSessionMode.Stateful)
         {
-            Id = Guid.NewGuid(),
-            UserId = user.Id,
-            TokenHash = tokenHash,
-            CreatedAt = now,
-            LastActivityAt = now,
-            ExpiresAt = now + AbsoluteTimeout,
-            IsRevoked = false
-        };
+            token = GenerateSecureToken();
+            expiresAt = now + AbsoluteTimeout;
+            _context.Sessions.Add(new Session
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                TokenHash = HashToken(token),
+                CreatedAt = now,
+                LastActivityAt = now,
+                ExpiresAt = expiresAt.Value,
+                IsRevoked = false
+            });
+        }
 
-        _context.Sessions.Add(session);
         user.LastLoginAt = now;
         await LogLoginAttemptAsync(user.Username, user.Id, true, ipAddress, userAgent, null, attemptedAt ?? now, cancellationToken);
         await _context.SaveChangesAsync(cancellationToken);
@@ -516,7 +557,7 @@ public class AuthService : IAuthService
             Username = user.Username,
             Email = user.Email,
             Token = token,
-            ExpiresAt = session.ExpiresAt,
+            ExpiresAt = expiresAt,
             Role = user.Role,
             ClinicId = user.ClinicId
         };

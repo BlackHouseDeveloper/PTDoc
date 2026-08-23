@@ -127,6 +127,12 @@ public sealed class MfaAuthenticationService(
             return SettingsOperationResult<MfaEnrollmentStart>.Forbidden("mfa_already_enrolled");
         }
 
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        if (credential?.LockedUntilUtc > now)
+        {
+            return SettingsOperationResult<MfaEnrollmentStart>.Forbidden("mfa_temporarily_locked");
+        }
+
         var pendingCompletionChallenges = context.Sessions.Where(item =>
             item.UserId == user.Id
             && item.IsRevoked
@@ -152,7 +158,7 @@ public sealed class MfaAuthenticationService(
         credential.LastAcceptedTimeStep = -1;
         credential.FailedAttemptCount = 0;
         credential.LockedUntilUtc = null;
-        credential.CreatedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
+        credential.CreatedAtUtc = now;
         credential.ActivatedAtUtc = null;
         credential.ResetAtUtc = null;
         credential.ResetByUserId = null;
