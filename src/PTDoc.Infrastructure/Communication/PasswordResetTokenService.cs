@@ -51,6 +51,7 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
                         .Select(resetToken => new
                         {
                             resetToken.UserId,
+                            ClinicId = resetToken.User == null ? null : resetToken.User.ClinicId,
                             resetToken.UsedAtUtc,
                             resetToken.RevokedAtUtc,
                             resetToken.ExpiresAtUtc
@@ -84,9 +85,13 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
                         return Failure(PasswordResetCompletionStatus.Expired, "The reset link is invalid or expired.");
                     }
 
-                    if (!IsValidPin(request.NewPin))
+                    var minimumPinLength = await GetMinimumPinLengthAsync(
+                        tokenMetadata.ClinicId, cancellationToken);
+                    if (!IsValidPin(request.NewPin, minimumPinLength))
                     {
-                        return Failure(PasswordResetCompletionStatus.InvalidPin, "PIN must be 8 to 12 digits.");
+                        return Failure(
+                            PasswordResetCompletionStatus.InvalidPin,
+                            $"PIN must be {minimumPinLength} to 12 digits.");
                     }
 
                     var claimed = await _db.PasswordResetTokens
@@ -148,9 +153,13 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
                 return Failure(PasswordResetCompletionStatus.Expired, "The reset link is invalid or expired.");
             }
 
-            if (!IsValidPin(request.NewPin))
+            var minimumPinLength = await GetMinimumPinLengthAsync(
+                token.User.ClinicId, cancellationToken);
+            if (!IsValidPin(request.NewPin, minimumPinLength))
             {
-                return Failure(PasswordResetCompletionStatus.InvalidPin, "PIN must be 8 to 12 digits.");
+                return Failure(
+                    PasswordResetCompletionStatus.InvalidPin,
+                    $"PIN must be {minimumPinLength} to 12 digits.");
             }
 
             token.User.PinHash = AuthService.HashPin(request.NewPin);
@@ -205,8 +214,24 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
     private static bool IsSafeTokenInput(string? token)
         => !string.IsNullOrWhiteSpace(token) && token.Length <= MaxTokenLength;
 
-    private static bool IsValidPin(string pin)
-        => pin.Length is >= 8 and <= 12 && pin.All(char.IsDigit);
+    private static bool IsValidPin(string pin, int minimumPinLength)
+        => pin.Length >= minimumPinLength && pin.Length <= 12 && pin.All(char.IsDigit);
+
+    private async Task<int> GetMinimumPinLengthAsync(
+        Guid? clinicId,
+        CancellationToken cancellationToken)
+    {
+        if (!clinicId.HasValue)
+        {
+            return 8;
+        }
+
+        return await _db.ClinicSecurityPolicies
+            .Where(policy => policy.ClinicId == clinicId.Value)
+            .Select(policy => (int?)policy.MinimumPinLength)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? 8;
+    }
 
     private static bool IsExpectedResetTokenStorageException(Exception ex)
         => ex is DbException or InvalidOperationException or FormatException or OverflowException;

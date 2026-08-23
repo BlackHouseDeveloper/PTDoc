@@ -92,7 +92,6 @@ public sealed class MfaAuthenticationService(
         credential.ActivatedAtUtc = null;
         credential.ResetAtUtc = null;
         credential.ResetByUserId = null;
-        await context.SaveChangesAsync(cancellationToken);
 
         var accountLabel = Uri.EscapeDataString(user.Username);
         var issuer = Uri.EscapeDataString("PTDoc");
@@ -102,6 +101,7 @@ public sealed class MfaAuthenticationService(
         var qrSvg = new SvgQRCode(qrData).GetGraphic(4);
 
         await AuditAsync("MfaEnrollmentStarted", user, credential.Id, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return SettingsOperationResult<MfaEnrollmentStart>.Success(
             new MfaEnrollmentStart(manualKey, uri, qrSvg, enrollmentChallenge));
     }
@@ -126,9 +126,17 @@ public sealed class MfaAuthenticationService(
             return SettingsOperationResult<MfaEnrollmentCompletion>.Forbidden("invalid_enrollment_state");
         }
 
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        if (credential.LockedUntilUtc > now)
+        {
+            return SettingsOperationResult<MfaEnrollmentCompletion>.Forbidden("mfa_temporarily_locked");
+        }
+
         if (!TryVerifyCode(credential, code, out var acceptedTimeStep))
         {
-            await RegisterFailureAsync(credential, cancellationToken);
+            RegisterFailure(credential);
+            await AuditAsync("MfaEnrollmentFailed", credential.User, credential.Id, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
             return SettingsOperationResult<MfaEnrollmentCompletion>.Validation(
                 new Dictionary<string, string[]> { ["code"] = ["The authenticator code is invalid or expired."] });
         }
@@ -150,8 +158,8 @@ public sealed class MfaAuthenticationService(
             });
         }
 
-        await context.SaveChangesAsync(cancellationToken);
         await AuditAsync("MfaEnrollmentCompleted", credential.User, credential.Id, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         var completion = CreateChallenge(credential.UserId, MfaChallengePurpose.AuthenticationCompletion);
         return SettingsOperationResult<MfaEnrollmentCompletion>.Success(new MfaEnrollmentCompletion(recoveryCodes, completion));
     }
@@ -190,8 +198,9 @@ public sealed class MfaAuthenticationService(
         if (!TryVerifyCode(credential, currentTotpCode, out var acceptedTimeStep)
             || !AcceptTimeStep(credential, acceptedTimeStep))
         {
-            await RegisterFailureAsync(credential, cancellationToken);
+            RegisterFailure(credential);
             await AuditAsync("MfaRecoveryCodesRegenerationFailed", credential.User, credential.Id, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
             return SettingsOperationResult<MfaRecoveryCodeSet>.Validation(
                 new Dictionary<string, string[]> { ["code"] = ["The authenticator code is invalid or expired."] });
         }
@@ -214,8 +223,8 @@ public sealed class MfaAuthenticationService(
 
         credential.FailedAttemptCount = 0;
         credential.LockedUntilUtc = null;
-        await context.SaveChangesAsync(cancellationToken);
         await AuditAsync("MfaRecoveryCodesRegenerated", credential.User, credential.Id, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return SettingsOperationResult<MfaRecoveryCodeSet>.Success(new MfaRecoveryCodeSet(recoveryCodes));
     }
 
@@ -245,21 +254,34 @@ public sealed class MfaAuthenticationService(
             return new MfaVerificationResult(false, null, "mfa_temporarily_locked");
         }
 
+        await using var transaction = context.Database.IsRelational()
+            ? await context.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+
         var accepted = useRecoveryCode
             ? await ConsumeRecoveryCodeAsync(credential, suppliedCode, cancellationToken)
             : TryVerifyCode(credential, suppliedCode, out var acceptedTimeStep)
                 && AcceptTimeStep(credential, acceptedTimeStep);
         if (!accepted)
         {
-            await RegisterFailureAsync(credential, cancellationToken);
+            RegisterFailure(credential);
             await AuditAsync(useRecoveryCode ? "MfaRecoveryFailed" : "MfaVerificationFailed", credential.User, credential.Id, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
             return new MfaVerificationResult(false, null, "invalid_code");
         }
 
         credential.FailedAttemptCount = 0;
         credential.LockedUntilUtc = null;
-        await context.SaveChangesAsync(cancellationToken);
         await AuditAsync(useRecoveryCode ? "MfaRecoveryUsed" : "MfaVerified", credential.User, credential.Id, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
 
         var completion = CreateChallenge(credential.UserId, MfaChallengePurpose.AuthenticationCompletion);
         return new MfaVerificationResult(true, completion);
@@ -327,6 +349,7 @@ public sealed class MfaAuthenticationService(
         }
 
         var candidates = await context.UserMfaRecoveryCodes
+            .AsNoTracking()
             .Where(item => item.UserMfaCredentialId == credential.Id && item.UsedAtUtc == null)
             .ToListAsync(cancellationToken);
         var match = candidates.FirstOrDefault(item => BCrypt.Net.BCrypt.Verify(normalized, item.CodeHash));
@@ -335,11 +358,29 @@ public sealed class MfaAuthenticationService(
             return false;
         }
 
-        match.UsedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
+        var usedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
+        if (context.Database.IsRelational())
+        {
+            var claimed = await context.UserMfaRecoveryCodes
+                .Where(item => item.Id == match.Id && item.UsedAtUtc == null)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(item => item.UsedAtUtc, usedAtUtc),
+                    cancellationToken);
+            return claimed == 1;
+        }
+
+        var trackedMatch = await context.UserMfaRecoveryCodes
+            .SingleOrDefaultAsync(item => item.Id == match.Id && item.UsedAtUtc == null, cancellationToken);
+        if (trackedMatch is null)
+        {
+            return false;
+        }
+
+        trackedMatch.UsedAtUtc = usedAtUtc;
         return true;
     }
 
-    private async Task RegisterFailureAsync(UserMfaCredential credential, CancellationToken cancellationToken)
+    private void RegisterFailure(UserMfaCredential credential)
     {
         credential.FailedAttemptCount++;
         if (credential.FailedAttemptCount >= MaximumFailedAttempts)
@@ -347,8 +388,6 @@ public sealed class MfaAuthenticationService(
             credential.FailedAttemptCount = 0;
             credential.LockedUntilUtc = timeProvider.GetUtcNow().UtcDateTime.Add(LockoutDuration);
         }
-
-        await context.SaveChangesAsync(cancellationToken);
     }
 
     private string ProtectChallenge(ChallengePayload payload)

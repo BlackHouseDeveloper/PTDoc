@@ -37,6 +37,11 @@ public sealed class RolePermissionAdministrationService(
         string correlationId,
         CancellationToken cancellationToken = default)
     {
+        if (!await IsCustomizationAllowedAsync(clinicId, cancellationToken))
+        {
+            return SettingsOperationResult<RolePermissionSet>.Forbidden("role_customization_disabled");
+        }
+
         var role = RolePermissionCatalog.FindRole(roleKey);
         if (role is null)
         {
@@ -105,16 +110,7 @@ public sealed class RolePermissionAdministrationService(
             });
         }
 
-        try
-        {
-            await context.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            return SettingsOperationResult<RolePermissionSet>.Conflict();
-        }
-
-        await auditService.LogSettingsEventAsync(new AuditEvent
+        var auditEvent = new AuditEvent
         {
             EventType = "RolePermissionsUpdated",
             UserId = actorUserId,
@@ -126,7 +122,16 @@ public sealed class RolePermissionAdministrationService(
                 ["targetRole"] = role.Key,
                 ["changes"] = changes
             }
-        }, cancellationToken);
+        };
+        try
+        {
+            await auditService.LogSettingsEventAsync(auditEvent, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return SettingsOperationResult<RolePermissionSet>.Conflict();
+        }
 
         var all = await context.RoleCapabilityPermissions
             .Where(permission => permission.ClinicId == clinicId && permission.RoleKey == role.Key)
@@ -142,6 +147,11 @@ public sealed class RolePermissionAdministrationService(
         string correlationId,
         CancellationToken cancellationToken = default)
     {
+        if (!await IsCustomizationAllowedAsync(clinicId, cancellationToken))
+        {
+            return SettingsOperationResult<RolePermissionSet>.Forbidden("role_customization_disabled");
+        }
+
         var targetRole = RolePermissionCatalog.FindRole(targetRoleKey);
         var sourceRole = RolePermissionCatalog.FindRole(request.SourceRoleKey);
         if (targetRole is null || sourceRole is null)
@@ -208,16 +218,7 @@ public sealed class RolePermissionAdministrationService(
             changedKeys.Add(definition.Key.ToString());
         }
 
-        try
-        {
-            await context.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            return SettingsOperationResult<RolePermissionSet>.Conflict();
-        }
-
-        await auditService.LogSettingsEventAsync(new AuditEvent
+        var auditEvent = new AuditEvent
         {
             EventType = "RolePermissionsCloned",
             UserId = actorUserId,
@@ -230,10 +231,26 @@ public sealed class RolePermissionAdministrationService(
                 ["targetRole"] = targetRole.Key,
                 ["capabilityKeys"] = changedKeys
             }
-        }, cancellationToken);
+        };
+        try
+        {
+            await auditService.LogSettingsEventAsync(auditEvent, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return SettingsOperationResult<RolePermissionSet>.Conflict();
+        }
 
         return SettingsOperationResult<RolePermissionSet>.Success(MapRole(targetRole, target.Values.ToArray()));
     }
+
+    private async Task<bool> IsCustomizationAllowedAsync(Guid clinicId, CancellationToken cancellationToken) =>
+        await context.ClinicSecurityPolicies
+            .Where(policy => policy.ClinicId == clinicId)
+            .Select(policy => (bool?)policy.AllowRoleCustomization)
+            .SingleOrDefaultAsync(cancellationToken)
+        ?? true;
 
     private static Dictionary<string, string[]> ValidateUpdates(string roleKey, IReadOnlyList<PermissionUpdate> updates)
     {

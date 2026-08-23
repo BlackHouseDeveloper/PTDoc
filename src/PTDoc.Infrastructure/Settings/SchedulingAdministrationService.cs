@@ -58,9 +58,9 @@ public sealed partial class SchedulingAdministrationService(
             UpdatedByUserId = actorUserId
         };
         context.VisitTypes.Add(entity);
-        await context.SaveChangesAsync(cancellationToken);
         await AuditAsync("VisitTypeCreated", clinicId, nameof(VisitType), entity.Id, actorUserId, correlationId,
             new() { ["visitTypeId"] = entity.Id, ["code"] = entity.Code }, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return SettingsOperationResult<VisitTypeDto>.Success(MapVisitType(entity));
     }
 
@@ -112,14 +112,16 @@ public sealed partial class SchedulingAdministrationService(
         entity.UpdatedByUserId = actorUserId;
         entity.UpdatedAtUtc = DateTime.UtcNow;
 
-        var result = await SaveWithConflictAsync(entity, cancellationToken);
-        if (result is not null)
+        try
         {
-            return result;
+            await AuditAsync("VisitTypeUpdated", clinicId, nameof(VisitType), entity.Id, actorUserId, correlationId,
+                new() { ["visitTypeId"] = entity.Id, ["version"] = entity.Version }, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
         }
-
-        await AuditAsync("VisitTypeUpdated", clinicId, nameof(VisitType), entity.Id, actorUserId, correlationId,
-            new() { ["visitTypeId"] = entity.Id, ["version"] = entity.Version }, cancellationToken);
+        catch (DbUpdateConcurrencyException)
+        {
+            return SettingsOperationResult<VisitTypeDto>.Conflict();
+        }
         return SettingsOperationResult<VisitTypeDto>.Success(MapVisitType(entity));
     }
 
@@ -148,14 +150,16 @@ public sealed partial class SchedulingAdministrationService(
         entity.Version++;
         entity.UpdatedByUserId = actorUserId;
         entity.UpdatedAtUtc = DateTime.UtcNow;
-        var conflict = await SaveWithConflictAsync(entity, cancellationToken);
-        if (conflict is not null)
+        try
         {
-            return conflict;
+            await AuditAsync("VisitTypeDeactivated", clinicId, nameof(VisitType), entity.Id, actorUserId, correlationId,
+                new() { ["visitTypeId"] = entity.Id, ["version"] = entity.Version }, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
         }
-
-        await AuditAsync("VisitTypeDeactivated", clinicId, nameof(VisitType), entity.Id, actorUserId, correlationId,
-            new() { ["visitTypeId"] = entity.Id, ["version"] = entity.Version }, cancellationToken);
+        catch (DbUpdateConcurrencyException)
+        {
+            return SettingsOperationResult<VisitTypeDto>.Conflict();
+        }
         return SettingsOperationResult<VisitTypeDto>.Success(MapVisitType(entity));
     }
 
@@ -222,15 +226,14 @@ public sealed partial class SchedulingAdministrationService(
 
         try
         {
+            await AuditAsync("SchedulingPreferencesUpdated", clinicId, nameof(SchedulingPreferences), preferences.Id,
+                actorUserId, correlationId, new() { ["version"] = preferences.Version }, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
             return SettingsOperationResult<SchedulingPreferencesDto>.Conflict();
         }
-
-        await AuditAsync("SchedulingPreferencesUpdated", clinicId, nameof(SchedulingPreferences), preferences.Id,
-            actorUserId, correlationId, new() { ["version"] = preferences.Version }, cancellationToken);
         return SettingsOperationResult<SchedulingPreferencesDto>.Success(MapPreferences(preferences));
     }
 
@@ -310,18 +313,16 @@ public sealed partial class SchedulingAdministrationService(
         clinic.Version++;
         try
         {
+            await AuditAsync("ClinicHoursUpdated", clinicId, nameof(ClinicBusinessHour), clinicId,
+                actorUserId, correlationId,
+                new() { ["clinicVersion"] = clinic.Version, ["timeZoneId"] = clinic.TimeZoneId },
+                cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
             return SettingsOperationResult<ClinicHoursDto>.Conflict();
         }
-
-        await AuditAsync("ClinicHoursUpdated", clinicId, nameof(ClinicBusinessHour), clinicId,
-            actorUserId, correlationId,
-            new() { ["clinicVersion"] = clinic.Version, ["timeZoneId"] = clinic.TimeZoneId },
-            cancellationToken);
-
         return SettingsOperationResult<ClinicHoursDto>.Success(new ClinicHoursDto(
             clinic.TimeZoneId,
             clinic.Version,
@@ -366,9 +367,9 @@ public sealed partial class SchedulingAdministrationService(
             UpdatedByUserId = actorUserId
         };
         context.ScheduleBlockRules.Add(entity);
-        await context.SaveChangesAsync(cancellationToken);
         await AuditAsync("ScheduleBlockCreated", clinicId, nameof(ScheduleBlockRule), entity.Id,
             actorUserId, correlationId, new() { ["blockId"] = entity.Id }, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return SettingsOperationResult<ScheduleBlockDto>.Success(MapBlock(entity));
     }
 
@@ -414,15 +415,14 @@ public sealed partial class SchedulingAdministrationService(
         entity.UpdatedAtUtc = DateTime.UtcNow;
         try
         {
+            await AuditAsync("ScheduleBlockUpdated", clinicId, nameof(ScheduleBlockRule), entity.Id,
+                actorUserId, correlationId, new() { ["blockId"] = entity.Id, ["version"] = entity.Version }, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
             return SettingsOperationResult<ScheduleBlockDto>.Conflict();
         }
-
-        await AuditAsync("ScheduleBlockUpdated", clinicId, nameof(ScheduleBlockRule), entity.Id,
-            actorUserId, correlationId, new() { ["blockId"] = entity.Id, ["version"] = entity.Version }, cancellationToken);
         return SettingsOperationResult<ScheduleBlockDto>.Success(MapBlock(entity));
     }
 
@@ -453,31 +453,15 @@ public sealed partial class SchedulingAdministrationService(
         entity.UpdatedAtUtc = DateTime.UtcNow;
         try
         {
+            await AuditAsync("ScheduleBlockDeactivated", clinicId, nameof(ScheduleBlockRule), entity.Id,
+                actorUserId, correlationId, new() { ["blockId"] = entity.Id, ["version"] = entity.Version }, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
             return SettingsOperationResult<ScheduleBlockDto>.Conflict();
         }
-
-        await AuditAsync("ScheduleBlockDeactivated", clinicId, nameof(ScheduleBlockRule), entity.Id,
-            actorUserId, correlationId, new() { ["blockId"] = entity.Id, ["version"] = entity.Version }, cancellationToken);
         return SettingsOperationResult<ScheduleBlockDto>.Success(MapBlock(entity));
-    }
-
-    private async Task<SettingsOperationResult<VisitTypeDto>?> SaveWithConflictAsync(
-        VisitType entity,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await context.SaveChangesAsync(cancellationToken);
-            return null;
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            return SettingsOperationResult<VisitTypeDto>.Conflict();
-        }
     }
 
     private Task AuditAsync(

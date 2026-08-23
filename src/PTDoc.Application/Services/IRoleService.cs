@@ -94,8 +94,14 @@ public static class AuthorizationPolicies
     /// <summary>Billing access — charge review, CPT/ICD edits, ERA/EOB — Billing role only.</summary>
     public const string BillingAccess = "BillingAccess";
 
-    /// <summary>Scheduling access — full scheduling management — PT, PTA, FrontDesk, Admin, PracticeManager.</summary>
+    /// <summary>Read scheduling workspaces and appointment calendars.</summary>
     public const string SchedulingAccess = "SchedulingAccess";
+
+    /// <summary>Create appointments using the clinic-scoped capability matrix.</summary>
+    public const string AppointmentsCreate = "AppointmentsCreate";
+
+    /// <summary>Modify, reschedule, or check in appointments using the clinic-scoped capability matrix.</summary>
+    public const string AppointmentsModify = "AppointmentsModify";
 
     /// <summary>Co-sign clinical notes — PT role only (countersigns PTA-authored notes).</summary>
     public const string NoteCoSign = "NoteCoSign";
@@ -190,12 +196,24 @@ public static class AuthorizationPolicies
         options.AddPolicy(BillingAccess,
             p => p.RequireRole(Roles.Billing, Roles.Admin, Roles.Owner));
 
-        // SchedulingAccess: scheduling management — clinical staff (PT, PTA, Admin, Owner), front desk, practice manager
+        // SchedulingAccess: schedule viewing — clinical staff (PT, PTA, Admin, Owner), front desk, practice manager
         options.AddPolicy(SchedulingAccess,
             p => p.Requirements.Add(new DynamicCapabilityRequirement(
                 [CapabilityKey.ScheduleViewOwn, CapabilityKey.ScheduleViewAll],
                 PermissionLevel.View,
                 [Roles.PT, Roles.PTA, Roles.FrontDesk, Roles.Admin, Roles.Owner, Roles.PracticeManager])));
+
+        options.AddPolicy(AppointmentsCreate,
+            p => p.Requirements.Add(new DynamicCapabilityRequirement(
+                [CapabilityKey.AppointmentsCreate],
+                PermissionLevel.Edit,
+                [Roles.PT, Roles.PTA, Roles.FrontDesk, Roles.Admin, Roles.PracticeManager])));
+
+        options.AddPolicy(AppointmentsModify,
+            p => p.Requirements.Add(new DynamicCapabilityRequirement(
+                [CapabilityKey.AppointmentsModify],
+                PermissionLevel.Edit,
+                [Roles.PT, Roles.PTA, Roles.FrontDesk, Roles.Admin, Roles.PracticeManager])));
 
         // NoteCoSign: PT-only endpoint for countersigning PTA-authored notes
         options.AddPolicy(NoteCoSign,

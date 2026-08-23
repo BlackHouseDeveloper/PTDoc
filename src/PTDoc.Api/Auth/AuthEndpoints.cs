@@ -17,6 +17,11 @@ public static class AuthEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
+            if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+            {
+                return Results.Unauthorized();
+            }
+
             var result = await authService.AuthenticateAsync(
                 request.Username,
                 request.Password,
@@ -164,6 +169,10 @@ public static class AuthEndpoints
         if (result.ClinicId is { } clinicId)
         {
             claims.Add(new Claim(HttpTenantContextAccessor.ClinicIdClaimType, clinicId.ToString()));
+        }
+        if (!string.IsNullOrWhiteSpace(result.Email))
+        {
+            claims.Add(new Claim(ClaimTypes.Email, result.Email));
         }
 
         var identity = new ClaimsIdentity(claims, PTDocAuthSchemes.Bearer);

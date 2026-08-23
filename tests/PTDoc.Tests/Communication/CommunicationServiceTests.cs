@@ -294,6 +294,54 @@ public sealed class CommunicationServiceTests
     }
 
     [Fact]
+    public async Task PasswordResetTokenService_UsesTargetClinicMinimumPinLength()
+    {
+        await using var db = CreateDbContext();
+        var clinic = new Clinic { Name = "Reset Policy Clinic", Slug = $"reset-policy-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "reset-policy-user",
+            PinHash = "old-hash",
+            FirstName = "Reset",
+            LastName = "Policy",
+            Email = "reset-policy@example.com",
+            Role = "PT",
+            ClinicId = clinic.Id,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.AddRange(clinic, user);
+        await db.SaveChangesAsync();
+        var policy = await db.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.MinimumPinLength = 10;
+        await db.SaveChangesAsync();
+        var emailSender = new FakeEmailSender();
+        var communicationService = CreateService(db, emailSender: emailSender);
+        await communicationService.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest
+        {
+            Recipient = user.Email!
+        });
+        var token = ExtractResetToken(emailSender);
+        var resetService = new PasswordResetTokenService(db);
+
+        var rejected = await resetService.ResetPinAsync(new PasswordResetCompletionRequest
+        {
+            Token = token,
+            NewPin = "12345678"
+        });
+        var accepted = await resetService.ResetPinAsync(new PasswordResetCompletionRequest
+        {
+            Token = token,
+            NewPin = "1234567890"
+        });
+
+        Assert.Equal(PasswordResetCompletionStatus.InvalidPin, rejected.Status);
+        Assert.Contains("10 to 12", rejected.SafeErrorMessage!, StringComparison.Ordinal);
+        Assert.True(accepted.Succeeded);
+    }
+
+    [Fact]
     public async Task PasswordResetTokenService_ValidateToken_InvalidInputs_ReturnsFalse()
     {
         await using var db = CreateDbContext();

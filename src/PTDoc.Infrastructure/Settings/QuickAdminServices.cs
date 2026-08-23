@@ -73,10 +73,7 @@ public sealed class AutoCheckInAdministrationService(
         policy.MaxAttempts = request.MaxAttempts;
         policy.EligibleVisitTypeIdsJson = JsonSerializer.Serialize(distinctVisitTypeIds);
 
-        try { await context.SaveChangesAsync(cancellationToken); }
-        catch (DbUpdateConcurrencyException) { return SettingsOperationResult<AutoCheckInPolicyDto>.Conflict(); }
-
-        await auditService.LogSettingsEventAsync(new AuditEvent
+        var auditEvent = new AuditEvent
         {
             EventType = "AutoCheckInPolicyUpdated",
             UserId = actorUserId,
@@ -89,7 +86,16 @@ public sealed class AutoCheckInAdministrationService(
                 ["version"] = policy.Version,
                 ["eligibleVisitTypeIds"] = distinctVisitTypeIds
             }
-        }, cancellationToken);
+        };
+        try
+        {
+            await auditService.LogSettingsEventAsync(auditEvent, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return SettingsOperationResult<AutoCheckInPolicyDto>.Conflict();
+        }
         return SettingsOperationResult<AutoCheckInPolicyDto>.Success(Map(policy));
     }
 
@@ -146,10 +152,10 @@ public sealed class KioskCheckInService(
         context.KioskStations.Add(station);
         var enrollment = CreateEnrollmentCode(station);
         context.KioskEnrollmentCodes.Add(enrollment.Entity);
-        await context.SaveChangesAsync(cancellationToken);
         await AuditAsync(
             "KioskStationCreated", clinicId, nameof(KioskStation), station.Id,
             actorUserId, correlationId, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return SettingsOperationResult<KioskEnrollmentCodeDto>.Success(
             new KioskEnrollmentCodeDto(station.Id, enrollment.PlainText, enrollment.Entity.ExpiresAtUtc));
     }
@@ -181,11 +187,17 @@ public sealed class KioskCheckInService(
         station.Version++;
         station.UpdatedByUserId = actorUserId;
         station.UpdatedAtUtc = DateTime.UtcNow;
-        try { await context.SaveChangesAsync(cancellationToken); }
-        catch (DbUpdateConcurrencyException) { return SettingsOperationResult<KioskStationDto>.Conflict(); }
-        await AuditAsync(
-            "KioskStationUpdated", clinicId, nameof(KioskStation), station.Id,
-            actorUserId, correlationId, cancellationToken);
+        try
+        {
+            await AuditAsync(
+                "KioskStationUpdated", clinicId, nameof(KioskStation), station.Id,
+                actorUserId, correlationId, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return SettingsOperationResult<KioskStationDto>.Conflict();
+        }
         return SettingsOperationResult<KioskStationDto>.Success(MapStation(station));
     }
 
@@ -213,11 +225,17 @@ public sealed class KioskCheckInService(
         station.UpdatedAtUtc = DateTime.UtcNow;
         var enrollment = CreateEnrollmentCode(station);
         context.KioskEnrollmentCodes.Add(enrollment.Entity);
-        try { await context.SaveChangesAsync(cancellationToken); }
-        catch (DbUpdateConcurrencyException) { return SettingsOperationResult<KioskEnrollmentCodeDto>.Conflict(); }
-        await AuditAsync(
-            "KioskEnrollmentRotated", clinicId, nameof(KioskStation), station.Id,
-            actorUserId, correlationId, cancellationToken);
+        try
+        {
+            await AuditAsync(
+                "KioskEnrollmentRotated", clinicId, nameof(KioskStation), station.Id,
+                actorUserId, correlationId, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return SettingsOperationResult<KioskEnrollmentCodeDto>.Conflict();
+        }
         return SettingsOperationResult<KioskEnrollmentCodeDto>.Success(
             new KioskEnrollmentCodeDto(station.Id, enrollment.PlainText, enrollment.Entity.ExpiresAtUtc));
     }
@@ -240,11 +258,24 @@ public sealed class KioskCheckInService(
         station.Version++;
         station.UpdatedByUserId = actorUserId;
         station.UpdatedAtUtc = DateTime.UtcNow;
-        try { await context.SaveChangesAsync(cancellationToken); }
-        catch (DbUpdateConcurrencyException) { return SettingsOperationResult<bool>.Conflict(); }
-        await AuditAsync(
-            "KioskStationRevoked", clinicId, nameof(KioskStation), station.Id,
-            actorUserId, correlationId, cancellationToken);
+        var outstandingCodes = await context.KioskEnrollmentCodes
+            .Where(item => item.KioskStationId == station.Id && item.ConsumedAtUtc == null)
+            .ToListAsync(cancellationToken);
+        foreach (var code in outstandingCodes)
+        {
+            code.ConsumedAtUtc = station.RevokedAtUtc;
+        }
+        try
+        {
+            await AuditAsync(
+                "KioskStationRevoked", clinicId, nameof(KioskStation), station.Id,
+                actorUserId, correlationId, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return SettingsOperationResult<bool>.Conflict();
+        }
         return SettingsOperationResult<bool>.Success(true);
     }
 
@@ -255,21 +286,92 @@ public sealed class KioskCheckInService(
         if (!TrySplitToken(enrollmentCode, out var codeId, out var secret))
             return SettingsOperationResult<KioskEnrollmentResult>.NotFound();
         var code = await context.KioskEnrollmentCodes
+            .AsNoTracking()
             .Include(item => item.KioskStation)
             .IgnoreQueryFilters()
             .SingleOrDefaultAsync(item => item.Id == codeId, cancellationToken);
-        if (code?.KioskStation is null || code.ConsumedAtUtc is not null || code.ExpiresAtUtc <= DateTime.UtcNow ||
+        if (code?.KioskStation is null || code.KioskStation.RevokedAtUtc is not null ||
+            code.ConsumedAtUtc is not null || code.ExpiresAtUtc <= DateTime.UtcNow ||
             !BCrypt.Net.BCrypt.Verify(secret, code.CodeHash))
             return SettingsOperationResult<KioskEnrollmentResult>.NotFound();
 
+        var now = DateTime.UtcNow;
         var deviceCredential = BuildSecretToken(code.KioskStation.Id, 32);
-        code.KioskStation.DeviceCredentialHash = Hash(deviceCredential);
-        code.KioskStation.IsActive = true;
-        code.KioskStation.LastSeenAtUtc = DateTime.UtcNow;
-        code.KioskStation.Version++;
-        code.KioskStation.UpdatedAtUtc = DateTime.UtcNow;
-        code.ConsumedAtUtc = DateTime.UtcNow;
+        var deviceCredentialHash = Hash(deviceCredential);
+        await using var transaction = context.Database.IsRelational()
+            ? await context.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        if (context.Database.IsRelational())
+        {
+            var codeClaimed = await context.KioskEnrollmentCodes
+                .IgnoreQueryFilters()
+                .Where(item => item.Id == code.Id
+                    && item.ConsumedAtUtc == null
+                    && item.ExpiresAtUtc > now)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(item => item.ConsumedAtUtc, now),
+                    cancellationToken);
+            if (codeClaimed != 1)
+            {
+                return SettingsOperationResult<KioskEnrollmentResult>.NotFound();
+            }
+
+            var stationActivated = await context.KioskStations
+                .IgnoreQueryFilters()
+                .Where(item => item.Id == code.KioskStation.Id && item.RevokedAtUtc == null)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(item => item.DeviceCredentialHash, deviceCredentialHash)
+                        .SetProperty(item => item.IsActive, true)
+                        .SetProperty(item => item.LastSeenAtUtc, now)
+                        .SetProperty(item => item.Version, item => item.Version + 1)
+                        .SetProperty(item => item.UpdatedAtUtc, now),
+                    cancellationToken);
+            if (stationActivated != 1)
+            {
+                return SettingsOperationResult<KioskEnrollmentResult>.NotFound();
+            }
+        }
+        else
+        {
+            var trackedCode = await context.KioskEnrollmentCodes
+                .Include(item => item.KioskStation)
+                .IgnoreQueryFilters()
+                .SingleOrDefaultAsync(item => item.Id == code.Id
+                    && item.ConsumedAtUtc == null
+                    && item.ExpiresAtUtc > now
+                    && item.KioskStation != null
+                    && item.KioskStation.RevokedAtUtc == null,
+                    cancellationToken);
+            if (trackedCode?.KioskStation is null)
+            {
+                return SettingsOperationResult<KioskEnrollmentResult>.NotFound();
+            }
+
+            trackedCode.KioskStation.DeviceCredentialHash = deviceCredentialHash;
+            trackedCode.KioskStation.IsActive = true;
+            trackedCode.KioskStation.LastSeenAtUtc = now;
+            trackedCode.KioskStation.Version++;
+            trackedCode.KioskStation.UpdatedAtUtc = now;
+            trackedCode.ConsumedAtUtc = now;
+        }
+
+        await auditService.LogSettingsEventAsync(new AuditEvent
+        {
+            EventType = "KioskStationEnrolled",
+            EntityType = nameof(KioskStation),
+            EntityId = code.KioskStation.Id,
+            Metadata = new Dictionary<string, object>
+            {
+                ["clinicId"] = code.ClinicId,
+                ["stationId"] = code.KioskStation.Id
+            }
+        }, cancellationToken);
         await context.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
         return SettingsOperationResult<KioskEnrollmentResult>.Success(
             new KioskEnrollmentResult(code.KioskStation.Id, code.KioskStation.Name, deviceCredential));
     }
@@ -297,12 +399,12 @@ public sealed class KioskCheckInService(
             ExpiresAtUtc = DateTime.UtcNow.Add(CheckInTokenLifetime)
         };
         context.KioskCheckInTokens.Add(token);
-        await context.SaveChangesAsync(cancellationToken);
         var payload = $"{token.Id:N}.{numericCode}";
         await AuditAsync(
             "KioskCheckInTokenCreated", clinicId, nameof(KioskCheckInToken), token.Id,
             actorUserId, correlationId, cancellationToken,
             new Dictionary<string, object> { ["appointmentId"] = appointmentId });
+        await context.SaveChangesAsync(cancellationToken);
         return SettingsOperationResult<KioskCheckInTokenDto>.Success(
             new KioskCheckInTokenDto(appointmentId, numericCode, payload, token.ExpiresAtUtc));
     }
@@ -326,6 +428,7 @@ public sealed class KioskCheckInService(
         if (TrySplitToken(suppliedToken, out var tokenId, out tokenSecret))
         {
             token = await context.KioskCheckInTokens
+                .AsNoTracking()
                 .IgnoreQueryFilters()
                 .SingleOrDefaultAsync(item => item.Id == tokenId && item.ClinicId == station.ClinicId, cancellationToken);
         }
@@ -334,6 +437,7 @@ public sealed class KioskCheckInService(
             tokenSecret = suppliedToken;
             var tokenHash = Hash(tokenSecret);
             token = await context.KioskCheckInTokens
+                .AsNoTracking()
                 .IgnoreQueryFilters()
                 .SingleOrDefaultAsync(item => item.ClinicId == station.ClinicId && item.TokenHash == tokenHash, cancellationToken);
         }
@@ -346,9 +450,35 @@ public sealed class KioskCheckInService(
             !VerifyTokenSecret(token.TokenHash, tokenSecret))
             return SettingsOperationResult<KioskCheckInResult>.NotFound();
 
-        var checkIn = await appointmentCheckInWorkflow.CheckInAsync(token.AppointmentId, station.ClinicId, cancellationToken);
-        if (checkIn.Status == AppointmentCheckInStatus.NotFound) return SettingsOperationResult<KioskCheckInResult>.NotFound();
+        await using var transaction = context.Database.IsRelational()
+            ? await context.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        var claimedAtUtc = DateTime.UtcNow;
+        if (context.Database.IsRelational())
+        {
+            var claimed = await context.KioskCheckInTokens
+                .IgnoreQueryFilters()
+                .Where(item => item.Id == token.Id
+                    && item.ClinicId == station.ClinicId
+                    && item.ConsumedAtUtc == null
+                    && item.ExpiresAtUtc > claimedAtUtc)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(item => item.ConsumedAtUtc, claimedAtUtc),
+                    cancellationToken);
+            if (claimed != 1)
+            {
+                return SettingsOperationResult<KioskCheckInResult>.NotFound();
+            }
+        }
+
+        var checkIn = await appointmentCheckInWorkflow.CheckInAsync(
+            token.AppointmentId, station.ClinicId, cancellationToken);
+        if (checkIn.Status == AppointmentCheckInStatus.NotFound)
+        {
+            return SettingsOperationResult<KioskCheckInResult>.NotFound();
+        }
         if (checkIn.Status is AppointmentCheckInStatus.Ineligible or AppointmentCheckInStatus.PaymentRequired)
+        {
             return SettingsOperationResult<KioskCheckInResult>.Validation(
                 new Dictionary<string, string[]>
                 {
@@ -356,11 +486,17 @@ public sealed class KioskCheckInService(
                         ? "Please complete required payment with clinic staff before check-in."
                         : "This appointment cannot be checked in."]
                 });
+        }
 
-        var checkedInAt = checkIn.CheckedInAtUtc ?? DateTime.UtcNow;
-        token.ConsumedAtUtc = checkedInAt;
+        var checkedInAt = checkIn.CheckedInAtUtc ?? claimedAtUtc;
+        if (!context.Database.IsRelational())
+        {
+            var trackedToken = await context.KioskCheckInTokens
+                .IgnoreQueryFilters()
+                .SingleAsync(item => item.Id == token.Id && item.ConsumedAtUtc == null, cancellationToken);
+            trackedToken.ConsumedAtUtc = checkedInAt;
+        }
         station.LastSeenAtUtc = checkedInAt;
-        await context.SaveChangesAsync(cancellationToken);
         await auditService.LogSettingsEventAsync(new AuditEvent
         {
             EventType = "KioskAppointmentCheckedIn",
@@ -373,7 +509,13 @@ public sealed class KioskCheckInService(
                 ["appointmentId"] = token.AppointmentId
             }
         }, cancellationToken);
-        return SettingsOperationResult<KioskCheckInResult>.Success(new KioskCheckInResult(token.AppointmentId, checkedInAt));
+        await context.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+        return SettingsOperationResult<KioskCheckInResult>.Success(
+            new KioskCheckInResult(token.AppointmentId, checkedInAt));
     }
 
     private static (KioskEnrollmentCode Entity, string PlainText) CreateEnrollmentCode(KioskStation station)

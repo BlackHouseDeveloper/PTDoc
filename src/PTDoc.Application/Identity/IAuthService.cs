@@ -90,6 +90,9 @@ public class AuthResult
     /// <summary>Username of the authenticated user. Only set on <see cref="AuthStatus.Success"/>.</summary>
     public string? Username { get; init; }
 
+    /// <summary>Email claim carried into issued JWTs when the user has an email address.</summary>
+    public string? Email { get; init; }
+
     /// <summary>Session token issued for the authenticated user. Only set on <see cref="AuthStatus.Success"/>.</summary>
     public string? Token { get; init; }
 

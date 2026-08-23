@@ -43,38 +43,45 @@ public static class AppointmentEndpoints
     public static void MapAppointmentEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/v1/appointments")
-            .WithTags("Appointments")
-            .RequireAuthorization(AuthorizationPolicies.SchedulingAccess);
+            .WithTags("Appointments");
 
         group.MapGet("/", ListAppointments)
+            .RequireAuthorization(AuthorizationPolicies.SchedulingAccess)
             .WithName("ListAppointments")
             .WithSummary("List appointments and clinicians for the scheduling workspace");
 
         group.MapGet("/by-patient/{patientId:guid}", ListAppointmentsByPatient)
+            .RequireAuthorization(AuthorizationPolicies.SchedulingAccess)
             .WithName("ListAppointmentsByPatient")
             .WithSummary("List appointments for a single patient within a date window");
 
         group.MapGet("/clinicians", ListClinicians)
+            .RequireAuthorization(AuthorizationPolicies.SchedulingAccess)
             .WithName("ListAppointmentClinicians")
             .WithSummary("List clinicians for scheduling and export filters");
 
         group.MapPost("/", CreateAppointment)
+            .RequireAuthorization(AuthorizationPolicies.AppointmentsCreate)
             .WithName("CreateAppointment")
             .WithSummary("Create a new appointment");
 
         group.MapPut("/{id:guid}", UpdateAppointment)
+            .RequireAuthorization(AuthorizationPolicies.AppointmentsModify)
             .WithName("UpdateAppointment")
             .WithSummary("Update an existing appointment");
 
         group.MapPatch("/{id:guid}/appointment-type", UpdateAppointmentType)
+            .RequireAuthorization(AuthorizationPolicies.AppointmentsModify)
             .WithName("UpdateAppointmentType")
             .WithSummary("Update only an appointment's scheduling type");
 
         group.MapPost("/{id:guid}/check-in", CheckInAppointment)
+            .RequireAuthorization(AuthorizationPolicies.AppointmentsModify)
             .WithName("CheckInAppointment")
             .WithSummary("Mark an appointment as checked in");
 
         group.MapPost("/{id:guid}/check-in-payment", CheckInAppointmentWithPayment)
+            .RequireAuthorization(AuthorizationPolicies.AppointmentsModify)
             .WithName("CheckInAppointmentWithPayment")
             .WithSummary("Process a required copay before marking an appointment as checked in");
     }
@@ -84,6 +91,7 @@ public static class AppointmentEndpoints
         [FromQuery] DateTime endDate,
         [FromServices] ApplicationDbContext db,
         [FromServices] ITenantContextAccessor tenantContext,
+        [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] IConfiguration configuration,
         CancellationToken cancellationToken)
     {
@@ -97,12 +105,20 @@ public static class AppointmentEndpoints
 
         var rangeStartUtc = DateTime.SpecifyKind(normalizedStartDate, DateTimeKind.Utc);
         var rangeEndExclusiveUtc = DateTime.SpecifyKind(normalizedEndDate.AddDays(1), DateTimeKind.Utc);
+        var restrictedClinicianId = await GetRestrictedClinicianIdAsync(
+            db, currentClinicId, identityContext, cancellationToken);
+        var appointmentQuery = db.Appointments
+            .AsNoTracking()
+            .Where(appointment => appointment.StartTimeUtc >= rangeStartUtc
+                && appointment.StartTimeUtc < rangeEndExclusiveUtc);
+        if (restrictedClinicianId.HasValue)
+        {
+            appointmentQuery = appointmentQuery.Where(
+                appointment => appointment.ClinicalId == restrictedClinicianId.Value);
+        }
 
         var appointments = await BuildAppointmentRowsQuery(
-                db.Appointments
-                    .AsNoTracking()
-                    .Where(appointment => appointment.StartTimeUtc >= rangeStartUtc
-                        && appointment.StartTimeUtc < rangeEndExclusiveUtc),
+                appointmentQuery,
                 db)
             .OrderBy(row => row.StartTimeUtc)
             .ThenBy(row => row.PatientName)
@@ -110,7 +126,8 @@ public static class AppointmentEndpoints
         await HydrateAppointmentNoteWorkflowAsync(db, appointments, cancellationToken);
         await HydrateAppointmentClinicalMetadataAsync(db, appointments, cancellationToken);
 
-        var clinicians = await BuildCliniciansQuery(db, currentClinicId).ToListAsync(cancellationToken);
+        var clinicians = await BuildCliniciansQuery(db, currentClinicId, restrictedClinicianId)
+            .ToListAsync(cancellationToken);
 
         return Results.Ok(new AppointmentsOverviewResponse
         {
@@ -124,6 +141,8 @@ public static class AppointmentEndpoints
         [FromQuery] DateTime startDate,
         [FromQuery] DateTime endDate,
         [FromServices] ApplicationDbContext db,
+        [FromServices] ITenantContextAccessor tenantContext,
+        [FromServices] IIdentityContextAccessor identityContext,
         [FromServices] IConfiguration configuration,
         CancellationToken cancellationToken)
     {
@@ -142,13 +161,21 @@ public static class AppointmentEndpoints
 
         var rangeStartUtc = DateTime.SpecifyKind(normalizedStartDate, DateTimeKind.Utc);
         var rangeEndExclusiveUtc = DateTime.SpecifyKind(normalizedEndDate.AddDays(1), DateTimeKind.Utc);
+        var restrictedClinicianId = await GetRestrictedClinicianIdAsync(
+            db, tenantContext.GetCurrentClinicId(), identityContext, cancellationToken);
+        var appointmentQuery = db.Appointments
+            .AsNoTracking()
+            .Where(appointment => appointment.PatientId == patientId
+                && appointment.StartTimeUtc >= rangeStartUtc
+                && appointment.StartTimeUtc < rangeEndExclusiveUtc);
+        if (restrictedClinicianId.HasValue)
+        {
+            appointmentQuery = appointmentQuery.Where(
+                appointment => appointment.ClinicalId == restrictedClinicianId.Value);
+        }
 
         var appointments = await BuildAppointmentRowsQuery(
-                db.Appointments
-                    .AsNoTracking()
-                    .Where(appointment => appointment.PatientId == patientId
-                        && appointment.StartTimeUtc >= rangeStartUtc
-                        && appointment.StartTimeUtc < rangeEndExclusiveUtc),
+                appointmentQuery,
                 db)
             .OrderBy(row => row.StartTimeUtc)
             .ThenBy(row => row.AppointmentType)
@@ -163,9 +190,14 @@ public static class AppointmentEndpoints
     private static async Task<IResult> ListClinicians(
         [FromServices] ApplicationDbContext db,
         [FromServices] ITenantContextAccessor tenantContext,
+        [FromServices] IIdentityContextAccessor identityContext,
         CancellationToken cancellationToken)
     {
-        var clinicians = await BuildCliniciansQuery(db, tenantContext.GetCurrentClinicId()).ToListAsync(cancellationToken);
+        var clinicId = tenantContext.GetCurrentClinicId();
+        var restrictedClinicianId = await GetRestrictedClinicianIdAsync(
+            db, clinicId, identityContext, cancellationToken);
+        var clinicians = await BuildCliniciansQuery(db, clinicId, restrictedClinicianId)
+            .ToListAsync(cancellationToken);
         return Results.Ok(clinicians);
     }
 
@@ -208,6 +240,12 @@ public static class AppointmentEndpoints
             });
         }
 
+        if (!await CanAccessClinicianScheduleAsync(
+                db, patient.ClinicId, clinician.Id, identityContext, cancellationToken))
+        {
+            return Results.Forbid();
+        }
+
         var visitTypeResolution = await ResolveVisitTypeAsync(
             db, patient.ClinicId, request.VisitTypeId, request.AppointmentType, cancellationToken);
         if (visitTypeResolution is null)
@@ -228,7 +266,7 @@ public static class AppointmentEndpoints
             });
         }
         var (startUtc, endUtc) = utcRange.Value;
-        var availability = request.VisitTypeId.HasValue && patient.ClinicId.HasValue
+        var availability = patient.ClinicId.HasValue
             ? await schedulingPolicyEvaluator.EvaluateAsync(
                 new AvailabilityRequest(patient.ClinicId.Value, clinician.Id, startUtc, endUtc), cancellationToken)
             : null;
@@ -329,6 +367,12 @@ public static class AppointmentEndpoints
             return Results.NotFound(new { error = $"Appointment {id} not found." });
         }
 
+        if (!await CanAccessClinicianScheduleAsync(
+                db, appointment.ClinicId, appointment.ClinicalId, identityContext, cancellationToken))
+        {
+            return Results.Forbid();
+        }
+
         var patient = await db.Patients
             .FirstOrDefaultAsync(p => p.Id == request.PatientId && !p.IsArchived, cancellationToken);
 
@@ -354,6 +398,12 @@ public static class AppointmentEndpoints
             });
         }
 
+        if (!await CanAccessClinicianScheduleAsync(
+                db, patient.ClinicId, clinician.Id, identityContext, cancellationToken))
+        {
+            return Results.Forbid();
+        }
+
         var visitTypeResolution = await ResolveVisitTypeAsync(
             db, patient.ClinicId, request.VisitTypeId, request.AppointmentType, cancellationToken);
         if (visitTypeResolution is null)
@@ -374,7 +424,7 @@ public static class AppointmentEndpoints
             });
         }
         var (startUtc, endUtc) = utcRange.Value;
-        var availability = request.VisitTypeId.HasValue && patient.ClinicId.HasValue
+        var availability = patient.ClinicId.HasValue
             ? await schedulingPolicyEvaluator.EvaluateAsync(
                 new AvailabilityRequest(patient.ClinicId.Value, clinician.Id, startUtc, endUtc, id), cancellationToken)
             : null;
@@ -459,6 +509,12 @@ public static class AppointmentEndpoints
             return Results.NotFound(new { error = $"Appointment {id} not found." });
         }
 
+        if (!await CanAccessClinicianScheduleAsync(
+                db, appointment.ClinicId, appointment.ClinicalId, identityContext, cancellationToken))
+        {
+            return Results.Forbid();
+        }
+
         if (appointment.Status is AppointmentStatus.Completed or AppointmentStatus.Cancelled or AppointmentStatus.NoShow)
         {
             return Results.Conflict(new { error = "The appointment type cannot be changed after the appointment reaches a terminal status." });
@@ -526,6 +582,12 @@ public static class AppointmentEndpoints
             return Results.NotFound(new { error = $"Appointment {id} not found." });
         }
 
+        if (!await CanAccessClinicianScheduleAsync(
+                db, appointment.ClinicId, appointment.ClinicalId, identityContext, cancellationToken))
+        {
+            return Results.Forbid();
+        }
+
         if (appointment.Status is AppointmentStatus.Cancelled or AppointmentStatus.NoShow)
         {
             return Results.UnprocessableEntity(new { error = "Cancelled or no-show appointments cannot be checked in." });
@@ -577,6 +639,12 @@ public static class AppointmentEndpoints
         if (appointment is null)
         {
             return Results.NotFound(new { error = $"Appointment {id} not found." });
+        }
+
+        if (!await CanAccessClinicianScheduleAsync(
+                db, appointment.ClinicId, appointment.ClinicalId, identityContext, cancellationToken))
+        {
+            return Results.Forbid();
         }
 
         if (appointment.Status is AppointmentStatus.Cancelled or AppointmentStatus.NoShow)
@@ -1329,12 +1397,14 @@ public static class AppointmentEndpoints
 
     private static IQueryable<AppointmentClinicianResponse> BuildCliniciansQuery(
         ApplicationDbContext db,
-        Guid? clinicId)
+        Guid? clinicId,
+        Guid? restrictedClinicianId = null)
     {
         return db.Users
             .AsNoTracking()
             .Where(user => user.IsActive
                 && (clinicId == null || user.ClinicId == clinicId)
+                && (restrictedClinicianId == null || user.Id == restrictedClinicianId)
                 && SchedulableClinicianRoles.Contains(user.Role))
             .OrderBy(user => user.LastName)
             .ThenBy(user => user.FirstName)
@@ -1344,6 +1414,40 @@ public static class AppointmentEndpoints
                 DisplayName = user.FirstName + " " + user.LastName
             });
     }
+
+    internal static async Task<bool> CanAccessClinicianScheduleAsync(
+        ApplicationDbContext db,
+        Guid? clinicId,
+        Guid clinicianId,
+        IIdentityContextAccessor identityContext,
+        CancellationToken cancellationToken)
+    {
+        var restrictedClinicianId = await GetRestrictedClinicianIdAsync(
+            db, clinicId, identityContext, cancellationToken);
+        return !restrictedClinicianId.HasValue || restrictedClinicianId.Value == clinicianId;
+    }
+
+    private static async Task<Guid?> GetRestrictedClinicianIdAsync(
+        ApplicationDbContext db,
+        Guid? clinicId,
+        IIdentityContextAccessor identityContext,
+        CancellationToken cancellationToken)
+    {
+        if (!clinicId.HasValue || !IsClinicianRole(identityContext.GetCurrentUserRole()))
+        {
+            return null;
+        }
+
+        var restricted = await db.ClinicSecurityPolicies
+            .Where(policy => policy.ClinicId == clinicId.Value)
+            .Select(policy => policy.RestrictCliniciansToOwnSchedules)
+            .SingleOrDefaultAsync(cancellationToken);
+        return restricted ? identityContext.GetCurrentUserId() : null;
+    }
+
+    private static bool IsClinicianRole(string? role) =>
+        role is Roles.PT or Roles.PTA or "Physical Therapist" or
+            "Physical Therapist Assistant" or "Clinician" or "Provider";
 
     private static async Task<User?> GetClinicianAsync(
         ApplicationDbContext db,

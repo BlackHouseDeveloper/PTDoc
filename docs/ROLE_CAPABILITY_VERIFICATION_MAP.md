@@ -79,7 +79,8 @@ cannot grant access. Owner and Patient rows are read-only. Administrator `UsersM
 | 29 | DocumentationTemplatesManage | — | — | — | — | — | — | — | — | — |
 | 30 | IntegrationsManage | F | N | F | N | N | N | N | N | N |
 
-The dynamic handler currently binds `SchedulingAccess` to either schedule-view capability at View,
+The dynamic handler binds `SchedulingAccess` to either schedule-view capability at View,
+`AppointmentsCreate` and `AppointmentsModify` to their corresponding capability at Edit,
 `SettingsRead` to clinic settings at View, and `SettingsWrite` to clinic settings at Full. In
 `Static` and `Shadow` modes, the named policy's established role list remains authoritative. In
 `Enforced`, the persisted clinic capability is authoritative, while endpoint and domain guards

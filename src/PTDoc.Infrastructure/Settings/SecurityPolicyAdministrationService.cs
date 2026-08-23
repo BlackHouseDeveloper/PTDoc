@@ -66,17 +66,8 @@ public sealed class SecurityPolicyAdministrationService(
         policy.RestrictCliniciansToOwnSchedules = request.RestrictCliniciansToOwnSchedules;
         policy.AuthorizationMode = request.AuthorizationMode;
 
-        try
-        {
-            await context.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            return SettingsOperationResult<SecurityPolicyDto>.Conflict();
-        }
-
         var updated = Map(policy);
-        await auditService.LogSettingsEventAsync(new AuditEvent
+        var auditEvent = new AuditEvent
         {
             EventType = "SecurityPolicyUpdated",
             UserId = actorUserId,
@@ -93,7 +84,16 @@ public sealed class SecurityPolicyAdministrationService(
                 ["oldAuthorizationMode"] = oldPolicy.AuthorizationMode.ToString(),
                 ["newAuthorizationMode"] = updated.AuthorizationMode.ToString()
             }
-        }, cancellationToken);
+        };
+        try
+        {
+            await auditService.LogSettingsEventAsync(auditEvent, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return SettingsOperationResult<SecurityPolicyDto>.Conflict();
+        }
 
         return SettingsOperationResult<SecurityPolicyDto>.Success(updated);
     }
@@ -132,8 +132,8 @@ public sealed class SecurityPolicyAdministrationService(
         }
 
         user.MustChangePin = true;
-        await context.SaveChangesAsync(cancellationToken);
         await AuditUserActionAsync("PinChangeForced", clinicId, userId, actorUserId, correlationId, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return SettingsOperationResult<bool>.Success(true);
     }
 
@@ -162,10 +162,10 @@ public sealed class SecurityPolicyAdministrationService(
             credential.ResetByUserId = actorUserId;
             var recoveryCodes = context.UserMfaRecoveryCodes.Where(item => item.UserMfaCredentialId == credential.Id);
             context.UserMfaRecoveryCodes.RemoveRange(recoveryCodes);
-            await context.SaveChangesAsync(cancellationToken);
         }
 
         await AuditUserActionAsync("MfaReset", clinicId, userId, actorUserId, correlationId, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return SettingsOperationResult<bool>.Success(true);
     }
 

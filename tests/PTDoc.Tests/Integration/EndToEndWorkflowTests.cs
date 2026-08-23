@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -18,6 +19,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using PTDoc.Application.AI;
+using PTDoc.Application.Auth;
 using PTDoc.Application.Communication;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
@@ -104,6 +106,12 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         }));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var tokens = JsonSerializer.Deserialize<TokenResponse>(
+            await response.Content.ReadAsStringAsync(), JsonOpts);
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(tokens!.AccessToken);
+        Assert.Equal(
+            $"{username}@example.com",
+            jwt.Claims.Single(claim => claim.Type == "email" || claim.Type == ClaimTypes.Email).Value);
 
         await using var verifyScope = _factory.Services.CreateAsyncScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -113,6 +121,20 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         Assert.DoesNotContain(username, audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("2468", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("token", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("{\"username\":null,\"password\":\"2468\"}")]
+    [InlineData("{\"username\":\" \" ,\"password\":\"2468\"}")]
+    [InlineData("{\"username\":\"staff\",\"password\":null}")]
+    public async Task LegacyTokenLogin_BlankCredentials_ReturnUnauthorized(string payload)
+    {
+        using var client = _factory.CreateUnauthenticatedClient();
+        using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+
+        using var response = await client.PostAsync("/auth/token", content);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]

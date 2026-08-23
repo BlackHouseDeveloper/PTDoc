@@ -232,6 +232,16 @@ public sealed class AppointmentCommunicationProcessor(
             return;
         }
 
+        var currentAppointmentVersion = appointment.LastModifiedUtc == default
+            ? appointment.StartTimeUtc
+            : appointment.LastModifiedUtc;
+        if (currentAppointmentVersion != dispatch.AppointmentVersionUtc)
+        {
+            Suppress(dispatch, "appointment_changed", now);
+            await context.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
         var latestConsentJson = await context.IntakeForms
             .AsNoTracking()
             .Where(item => item.PatientId == appointment.PatientId)

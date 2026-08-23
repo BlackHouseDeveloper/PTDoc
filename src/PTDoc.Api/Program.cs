@@ -233,11 +233,13 @@ builder.Services.AddRateLimiter(options =>
             ? AiRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken)
             : UsesPinAuthenticationRateLimitPolicy(context.HttpContext)
                 ? PinAuthenticationRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken)
-            : UsesMfaAuthenticationRateLimitPolicy(context.HttpContext)
-                ? MfaRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken)
-            : UsesIntakeOtpDeliveryRateLimitPolicy(context.HttpContext)
-                ? IntakeOtpRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken)
-                : PasswordResetRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken));
+                : UsesMfaAuthenticationRateLimitPolicy(context.HttpContext)
+                    ? MfaRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken)
+                    : UsesKioskAuthenticationRateLimitPolicy(context.HttpContext)
+                        ? KioskAuthenticationRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken)
+                        : UsesIntakeOtpDeliveryRateLimitPolicy(context.HttpContext)
+                            ? IntakeOtpRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken)
+                            : PasswordResetRateLimitRejectionWriter.WriteAsync(context.HttpContext, cancellationToken));
 });
 builder.Services.Configure<EntraExternalIdOptions>(builder.Configuration.GetSection(EntraExternalIdOptions.SectionName));
 builder.Services.AddTransient<IClaimsTransformation, EntraExternalIdClaimsTransformation>();
@@ -1253,6 +1255,10 @@ static bool UsesMfaAuthenticationRateLimitPolicy(HttpContext httpContext) =>
 static bool UsesPinAuthenticationRateLimitPolicy(HttpContext httpContext) =>
     httpContext.GetEndpoint()?.Metadata.GetOrderedMetadata<EnableRateLimitingAttribute>()
         .Any(metadata => string.Equals(metadata.PolicyName, "PinAuthentication", StringComparison.Ordinal)) == true;
+
+static bool UsesKioskAuthenticationRateLimitPolicy(HttpContext httpContext) =>
+    httpContext.GetEndpoint()?.Metadata.GetOrderedMetadata<EnableRateLimitingAttribute>()
+        .Any(metadata => string.Equals(metadata.PolicyName, "KioskAuthentication", StringComparison.Ordinal)) == true;
 
 static bool IsValidBetaAccessSeedPin(string? seedPin) =>
     !string.IsNullOrWhiteSpace(seedPin)

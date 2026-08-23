@@ -100,6 +100,7 @@ public class AuthService : IAuthService
                     Status = AuthStatus.PendingApproval,
                     UserId = user.Id,
                     Username = user.Username,
+                    Email = user.Email,
                     Token = string.Empty,
                     ExpiresAt = DateTime.UtcNow,
                     Role = user.Role,
@@ -162,6 +163,7 @@ public class AuthService : IAuthService
                 Status = AuthStatus.RequiresPinChange,
                 UserId = user.Id,
                 Username = user.Username,
+                Email = user.Email,
                 Role = user.Role,
                 ClinicId = user.ClinicId,
                 ChallengeToken = challengeToken
@@ -403,6 +405,7 @@ public class AuthService : IAuthService
         Status = status,
         UserId = user.Id,
         Username = user.Username,
+        Email = user.Email,
         Role = user.Role,
         ClinicId = user.ClinicId,
         ChallengeToken = _mfaAuthenticationService?.CreateChallenge(user.Id, purpose)
@@ -441,6 +444,7 @@ public class AuthService : IAuthService
             Status = AuthStatus.Success,
             UserId = user.Id,
             Username = user.Username,
+            Email = user.Email,
             Token = token,
             ExpiresAt = session.ExpiresAt,
             Role = user.Role,
