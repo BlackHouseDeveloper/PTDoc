@@ -80,6 +80,11 @@ public interface IAuditService
     /// NO PHI — only entity identity, operation identity, status, and timestamps.
     /// </summary>
     Task LogSyncEventAsync(AuditEvent auditEvent, CancellationToken ct = default);
+
+    /// <summary>
+    /// Logs a clinic Settings mutation. Metadata must be identifier- and reason-code-only.
+    /// </summary>
+    Task LogSettingsEventAsync(AuditEvent auditEvent, CancellationToken ct = default);
 }
 
 /// <summary>

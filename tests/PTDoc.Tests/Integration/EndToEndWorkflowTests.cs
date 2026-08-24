@@ -1,10 +1,12 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -17,6 +19,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using PTDoc.Application.AI;
+using PTDoc.Application.Auth;
 using PTDoc.Application.Communication;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
@@ -81,7 +84,12 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         await using (var scope = _factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            db.Users.Add(new User
+            var clinic = new Clinic
+            {
+                Name = "Legacy Login Clinic",
+                Slug = $"legacy-login-{Guid.NewGuid():N}"
+            };
+            db.AddRange(clinic, new User
             {
                 Id = userId,
                 Username = username,
@@ -90,6 +98,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
                 FirstName = "Legacy",
                 LastName = "Login",
                 Role = Roles.PT,
+                ClinicId = clinic.Id,
                 CreatedAt = DateTime.UtcNow,
                 IsActive = true
             });
@@ -103,6 +112,12 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         }));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var tokens = JsonSerializer.Deserialize<TokenResponse>(
+            await response.Content.ReadAsStringAsync(), JsonOpts);
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(tokens!.AccessToken);
+        Assert.Equal(
+            $"{username}@example.com",
+            jwt.Claims.Single(claim => claim.Type == "email" || claim.Type == ClaimTypes.Email).Value);
 
         await using var verifyScope = _factory.Services.CreateAsyncScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -112,6 +127,20 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         Assert.DoesNotContain(username, audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("2468", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("token", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("{\"username\":null,\"password\":\"2468\"}")]
+    [InlineData("{\"username\":\" \" ,\"password\":\"2468\"}")]
+    [InlineData("{\"username\":\"staff\",\"password\":null}")]
+    public async Task LegacyTokenLogin_BlankCredentials_ReturnUnauthorized(string payload)
+    {
+        using var client = _factory.CreateUnauthenticatedClient();
+        using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+
+        using var response = await client.PostAsync("/auth/token", content);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
@@ -139,13 +168,51 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         var auditDb = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         Assert.Equal(auditCountBefore + 1, await auditDb.AuditLogs.CountAsync(log => log.EventType == "LoginFailed"));
         var audit = await auditDb.AuditLogs
-            .Where(log => log.EventType == "LoginFailed" && log.ErrorMessage == "InvalidCredentials")
+            .Where(log => log.EventType == "LoginFailed" && log.ErrorMessage == "UserNotFound")
             .OrderByDescending(log => log.TimestampUtc)
             .FirstAsync();
         Assert.DoesNotContain(username, audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("2468", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("password", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("token", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task LegacyTokenLogin_RequiredStepUp_ReturnsNonSuccessChallenge()
+    {
+        using var client = _factory.CreateUnauthenticatedClient();
+        var username = $"legacy-step-up-{Guid.NewGuid():N}";
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Users.Add(new User
+            {
+                Id = Guid.NewGuid(),
+                Username = username,
+                Email = $"{username}@example.com",
+                PinHash = AuthService.HashPin("24681357"),
+                FirstName = "Legacy",
+                LastName = "StepUp",
+                Role = Roles.PT,
+                CreatedAt = DateTime.UtcNow,
+                IsActive = true,
+                MustChangePin = true
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var response = await client.PostAsync("/auth/token", JsonContent(new
+        {
+            username,
+            password = "24681357"
+        }));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("RequiresPinChange", document.RootElement.GetProperty("status").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(
+            document.RootElement.GetProperty("challengeToken").GetString()));
     }
 
     [Fact]
@@ -2721,6 +2788,12 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
                 })
                 .AddScheme<AuthenticationSchemeOptions, TestRoleAuthHandler>(
                     TestRoleAuthHandler.SchemeName, _ => { });
+
+            // The shared integration factory intentionally runs its DbContext in
+            // system context (no tenant filter). Model the default Static rollout
+            // mode for dynamic capability policies without weakening the production
+            // handler's requirement for a resolved clinic tenant.
+            services.AddScoped<IAuthorizationHandler, TestStaticCapabilityAuthorizationHandler>();
         });
     }
 
@@ -2893,4 +2966,28 @@ file sealed class TestRoleAuthHandler : AuthenticationHandler<AuthenticationSche
         Roles.Patient => new Guid("00000000-0000-0000-0001-000000000008"),
         _ => Guid.NewGuid(),
     };
+}
+
+/// <summary>
+/// Test-only handler for the canonical role decision used while dynamic permissions
+/// are in Static rollout mode. This does not alter the production handler's requirement
+/// for a resolved clinic tenant.
+/// </summary>
+file sealed class TestStaticCapabilityAuthorizationHandler
+    : AuthorizationHandler<DynamicCapabilityRequirement>
+{
+    protected override Task HandleRequirementAsync(
+        AuthorizationHandlerContext context,
+        DynamicCapabilityRequirement requirement)
+    {
+        var role = context.User.FindFirst(ClaimTypes.Role)?.Value;
+        if (context.User.Identity?.IsAuthenticated == true &&
+            !string.IsNullOrWhiteSpace(role) &&
+            requirement.StaticAllowedRoles.Contains(role))
+        {
+            context.Succeed(requirement);
+        }
+
+        return Task.CompletedTask;
+    }
 }

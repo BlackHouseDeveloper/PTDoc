@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using PTDoc.Application.Auth;
+using PTDoc.Core.Models;
+using System.Security.Claims;
 
 namespace PTDoc.Application.Services;
 
@@ -92,8 +94,14 @@ public static class AuthorizationPolicies
     /// <summary>Billing access — charge review, CPT/ICD edits, ERA/EOB — Billing role only.</summary>
     public const string BillingAccess = "BillingAccess";
 
-    /// <summary>Scheduling access — full scheduling management — PT, PTA, FrontDesk, Admin, PracticeManager.</summary>
+    /// <summary>Read scheduling workspaces and appointment calendars.</summary>
     public const string SchedulingAccess = "SchedulingAccess";
+
+    /// <summary>Create appointments using the clinic-scoped capability matrix.</summary>
+    public const string AppointmentsCreate = "AppointmentsCreate";
+
+    /// <summary>Modify, reschedule, or check in appointments using the clinic-scoped capability matrix.</summary>
+    public const string AppointmentsModify = "AppointmentsModify";
 
     /// <summary>Co-sign clinical notes — PT role only (countersigns PTA-authored notes).</summary>
     public const string NoteCoSign = "NoteCoSign";
@@ -108,6 +116,15 @@ public static class AuthorizationPolicies
     public const string InsurancePolicyWrite = "InsurancePolicyWrite";
     public const string NoteTemplateDraftManage = "NoteTemplateDraftManage";
     public const string NoteTemplateClinicalPublish = "NoteTemplateClinicalPublish";
+
+    /// <summary>Read clinic Settings — Admin and Owner.</summary>
+    public const string SettingsRead = "SettingsRead";
+
+    /// <summary>Mutate clinic Settings — recovery Administrator only; Owner remains read-only.</summary>
+    public const string SettingsWrite = "SettingsWrite";
+
+    /// <summary>Mutate role permissions — requires the dedicated role-administration capability.</summary>
+    public const string RolesPermissionsWrite = "RolesPermissionsWrite";
 
     /// <summary>
     /// Registers all PTDoc RBAC policies on <paramref name="options"/>.
@@ -182,10 +199,24 @@ public static class AuthorizationPolicies
         options.AddPolicy(BillingAccess,
             p => p.RequireRole(Roles.Billing, Roles.Admin, Roles.Owner));
 
-        // SchedulingAccess: scheduling management — clinical staff (PT, PTA, Admin, Owner), front desk, practice manager
+        // SchedulingAccess: schedule viewing — clinical staff (PT, PTA, Admin, Owner), front desk, practice manager
         options.AddPolicy(SchedulingAccess,
-            p => p.RequireRole(Roles.PT, Roles.PTA, Roles.FrontDesk, Roles.Admin,
-                               Roles.Owner, Roles.PracticeManager));
+            p => p.Requirements.Add(new DynamicCapabilityRequirement(
+                [CapabilityKey.ScheduleViewOwn, CapabilityKey.ScheduleViewAll],
+                PermissionLevel.View,
+                [Roles.PT, Roles.PTA, Roles.FrontDesk, Roles.Admin, Roles.Owner, Roles.PracticeManager])));
+
+        options.AddPolicy(AppointmentsCreate,
+            p => p.Requirements.Add(new DynamicCapabilityRequirement(
+                [CapabilityKey.AppointmentsCreate],
+                PermissionLevel.Edit,
+                [Roles.PT, Roles.PTA, Roles.FrontDesk, Roles.Admin, Roles.PracticeManager])));
+
+        options.AddPolicy(AppointmentsModify,
+            p => p.Requirements.Add(new DynamicCapabilityRequirement(
+                [CapabilityKey.AppointmentsModify],
+                PermissionLevel.Edit,
+                [Roles.PT, Roles.PTA, Roles.FrontDesk, Roles.Admin, Roles.PracticeManager])));
 
         // NoteCoSign: PT-only endpoint for countersigning PTA-authored notes
         options.AddPolicy(NoteCoSign,
@@ -212,5 +243,64 @@ public static class AuthorizationPolicies
             p => p.RequireRole(Roles.Admin, Roles.Owner));
         options.AddPolicy(NoteTemplateClinicalPublish,
             p => p.RequireRole(Roles.PT));
+
+        options.AddPolicy(SettingsRead,
+            p => p.Requirements.Add(new DynamicCapabilityRequirement(
+                [CapabilityKey.ClinicSettingsManage],
+                PermissionLevel.View,
+                [Roles.Admin, Roles.Owner])));
+
+        options.AddPolicy(SettingsWrite,
+            p => p.Requirements.Add(new DynamicCapabilityRequirement(
+                [CapabilityKey.ClinicSettingsManage],
+                PermissionLevel.Full,
+                [Roles.Admin])));
+
+        options.AddPolicy(RolesPermissionsWrite,
+            p => p.Requirements.Add(new DynamicCapabilityRequirement(
+                [CapabilityKey.RolesPermissionsManage],
+                PermissionLevel.Full,
+                [Roles.Admin])));
+    }
+}
+
+public sealed class DynamicCapabilityRequirement : IAuthorizationRequirement
+{
+    public DynamicCapabilityRequirement(
+        IReadOnlyList<CapabilityKey> capabilityKeys,
+        PermissionLevel requiredLevel,
+        IEnumerable<string> staticAllowedRoles)
+    {
+        CapabilityKeys = capabilityKeys;
+        RequiredLevel = requiredLevel;
+        StaticAllowedRoles = new HashSet<string>(staticAllowedRoles, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public IReadOnlyList<CapabilityKey> CapabilityKeys { get; }
+    public PermissionLevel RequiredLevel { get; }
+    public IReadOnlySet<string> StaticAllowedRoles { get; }
+}
+
+/// <summary>
+/// Preserves the canonical static role decision for presentation hosts that cannot
+/// evaluate clinic permissions locally. Register this handler in Web and MAUI only;
+/// the API must use its tenant-aware dynamic capability handler for enforcement.
+/// </summary>
+public sealed class ClientStaticCapabilityAuthorizationHandler
+    : AuthorizationHandler<DynamicCapabilityRequirement>
+{
+    protected override Task HandleRequirementAsync(
+        AuthorizationHandlerContext context,
+        DynamicCapabilityRequirement requirement)
+    {
+        var role = context.User.FindFirst(ClaimTypes.Role)?.Value;
+        if (context.User.Identity?.IsAuthenticated == true
+            && !string.IsNullOrWhiteSpace(role)
+            && requirement.StaticAllowedRoles.Contains(role))
+        {
+            context.Succeed(requirement);
+        }
+
+        return Task.CompletedTask;
     }
 }

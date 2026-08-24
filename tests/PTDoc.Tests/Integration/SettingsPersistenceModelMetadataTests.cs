@@ -15,6 +15,20 @@ namespace PTDoc.Tests.Integration;
 [Trait("Category", "CoreCi")]
 public sealed class SettingsPersistenceModelMetadataTests
 {
+    [Fact]
+    public void AuthorizedOverlap_IsAlwaysWrittenByEfWhileRetainingDatabaseDefault()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite("Data Source=:memory:", sqlite => sqlite.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"))
+            .Options;
+        using var context = new ApplicationDbContext(options);
+        var property = context.Model.FindEntityType(typeof(Appointment))!
+            .FindProperty(nameof(Appointment.AuthorizedOverlap))!;
+
+        Assert.Equal(ValueGenerated.Never, property.ValueGenerated);
+        Assert.Equal(false, property.GetDefaultValue());
+    }
+
     private const string PreviousSettingsMigration = "20260809010000_AddClinicalVisitOrdinal";
 
     public static TheoryData<string, string> ProviderMigrations => new()

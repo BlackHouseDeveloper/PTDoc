@@ -41,9 +41,14 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected bool showPasswordResetConfirmation;
     protected bool isDarkTheme;
     protected readonly Dictionary<string, string> loginFieldErrors = new(StringComparer.Ordinal);
+    protected string authenticationStepValue = string.Empty;
+    protected string authenticationStepConfirmation = string.Empty;
+    protected bool useRecoveryCode;
     protected int forgotPasswordFormKey;
     protected int signUpFormKey;
     protected bool supportsExternalIdentityLogin => UserService.SupportsExternalIdentityLogin;
+    protected IAuthenticationStepUserService? authenticationStepUserService => UserService as IAuthenticationStepUserService;
+    protected AuthenticationStepState? pendingAuthenticationStep => authenticationStepUserService?.PendingAuthenticationStep;
     protected string AuthPageTitle => authMode switch
     {
         AuthMode.SignUp => "Sign Up",
@@ -199,9 +204,9 @@ public abstract class LoginBase : ComponentBase, IDisposable
         {
             loginFieldErrors[nameof(loginModel.Pin)] = "PIN is required.";
         }
-        else if (pin.Length != 4 || pin.Any(static ch => !char.IsDigit(ch)))
+        else if (!IsSupportedLoginPin(pin))
         {
-            loginFieldErrors[nameof(loginModel.Pin)] = "PIN must be 4 digits.";
+            loginFieldErrors[nameof(loginModel.Pin)] = "PIN must be 4 digits or 8 to 12 digits.";
         }
 
         if (loginFieldErrors.Count > 0)
@@ -215,7 +220,29 @@ public abstract class LoginBase : ComponentBase, IDisposable
 
         try
         {
-            await JS.InvokeVoidAsync("ptdocAuth.submitLogin", username, pin, LoginReturnUrl);
+            var success = await UserService.LoginAsync(username, pin, LoginReturnUrl);
+            if (pendingAuthenticationStep is not null)
+            {
+                authenticationStepValue = string.Empty;
+                authenticationStepConfirmation = string.Empty;
+                useRecoveryCode = false;
+                isLoading = false;
+                StateHasChanged();
+                return;
+            }
+
+            if (!success)
+            {
+                errorMessage = "Invalid credentials. Please try again.";
+                isLoading = false;
+                StateHasChanged();
+                return;
+            }
+
+            if (UserService.IsAuthenticated)
+            {
+                Navigation.NavigateTo(returnUrl, forceLoad: false);
+            }
         }
         catch (JSDisconnectedException)
         {
@@ -226,6 +253,124 @@ public abstract class LoginBase : ComponentBase, IDisposable
             Logger.LogWarning(ex, "Login form helper failed.");
             errorMessage = "Unable to submit login right now. Please try again.";
             isLoading = false;
+        }
+    }
+
+    protected async Task CompleteRequiredPinChangeAsync()
+    {
+        if (authenticationStepUserService is null || pendingAuthenticationStep is null)
+        {
+            return;
+        }
+
+        var minimum = Math.Clamp(pendingAuthenticationStep.MinimumPinLength, 8, 12);
+        if (authenticationStepValue.Length < minimum
+            || authenticationStepValue.Length > 12
+            || authenticationStepValue.Any(character => !char.IsDigit(character))
+            || !string.Equals(authenticationStepValue, authenticationStepConfirmation, StringComparison.Ordinal))
+        {
+            errorMessage = $"PIN must contain {minimum} to 12 numeric digits, and both entries must match.";
+            return;
+        }
+
+        await CompleteAuthenticationStepAsync(
+            cancellationToken => authenticationStepUserService.CompleteRequiredPinChangeAsync(
+                authenticationStepValue,
+                cancellationToken));
+    }
+
+    protected async Task VerifyAuthenticatorEnrollmentAsync()
+    {
+        if (authenticationStepUserService is null)
+        {
+            return;
+        }
+
+        await CompleteAuthenticationStepAsync(
+            cancellationToken => authenticationStepUserService.VerifyAuthenticatorEnrollmentAsync(
+                authenticationStepValue,
+                cancellationToken));
+    }
+
+    protected async Task VerifyMfaAsync()
+    {
+        if (authenticationStepUserService is null)
+        {
+            return;
+        }
+
+        await CompleteAuthenticationStepAsync(
+            cancellationToken => authenticationStepUserService.VerifyMfaAsync(
+                authenticationStepValue,
+                useRecoveryCode,
+                cancellationToken));
+    }
+
+    protected async Task CompleteAuthenticatorEnrollmentAsync()
+    {
+        if (authenticationStepUserService is null)
+        {
+            return;
+        }
+
+        await CompleteAuthenticationStepAsync(
+            authenticationStepUserService.CompleteAuthenticatorEnrollmentAsync);
+    }
+
+    protected void ToggleMfaVerificationMethod()
+    {
+        useRecoveryCode = !useRecoveryCode;
+        authenticationStepValue = string.Empty;
+        errorMessage = null;
+    }
+
+    protected void CancelAuthenticationStep()
+    {
+        authenticationStepUserService?.CancelAuthenticationStep();
+        authenticationStepValue = string.Empty;
+        authenticationStepConfirmation = string.Empty;
+        useRecoveryCode = false;
+        errorMessage = null;
+        isLoading = false;
+    }
+
+    protected static string? BuildAuthenticatorQrDataUri(string? qrSvg) =>
+        string.IsNullOrWhiteSpace(qrSvg)
+            ? null
+            : $"data:image/svg+xml;base64,{Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(qrSvg))}";
+
+    private async Task CompleteAuthenticationStepAsync(
+        Func<CancellationToken, Task<AuthenticationStepCompletionResult>> operation)
+    {
+        errorMessage = null;
+        isLoading = true;
+        StateHasChanged();
+        try
+        {
+            var result = await operation(CancellationToken.None);
+            if (!result.Succeeded)
+            {
+                errorMessage = result.ErrorMessage ?? "The authentication step could not be completed.";
+            }
+            else
+            {
+                authenticationStepValue = string.Empty;
+                authenticationStepConfirmation = string.Empty;
+                if (UserService.IsAuthenticated)
+                {
+                    Navigation.NavigateTo(returnUrl, forceLoad: false);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Authentication step failed");
+            errorMessage = "The authentication step could not be completed right now.";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
         }
     }
 
@@ -312,9 +457,9 @@ public abstract class LoginBase : ComponentBase, IDisposable
             return;
         }
 
-        if (loginModel.Pin.Length != 4 || loginModel.Pin.Any(static ch => !char.IsDigit(ch)))
+        if (!IsSupportedLoginPin(loginModel.Pin))
         {
-            errorMessage = "PIN must be 4 digits.";
+            errorMessage = "PIN must be 4 digits or 8 to 12 digits.";
             isLoading = false;
             StateHasChanged();
             return;
@@ -391,7 +536,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
                 errorMessage = result.Status switch
                 {
                     RegistrationStatus.EmailAlreadyExists => "An account with that email already exists.",
-                    RegistrationStatus.InvalidPin => "PIN must be exactly 4 digits.",
+                    RegistrationStatus.InvalidPin => result.Error ?? "PIN must contain 8 to 12 numeric digits.",
                     RegistrationStatus.InvalidLicenseData => "License information is required for PT/PTA roles.",
                     RegistrationStatus.ClinicNotFound => "Selected clinic is invalid.",
                     RegistrationStatus.ValidationFailed => result.Error ?? "Please complete the required registration fields.",
@@ -641,7 +786,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
             }
             else if (string.Equals(code, "pinFormat", StringComparison.OrdinalIgnoreCase))
             {
-                loginFieldErrors[nameof(loginModel.Pin)] = "PIN must be 4 digits.";
+                loginFieldErrors[nameof(loginModel.Pin)] = "PIN must be 4 digits or 8 to 12 digits.";
             }
         }
     }
@@ -740,7 +885,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
                 },
                 RegistrationStatus.InvalidPin => new Dictionary<string, string[]>
                 {
-                    [nameof(signUpModel.Pin)] = ["PIN must be exactly 4 digits."]
+                    [nameof(signUpModel.Pin)] = [result.Error ?? "PIN must contain 8 to 12 numeric digits."]
                 },
                 RegistrationStatus.ClinicNotFound => new Dictionary<string, string[]>
                 {
@@ -810,13 +955,17 @@ public abstract class LoginBase : ComponentBase, IDisposable
         }
     }
 
+    private static bool IsSupportedLoginPin(string pin) =>
+        (pin.Length == 4 || pin.Length is >= 8 and <= 12) &&
+        pin.All(static ch => char.IsDigit(ch));
+
     protected sealed class LoginModel
     {
         public string Username { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "PIN is required")]
-        [StringLength(4, MinimumLength = 4, ErrorMessage = "PIN must be 4 digits")]
-        [RegularExpression(@"^\d{4}$", ErrorMessage = "PIN must be 4 digits")]
+        [StringLength(12, MinimumLength = 4, ErrorMessage = "PIN must be 4 digits or 8 to 12 digits")]
+        [RegularExpression(@"^(?:\d{4}|\d{8,12})$", ErrorMessage = "PIN must be 4 digits or 8 to 12 digits")]
         public string Pin { get; set; } = string.Empty;
     }
 
@@ -840,13 +989,13 @@ public abstract class LoginBase : ComponentBase, IDisposable
         public Guid? ClinicId { get; set; }
 
         [Required(ErrorMessage = "PIN is required")]
-        [StringLength(4, MinimumLength = 4, ErrorMessage = "PIN must be 4 digits")]
-        [RegularExpression(@"^\d{4}$", ErrorMessage = "PIN must be 4 digits")]
+        [StringLength(12, MinimumLength = 8, ErrorMessage = "PIN must contain 8 to 12 digits")]
+        [RegularExpression(@"^\d{8,12}$", ErrorMessage = "PIN must contain 8 to 12 numeric digits")]
         public string Pin { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "Confirm PIN is required")]
-        [StringLength(4, MinimumLength = 4, ErrorMessage = "PIN must be 4 digits")]
-        [RegularExpression(@"^\d{4}$", ErrorMessage = "PIN must be 4 digits")]
+        [StringLength(12, MinimumLength = 8, ErrorMessage = "PIN must contain 8 to 12 digits")]
+        [RegularExpression(@"^\d{8,12}$", ErrorMessage = "PIN must contain 8 to 12 numeric digits")]
         public string ConfirmPin { get; set; } = string.Empty;
 
         public string LicenseNumber { get; set; } = string.Empty;

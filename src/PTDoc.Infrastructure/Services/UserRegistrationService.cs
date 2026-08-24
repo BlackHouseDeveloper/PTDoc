@@ -46,13 +46,6 @@ public sealed class UserRegistrationService : IUserRegistrationService
 
     public async Task<RegistrationResult> RegisterAsync(UserRegistrationRequest request, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(request.Pin)
-            || request.Pin.Length != 4
-            || request.Pin.Any(static ch => !char.IsDigit(ch)))
-        {
-            return new RegistrationResult(RegistrationStatus.InvalidPin, null, "PIN must be 4 digits.");
-        }
-
         if (request.ClinicId is null || request.ClinicId == Guid.Empty)
         {
             return new RegistrationResult(RegistrationStatus.ClinicNotFound, null, "Clinic is required.");
@@ -64,6 +57,26 @@ public sealed class UserRegistrationService : IUserRegistrationService
         if (!clinicExists)
         {
             return new RegistrationResult(RegistrationStatus.ClinicNotFound, null, "Selected clinic was not found.");
+        }
+
+        var securityPolicy = await dbContext.ClinicSecurityPolicies
+            .Where(policy => policy.ClinicId == request.ClinicId.Value)
+            .Select(policy => new
+            {
+                policy.MinimumPinLength,
+                policy.RequirePinChangeOnFirstLogin
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+        var minimumPinLength = securityPolicy?.MinimumPinLength ?? 8;
+        if (string.IsNullOrWhiteSpace(request.Pin)
+            || request.Pin.Length < minimumPinLength
+            || request.Pin.Length > 12
+            || request.Pin.Any(static ch => !char.IsDigit(ch)))
+        {
+            return new RegistrationResult(
+                RegistrationStatus.InvalidPin,
+                null,
+                $"PIN must be {minimumPinLength} to 12 digits.");
         }
 
         var normalizedRole = request.RoleKey?.Trim() ?? string.Empty;
@@ -115,6 +128,7 @@ public sealed class UserRegistrationService : IUserRegistrationService
         }
 
         var (firstName, lastName) = SplitName(request.FullName);
+        var requirePinChangeOnFirstLogin = securityPolicy?.RequirePinChangeOnFirstLogin ?? true;
 
         var user = new User
         {
@@ -125,6 +139,8 @@ public sealed class UserRegistrationService : IUserRegistrationService
             Email = normalizedEmail,
             DateOfBirth = request.DateOfBirth.Date,
             PinHash = AuthService.HashPin(request.Pin),
+            MustChangePin = requirePinChangeOnFirstLogin,
+            PinChangedAtUtc = DateTime.UtcNow,
             Role = normalizedRole,
             ClinicId = request.ClinicId,
             LicenseNumber = RequiresLicense(normalizedRole) ? request.LicenseNumber?.Trim() : null,

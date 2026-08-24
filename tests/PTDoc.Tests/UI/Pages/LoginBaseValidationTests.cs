@@ -9,6 +9,53 @@ namespace PTDoc.Tests.UI.Pages;
 public sealed class LoginBaseValidationTests
 {
     [Theory]
+    [InlineData("1234", true)]
+    [InlineData("12345678", true)]
+    [InlineData("123456789012", true)]
+    [InlineData("12345", false)]
+    [InlineData("1234567", false)]
+    [InlineData("1234567890123", false)]
+    [InlineData("1234abcd", false)]
+    public void LoginModel_AcceptsLegacyOrCompliantNumericPin(string pin, bool expectedValid)
+    {
+        var loginModelType = typeof(LoginBase).GetNestedType("LoginModel", BindingFlags.NonPublic);
+        Assert.NotNull(loginModelType);
+        var loginModel = Activator.CreateInstance(loginModelType!);
+        Assert.NotNull(loginModel);
+        loginModelType!.GetProperty("Username")!.SetValue(loginModel, "casey");
+        loginModelType.GetProperty("Pin")!.SetValue(loginModel, pin);
+
+        var results = new List<ValidationResult>();
+        var isValid = Validator.TryValidateObject(
+            loginModel!,
+            new ValidationContext(loginModel!),
+            results,
+            validateAllProperties: true);
+
+        Assert.Equal(expectedValid, isValid);
+    }
+
+    [Fact]
+    public void SignUpModel_RejectsLegacyFourDigitPin()
+    {
+        var signUpModelType = typeof(LoginBase).GetNestedType("SignUpModel", BindingFlags.NonPublic);
+        Assert.NotNull(signUpModelType);
+        var signUpModel = Activator.CreateInstance(signUpModelType!);
+        Assert.NotNull(signUpModel);
+        signUpModelType!.GetProperty("Pin")!.SetValue(signUpModel, "1234");
+        signUpModelType.GetProperty("ConfirmPin")!.SetValue(signUpModel, "1234");
+
+        var results = new List<ValidationResult>();
+        Validator.TryValidateObject(
+            signUpModel!,
+            new ValidationContext(signUpModel!),
+            results,
+            validateAllProperties: true);
+
+        Assert.Contains(results, result => result.MemberNames.Contains("Pin", StringComparer.Ordinal));
+    }
+
+    [Theory]
     [InlineData("email", "", "Email address is required.")]
     [InlineData("email", "not-an-email", "Enter a valid email address.")]
     [InlineData("sms", "", "Mobile number is required.")]
@@ -56,8 +103,8 @@ public sealed class LoginBaseValidationTests
         signUpModelType.GetProperty("Email")!.SetValue(signUpModel, "casey@example.com");
         signUpModelType.GetProperty("RoleKey")!.SetValue(signUpModel, roleKey);
         signUpModelType.GetProperty("ClinicId")!.SetValue(signUpModel, Guid.NewGuid());
-        signUpModelType.GetProperty("Pin")!.SetValue(signUpModel, "1234");
-        signUpModelType.GetProperty("ConfirmPin")!.SetValue(signUpModel, "1234");
+        signUpModelType.GetProperty("Pin")!.SetValue(signUpModel, "12345678");
+        signUpModelType.GetProperty("ConfirmPin")!.SetValue(signUpModel, "12345678");
         signUpModelType.GetProperty("LicenseNumber")!.SetValue(signUpModel, string.Empty);
         signUpModelType.GetProperty("LicenseState")!.SetValue(signUpModel, string.Empty);
 

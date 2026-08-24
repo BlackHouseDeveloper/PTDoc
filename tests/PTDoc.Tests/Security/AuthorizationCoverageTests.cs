@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using PTDoc.Application.Services;
+using PTDoc.Core.Models;
 using Xunit;
 
 namespace PTDoc.Tests.Security;
@@ -66,6 +67,45 @@ public class AuthorizationCoverageTests
                 "which is not registered by AddPTDocAuthorizationPolicies(). " +
                 "Correct the policy name or add it to the registration.");
         }
+    }
+
+    [Fact]
+    public void AppointmentWritePolicies_RequireTheirMutationCapabilitiesAndExcludeAideBaseline()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddAuthorizationCore(options => options.AddPTDocAuthorizationPolicies());
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AuthorizationOptions>>().Value;
+
+        var create = Assert.Single(options.GetPolicy(AuthorizationPolicies.AppointmentsCreate)!
+            .Requirements.OfType<DynamicCapabilityRequirement>());
+        var modify = Assert.Single(options.GetPolicy(AuthorizationPolicies.AppointmentsModify)!
+            .Requirements.OfType<DynamicCapabilityRequirement>());
+
+        Assert.Equal(CapabilityKey.AppointmentsCreate, Assert.Single(create.CapabilityKeys));
+        Assert.Equal(CapabilityKey.AppointmentsModify, Assert.Single(modify.CapabilityKeys));
+        Assert.Equal(PermissionLevel.Edit, create.RequiredLevel);
+        Assert.Equal(PermissionLevel.Edit, modify.RequiredLevel);
+        Assert.DoesNotContain(Roles.Aide, create.StaticAllowedRoles);
+        Assert.DoesNotContain(Roles.Aide, modify.StaticAllowedRoles);
+    }
+
+    [Fact]
+    public void RolePermissionWritePolicy_RequiresDedicatedFullCapability()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddAuthorizationCore(options => options.AddPTDocAuthorizationPolicies());
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AuthorizationOptions>>().Value;
+
+        var requirement = Assert.Single(options.GetPolicy(AuthorizationPolicies.RolesPermissionsWrite)!
+            .Requirements.OfType<DynamicCapabilityRequirement>());
+
+        Assert.Equal(CapabilityKey.RolesPermissionsManage, Assert.Single(requirement.CapabilityKeys));
+        Assert.Equal(PermissionLevel.Full, requirement.RequiredLevel);
+        Assert.Equal(Roles.Admin, Assert.Single(requirement.StaticAllowedRoles));
     }
 
     /// <summary>
@@ -347,8 +387,14 @@ public class AuthorizationCoverageTests
         new("GET", "/api/v1/navigation/badges", AuthorizationPolicies.PatientRead),
 
         // ── Appointments (Appointments/AppointmentEndpoints.cs) ──────────────
-        new("PATCH", "/api/v1/appointments/{id:guid}/appointment-type", AuthorizationPolicies.SchedulingAccess),
-        new("POST", "/api/v1/appointments/{id:guid}/check-in-payment", AuthorizationPolicies.SchedulingAccess),
+        new("GET", "/api/v1/appointments/", AuthorizationPolicies.SchedulingAccess),
+        new("GET", "/api/v1/appointments/by-patient/{patientId:guid}", AuthorizationPolicies.SchedulingAccess),
+        new("GET", "/api/v1/appointments/clinicians", AuthorizationPolicies.SchedulingAccess),
+        new("POST", "/api/v1/appointments/", AuthorizationPolicies.AppointmentsCreate),
+        new("PUT", "/api/v1/appointments/{id:guid}", AuthorizationPolicies.AppointmentsModify),
+        new("PATCH", "/api/v1/appointments/{id:guid}/appointment-type", AuthorizationPolicies.AppointmentsModify),
+        new("POST", "/api/v1/appointments/{id:guid}/check-in", AuthorizationPolicies.AppointmentsModify),
+        new("POST", "/api/v1/appointments/{id:guid}/check-in-payment", AuthorizationPolicies.AppointmentsModify),
 
         // ── Diagnostics (Diagnostics/DiagnosticsEndpoints.cs) ─────────────────
         new("GET", "/diagnostics/db", AuthorizationPolicies.AdminOnly),

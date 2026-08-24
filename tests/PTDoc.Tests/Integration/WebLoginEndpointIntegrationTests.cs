@@ -151,6 +151,157 @@ public sealed class WebLoginEndpointIntegrationTests
     }
 
     [Fact]
+    public async Task AuthLogin_AcceptsCompliantPinAndForwardsTrustedClientAddress()
+    {
+        var recordingFactory = new RecordingHttpClientFactory(request =>
+        {
+            Assert.Equal("203.0.113.45", Assert.Single(request.Headers.GetValues("X-Forwarded-For")));
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new
+                {
+                    Status = AuthStatus.Success.ToString(),
+                    UserId = Guid.NewGuid(),
+                    Username = "alice",
+                    Token = "token",
+                    ExpiresAt = DateTime.UtcNow.AddHours(1),
+                    Role = Roles.PT
+                })
+            };
+        });
+
+        await using var factory = new PTDocWebFactory(
+            recordingFactory,
+            new Dictionary<string, string?>
+            {
+                ["ForwardedHeaders:KnownNetworks:0"] = "0.0.0.0/0",
+                ["ForwardedHeaders:KnownNetworks:1"] = "::/0"
+            });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/auth/login")
+        {
+            Content = new FormUrlEncodedContent(new Dictionary<string, string?>
+            {
+                ["username"] = "alice",
+                ["pin"] = "12345678",
+                ["returnUrl"] = "/"
+            })
+        };
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", "203.0.113.45");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/", response.Headers.Location?.OriginalString);
+    }
+
+    [Fact]
+    public async Task AuthLogin_PinChangeStepUp_RendersContinuationWithoutIssuingCookie()
+    {
+        var recordingFactory = new RecordingHttpClientFactory(_ =>
+            new HttpResponseMessage(HttpStatusCode.Accepted)
+            {
+                Content = JsonContent.Create(new
+                {
+                    Status = AuthStatus.RequiresPinChange.ToString(),
+                    ChallengeToken = "pin-change-challenge",
+                    MinimumPinLength = 9
+                })
+            });
+
+        await using var factory = new PTDocWebFactory(recordingFactory);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
+
+        using var response = await client.PostAsync("/auth/login", new FormUrlEncodedContent(new Dictionary<string, string?>
+        {
+            ["username"] = "alice",
+            ["pin"] = "12345678",
+            ["returnUrl"] = "/patients"
+        }));
+        var html = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("action=\"/auth/pin-change\"", html, StringComparison.Ordinal);
+        Assert.Contains("minlength=\"9\"", html, StringComparison.Ordinal);
+        Assert.Contains("pin-change-challenge", html, StringComparison.Ordinal);
+        Assert.DoesNotContain(response.Headers, header => header.Key == "Set-Cookie");
+    }
+
+    [Fact]
+    public async Task AuthLogin_MfaVerification_CompletesBeforeIssuingCookie()
+    {
+        var requestCount = 0;
+        var recordingFactory = new RecordingHttpClientFactory(request =>
+        {
+            requestCount++;
+            return request.RequestUri?.AbsolutePath switch
+            {
+                "/api/v1/auth/pin-login" => new HttpResponseMessage(HttpStatusCode.Accepted)
+                {
+                    Content = JsonContent.Create(new
+                    {
+                        Status = AuthStatus.RequiresMfaVerification.ToString(),
+                        ChallengeToken = "mfa-challenge"
+                    })
+                },
+                "/api/v1/auth/mfa/verify" => new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new { Succeeded = true, CompletionToken = "completion-token" })
+                },
+                "/api/v1/auth/complete" => new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new
+                    {
+                        Status = AuthStatus.Success.ToString(),
+                        UserId = Guid.NewGuid(),
+                        Username = "alice",
+                        Token = "token",
+                        ExpiresAt = DateTime.UtcNow.AddHours(1),
+                        Role = Roles.PT
+                    })
+                },
+                _ => throw new InvalidOperationException($"Unexpected auth request: {request.RequestUri}")
+            };
+        });
+
+        await using var factory = new PTDocWebFactory(recordingFactory);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
+
+        using var loginResponse = await client.PostAsync("/auth/login", new FormUrlEncodedContent(new Dictionary<string, string?>
+        {
+            ["username"] = "alice",
+            ["pin"] = "12345678",
+            ["returnUrl"] = "/patients"
+        }));
+        Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
+        Assert.DoesNotContain(loginResponse.Headers, header => header.Key == "Set-Cookie");
+
+        using var verifyResponse = await client.PostAsync("/auth/mfa/verify", new FormUrlEncodedContent(new Dictionary<string, string?>
+        {
+            ["challengeToken"] = "mfa-challenge",
+            ["code"] = "123456",
+            ["returnUrl"] = "/patients"
+        }));
+
+        Assert.Equal(HttpStatusCode.Redirect, verifyResponse.StatusCode);
+        Assert.Equal("/patients", verifyResponse.Headers.Location?.OriginalString);
+        Assert.Contains(verifyResponse.Headers, header => header.Key == "Set-Cookie");
+        Assert.Equal(3, requestCount);
+    }
+
+    [Fact]
     public async Task AuthLogin_PendingApproval_RedirectsToPendingApprovalNotice()
     {
         var recordingFactory = new RecordingHttpClientFactory(_ =>

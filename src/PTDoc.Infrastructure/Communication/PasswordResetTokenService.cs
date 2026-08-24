@@ -27,11 +27,6 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (!IsValidPin(request.NewPin))
-        {
-            return Failure(PasswordResetCompletionStatus.InvalidPin, "PIN must be exactly 4 digits.");
-        }
-
         if (!IsSafeTokenInput(request.Token))
         {
             return Failure(PasswordResetCompletionStatus.InvalidToken, "The reset link is invalid or expired.");
@@ -56,6 +51,7 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
                         .Select(resetToken => new
                         {
                             resetToken.UserId,
+                            ClinicId = resetToken.User == null ? null : resetToken.User.ClinicId,
                             resetToken.UsedAtUtc,
                             resetToken.RevokedAtUtc,
                             resetToken.ExpiresAtUtc
@@ -89,6 +85,16 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
                         return Failure(PasswordResetCompletionStatus.Expired, "The reset link is invalid or expired.");
                     }
 
+                    var minimumPinLength = await GetMinimumPinLengthAsync(
+                        tokenMetadata.ClinicId, cancellationToken);
+                    if (!IsValidPin(request.NewPin, minimumPinLength))
+                    {
+                        return Failure(
+                            PasswordResetCompletionStatus.InvalidPin,
+                            $"PIN must be {minimumPinLength} to 12 digits.",
+                            minimumPinLength);
+                    }
+
                     var claimed = await _db.PasswordResetTokens
                         .Where(resetToken =>
                             resetToken.TokenHash == tokenHash &&
@@ -107,7 +113,11 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
                     var userUpdated = await _db.Users
                         .Where(user => user.Id == tokenMetadata.UserId)
                         .ExecuteUpdateAsync(
-                            setters => setters.SetProperty(user => user.PinHash, AuthService.HashPin(request.NewPin)),
+                            setters => setters
+                                .SetProperty(user => user.PinHash, AuthService.HashPin(request.NewPin))
+                                .SetProperty(user => user.MustChangePin, false)
+                                .SetProperty(user => user.PinChangedAtUtc, DateTime.UtcNow)
+                                .SetProperty(user => user.LegacyPinGraceEndsAtUtc, (DateTime?)null),
                             cancellationToken);
                     if (userUpdated != 1)
                     {
@@ -144,7 +154,20 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
                 return Failure(PasswordResetCompletionStatus.Expired, "The reset link is invalid or expired.");
             }
 
+            var minimumPinLength = await GetMinimumPinLengthAsync(
+                token.User.ClinicId, cancellationToken);
+            if (!IsValidPin(request.NewPin, minimumPinLength))
+            {
+                return Failure(
+                    PasswordResetCompletionStatus.InvalidPin,
+                    $"PIN must be {minimumPinLength} to 12 digits.",
+                    minimumPinLength);
+            }
+
             token.User.PinHash = AuthService.HashPin(request.NewPin);
+            token.User.MustChangePin = false;
+            token.User.PinChangedAtUtc = DateTime.UtcNow;
+            token.User.LegacyPinGraceEndsAtUtc = null;
             token.UsedAtUtc = now;
             await _db.SaveChangesAsync(cancellationToken);
 
@@ -172,16 +195,30 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
         {
             var tokenHash = CommunicationText.HashToken(request.Token);
             var now = DateTimeOffset.UtcNow;
-            var exists = await _db.PasswordResetTokens
+            var tokenMetadata = await _db.PasswordResetTokens
                 .AsNoTracking()
-                .AnyAsync(resetToken =>
-                    resetToken.TokenHash == tokenHash &&
-                    resetToken.UsedAtUtc == null &&
-                    resetToken.RevokedAtUtc == null &&
-                    resetToken.ExpiresAtUtc > now,
-                    cancellationToken);
+                .Where(resetToken =>
+                    resetToken.TokenHash == tokenHash
+                    && resetToken.UsedAtUtc == null
+                    && resetToken.RevokedAtUtc == null
+                    && resetToken.ExpiresAtUtc > now
+                    && resetToken.User != null)
+                .Select(resetToken => new
+                {
+                    resetToken.User!.ClinicId
+                })
+                .FirstOrDefaultAsync(cancellationToken);
 
-            return new PasswordResetTokenValidationResult { IsValid = exists };
+            if (tokenMetadata is null)
+            {
+                return new PasswordResetTokenValidationResult { IsValid = false };
+            }
+
+            return new PasswordResetTokenValidationResult
+            {
+                IsValid = true,
+                MinimumPinLength = await GetMinimumPinLengthAsync(tokenMetadata.ClinicId, cancellationToken)
+            };
         }
         catch (Exception ex) when (IsExpectedResetTokenStorageException(ex))
         {
@@ -193,8 +230,24 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
     private static bool IsSafeTokenInput(string? token)
         => !string.IsNullOrWhiteSpace(token) && token.Length <= MaxTokenLength;
 
-    private static bool IsValidPin(string pin)
-        => pin.Length == 4 && pin.All(char.IsDigit);
+    private static bool IsValidPin(string pin, int minimumPinLength)
+        => pin.Length >= minimumPinLength && pin.Length <= 12 && pin.All(char.IsDigit);
+
+    private async Task<int> GetMinimumPinLengthAsync(
+        Guid? clinicId,
+        CancellationToken cancellationToken)
+    {
+        if (!clinicId.HasValue)
+        {
+            return 8;
+        }
+
+        return await _db.ClinicSecurityPolicies
+            .Where(policy => policy.ClinicId == clinicId.Value)
+            .Select(policy => (int?)policy.MinimumPinLength)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? 8;
+    }
 
     private static bool IsExpectedResetTokenStorageException(Exception ex)
         => ex is DbException or InvalidOperationException or FormatException or OverflowException;
@@ -231,11 +284,13 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
 
     private static PasswordResetCompletionResult Failure(
         PasswordResetCompletionStatus status,
-        string message)
+        string message,
+        int? minimumPinLength = null)
         => new()
         {
             Succeeded = false,
             Status = status,
-            SafeErrorMessage = message
+            SafeErrorMessage = message,
+            MinimumPinLength = minimumPinLength
         };
 }
