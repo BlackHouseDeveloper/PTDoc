@@ -898,6 +898,58 @@ public sealed class SettingsAdministrationTests
     }
 
     [Fact]
+    public async Task TotpEnrollment_RestartPreservesPartialFailureCount()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "MFA Partial Restart Clinic", Slug = $"mfa-partial-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = "mfa-partial-admin",
+            PinHash = BCrypt.Net.BCrypt.HashPassword("12345678"),
+            FirstName = "Mfa",
+            LastName = "Partial",
+            Role = Roles.Admin,
+            ClinicId = clinic.Id,
+            IsActive = true
+        };
+        context.AddRange(clinic, user);
+        await context.SaveChangesAsync();
+        var time = new MutableTimeProvider(new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero));
+        var service = new MfaAuthenticationService(
+            context, new TestSecretProtector(), CreateAuditService().Object, time);
+        var firstEnrollment = await service.BeginEnrollmentAsync(
+            service.CreateChallenge(user.Id, MfaChallengePurpose.Enrollment));
+        var firstValidCode = ComputeTotp(DecodeBase32(firstEnrollment.Value!.ManualKey), time.GetUtcNow());
+        var firstInvalidCode = firstValidCode == "000000" ? "000001" : "000000";
+
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            var failure = await service.VerifyEnrollmentAsync(
+                firstEnrollment.Value.EnrollmentChallengeToken,
+                firstInvalidCode);
+            Assert.Equal(SettingsOperationStatus.ValidationFailed, failure.Status);
+        }
+
+        Assert.Equal(4, (await context.UserMfaCredentials.SingleAsync()).FailedAttemptCount);
+        var restarted = await service.BeginEnrollmentAsync(
+            service.CreateChallenge(user.Id, MfaChallengePurpose.Enrollment));
+        Assert.True(restarted.Succeeded);
+        Assert.Equal(4, (await context.UserMfaCredentials.SingleAsync()).FailedAttemptCount);
+
+        var restartedValidCode = ComputeTotp(DecodeBase32(restarted.Value!.ManualKey), time.GetUtcNow());
+        var restartedInvalidCode = restartedValidCode == "000000" ? "000001" : "000000";
+        var fifthFailure = await service.VerifyEnrollmentAsync(
+            restarted.Value.EnrollmentChallengeToken,
+            restartedInvalidCode);
+        var lockedRestart = await service.BeginEnrollmentAsync(
+            service.CreateChallenge(user.Id, MfaChallengePurpose.Enrollment));
+
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, fifthFailure.Status);
+        Assert.Equal(SettingsOperationStatus.Forbidden, lockedRestart.Status);
+        Assert.Equal("mfa_temporarily_locked", lockedRestart.ErrorCode);
+    }
+
+    [Fact]
     public async Task TotpFailures_UseLatestPersistedCountAcrossStaleContexts()
     {
         var connectionString = $"Data Source=mfa-failure-{Guid.NewGuid():N};Mode=Memory;Cache=Shared";

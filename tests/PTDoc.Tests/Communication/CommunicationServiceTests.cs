@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
@@ -71,6 +72,59 @@ public sealed class CommunicationServiceTests
 
         Assert.True(exception.DeliveryResult.Succeeded);
         Assert.Single(emailSender.Messages);
+    }
+
+    [Fact]
+    public async Task CommunicationAuditWriter_FailedInsertDoesNotPoisonLaterDispatchSave()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .AddInterceptors(new RejectCommunicationAuditSaveInterceptor())
+            .Options;
+        await using var db = new ApplicationDbContext(options);
+        var writer = new CommunicationAuditWriter(
+            db,
+            Options.Create(new CommunicationOptions
+            {
+                RecipientHashSalt = "test-recipient-hash-salt",
+                PublicBaseUrl = "https://example.invalid"
+            }),
+            new TestHostEnvironment(),
+            new ContactNormalizer());
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => writer.WriteAsync(
+            new CommunicationAuditWriteRequest
+            {
+                ClinicId = Guid.NewGuid(),
+                PatientId = Guid.NewGuid(),
+                Purpose = DeliveryPurpose.AppointmentReminder,
+                Channel = DeliveryChannel.Email,
+                Recipient = "accepted@example.com",
+                Provider = "Test",
+                Status = DeliveryStatus.Sent,
+                SentAtUtc = DateTimeOffset.UtcNow
+            }));
+
+        Assert.Empty(db.ChangeTracker.Entries<CommunicationDeliveryLog>());
+
+        var dispatch = new AppointmentReminderDispatch
+        {
+            ClinicId = Guid.NewGuid(),
+            AppointmentId = Guid.NewGuid(),
+            AppointmentVersionUtc = DateTime.UtcNow,
+            ReminderLeadHours = 24,
+            Purpose = ReminderDispatchPurpose.AppointmentReminder,
+            Channel = ReminderChannel.Email,
+            IdempotencyKey = Guid.NewGuid().ToString("N"),
+            Status = ReminderDispatchStatus.Sent,
+            EligibleAtUtc = DateTime.UtcNow,
+            CompletedAtUtc = DateTime.UtcNow
+        };
+        db.AppointmentReminderDispatches.Add(dispatch);
+
+        await db.SaveChangesAsync();
+
+        Assert.Equal(EntityState.Unchanged, db.Entry(dispatch).State);
     }
 
     [Fact]
@@ -1126,5 +1180,22 @@ public sealed class CommunicationServiceTests
         public string ApplicationName { get; set; } = "PTDoc.Tests";
         public string ContentRootPath { get; set; } = Directory.GetCurrentDirectory();
         public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+    }
+
+    private sealed class RejectCommunicationAuditSaveInterceptor : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context?.ChangeTracker.Entries<CommunicationDeliveryLog>()
+                    .Any(entry => entry.State == EntityState.Added) == true)
+            {
+                throw new DbUpdateException("Communication audit insert rejected for test.");
+            }
+
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
     }
 }

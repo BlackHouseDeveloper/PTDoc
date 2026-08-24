@@ -156,7 +156,14 @@ public sealed class MfaAuthenticationService(
         credential.EncryptedSecret = protector.Protect(SecretProtectionPurpose, Convert.ToBase64String(secret));
         credential.IsActive = false;
         credential.LastAcceptedTimeStep = -1;
-        credential.FailedAttemptCount = 0;
+        // Rotating an incomplete enrollment secret must not reset accumulated
+        // failures; otherwise callers can restart after four attempts forever.
+        // New credentials already begin at zero, and a completed lockout resets
+        // the count when it establishes LockedUntilUtc.
+        if (context.Entry(credential).State == EntityState.Added)
+        {
+            credential.FailedAttemptCount = 0;
+        }
         credential.LockedUntilUtc = null;
         credential.CreatedAtUtc = now;
         credential.ActivatedAtUtc = null;

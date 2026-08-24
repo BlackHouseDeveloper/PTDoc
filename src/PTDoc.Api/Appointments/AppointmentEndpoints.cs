@@ -233,6 +233,7 @@ public static class AppointmentEndpoints
         var validationErrors = ValidateWriteRequest(
             request.PatientId,
             request.ClinicianId,
+            request.VisitTypeId,
             request.AppointmentType,
             request.AppointmentDate,
             request.AppointmentTime,
@@ -369,6 +370,7 @@ public static class AppointmentEndpoints
         var validationErrors = ValidateWriteRequest(
             request.PatientId,
             request.ClinicianId,
+            request.VisitTypeId,
             request.AppointmentType,
             request.AppointmentDate,
             request.AppointmentTime,
@@ -1352,6 +1354,7 @@ public static class AppointmentEndpoints
     private static Dictionary<string, string[]> ValidateWriteRequest(
         Guid patientId,
         Guid clinicianId,
+        Guid? visitTypeId,
         string appointmentType,
         DateTime appointmentDate,
         TimeSpan appointmentTime,
@@ -1369,9 +1372,10 @@ public static class AppointmentEndpoints
             errors[nameof(CreateAppointmentRequest.ClinicianId)] = ["ClinicianId is required."];
         }
 
-        if (string.IsNullOrWhiteSpace(appointmentType))
+        if (!visitTypeId.HasValue && string.IsNullOrWhiteSpace(appointmentType))
         {
-            errors[nameof(CreateAppointmentRequest.AppointmentType)] = ["AppointmentType is required."];
+            errors[nameof(CreateAppointmentRequest.AppointmentType)] =
+                ["AppointmentType is required when VisitTypeId is not provided."];
         }
 
         if (appointmentDate == default)
