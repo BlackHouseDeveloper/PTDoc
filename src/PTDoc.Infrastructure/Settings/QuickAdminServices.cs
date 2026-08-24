@@ -172,6 +172,9 @@ public sealed class KioskCheckInService(
             item => item.Id == stationId && item.ClinicId == clinicId, cancellationToken);
         if (station is null) return SettingsOperationResult<KioskStationDto>.NotFound();
         if (station.Version != request.ExpectedVersion) return SettingsOperationResult<KioskStationDto>.Conflict();
+        if (station.RevokedAtUtc.HasValue && request.IsActive)
+            return SettingsOperationResult<KioskStationDto>.Validation(
+                new Dictionary<string, string[]> { ["isActive"] = ["A revoked kiosk station cannot be reactivated."] });
         var name = request.Name.Trim();
         if (name.Length is 0 or > 120)
             return SettingsOperationResult<KioskStationDto>.Validation(
@@ -213,6 +216,9 @@ public sealed class KioskCheckInService(
             item => item.Id == stationId && item.ClinicId == clinicId, cancellationToken);
         if (station is null) return SettingsOperationResult<KioskEnrollmentCodeDto>.NotFound();
         if (station.Version != expectedVersion) return SettingsOperationResult<KioskEnrollmentCodeDto>.Conflict();
+        if (station.RevokedAtUtc.HasValue)
+            return SettingsOperationResult<KioskEnrollmentCodeDto>.Validation(
+                new Dictionary<string, string[]> { ["station"] = ["A revoked kiosk station cannot rotate enrollment credentials."] });
 
         var existingCodes = await context.KioskEnrollmentCodes
             .Where(item => item.KioskStationId == station.Id && item.ConsumedAtUtc == null)

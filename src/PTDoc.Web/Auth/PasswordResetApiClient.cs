@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using PTDoc.Application.Auth;
 
 namespace PTDoc.Web.Auth;
 
@@ -31,7 +32,7 @@ public sealed class PasswordResetApiClient
         return response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.TooManyRequests;
     }
 
-    public async Task<bool> CompleteAsync(
+    public async Task<PinResetCompletionResult> CompleteAsync(
         string token,
         string newPin,
         CancellationToken cancellationToken = default)
@@ -42,10 +43,34 @@ public sealed class PasswordResetApiClient
             new { token, newPin },
             cancellationToken);
 
-        return response.IsSuccessStatusCode;
+        if (response.IsSuccessStatusCode)
+        {
+            return new PinResetCompletionResult(PinResetCompletionStatus.Succeeded);
+        }
+
+        try
+        {
+            var payload = await response.Content.ReadFromJsonAsync<PasswordResetCompletionResponse>(
+                cancellationToken: cancellationToken);
+            if (string.Equals(payload?.Status, "InvalidPin", StringComparison.OrdinalIgnoreCase))
+            {
+                return new PinResetCompletionResult(
+                    PinResetCompletionStatus.InvalidPin,
+                    payload?.Error,
+                    payload?.MinimumPinLength);
+            }
+        }
+        catch (JsonException)
+        {
+            // Malformed or legacy error responses fail closed as invalid tokens.
+        }
+
+        return new PinResetCompletionResult(
+            PinResetCompletionStatus.InvalidToken,
+            "The reset link is invalid or expired.");
     }
 
-    public async Task<bool> ValidateAsync(
+    public async Task<PinResetTokenValidationResult> ValidateAsync(
         string token,
         CancellationToken cancellationToken = default)
     {
@@ -57,22 +82,32 @@ public sealed class PasswordResetApiClient
 
         if (!response.IsSuccessStatusCode)
         {
-            return false;
+            return new PinResetTokenValidationResult(false);
         }
 
         try
         {
             var payload = await response.Content.ReadFromJsonAsync<PasswordResetTokenValidationResponse>(cancellationToken: cancellationToken);
-            return payload?.IsValid == true;
+            return payload?.IsValid == true
+                ? new PinResetTokenValidationResult(true, Math.Clamp(payload.MinimumPinLength ?? 8, 8, 12))
+                : new PinResetTokenValidationResult(false);
         }
         catch (JsonException)
         {
-            return false;
+            return new PinResetTokenValidationResult(false);
         }
     }
 
     private sealed class PasswordResetTokenValidationResponse
     {
         public bool IsValid { get; set; }
+        public int? MinimumPinLength { get; set; }
+    }
+
+    private sealed class PasswordResetCompletionResponse
+    {
+        public string? Status { get; set; }
+        public string? Error { get; set; }
+        public int? MinimumPinLength { get; set; }
     }
 }

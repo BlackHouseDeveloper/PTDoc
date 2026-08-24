@@ -91,7 +91,8 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
                     {
                         return Failure(
                             PasswordResetCompletionStatus.InvalidPin,
-                            $"PIN must be {minimumPinLength} to 12 digits.");
+                            $"PIN must be {minimumPinLength} to 12 digits.",
+                            minimumPinLength);
                     }
 
                     var claimed = await _db.PasswordResetTokens
@@ -159,7 +160,8 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
             {
                 return Failure(
                     PasswordResetCompletionStatus.InvalidPin,
-                    $"PIN must be {minimumPinLength} to 12 digits.");
+                    $"PIN must be {minimumPinLength} to 12 digits.",
+                    minimumPinLength);
             }
 
             token.User.PinHash = AuthService.HashPin(request.NewPin);
@@ -193,16 +195,30 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
         {
             var tokenHash = CommunicationText.HashToken(request.Token);
             var now = DateTimeOffset.UtcNow;
-            var exists = await _db.PasswordResetTokens
+            var tokenMetadata = await _db.PasswordResetTokens
                 .AsNoTracking()
-                .AnyAsync(resetToken =>
-                    resetToken.TokenHash == tokenHash &&
-                    resetToken.UsedAtUtc == null &&
-                    resetToken.RevokedAtUtc == null &&
-                    resetToken.ExpiresAtUtc > now,
-                    cancellationToken);
+                .Where(resetToken =>
+                    resetToken.TokenHash == tokenHash
+                    && resetToken.UsedAtUtc == null
+                    && resetToken.RevokedAtUtc == null
+                    && resetToken.ExpiresAtUtc > now
+                    && resetToken.User != null)
+                .Select(resetToken => new
+                {
+                    resetToken.User!.ClinicId
+                })
+                .FirstOrDefaultAsync(cancellationToken);
 
-            return new PasswordResetTokenValidationResult { IsValid = exists };
+            if (tokenMetadata is null)
+            {
+                return new PasswordResetTokenValidationResult { IsValid = false };
+            }
+
+            return new PasswordResetTokenValidationResult
+            {
+                IsValid = true,
+                MinimumPinLength = await GetMinimumPinLengthAsync(tokenMetadata.ClinicId, cancellationToken)
+            };
         }
         catch (Exception ex) when (IsExpectedResetTokenStorageException(ex))
         {
@@ -268,11 +284,13 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
 
     private static PasswordResetCompletionResult Failure(
         PasswordResetCompletionStatus status,
-        string message)
+        string message,
+        int? minimumPinLength = null)
         => new()
         {
             Succeeded = false,
             Status = status,
-            SafeErrorMessage = message
+            SafeErrorMessage = message,
+            MinimumPinLength = minimumPinLength
         };
 }

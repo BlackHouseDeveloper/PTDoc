@@ -46,7 +46,7 @@ public class AuthServiceTests
         {
             Id = Guid.NewGuid(),
             Username = "testuser",
-            PinHash = AuthService.HashPin("1234"),
+            PinHash = AuthService.HashPin("12345678"),
             FirstName = "Test",
             LastName = "User",
             Role = "PT",
@@ -58,7 +58,7 @@ public class AuthServiceTests
         await context.SaveChangesAsync();
 
         // Act
-        var result = await authService.AuthenticateAsync("testuser", "1234", "127.0.0.1", "TestAgent");
+        var result = await authService.AuthenticateAsync("testuser", "12345678", "127.0.0.1", "TestAgent");
 
         // Assert
         var authResult = Assert.IsType<AuthResult>(result);

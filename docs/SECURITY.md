@@ -189,7 +189,8 @@ The JWT bearer middleware now fires an `OnAuthenticationFailed` event that write
 
 - New, reset, and force-changed staff PINs use the target clinic's configured numeric minimum,
   constrained to 8–12 digits. Existing four-digit credentials are grandfathered for a 14-day
-  migration grace period only.
+  migration grace period anchored to the clinic security-policy rollout, not to each user's next
+  login. Missing policy state fails closed with an already-expired rollout anchor.
 - PINs do not expire periodically. First login, reset, suspected compromise, and an audited
   administrator action can require a change.
 - TOTP secrets are encrypted at rest. Enrollment must be verified before activation; accepted

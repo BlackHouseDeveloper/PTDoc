@@ -1023,6 +1023,67 @@ public sealed class SettingsAdministrationTests
     }
 
     [Fact]
+    public async Task DormantLegacyPin_UsesClinicRolloutCutoffInsteadOfNextLogin()
+    {
+        await using var context = CreateContext();
+        var now = new DateTimeOffset(2026, 9, 20, 18, 0, 0, TimeSpan.Zero);
+        var clinic = new Clinic { Name = "Dormant PIN Clinic", Slug = $"dormant-pin-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = "dormant-pin-admin",
+            PinHash = AuthService.HashPin("1234"),
+            FirstName = "Dormant",
+            LastName = "Pin",
+            Role = Roles.Admin,
+            ClinicId = clinic.Id,
+            IsActive = true
+        };
+        context.AddRange(clinic, user);
+        await context.SaveChangesAsync();
+        var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.CreatedAtUtc = now.UtcDateTime.AddDays(-30);
+        await context.SaveChangesAsync();
+        var audit = CreateAuthAuditService();
+        var time = new MutableTimeProvider(now);
+        var mfa = new MfaAuthenticationService(context, new TestSecretProtector(), audit.Object, time);
+        var auth = new AuthService(context, NullLogger<AuthService>.Instance, audit.Object, mfa, time);
+
+        var result = await auth.AuthenticateAsync(user.Username, "1234");
+
+        Assert.Equal(AuthStatus.RequiresPinChange, result!.Status);
+        Assert.True(user.MustChangePin);
+        Assert.Equal(policy.CreatedAtUtc.AddDays(14), user.LegacyPinGraceEndsAtUtc);
+    }
+
+    [Fact]
+    public async Task ScheduleBlockValidation_RejectsUndefinedWeekdayBits()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Weekday Validation Clinic", Slug = $"weekday-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var service = new SchedulingAdministrationService(context, CreateAuditService().Object);
+        var request = new SaveScheduleBlockRequest(
+            null,
+            "Invalid weekdays",
+            "administrative",
+            (WeekdayFlags)128,
+            new TimeOnly(9, 0),
+            new TimeOnly(10, 0),
+            new DateOnly(2026, 9, 20),
+            null,
+            true,
+            true);
+
+        var result = await service.CreateScheduleBlockAsync(
+            clinic.Id, request, Guid.NewGuid(), "invalid-weekday-bits");
+
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, result.Status);
+        Assert.Contains("weekdays", result.ValidationErrors!.Keys);
+        Assert.Empty(await context.ScheduleBlockRules.ToListAsync());
+    }
+
+    [Fact]
     public async Task PinChangeAuditFailure_RollsBackCredentialMutation()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
@@ -1996,6 +2057,63 @@ public sealed class SettingsAdministrationTests
             item => item.Id == station.Value.StationId);
         Assert.False(storedStation.IsActive);
         Assert.NotNull(storedStation.RevokedAtUtc);
+    }
+
+    [Fact]
+    public async Task KioskRevocation_IsTerminalForActivationAndCredentialRotation()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Terminal Kiosk Clinic", Slug = $"terminal-kiosk-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var service = new KioskCheckInService(
+            context,
+            CreateAuditService().Object,
+            new AppointmentCheckInWorkflow(context, TimeProvider.System));
+        var station = await service.CreateStationAsync(
+            clinic.Id,
+            new CreateKioskStationRequest("Terminal iPad"),
+            Guid.NewGuid(),
+            "create-terminal-station");
+        var revoked = await service.RevokeStationAsync(
+            clinic.Id,
+            station.Value!.StationId,
+            1,
+            Guid.NewGuid(),
+            "revoke-terminal-station");
+
+        var activation = await service.UpdateStationAsync(
+            clinic.Id,
+            station.Value.StationId,
+            new UpdateKioskStationRequest("Terminal iPad", true, 2),
+            Guid.NewGuid(),
+            "reactivate-terminal-station");
+        var rotation = await service.RotateEnrollmentAsync(
+            clinic.Id,
+            station.Value.StationId,
+            2,
+            Guid.NewGuid(),
+            "rotate-terminal-station");
+
+        Assert.True(revoked.Succeeded);
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, activation.Status);
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, rotation.Status);
+        var stored = await context.KioskStations.SingleAsync(item => item.Id == station.Value.StationId);
+        Assert.False(stored.IsActive);
+        Assert.NotNull(stored.RevokedAtUtc);
+        Assert.Equal("revoked", stored.DeviceCredentialHash);
+    }
+
+    [Fact]
+    public void AutoCheckInDraftIdentity_IsStablePerAppointment()
+    {
+        var appointmentId = Guid.NewGuid();
+
+        var firstChannel = AppointmentCommunicationProcessor.CreateAutoCheckInIntakeId(appointmentId);
+        var secondChannel = AppointmentCommunicationProcessor.CreateAutoCheckInIntakeId(appointmentId);
+
+        Assert.Equal(firstChannel, secondChannel);
+        Assert.NotEqual(firstChannel, AppointmentCommunicationProcessor.CreateAutoCheckInIntakeId(Guid.NewGuid()));
     }
 
     [Fact]

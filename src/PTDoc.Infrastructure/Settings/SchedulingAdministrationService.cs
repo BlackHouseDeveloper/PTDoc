@@ -554,6 +554,8 @@ public sealed partial class SchedulingAdministrationService(
             errors["reasonCode"] = ["A non-PHI reason code is required."];
         if (request.Weekdays == WeekdayFlags.None)
             errors["weekdays"] = ["At least one weekday is required."];
+        else if ((request.Weekdays & ~WeekdayFlags.All) != WeekdayFlags.None)
+            errors["weekdays"] = ["Weekdays contains an unsupported value."];
         if (request.StartLocalTime >= request.EndLocalTime)
             errors["endLocalTime"] = ["End time must be after start time."];
         if (request.EffectiveEndDate is { } effectiveEnd && effectiveEnd < request.EffectiveStartDate)

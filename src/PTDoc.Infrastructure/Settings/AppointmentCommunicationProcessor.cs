@@ -1,8 +1,11 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Data.SqlClient;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using PTDoc.Application.Communication;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
@@ -170,7 +173,7 @@ public sealed class AppointmentCommunicationProcessor(
         }
 
         try { await context.SaveChangesAsync(cancellationToken); }
-        catch (DbUpdateException exception)
+        catch (DbUpdateException exception) when (IsUniqueConstraintViolation(exception))
         {
             logger.LogInformation(exception, "Duplicate appointment communication candidates were suppressed by idempotency keys.");
             context.ChangeTracker.Clear();
@@ -364,6 +367,7 @@ public sealed class AppointmentCommunicationProcessor(
         {
             intake = new IntakeForm
             {
+                Id = CreateAutoCheckInIntakeId(appointment.Id),
                 PatientId = appointment.PatientId,
                 ClinicId = dispatch.ClinicId,
                 TemplateVersion = "1.0",
@@ -376,7 +380,24 @@ public sealed class AppointmentCommunicationProcessor(
                 SyncState = SyncState.Pending
             };
             context.IntakeForms.Add(intake);
-            await context.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException exception) when (IsUniqueConstraintViolation(exception))
+            {
+                // Email and SMS dispatches can be processed by separate workers. A
+                // deterministic appointment-scoped key makes draft creation a
+                // database-backed get-or-create operation across those workers.
+                context.Entry(intake).State = EntityState.Detached;
+                intake = await context.IntakeForms.SingleAsync(
+                    item => item.Id == CreateAutoCheckInIntakeId(appointment.Id)
+                        && item.PatientId == appointment.PatientId
+                        && item.ClinicId == dispatch.ClinicId
+                        && !item.IsLocked
+                        && !item.SubmittedAt.HasValue,
+                    cancellationToken);
+            }
         }
 
         var result = await intakeWorkflow.SendInviteAsync(new IntakeSendInviteRequest
@@ -588,6 +609,27 @@ public sealed class AppointmentCommunicationProcessor(
 
     private static string PlaceholderHash() =>
         Convert.ToHexString(SHA256.HashData(RandomNumberGenerator.GetBytes(32))).ToLowerInvariant();
+
+    internal static Guid CreateAutoCheckInIntakeId(Guid appointmentId)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"ptdoc:auto-check-in-intake:{appointmentId:N}"));
+        return new Guid(hash.AsSpan(0, 16));
+    }
+
+    internal static bool IsUniqueConstraintViolation(DbUpdateException exception)
+    {
+        for (var current = exception.InnerException; current is not null; current = current.InnerException)
+        {
+            if (current is SqliteException { SqliteExtendedErrorCode: 1555 or 2067 }
+                || current is SqlException { Number: 2601 or 2627 }
+                || current is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static string Truncate(string value, int maxLength) => value.Length <= maxLength ? value : value[..maxLength];
 

@@ -379,6 +379,11 @@ public sealed class CommunicationServiceTests
         var token = ExtractResetToken(emailSender);
         var resetService = new PasswordResetTokenService(db);
 
+        var validation = await resetService.ValidateTokenAsync(new PasswordResetTokenValidationRequest
+        {
+            Token = token
+        });
+
         var rejected = await resetService.ResetPinAsync(new PasswordResetCompletionRequest
         {
             Token = token,
@@ -390,7 +395,10 @@ public sealed class CommunicationServiceTests
             NewPin = "1234567890"
         });
 
+        Assert.True(validation.IsValid);
+        Assert.Equal(10, validation.MinimumPinLength);
         Assert.Equal(PasswordResetCompletionStatus.InvalidPin, rejected.Status);
+        Assert.Equal(10, rejected.MinimumPinLength);
         Assert.Contains("10 to 12", rejected.SafeErrorMessage!, StringComparison.Ordinal);
         Assert.True(accepted.Succeeded);
     }

@@ -448,7 +448,10 @@ public class AuthService : IAuthService
         {
             if (!user.LegacyPinGraceEndsAtUtc.HasValue)
             {
-                user.LegacyPinGraceEndsAtUtc = now.AddDays(14);
+                // Anchor the migration window to the clinic policy rollout, not to
+                // an individual user's next login. Dormant legacy accounts must not
+                // receive a fresh weak-PIN window months after deployment.
+                user.LegacyPinGraceEndsAtUtc = policy.CreatedAtUtc.AddDays(14);
                 await _context.SaveChangesAsync(cancellationToken);
             }
 
@@ -515,16 +518,16 @@ public class AuthService : IAuthService
         AuthStatus status,
         MfaChallengePurpose purpose,
         int? minimumPinLength = null) => new()
-    {
-        Status = status,
-        UserId = user.Id,
-        Username = user.Username,
-        Email = user.Email,
-        Role = user.Role,
-        ClinicId = user.ClinicId,
-        ChallengeToken = _mfaAuthenticationService?.CreateChallenge(user.Id, purpose),
-        MinimumPinLength = minimumPinLength
-    };
+        {
+            Status = status,
+            UserId = user.Id,
+            Username = user.Username,
+            Email = user.Email,
+            Role = user.Role,
+            ClinicId = user.ClinicId,
+            ChallengeToken = _mfaAuthenticationService?.CreateChallenge(user.Id, purpose),
+            MinimumPinLength = minimumPinLength
+        };
 
     private async Task<AuthResult> CompleteAuthenticationAsync(
         User user,
@@ -586,7 +589,10 @@ public class AuthService : IAuthService
         {
             MinimumPinLength = 8,
             SessionInactivityMinutes = 15,
-            MfaEnforcementMode = MfaEnforcementMode.Off
+            MfaEnforcementMode = MfaEnforcementMode.Off,
+            // A missing clinic policy is an invalid rollout state. Use an expired
+            // anchor so legacy credentials fail closed instead of gaining a new grace period.
+            CreatedAtUtc = DateTime.UnixEpoch
         };
     }
 

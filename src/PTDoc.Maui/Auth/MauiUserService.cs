@@ -123,7 +123,7 @@ public sealed class MauiUserService : IUserService
         }
     }
 
-    public async Task<bool> CompletePasswordResetAsync(
+    public async Task<PinResetCompletionResult> CompletePasswordResetAsync(
         string token,
         string newPin,
         CancellationToken cancellationToken = default)
@@ -136,16 +136,32 @@ public sealed class MauiUserService : IUserService
                 new { token, newPin },
                 cancellationToken);
 
-            return response.IsSuccessStatusCode;
+            if (response.IsSuccessStatusCode)
+            {
+                return new PinResetCompletionResult(PinResetCompletionStatus.Succeeded);
+            }
+
+            var payload = await response.Content.ReadFromJsonAsync<PasswordResetCompletionResponse>(
+                cancellationToken: cancellationToken);
+            return string.Equals(payload?.Status, "InvalidPin", StringComparison.OrdinalIgnoreCase)
+                ? new PinResetCompletionResult(
+                    PinResetCompletionStatus.InvalidPin,
+                    payload?.Error,
+                    payload?.MinimumPinLength)
+                : new PinResetCompletionResult(
+                    PinResetCompletionStatus.InvalidToken,
+                    "The reset link is invalid or expired.");
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "MAUI password reset completion failed.");
-            return false;
+            return new PinResetCompletionResult(
+                PinResetCompletionStatus.InvalidToken,
+                "The reset link is invalid or expired.");
         }
     }
 
-    public async Task<bool> ValidatePasswordResetTokenAsync(
+    public async Task<PinResetTokenValidationResult> ValidatePasswordResetTokenAsync(
         string token,
         CancellationToken cancellationToken = default)
     {
@@ -159,16 +175,18 @@ public sealed class MauiUserService : IUserService
 
             if (!response.IsSuccessStatusCode)
             {
-                return false;
+                return new PinResetTokenValidationResult(false);
             }
 
             var payload = await response.Content.ReadFromJsonAsync<PasswordResetTokenValidationResponse>(cancellationToken: cancellationToken);
-            return payload?.IsValid == true;
+            return payload?.IsValid == true
+                ? new PinResetTokenValidationResult(true, Math.Clamp(payload.MinimumPinLength ?? 8, 8, 12))
+                : new PinResetTokenValidationResult(false);
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "MAUI password reset token validation failed.");
-            return false;
+            return new PinResetTokenValidationResult(false);
         }
     }
 
@@ -292,5 +310,13 @@ public sealed class MauiUserService : IUserService
     private sealed class PasswordResetTokenValidationResponse
     {
         public bool IsValid { get; set; }
+        public int? MinimumPinLength { get; set; }
+    }
+
+    private sealed class PasswordResetCompletionResponse
+    {
+        public string? Status { get; set; }
+        public string? Error { get; set; }
+        public int? MinimumPinLength { get; set; }
     }
 }

@@ -391,7 +391,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
                 errorMessage = result.Status switch
                 {
                     RegistrationStatus.EmailAlreadyExists => "An account with that email already exists.",
-                    RegistrationStatus.InvalidPin => "PIN must contain 8 to 12 numeric digits.",
+                    RegistrationStatus.InvalidPin => result.Error ?? "PIN must contain 8 to 12 numeric digits.",
                     RegistrationStatus.InvalidLicenseData => "License information is required for PT/PTA roles.",
                     RegistrationStatus.ClinicNotFound => "Selected clinic is invalid.",
                     RegistrationStatus.ValidationFailed => result.Error ?? "Please complete the required registration fields.",
@@ -740,7 +740,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
                 },
                 RegistrationStatus.InvalidPin => new Dictionary<string, string[]>
                 {
-                    [nameof(signUpModel.Pin)] = ["PIN must contain 8 to 12 numeric digits."]
+                    [nameof(signUpModel.Pin)] = [result.Error ?? "PIN must contain 8 to 12 numeric digits."]
                 },
                 RegistrationStatus.ClinicNotFound => new Dictionary<string, string[]>
                 {

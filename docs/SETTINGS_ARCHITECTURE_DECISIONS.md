@@ -27,7 +27,7 @@ Missing or invalid permission rows fail closed to the canonical restrictive base
 - Clinic time zone: `America/Los_Angeles` using an IANA identifier.
 - Session inactivity: 15 minutes, valid range 5–60.
 - New or changed PIN: the clinic-configured numeric minimum through 12 digits; the configured minimum is constrained to 8–12 and defaults to 8.
-- Existing four-digit PIN hashes: accepted only during the 14-day migration grace period; a compliant PIN is required at reset, forced change, or grace-period expiration.
+- Existing four-digit PIN hashes: accepted only during the 14-day migration grace period anchored to the clinic security-policy rollout; dormant accounts do not receive a new window at their next login, and a compliant PIN is required at reset, forced change, or grace-period expiration.
 - PIN changes are event-driven (first login, reset, suspected compromise, or administrator action); periodic expiration is disabled.
 - MFA: TOTP with recovery codes. Enrollment is verified before activation, accepted time steps cannot be replayed, and reset forces re-enrollment.
 - Entra External ID satisfies MFA only when the validated token explicitly contains `mfa` in its `amr` claim. Policy-specific ACR values are not inferred. An external token without that assurance is denied when clinic enforcement is active; the user can instead complete PTDoc's local PIN/TOTP workflow.

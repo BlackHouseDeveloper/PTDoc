@@ -158,6 +158,7 @@ public sealed class PasswordResetTokenValidationRequest
 public sealed class PasswordResetTokenValidationResult
 {
     public bool IsValid { get; init; }
+    public int? MinimumPinLength { get; init; }
 }
 
 public sealed class PasswordResetCompletionResult
@@ -165,6 +166,7 @@ public sealed class PasswordResetCompletionResult
     public bool Succeeded { get; init; }
     public PasswordResetCompletionStatus Status { get; init; }
     public string? SafeErrorMessage { get; init; }
+    public int? MinimumPinLength { get; init; }
 }
 
 public enum PasswordResetCompletionStatus

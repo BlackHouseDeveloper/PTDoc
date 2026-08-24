@@ -84,7 +84,12 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         await using (var scope = _factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            db.Users.Add(new User
+            var clinic = new Clinic
+            {
+                Name = "Legacy Login Clinic",
+                Slug = $"legacy-login-{Guid.NewGuid():N}"
+            };
+            db.AddRange(clinic, new User
             {
                 Id = userId,
                 Username = username,
@@ -93,6 +98,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
                 FirstName = "Legacy",
                 LastName = "Login",
                 Role = Roles.PT,
+                ClinicId = clinic.Id,
                 CreatedAt = DateTime.UtcNow,
                 IsActive = true
             });
