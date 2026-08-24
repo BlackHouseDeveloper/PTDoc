@@ -58,9 +58,16 @@ public sealed partial class SchedulingAdministrationService(
             UpdatedByUserId = actorUserId
         };
         context.VisitTypes.Add(entity);
-        await AuditAsync("VisitTypeCreated", clinicId, nameof(VisitType), entity.Id, actorUserId, correlationId,
-            new() { ["visitTypeId"] = entity.Id, ["code"] = entity.Code }, cancellationToken);
-        await context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await AuditAsync("VisitTypeCreated", clinicId, nameof(VisitType), entity.Id, actorUserId, correlationId,
+                new() { ["visitTypeId"] = entity.Id, ["code"] = entity.Code }, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception) when (AppointmentCommunicationProcessor.IsUniqueConstraintViolation(exception))
+        {
+            return DuplicateVisitTypeCode();
+        }
         return SettingsOperationResult<VisitTypeDto>.Success(MapVisitType(entity));
     }
 
@@ -121,6 +128,10 @@ public sealed partial class SchedulingAdministrationService(
         catch (DbUpdateConcurrencyException)
         {
             return SettingsOperationResult<VisitTypeDto>.Conflict();
+        }
+        catch (DbUpdateException exception) when (AppointmentCommunicationProcessor.IsUniqueConstraintViolation(exception))
+        {
+            return DuplicateVisitTypeCode();
         }
         return SettingsOperationResult<VisitTypeDto>.Success(MapVisitType(entity));
     }
@@ -522,10 +533,14 @@ public sealed partial class SchedulingAdministrationService(
         var errors = new Dictionary<string, string[]>();
         if (!IsIanaTimeZone(request.TimeZoneId))
             errors["timeZoneId"] = ["A valid IANA time-zone identifier is required."];
-        if (request.Hours.Count != 7 ||
-            request.Hours.Any(item => !Enum.IsDefined(item.DayOfWeek)) ||
+        if (request.Hours is null ||
+            request.Hours.Count != 7 ||
+            request.Hours.Any(item => item is null || !Enum.IsDefined(item.DayOfWeek)) ||
             request.Hours.Select(item => item.DayOfWeek).Distinct().Count() != 7)
+        {
             errors["hours"] = ["Exactly one clinic-hours row is required for each weekday."];
+            return errors;
+        }
 
         foreach (var item in request.Hours)
         {
@@ -544,6 +559,10 @@ public sealed partial class SchedulingAdministrationService(
 
         return errors;
     }
+
+    private static SettingsOperationResult<VisitTypeDto> DuplicateVisitTypeCode() =>
+        SettingsOperationResult<VisitTypeDto>.Validation(
+            new Dictionary<string, string[]> { ["code"] = ["A visit type with this code already exists."] });
 
     private static Dictionary<string, string[]> ValidateBlock(SaveScheduleBlockRequest request, bool requireExpectedVersion)
     {

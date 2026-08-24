@@ -153,6 +153,12 @@ public sealed class RolePermissionAdministrationService(
         }
 
         var targetRole = RolePermissionCatalog.FindRole(targetRoleKey);
+        if (string.IsNullOrWhiteSpace(request.SourceRoleKey))
+        {
+            return SettingsOperationResult<RolePermissionSet>.Validation(
+                new Dictionary<string, string[]> { ["sourceRoleKey"] = ["A source role is required."] });
+        }
+
         var sourceRole = RolePermissionCatalog.FindRole(request.SourceRoleKey);
         if (targetRole is null || sourceRole is null)
         {
@@ -184,6 +190,7 @@ public sealed class RolePermissionAdministrationService(
                 && RolePermissionCatalog.GetLockedMinimum(targetRole.Key, definition.Key) == PermissionLevel.None)
             .ToArray();
         if (request.TargetPermissions is null
+            || request.TargetPermissions.Any(item => item is null)
             || request.TargetPermissions.Count != mutableDefinitions.Length
             || request.TargetPermissions.GroupBy(item => item.CapabilityKey).Any(group => group.Count() != 1))
         {
@@ -292,9 +299,15 @@ public sealed class RolePermissionAdministrationService(
     private static Dictionary<string, string[]> ValidateUpdates(string roleKey, IReadOnlyList<PermissionUpdate> updates)
     {
         var errors = new Dictionary<string, string[]>();
-        if (updates.Count == 0)
+        if (updates is null || updates.Count == 0)
         {
             errors["permissions"] = ["At least one permission update is required."];
+            return errors;
+        }
+
+        if (updates.Any(item => item is null))
+        {
+            errors["permissions"] = ["Permission updates cannot contain null entries."];
             return errors;
         }
 

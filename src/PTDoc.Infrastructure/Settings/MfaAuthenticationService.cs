@@ -229,8 +229,15 @@ public sealed class MfaAuthenticationService(
         }
 
         var completion = CreateAuthenticationCompletionChallenge(credential);
-        await AuditAsync("MfaEnrollmentCompleted", credential.User, credential.Id, cancellationToken);
-        await context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await AuditAsync("MfaEnrollmentCompleted", credential.User, credential.Id, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return SettingsOperationResult<MfaEnrollmentCompletion>.Forbidden("invalid_enrollment_state");
+        }
         return SettingsOperationResult<MfaEnrollmentCompletion>.Success(new MfaEnrollmentCompletion(recoveryCodes, completion));
     }
 
@@ -348,11 +355,18 @@ public sealed class MfaAuthenticationService(
         credential.FailedAttemptCount = 0;
         credential.LockedUntilUtc = null;
         var completion = CreateAuthenticationCompletionChallenge(credential);
-        await AuditAsync(useRecoveryCode ? "MfaRecoveryUsed" : "MfaVerified", credential.User, credential.Id, cancellationToken);
-        await context.SaveChangesAsync(cancellationToken);
-        if (transaction is not null)
+        try
         {
-            await transaction.CommitAsync(cancellationToken);
+            await AuditAsync(useRecoveryCode ? "MfaRecoveryUsed" : "MfaVerified", credential.User, credential.Id, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return new MfaVerificationResult(false, null, "invalid_code");
         }
 
         return new MfaVerificationResult(true, completion);

@@ -9,11 +9,11 @@ namespace PTDoc.Tests.Auth;
 public sealed class TokenServiceTests
 {
     [Fact]
-    public async Task LoginAsync_StepUpResponse_DoesNotDeserializeAsIssuedTokens()
+    public async Task LoginAsync_StepUpResponse_PreservesChallengeWithoutIssuedTokens()
     {
         using var client = new HttpClient(new StaticResponseHandler(
             HttpStatusCode.Accepted,
-            """{"status":"RequiresPinChange","challengeToken":"challenge"}"""))
+            """{"status":"RequiresPinChange","challengeToken":"challenge","minimumPinLength":10}"""))
         {
             BaseAddress = new Uri("https://localhost")
         };
@@ -21,7 +21,10 @@ public sealed class TokenServiceTests
 
         var result = await service.LoginAsync(new LoginRequest("staff", "12345678"));
 
-        Assert.Null(result);
+        Assert.Null(result.Tokens);
+        Assert.Equal(PTDoc.Application.Identity.AuthStatus.RequiresPinChange, result.StepUp?.Status);
+        Assert.Equal("challenge", result.StepUp?.ChallengeToken);
+        Assert.Equal(10, result.StepUp?.MinimumPinLength);
     }
 
     private sealed class StaticResponseHandler : HttpMessageHandler

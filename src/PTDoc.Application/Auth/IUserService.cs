@@ -177,4 +177,46 @@ namespace PTDoc.Application.Auth
         InvalidToken,
         InvalidPin
     }
+
+    public interface IAuthenticationStepUserService
+    {
+        AuthenticationStepState? PendingAuthenticationStep { get; }
+
+        Task<AuthenticationStepCompletionResult> CompleteRequiredPinChangeAsync(
+          string newPin,
+          CancellationToken cancellationToken = default);
+
+        Task<AuthenticationStepCompletionResult> VerifyAuthenticatorEnrollmentAsync(
+          string code,
+          CancellationToken cancellationToken = default);
+
+        Task<AuthenticationStepCompletionResult> VerifyMfaAsync(
+          string code,
+          bool useRecoveryCode,
+          CancellationToken cancellationToken = default);
+
+        Task<AuthenticationStepCompletionResult> CompleteAuthenticatorEnrollmentAsync(
+          CancellationToken cancellationToken = default);
+
+        void CancelAuthenticationStep();
+    }
+
+    public sealed record AuthenticationStepState(
+        AuthenticationStepKind Kind,
+        int MinimumPinLength = 8,
+        string? ManualKey = null,
+        string? QrSvg = null,
+        IReadOnlyList<string>? RecoveryCodes = null);
+
+    public sealed record AuthenticationStepCompletionResult(
+        bool Succeeded,
+        string? ErrorMessage = null);
+
+    public enum AuthenticationStepKind
+    {
+        RequiredPinChange,
+        AuthenticatorEnrollment,
+        MfaVerification,
+        RecoveryCodes
+    }
 }

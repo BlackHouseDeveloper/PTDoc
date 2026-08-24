@@ -10,7 +10,7 @@ using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
 using PTDoc.Infrastructure.Services;
 
-public sealed class MauiUserService : IUserService
+public sealed class MauiUserService : IUserService, IAuthenticationStepUserService
 {
     private readonly ITokenService tokenService;
     private readonly ITokenStore tokenStore;
@@ -19,6 +19,8 @@ public sealed class MauiUserService : IUserService
     private readonly ILogger<MauiUserService> logger;
 
     private ClaimsPrincipal? currentUser;
+    private string? pendingChallengeToken;
+    private string? pendingCompletionToken;
     private int logoutTriggered;
 
     public MauiUserService(
@@ -51,6 +53,8 @@ public sealed class MauiUserService : IUserService
 
     public string? UserDisplayName => currentUser?.FindFirst(ClaimTypes.Name)?.Value;
 
+    public AuthenticationStepState? PendingAuthenticationStep { get; private set; }
+
     public async Task<bool> LoginAsync(
         string username,
         string password,
@@ -61,36 +65,163 @@ public sealed class MauiUserService : IUserService
         {
             logger.LogDebug("Attempting MAUI login.");
 
-            var tokens = await tokenService.LoginAsync(
+            var result = await tokenService.LoginAsync(
                 new LoginRequest(username, password),
                 cancellationToken);
 
-            if (tokens is null)
+            if (result.Tokens is not null)
             {
-                logger.LogWarning("Login failed - no tokens returned");
+                return await CompleteTokenLoginAsync(result.Tokens, cancellationToken);
+            }
+
+            if (result.StepUp is not null && await ConfigureStepAsync(result.StepUp, cancellationToken))
+            {
+                logger.LogInformation("Login requires authentication step {AuthenticationStep}", result.StepUp.Status);
                 return false;
             }
 
-            logger.LogInformation("Login successful, saving tokens");
-            var principal = JwtClaimParser.CreatePrincipal(tokens.AccessToken);
-            if (principal.Identity?.IsAuthenticated != true)
-            {
-                logger.LogWarning("Login returned an unusable access token");
-                return false;
-            }
-
-            Volatile.Write(ref logoutTriggered, 0);
-            await tokenStore.SaveAsync(tokens, cancellationToken);
-            currentUser = principal;
-            await authStateProvider.NotifyUserAuthenticationAsync(tokens);
-
-            return true;
+            logger.LogWarning("Login failed - no tokens or usable authentication step returned");
+            return false;
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Login failed with exception");
             return false;
         }
+    }
+
+    public async Task<AuthenticationStepCompletionResult> CompleteRequiredPinChangeAsync(
+        string newPin,
+        CancellationToken cancellationToken = default)
+    {
+        if (PendingAuthenticationStep?.Kind != AuthenticationStepKind.RequiredPinChange
+            || string.IsNullOrWhiteSpace(pendingChallengeToken))
+        {
+            return new AuthenticationStepCompletionResult(false, "The PIN-change challenge is invalid or expired.");
+        }
+
+        try
+        {
+            var previousChallenge = pendingChallengeToken;
+            var result = await tokenService.CompletePinChangeAsync(previousChallenge, newPin, cancellationToken);
+            if (result.Tokens is not null)
+            {
+                return new AuthenticationStepCompletionResult(
+                    await CompleteTokenLoginAsync(result.Tokens, cancellationToken));
+            }
+
+            if (result.StepUp is null || !await ConfigureStepAsync(result.StepUp, cancellationToken))
+            {
+                return new AuthenticationStepCompletionResult(false, result.ErrorMessage ?? "The PIN could not be changed.");
+            }
+
+            var progressed = result.StepUp.Status != AuthStatus.RequiresPinChange;
+            return new AuthenticationStepCompletionResult(
+                progressed,
+                progressed ? null : result.ErrorMessage ?? "The PIN does not meet the clinic security policy.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "MAUI required PIN change failed.");
+            return new AuthenticationStepCompletionResult(false, "The PIN could not be changed right now.");
+        }
+    }
+
+    public async Task<AuthenticationStepCompletionResult> VerifyAuthenticatorEnrollmentAsync(
+        string code,
+        CancellationToken cancellationToken = default)
+    {
+        if (PendingAuthenticationStep?.Kind != AuthenticationStepKind.AuthenticatorEnrollment
+            || string.IsNullOrWhiteSpace(pendingChallengeToken))
+        {
+            return new AuthenticationStepCompletionResult(false, "The authenticator enrollment is invalid or expired.");
+        }
+
+        try
+        {
+            var completion = await tokenService.VerifyMfaEnrollmentAsync(pendingChallengeToken, code, cancellationToken);
+            if (completion is null || string.IsNullOrWhiteSpace(completion.CompletionToken))
+            {
+                return new AuthenticationStepCompletionResult(false, "The authenticator code is invalid or expired.");
+            }
+
+            pendingChallengeToken = null;
+            pendingCompletionToken = completion.CompletionToken;
+            PendingAuthenticationStep = new AuthenticationStepState(
+                AuthenticationStepKind.RecoveryCodes,
+                RecoveryCodes: completion.RecoveryCodes);
+            return new AuthenticationStepCompletionResult(true);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "MAUI authenticator enrollment verification failed.");
+            return new AuthenticationStepCompletionResult(false, "The authenticator code could not be verified right now.");
+        }
+    }
+
+    public async Task<AuthenticationStepCompletionResult> VerifyMfaAsync(
+        string code,
+        bool useRecoveryCode,
+        CancellationToken cancellationToken = default)
+    {
+        if (PendingAuthenticationStep?.Kind != AuthenticationStepKind.MfaVerification
+            || string.IsNullOrWhiteSpace(pendingChallengeToken))
+        {
+            return new AuthenticationStepCompletionResult(false, "The MFA challenge is invalid or expired.");
+        }
+
+        try
+        {
+            var verification = await tokenService.VerifyMfaAsync(
+                pendingChallengeToken,
+                code,
+                useRecoveryCode,
+                cancellationToken);
+            if (!verification.Succeeded || string.IsNullOrWhiteSpace(verification.CompletionToken))
+            {
+                return new AuthenticationStepCompletionResult(false, "The verification value is invalid or expired.");
+            }
+
+            var tokens = await tokenService.CompleteAuthenticationAsync(verification.CompletionToken, cancellationToken);
+            return tokens is not null && await CompleteTokenLoginAsync(tokens, cancellationToken)
+                ? new AuthenticationStepCompletionResult(true)
+                : new AuthenticationStepCompletionResult(false, "Authentication could not be completed.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "MAUI MFA verification failed.");
+            return new AuthenticationStepCompletionResult(false, "The verification value could not be checked right now.");
+        }
+    }
+
+    public async Task<AuthenticationStepCompletionResult> CompleteAuthenticatorEnrollmentAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (PendingAuthenticationStep?.Kind != AuthenticationStepKind.RecoveryCodes
+            || string.IsNullOrWhiteSpace(pendingCompletionToken))
+        {
+            return new AuthenticationStepCompletionResult(false, "The authentication completion challenge is invalid or expired.");
+        }
+
+        try
+        {
+            var tokens = await tokenService.CompleteAuthenticationAsync(pendingCompletionToken, cancellationToken);
+            return tokens is not null && await CompleteTokenLoginAsync(tokens, cancellationToken)
+                ? new AuthenticationStepCompletionResult(true)
+                : new AuthenticationStepCompletionResult(false, "Authentication could not be completed.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "MAUI authentication completion failed.");
+            return new AuthenticationStepCompletionResult(false, "Authentication could not be completed right now.");
+        }
+    }
+
+    public void CancelAuthenticationStep()
+    {
+        pendingChallengeToken = null;
+        pendingCompletionToken = null;
+        PendingAuthenticationStep = null;
     }
 
     public Task<bool> BeginExternalLoginAsync(
@@ -238,6 +369,7 @@ public sealed class MauiUserService : IUserService
         finally
         {
             currentUser = null;
+            CancelAuthenticationStep();
             await authStateProvider.NotifyUserLogoutAsync();
         }
     }
@@ -304,6 +436,67 @@ public sealed class MauiUserService : IUserService
         await tokenStore.SaveAsync(refreshed, cancellationToken);
         currentUser = principal;
         await authStateProvider.NotifyUserAuthenticationAsync(refreshed);
+        return true;
+    }
+
+    private async Task<bool> ConfigureStepAsync(
+        TokenAuthenticationStep step,
+        CancellationToken cancellationToken)
+    {
+        pendingCompletionToken = null;
+        pendingChallengeToken = step.ChallengeToken;
+        if (step.Status == AuthStatus.RequiresPinChange)
+        {
+            PendingAuthenticationStep = new AuthenticationStepState(
+                AuthenticationStepKind.RequiredPinChange,
+                Math.Clamp(step.MinimumPinLength ?? 8, 8, 12));
+            return true;
+        }
+
+        if (step.Status == AuthStatus.RequiresMfaVerification)
+        {
+            PendingAuthenticationStep = new AuthenticationStepState(AuthenticationStepKind.MfaVerification);
+            return true;
+        }
+
+        if (step.Status != AuthStatus.RequiresMfaEnrollment)
+        {
+            CancelAuthenticationStep();
+            return false;
+        }
+
+        var enrollment = await tokenService.BeginMfaEnrollmentAsync(step.ChallengeToken, cancellationToken);
+        if (enrollment is null || string.IsNullOrWhiteSpace(enrollment.EnrollmentChallengeToken))
+        {
+            CancelAuthenticationStep();
+            return false;
+        }
+
+        pendingChallengeToken = enrollment.EnrollmentChallengeToken;
+        PendingAuthenticationStep = new AuthenticationStepState(
+            AuthenticationStepKind.AuthenticatorEnrollment,
+            ManualKey: enrollment.ManualKey,
+            QrSvg: enrollment.QrSvg);
+        return true;
+    }
+
+    private async Task<bool> CompleteTokenLoginAsync(
+        TokenResponse tokens,
+        CancellationToken cancellationToken)
+    {
+        var principal = JwtClaimParser.CreatePrincipal(tokens.AccessToken);
+        if (principal.Identity?.IsAuthenticated != true)
+        {
+            logger.LogWarning("Login returned an unusable access token");
+            return false;
+        }
+
+        logger.LogInformation("Login successful, saving tokens");
+        Volatile.Write(ref logoutTriggered, 0);
+        await tokenStore.SaveAsync(tokens, cancellationToken);
+        currentUser = principal;
+        CancelAuthenticationStep();
+        await authStateProvider.NotifyUserAuthenticationAsync(tokens);
         return true;
     }
 

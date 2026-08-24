@@ -147,7 +147,8 @@ public static class AuthEndpoints
     private static object ToStepUpResponse(AuthResult result) => new
     {
         status = result.Status.ToString(),
-        challengeToken = result.ChallengeToken
+        challengeToken = result.ChallengeToken,
+        minimumPinLength = result.MinimumPinLength
     };
 
     private static async Task<IResult> IssueJwtAsync(

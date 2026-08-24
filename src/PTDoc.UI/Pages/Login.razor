@@ -66,6 +66,90 @@
 
     @if (authMode == AuthMode.Login)
     {
+      @if (pendingAuthenticationStep is { } authenticationStep && authenticationStepUserService is not null)
+      {
+        @if (authenticationStep.Kind == AuthenticationStepKind.RequiredPinChange)
+        {
+          <form class="auth-form" aria-busy="@isLoading" data-testid="pin-change-form" @onsubmit="CompleteRequiredPinChangeAsync" @onsubmit:preventDefault="true">
+            <div class="auth-info-alert" role="status">
+              <div class="auth-info-content">
+                <strong>Choose a new PIN</strong>
+                <p>Your clinic requires @authenticationStep.MinimumPinLength to 12 numeric digits.</p>
+              </div>
+            </div>
+            <div class="auth-field">
+              <label for="requiredNewPin">New PIN</label>
+              <input id="requiredNewPin" type="password" class="auth-input" inputmode="numeric" minlength="@authenticationStep.MinimumPinLength" maxlength="12" autocomplete="new-password" required @bind="authenticationStepValue" @bind:event="oninput" />
+            </div>
+            <div class="auth-field">
+              <label for="requiredConfirmPin">Confirm PIN</label>
+              <input id="requiredConfirmPin" type="password" class="auth-input" inputmode="numeric" minlength="@authenticationStep.MinimumPinLength" maxlength="12" autocomplete="new-password" required @bind="authenticationStepConfirmation" @bind:event="oninput" />
+            </div>
+            <button type="submit" class="auth-primary" disabled="@isLoading">Continue</button>
+            <button type="button" class="auth-link" disabled="@isLoading" @onclick="CancelAuthenticationStep">Cancel</button>
+          </form>
+        }
+        else if (authenticationStep.Kind == AuthenticationStepKind.AuthenticatorEnrollment)
+        {
+          <form class="auth-form" aria-busy="@isLoading" data-testid="mfa-enrollment-form" @onsubmit="VerifyAuthenticatorEnrollmentAsync" @onsubmit:preventDefault="true">
+            <div class="auth-info-alert" role="status">
+              <div class="auth-info-content">
+                <strong>Set up multi-factor authentication</strong>
+                <p>Scan the QR code or enter the manual key in your authenticator app.</p>
+              </div>
+            </div>
+            @if (BuildAuthenticatorQrDataUri(authenticationStep.QrSvg) is { } qrDataUri)
+            {
+              <div class="auth-field"><img src="@qrDataUri" alt="Authenticator enrollment QR code" /></div>
+            }
+            <div class="auth-field"><label>Manual key</label><code>@authenticationStep.ManualKey</code></div>
+            <div class="auth-field">
+              <label for="enrollmentCode">Authenticator code</label>
+              <input id="enrollmentCode" type="text" class="auth-input" inputmode="numeric" autocomplete="one-time-code" required @bind="authenticationStepValue" @bind:event="oninput" />
+            </div>
+            <button type="submit" class="auth-primary" disabled="@isLoading">Verify</button>
+            <button type="button" class="auth-link" disabled="@isLoading" @onclick="CancelAuthenticationStep">Cancel</button>
+          </form>
+        }
+        else if (authenticationStep.Kind == AuthenticationStepKind.MfaVerification)
+        {
+          <form class="auth-form" aria-busy="@isLoading" data-testid="mfa-verification-form" @onsubmit="VerifyMfaAsync" @onsubmit:preventDefault="true">
+            <div class="auth-info-alert" role="status">
+              <div class="auth-info-content">
+                <strong>Verify your identity</strong>
+                <p>@(useRecoveryCode ? "Enter one unused recovery code." : "Enter the current code from your authenticator app.")</p>
+              </div>
+            </div>
+            <div class="auth-field">
+              <label for="mfaCode">@(useRecoveryCode ? "Recovery code" : "Authenticator code")</label>
+              <input id="mfaCode" type="text" class="auth-input" inputmode="@(useRecoveryCode ? "text" : "numeric")" autocomplete="one-time-code" required @bind="authenticationStepValue" @bind:event="oninput" />
+            </div>
+            <button type="submit" class="auth-primary" disabled="@isLoading">Verify</button>
+            <button type="button" class="auth-link" disabled="@isLoading" @onclick="ToggleMfaVerificationMethod">@(useRecoveryCode ? "Use an authenticator code" : "Use a recovery code")</button>
+            <button type="button" class="auth-link" disabled="@isLoading" @onclick="CancelAuthenticationStep">Cancel</button>
+          </form>
+        }
+        else
+        {
+          <div class="auth-form" data-testid="mfa-recovery-codes">
+            <div class="auth-info-alert" role="status">
+              <div class="auth-info-content">
+                <strong>Save your recovery codes</strong>
+                <p>Store these single-use codes securely. Generating a new set invalidates this set.</p>
+              </div>
+            </div>
+            <ul>
+              @foreach (var recoveryCode in authenticationStep.RecoveryCodes ?? [])
+              {
+                <li><code>@recoveryCode</code></li>
+              }
+            </ul>
+            <button type="button" class="auth-primary" disabled="@isLoading" @onclick="CompleteAuthenticatorEnrollmentAsync">I saved these codes</button>
+          </div>
+        }
+      }
+      else
+      {
       <form method="post"
             action="/auth/login"
             class="auth-form"
@@ -157,6 +241,7 @@
           </button>
         }
       </form>
+      }
     }
     else if (authMode == AuthMode.ForgotPassword)
     {

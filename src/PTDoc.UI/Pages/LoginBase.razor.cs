@@ -41,9 +41,14 @@ public abstract class LoginBase : ComponentBase, IDisposable
     protected bool showPasswordResetConfirmation;
     protected bool isDarkTheme;
     protected readonly Dictionary<string, string> loginFieldErrors = new(StringComparer.Ordinal);
+    protected string authenticationStepValue = string.Empty;
+    protected string authenticationStepConfirmation = string.Empty;
+    protected bool useRecoveryCode;
     protected int forgotPasswordFormKey;
     protected int signUpFormKey;
     protected bool supportsExternalIdentityLogin => UserService.SupportsExternalIdentityLogin;
+    protected IAuthenticationStepUserService? authenticationStepUserService => UserService as IAuthenticationStepUserService;
+    protected AuthenticationStepState? pendingAuthenticationStep => authenticationStepUserService?.PendingAuthenticationStep;
     protected string AuthPageTitle => authMode switch
     {
         AuthMode.SignUp => "Sign Up",
@@ -215,7 +220,29 @@ public abstract class LoginBase : ComponentBase, IDisposable
 
         try
         {
-            await JS.InvokeVoidAsync("ptdocAuth.submitLogin", username, pin, LoginReturnUrl);
+            var success = await UserService.LoginAsync(username, pin, LoginReturnUrl);
+            if (pendingAuthenticationStep is not null)
+            {
+                authenticationStepValue = string.Empty;
+                authenticationStepConfirmation = string.Empty;
+                useRecoveryCode = false;
+                isLoading = false;
+                StateHasChanged();
+                return;
+            }
+
+            if (!success)
+            {
+                errorMessage = "Invalid credentials. Please try again.";
+                isLoading = false;
+                StateHasChanged();
+                return;
+            }
+
+            if (UserService.IsAuthenticated)
+            {
+                Navigation.NavigateTo(returnUrl, forceLoad: false);
+            }
         }
         catch (JSDisconnectedException)
         {
@@ -226,6 +253,124 @@ public abstract class LoginBase : ComponentBase, IDisposable
             Logger.LogWarning(ex, "Login form helper failed.");
             errorMessage = "Unable to submit login right now. Please try again.";
             isLoading = false;
+        }
+    }
+
+    protected async Task CompleteRequiredPinChangeAsync()
+    {
+        if (authenticationStepUserService is null || pendingAuthenticationStep is null)
+        {
+            return;
+        }
+
+        var minimum = Math.Clamp(pendingAuthenticationStep.MinimumPinLength, 8, 12);
+        if (authenticationStepValue.Length < minimum
+            || authenticationStepValue.Length > 12
+            || authenticationStepValue.Any(character => !char.IsDigit(character))
+            || !string.Equals(authenticationStepValue, authenticationStepConfirmation, StringComparison.Ordinal))
+        {
+            errorMessage = $"PIN must contain {minimum} to 12 numeric digits, and both entries must match.";
+            return;
+        }
+
+        await CompleteAuthenticationStepAsync(
+            cancellationToken => authenticationStepUserService.CompleteRequiredPinChangeAsync(
+                authenticationStepValue,
+                cancellationToken));
+    }
+
+    protected async Task VerifyAuthenticatorEnrollmentAsync()
+    {
+        if (authenticationStepUserService is null)
+        {
+            return;
+        }
+
+        await CompleteAuthenticationStepAsync(
+            cancellationToken => authenticationStepUserService.VerifyAuthenticatorEnrollmentAsync(
+                authenticationStepValue,
+                cancellationToken));
+    }
+
+    protected async Task VerifyMfaAsync()
+    {
+        if (authenticationStepUserService is null)
+        {
+            return;
+        }
+
+        await CompleteAuthenticationStepAsync(
+            cancellationToken => authenticationStepUserService.VerifyMfaAsync(
+                authenticationStepValue,
+                useRecoveryCode,
+                cancellationToken));
+    }
+
+    protected async Task CompleteAuthenticatorEnrollmentAsync()
+    {
+        if (authenticationStepUserService is null)
+        {
+            return;
+        }
+
+        await CompleteAuthenticationStepAsync(
+            authenticationStepUserService.CompleteAuthenticatorEnrollmentAsync);
+    }
+
+    protected void ToggleMfaVerificationMethod()
+    {
+        useRecoveryCode = !useRecoveryCode;
+        authenticationStepValue = string.Empty;
+        errorMessage = null;
+    }
+
+    protected void CancelAuthenticationStep()
+    {
+        authenticationStepUserService?.CancelAuthenticationStep();
+        authenticationStepValue = string.Empty;
+        authenticationStepConfirmation = string.Empty;
+        useRecoveryCode = false;
+        errorMessage = null;
+        isLoading = false;
+    }
+
+    protected static string? BuildAuthenticatorQrDataUri(string? qrSvg) =>
+        string.IsNullOrWhiteSpace(qrSvg)
+            ? null
+            : $"data:image/svg+xml;base64,{Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(qrSvg))}";
+
+    private async Task CompleteAuthenticationStepAsync(
+        Func<CancellationToken, Task<AuthenticationStepCompletionResult>> operation)
+    {
+        errorMessage = null;
+        isLoading = true;
+        StateHasChanged();
+        try
+        {
+            var result = await operation(CancellationToken.None);
+            if (!result.Succeeded)
+            {
+                errorMessage = result.ErrorMessage ?? "The authentication step could not be completed.";
+            }
+            else
+            {
+                authenticationStepValue = string.Empty;
+                authenticationStepConfirmation = string.Empty;
+                if (UserService.IsAuthenticated)
+                {
+                    Navigation.NavigateTo(returnUrl, forceLoad: false);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Authentication step failed");
+            errorMessage = "The authentication step could not be completed right now.";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
         }
     }
 

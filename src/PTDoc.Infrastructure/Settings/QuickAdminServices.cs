@@ -37,7 +37,15 @@ public sealed class AutoCheckInAdministrationService(
         if (request.MaxAttempts is < 1 or > 10)
             errors["maxAttempts"] = ["Retry attempts must be between 1 and 10."];
 
-        var distinctVisitTypeIds = request.EligibleVisitTypeIds.Distinct().ToArray();
+        var distinctVisitTypeIds = Array.Empty<Guid>();
+        if (request.EligibleVisitTypeIds is null)
+        {
+            errors["eligibleVisitTypeIds"] = ["Eligible visit types are required."];
+        }
+        else
+        {
+            distinctVisitTypeIds = request.EligibleVisitTypeIds.Distinct().ToArray();
+        }
         var validVisitTypes = await context.VisitTypes
             .Where(item => item.ClinicId == clinicId && distinctVisitTypeIds.Contains(item.Id) && item.IsActive && item.RequiresIntake)
             .Select(item => item.Id)
@@ -134,10 +142,10 @@ public sealed class KioskCheckInService(
         string correlationId,
         CancellationToken cancellationToken = default)
     {
-        var name = request.Name.Trim();
-        if (name.Length is 0 or > 120)
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length > 120)
             return SettingsOperationResult<KioskEnrollmentCodeDto>.Validation(
                 new Dictionary<string, string[]> { ["name"] = ["Station name is required and cannot exceed 120 characters."] });
+        var name = request.Name.Trim();
         if (await context.KioskStations.AnyAsync(item => item.ClinicId == clinicId && item.Name == name, cancellationToken))
             return SettingsOperationResult<KioskEnrollmentCodeDto>.Validation(
                 new Dictionary<string, string[]> { ["name"] = ["A kiosk station with this name already exists."] });
@@ -152,10 +160,17 @@ public sealed class KioskCheckInService(
         context.KioskStations.Add(station);
         var enrollment = CreateEnrollmentCode(station);
         context.KioskEnrollmentCodes.Add(enrollment.Entity);
-        await AuditAsync(
-            "KioskStationCreated", clinicId, nameof(KioskStation), station.Id,
-            actorUserId, correlationId, cancellationToken);
-        await context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await AuditAsync(
+                "KioskStationCreated", clinicId, nameof(KioskStation), station.Id,
+                actorUserId, correlationId, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception) when (AppointmentCommunicationProcessor.IsUniqueConstraintViolation(exception))
+        {
+            return DuplicateStationName<KioskEnrollmentCodeDto>();
+        }
         return SettingsOperationResult<KioskEnrollmentCodeDto>.Success(
             new KioskEnrollmentCodeDto(station.Id, enrollment.PlainText, enrollment.Entity.ExpiresAtUtc));
     }
@@ -175,10 +190,10 @@ public sealed class KioskCheckInService(
         if (station.RevokedAtUtc.HasValue && request.IsActive)
             return SettingsOperationResult<KioskStationDto>.Validation(
                 new Dictionary<string, string[]> { ["isActive"] = ["A revoked kiosk station cannot be reactivated."] });
-        var name = request.Name.Trim();
-        if (name.Length is 0 or > 120)
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length > 120)
             return SettingsOperationResult<KioskStationDto>.Validation(
                 new Dictionary<string, string[]> { ["name"] = ["Station name is required and cannot exceed 120 characters."] });
+        var name = request.Name.Trim();
         if (await context.KioskStations.AnyAsync(
                 item => item.ClinicId == clinicId && item.Id != stationId && item.Name == name,
                 cancellationToken))
@@ -200,6 +215,10 @@ public sealed class KioskCheckInService(
         catch (DbUpdateConcurrencyException)
         {
             return SettingsOperationResult<KioskStationDto>.Conflict();
+        }
+        catch (DbUpdateException exception) when (AppointmentCommunicationProcessor.IsUniqueConstraintViolation(exception))
+        {
+            return DuplicateStationName<KioskStationDto>();
         }
         return SettingsOperationResult<KioskStationDto>.Success(MapStation(station));
     }
@@ -591,6 +610,10 @@ public sealed class KioskCheckInService(
 
     private static KioskStationDto MapStation(KioskStation station) =>
         new(station.Id, station.Name, station.IsActive, station.LastSeenAtUtc, station.Version);
+
+    private static SettingsOperationResult<T> DuplicateStationName<T>() =>
+        SettingsOperationResult<T>.Validation(
+            new Dictionary<string, string[]> { ["name"] = ["A kiosk station with this name already exists."] });
 
     private static string BuildSecretToken(Guid id, int bytes)
     {

@@ -212,6 +212,50 @@ public sealed class SettingsAdministrationTests
     }
 
     [Fact]
+    public async Task RoleAdministration_RejectsNullPermissionPayloadMembers()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Null Permissions Clinic", Slug = $"null-permissions-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var service = new RolePermissionAdministrationService(context, CreateAuditService().Object);
+
+        var nullUpdates = await service.UpdateAsync(
+            clinic.Id,
+            Roles.PT,
+            new UpdateRolePermissionsRequest(null!),
+            Guid.NewGuid(),
+            "null-permission-updates");
+        var nullUpdate = await service.UpdateAsync(
+            clinic.Id,
+            Roles.PT,
+            new UpdateRolePermissionsRequest([null!]),
+            Guid.NewGuid(),
+            "null-permission-update");
+        var nullSource = await service.CloneAsync(
+            clinic.Id,
+            Roles.PT,
+            new CloneRolePermissionsRequest(null!, []),
+            Guid.NewGuid(),
+            "null-clone-source");
+        var nullExpectation = await service.CloneAsync(
+            clinic.Id,
+            Roles.PT,
+            new CloneRolePermissionsRequest(Roles.PTA, [null!]),
+            Guid.NewGuid(),
+            "null-clone-expectation");
+
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, nullUpdates.Status);
+        Assert.Contains("permissions", nullUpdates.ValidationErrors!.Keys);
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, nullUpdate.Status);
+        Assert.Contains("permissions", nullUpdate.ValidationErrors!.Keys);
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, nullSource.Status);
+        Assert.Contains("sourceRoleKey", nullSource.ValidationErrors!.Keys);
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, nullExpectation.Status);
+        Assert.Contains("targetPermissions", nullExpectation.ValidationErrors!.Keys);
+    }
+
+    [Fact]
     public async Task RolePermissions_ClampPersistedAdminRecoveryLevelToLockedMinimum()
     {
         await using var context = CreateContext();
@@ -474,6 +518,36 @@ public sealed class SettingsAdministrationTests
 
         Assert.Equal(SettingsOperationStatus.ValidationFailed, result.Status);
         Assert.Contains("hours", Assert.IsAssignableFrom<IReadOnlyDictionary<string, string[]>>(result.ValidationErrors));
+    }
+
+    [Fact]
+    public async Task ClinicHours_RejectNullCollectionAndRows()
+    {
+        await using var context = CreateContext();
+        var service = new SchedulingAdministrationService(context, CreateAuditService().Object);
+
+        var nullCollection = await service.UpdateClinicHoursAsync(
+            Guid.NewGuid(),
+            new UpdateClinicHoursRequest("America/Los_Angeles", 1, null!),
+            Guid.NewGuid(),
+            "null-hours");
+        var nullRow = await service.UpdateClinicHoursAsync(
+            Guid.NewGuid(),
+            new UpdateClinicHoursRequest(
+                "America/Los_Angeles",
+                1,
+                Enumerable.Range(0, 7)
+                    .Select(day => day == 3
+                        ? null!
+                        : new SaveClinicBusinessHourRequest((DayOfWeek)day, false, null, null, null, null, 1))
+                    .ToArray()),
+            Guid.NewGuid(),
+            "null-hour-row");
+
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, nullCollection.Status);
+        Assert.Contains("hours", nullCollection.ValidationErrors!.Keys);
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, nullRow.Status);
+        Assert.Contains("hours", nullRow.ValidationErrors!.Keys);
     }
 
     [Fact]
@@ -1920,6 +1994,58 @@ public sealed class SettingsAdministrationTests
 
         Assert.True(qrResult.Succeeded);
         Assert.Equal(2, await context.KioskCheckInTokens.CountAsync(item => item.ConsumedAtUtc != null));
+    }
+
+    [Fact]
+    public async Task QuickAdminAdministration_RejectsNullCollectionAndStationNames()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Null Quick Admin Clinic", Slug = $"null-quick-admin-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+
+        var autoCheckIn = new AutoCheckInAdministrationService(context, CreateAuditService().Object);
+        var autoCheckInResult = await autoCheckIn.UpdateAsync(
+            clinic.Id,
+            new UpdateAutoCheckInPolicyRequest(
+                false,
+                24,
+                true,
+                true,
+                AutoCheckInTemplateCatalog.Default,
+                3,
+                null!,
+                1),
+            Guid.NewGuid(),
+            "null-eligible-visit-types");
+
+        var kiosk = new KioskCheckInService(
+            context,
+            CreateAuditService().Object,
+            new AppointmentCheckInWorkflow(context, TimeProvider.System));
+        var nullCreateName = await kiosk.CreateStationAsync(
+            clinic.Id,
+            new CreateKioskStationRequest(null!),
+            Guid.NewGuid(),
+            "null-create-name");
+        var station = await kiosk.CreateStationAsync(
+            clinic.Id,
+            new CreateKioskStationRequest("Valid Station"),
+            Guid.NewGuid(),
+            "valid-station");
+        var nullUpdateName = await kiosk.UpdateStationAsync(
+            clinic.Id,
+            station.Value!.StationId,
+            new UpdateKioskStationRequest(null!, true, 1),
+            Guid.NewGuid(),
+            "null-update-name");
+
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, autoCheckInResult.Status);
+        Assert.Contains("eligibleVisitTypeIds", autoCheckInResult.ValidationErrors!.Keys);
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, nullCreateName.Status);
+        Assert.Contains("name", nullCreateName.ValidationErrors!.Keys);
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, nullUpdateName.Status);
+        Assert.Contains("name", nullUpdateName.ValidationErrors!.Keys);
     }
 
     [Fact]
