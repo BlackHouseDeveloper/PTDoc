@@ -568,6 +568,98 @@ public sealed class CommunicationServiceTests
         Assert.True(accepted.Succeeded);
     }
 
+    [Theory]
+    [InlineData(4, "1234567", "12345678", 8)]
+    [InlineData(20, "12345678901", "123456789012", 12)]
+    public async Task PasswordResetTokenService_NormalizesMalformedStoredPinMinimum(
+        int storedMinimum,
+        string rejectedPin,
+        string acceptedPin,
+        int expectedMinimum)
+    {
+        await using var db = CreateDbContext();
+        var clinic = new Clinic { Name = "Malformed Reset Policy", Slug = $"malformed-reset-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = $"malformed-reset-{storedMinimum}",
+            PinHash = "old-hash",
+            FirstName = "Malformed",
+            LastName = "Reset",
+            Email = $"malformed-reset-{storedMinimum}@example.com",
+            Role = "PT",
+            ClinicId = clinic.Id,
+            IsActive = true
+        };
+        db.AddRange(clinic, user);
+        await db.SaveChangesAsync();
+        var policy = await db.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.MinimumPinLength = storedMinimum;
+        await db.SaveChangesAsync();
+        var emailSender = new FakeEmailSender();
+        await CreateService(db, emailSender: emailSender).SendPasswordResetEmailAsync(
+            new PasswordResetDeliveryRequest { Recipient = user.Email! });
+        var token = ExtractResetToken(emailSender);
+        var service = new PasswordResetTokenService(db);
+
+        var rejected = await service.ResetPinAsync(new PasswordResetCompletionRequest
+        {
+            Token = token,
+            NewPin = rejectedPin
+        });
+        var accepted = await service.ResetPinAsync(new PasswordResetCompletionRequest
+        {
+            Token = token,
+            NewPin = acceptedPin
+        });
+
+        Assert.Equal(PasswordResetCompletionStatus.InvalidPin, rejected.Status);
+        Assert.Equal(expectedMinimum, rejected.MinimumPinLength);
+        Assert.True(accepted.Succeeded);
+    }
+
+    [Fact]
+    public async Task PasswordResetTokenService_RelationalClaimRechecksExpiryAtWriteBoundary()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var db = new ApplicationDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        var user = new User
+        {
+            Username = "expiring-reset-user",
+            PinHash = "old-hash",
+            FirstName = "Expiring",
+            LastName = "Reset",
+            Email = "expiring-reset@example.com",
+            Role = "PT",
+            IsActive = true
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+        var emailSender = new FakeEmailSender();
+        await CreateService(db, emailSender: emailSender).SendPasswordResetEmailAsync(
+            new PasswordResetDeliveryRequest { Recipient = user.Email! });
+        var token = ExtractResetToken(emailSender);
+        var firstCheck = new DateTimeOffset(2026, 9, 18, 20, 0, 0, TimeSpan.Zero);
+        var storedToken = await db.PasswordResetTokens.SingleAsync();
+        storedToken.ExpiresAtUtc = firstCheck.AddSeconds(1);
+        await db.SaveChangesAsync();
+        var timeProvider = new SequenceTimeProvider(firstCheck, firstCheck.AddSeconds(2));
+        var service = new PasswordResetTokenService(db, timeProvider: timeProvider);
+
+        var result = await service.ResetPinAsync(new PasswordResetCompletionRequest
+        {
+            Token = token,
+            NewPin = "12345678"
+        });
+
+        Assert.Equal(PasswordResetCompletionStatus.Expired, result.Status);
+        db.ChangeTracker.Clear();
+        Assert.Equal("old-hash", await db.Users.Select(item => item.PinHash).SingleAsync());
+        Assert.Null(await db.PasswordResetTokens.Select(item => item.UsedAtUtc).SingleAsync());
+    }
+
     [Fact]
     public async Task PasswordResetTokenService_ValidateToken_InvalidInputs_ReturnsFalse()
     {
@@ -1260,6 +1352,18 @@ public sealed class CommunicationServiceTests
                 Channel = DeliveryChannel.Sms,
                 Purpose = message.Purpose
             });
+        }
+    }
+
+    private sealed class SequenceTimeProvider(params DateTimeOffset[] values) : TimeProvider
+    {
+        private int index;
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            var selected = values[Math.Min(index, values.Length - 1)];
+            index++;
+            return selected;
         }
     }
 

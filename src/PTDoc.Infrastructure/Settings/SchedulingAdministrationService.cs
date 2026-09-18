@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.Services;
 using PTDoc.Application.Settings;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -11,6 +12,19 @@ public sealed partial class SchedulingAdministrationService(
     ApplicationDbContext context,
     IAuditService auditService) : ISchedulingAdministrationService
 {
+    private static readonly string[] SchedulableClinicianRoles =
+        [
+            Roles.PT,
+            Roles.PTA,
+            Roles.Admin,
+            Roles.Owner,
+            Roles.PracticeManager,
+            "Physical Therapist",
+            "Physical Therapist Assistant",
+            "Clinician",
+            "Provider"
+        ];
+
     public async Task<IReadOnlyList<VisitTypeDto>> GetVisitTypesAsync(
         Guid clinicId,
         bool includeInactive,
@@ -361,6 +375,10 @@ public sealed partial class SchedulingAdministrationService(
         {
             return SettingsOperationResult<ScheduleBlockDto>.Validation(errors);
         }
+        if (!await IsValidScheduleBlockClinicianAsync(clinicId, request.ClinicianId, cancellationToken))
+        {
+            return InvalidScheduleBlockClinician();
+        }
 
         var entity = new ScheduleBlockRule
         {
@@ -396,6 +414,10 @@ public sealed partial class SchedulingAdministrationService(
         if (errors.Count > 0)
         {
             return SettingsOperationResult<ScheduleBlockDto>.Validation(errors);
+        }
+        if (!await IsValidScheduleBlockClinicianAsync(clinicId, request.ClinicianId, cancellationToken))
+        {
+            return InvalidScheduleBlockClinician();
         }
 
         var entity = await context.ScheduleBlockRules.SingleOrDefaultAsync(
@@ -522,6 +544,10 @@ public sealed partial class SchedulingAdministrationService(
             errors["appointmentBufferMinutes"] = ["Appointment buffer must be between 0 and 120 minutes."];
         if (request.ReminderLeadHours is not (12 or 24 or 48))
             errors["reminderLeadHours"] = ["Reminder lead time must be 12, 24, or 48 hours."];
+        if (string.IsNullOrWhiteSpace(request.DefaultClinicianView) || request.DefaultClinicianView.Trim().Length > 30)
+            errors["defaultClinicianView"] = ["Default clinician view is required and cannot exceed 30 characters."];
+        if (string.IsNullOrWhiteSpace(request.DefaultAdminView) || request.DefaultAdminView.Trim().Length > 30)
+            errors["defaultAdminView"] = ["Default admin view is required and cannot exceed 30 characters."];
         ValidateColor(errors, "intakeSentColor", request.IntakeSentColor);
         ValidateColor(errors, "intakeIncompleteColor", request.IntakeIncompleteColor);
         ValidateColor(errors, "intakeCompleteColor", request.IntakeCompleteColor);
@@ -563,6 +589,31 @@ public sealed partial class SchedulingAdministrationService(
     private static SettingsOperationResult<VisitTypeDto> DuplicateVisitTypeCode() =>
         SettingsOperationResult<VisitTypeDto>.Validation(
             new Dictionary<string, string[]> { ["code"] = ["A visit type with this code already exists."] });
+
+    private async Task<bool> IsValidScheduleBlockClinicianAsync(
+        Guid clinicId,
+        Guid? clinicianId,
+        CancellationToken cancellationToken)
+    {
+        if (!clinicianId.HasValue)
+        {
+            return true;
+        }
+
+        return await context.Users.AnyAsync(
+            user => user.Id == clinicianId.Value
+                && user.ClinicId == clinicId
+                && user.IsActive
+                && SchedulableClinicianRoles.Contains(user.Role),
+            cancellationToken);
+    }
+
+    private static SettingsOperationResult<ScheduleBlockDto> InvalidScheduleBlockClinician() =>
+        SettingsOperationResult<ScheduleBlockDto>.Validation(
+            new Dictionary<string, string[]>
+            {
+                ["clinicianId"] = ["Clinician must be active, schedulable, and belong to this clinic."]
+            });
 
     private static Dictionary<string, string[]> ValidateBlock(SaveScheduleBlockRequest request, bool requireExpectedVersion)
     {

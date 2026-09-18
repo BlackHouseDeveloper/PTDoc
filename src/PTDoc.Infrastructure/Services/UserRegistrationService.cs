@@ -67,10 +67,11 @@ public sealed class UserRegistrationService : IUserRegistrationService
                 policy.RequirePinChangeOnFirstLogin
             })
             .SingleOrDefaultAsync(cancellationToken);
-        var minimumPinLength = securityPolicy?.MinimumPinLength ?? 8;
+        var minimumPinLength = PinPolicyRules.NormalizeMinimumLength(
+            securityPolicy?.MinimumPinLength ?? PinPolicyRules.MinimumLength);
         if (string.IsNullOrWhiteSpace(request.Pin)
             || request.Pin.Length < minimumPinLength
-            || request.Pin.Length > 12
+            || request.Pin.Length > PinPolicyRules.MaximumLength
             || request.Pin.Any(static ch => !char.IsDigit(ch)))
         {
             return new RegistrationResult(

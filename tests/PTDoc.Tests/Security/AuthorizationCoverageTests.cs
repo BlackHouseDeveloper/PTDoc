@@ -108,6 +108,27 @@ public class AuthorizationCoverageTests
         Assert.Equal(Roles.Admin, Assert.Single(requirement.StaticAllowedRoles));
     }
 
+    [Fact]
+    public void SecurityAdministrationWritePolicy_RequiresAdminRoleAndFullSettingsCapability()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddAuthorizationCore(options => options.AddPTDocAuthorizationPolicies());
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AuthorizationOptions>>().Value;
+        var policy = options.GetPolicy(AuthorizationPolicies.SecurityAdministrationWrite)!;
+
+        var roleRequirement = Assert.Single(policy.Requirements
+            .OfType<Microsoft.AspNetCore.Authorization.Infrastructure.RolesAuthorizationRequirement>());
+        var capabilityRequirement = Assert.Single(policy.Requirements
+            .OfType<DynamicCapabilityRequirement>());
+
+        Assert.Equal(Roles.Admin, Assert.Single(roleRequirement.AllowedRoles));
+        Assert.Equal(CapabilityKey.ClinicSettingsManage, Assert.Single(capabilityRequirement.CapabilityKeys));
+        Assert.Equal(PermissionLevel.Full, capabilityRequirement.RequiredLevel);
+        Assert.Equal(Roles.Admin, Assert.Single(capabilityRequirement.StaticAllowedRoles));
+    }
+
     /// <summary>
     /// Validates that the inventory contains at least one entry for every major
     /// resource area (patients, intake, notes, compliance, sync, AI, PDF, diagnostics).

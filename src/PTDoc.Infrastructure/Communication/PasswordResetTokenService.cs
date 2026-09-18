@@ -15,13 +15,16 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
     private const int MaxTokenLength = 4096;
     private readonly ApplicationDbContext _db;
     private readonly ILogger<PasswordResetTokenService>? _logger;
+    private readonly TimeProvider _timeProvider;
 
     public PasswordResetTokenService(
         ApplicationDbContext db,
-        ILogger<PasswordResetTokenService>? logger = null)
+        ILogger<PasswordResetTokenService>? logger = null,
+        TimeProvider? timeProvider = null)
     {
         _db = db;
         _logger = logger;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<PasswordResetCompletionResult> ResetPinAsync(
@@ -38,7 +41,7 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
         try
         {
             var tokenHash = CommunicationText.HashToken(request.Token);
-            var now = DateTimeOffset.UtcNow;
+            var now = _timeProvider.GetUtcNow();
 
             if (_db.Database.IsRelational())
             {
@@ -99,14 +102,14 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
                             minimumPinLength);
                     }
 
-                    var claimed = await _db.PasswordResetTokens
-                        .Where(resetToken =>
-                            resetToken.Id == tokenMetadata.Id &&
-                            resetToken.UsedAtUtc == null &&
-                            resetToken.RevokedAtUtc == null)
-                        .ExecuteUpdateAsync(
-                            setters => setters.SetProperty(resetToken => resetToken.UsedAtUtc, now),
-                            cancellationToken);
+                    var claimTime = _timeProvider.GetUtcNow();
+                    if (tokenMetadata.ExpiresAtUtc <= claimTime)
+                    {
+                        return Failure(PasswordResetCompletionStatus.Expired, "The reset link is invalid or expired.");
+                    }
+
+                    var claimed = await ClaimTokenAsync(
+                        tokenMetadata.Id, claimTime, cancellationToken);
 
                     if (claimed != 1)
                     {
@@ -200,22 +203,22 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
         try
         {
             var tokenHash = CommunicationText.HashToken(request.Token);
-            var now = DateTimeOffset.UtcNow;
+            var now = _timeProvider.GetUtcNow();
             var tokenMetadata = await _db.PasswordResetTokens
                 .AsNoTracking()
                 .Where(resetToken =>
                     resetToken.TokenHash == tokenHash
                     && resetToken.UsedAtUtc == null
                     && resetToken.RevokedAtUtc == null
-                    && resetToken.ExpiresAtUtc > now
                     && resetToken.User != null)
                 .Select(resetToken => new
                 {
-                    resetToken.User!.ClinicId
+                    resetToken.User!.ClinicId,
+                    resetToken.ExpiresAtUtc
                 })
                 .FirstOrDefaultAsync(cancellationToken);
 
-            if (tokenMetadata is null)
+            if (tokenMetadata is null || tokenMetadata.ExpiresAtUtc <= now)
             {
                 return new PasswordResetTokenValidationResult { IsValid = false };
             }
@@ -261,14 +264,48 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
     {
         if (!clinicId.HasValue)
         {
-            return 8;
+            return PinPolicyRules.MinimumLength;
         }
 
-        return await _db.ClinicSecurityPolicies
+        var configuredMinimum = await _db.ClinicSecurityPolicies
             .Where(policy => policy.ClinicId == clinicId.Value)
             .Select(policy => (int?)policy.MinimumPinLength)
             .SingleOrDefaultAsync(cancellationToken)
-            ?? 8;
+            ?? PinPolicyRules.MinimumLength;
+        return PinPolicyRules.NormalizeMinimumLength(configuredMinimum);
+    }
+
+    private async Task<int> ClaimTokenAsync(
+        Guid tokenId,
+        DateTimeOffset claimedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(
+                _db.Database.ProviderName,
+                "Microsoft.EntityFrameworkCore.Sqlite",
+                StringComparison.Ordinal))
+        {
+            return await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"""
+                UPDATE "PasswordResetTokens"
+                SET "UsedAtUtc" = {claimedAtUtc}
+                WHERE "Id" = {tokenId}
+                  AND "UsedAtUtc" IS NULL
+                  AND "RevokedAtUtc" IS NULL
+                  AND julianday("ExpiresAtUtc") > julianday({claimedAtUtc})
+                """,
+                cancellationToken);
+        }
+
+        return await _db.PasswordResetTokens
+            .Where(resetToken =>
+                resetToken.Id == tokenId &&
+                resetToken.UsedAtUtc == null &&
+                resetToken.RevokedAtUtc == null &&
+                resetToken.ExpiresAtUtc > claimedAtUtc)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(resetToken => resetToken.UsedAtUtc, claimedAtUtc),
+                cancellationToken);
     }
 
     private static bool IsExpectedResetTokenStorageException(Exception ex)

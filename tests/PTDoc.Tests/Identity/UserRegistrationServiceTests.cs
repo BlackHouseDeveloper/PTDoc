@@ -169,6 +169,38 @@ public class UserRegistrationServiceTests
     }
 
     [Theory]
+    [InlineData(4, "1234567", RegistrationStatus.InvalidPin)]
+    [InlineData(20, "12345678901", RegistrationStatus.InvalidPin)]
+    [InlineData(4, "12345678", RegistrationStatus.PendingApproval)]
+    [InlineData(20, "123456789012", RegistrationStatus.PendingApproval)]
+    public async Task RegisterAsync_NormalizesMalformedStoredPinMinimum(
+        int storedMinimum,
+        string pin,
+        RegistrationStatus expectedStatus)
+    {
+        await using var context = CreateInMemoryContext();
+        var clinic = new Clinic { Name = "Malformed PIN Clinic", Slug = $"malformed-pin-{Guid.NewGuid():N}", IsActive = true };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.MinimumPinLength = storedMinimum;
+        await context.SaveChangesAsync();
+        var sut = new UserRegistrationService(context, NullLogger<UserRegistrationService>.Instance);
+
+        var result = await sut.RegisterAsync(new UserRegistrationRequest(
+            "Malformed Policy User",
+            $"malformed-{storedMinimum}-{pin.Length}@clinic.com",
+            new DateTime(1992, 3, 3),
+            Roles.FrontDesk,
+            clinic.Id,
+            pin,
+            null,
+            null));
+
+        Assert.Equal(expectedStatus, result.Status);
+    }
+
+    [Theory]
     [InlineData("Billing", "billing@clinic.com")]
     [InlineData("Patient", "patient@clinic.com")]
     public async Task RegisterAsync_QaReadOnlyRoles_CreateInactiveUser(string roleKey, string email)

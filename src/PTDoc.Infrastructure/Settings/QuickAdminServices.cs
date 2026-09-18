@@ -504,6 +504,10 @@ public sealed class KioskCheckInService(
         {
             return SettingsOperationResult<KioskCheckInResult>.NotFound();
         }
+        if (checkIn.Status == AppointmentCheckInStatus.Conflict)
+        {
+            return SettingsOperationResult<KioskCheckInResult>.Conflict("appointment_check_in_conflict");
+        }
         if (checkIn.Status is AppointmentCheckInStatus.Ineligible or AppointmentCheckInStatus.PaymentRequired)
         {
             return SettingsOperationResult<KioskCheckInResult>.Validation(

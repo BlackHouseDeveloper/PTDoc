@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -341,6 +342,46 @@ public sealed class SettingsAdministrationTests
     }
 
     [Fact]
+    public async Task RoleAdministration_FirstWriteUniqueRaceReturnsConflictAndClearsFailedEntries()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var clinic = new Clinic { Name = "Permission Race Clinic", Slug = $"permission-race-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var seeded = await context.RoleCapabilityPermissions.SingleAsync(item =>
+            item.ClinicId == clinic.Id
+            && item.RoleKey == Roles.PT
+            && item.CapabilityKey == CapabilityKey.AppointmentsCreate);
+        context.RoleCapabilityPermissions.Remove(seeded);
+        await context.SaveChangesAsync();
+        context.RoleCapabilityPermissions.Add(new RoleCapabilityPermission
+        {
+            ClinicId = clinic.Id,
+            RoleKey = Roles.PT,
+            CapabilityKey = CapabilityKey.AppointmentsCreate,
+            Level = PermissionLevel.Edit,
+            UpdatedByUserId = Guid.NewGuid()
+        });
+        var service = new RolePermissionAdministrationService(context, CreateAuditService().Object);
+
+        var result = await service.UpdateAsync(
+            clinic.Id,
+            Roles.PT,
+            new UpdateRolePermissionsRequest(
+                [new PermissionUpdate(CapabilityKey.AppointmentsCreate, PermissionLevel.Edit, 0)]),
+            Guid.NewGuid(),
+            "first-write-race");
+
+        Assert.Equal(SettingsOperationStatus.Conflict, result.Status);
+        Assert.DoesNotContain(context.ChangeTracker.Entries<RoleCapabilityPermission>(),
+            entry => entry.State is EntityState.Added or EntityState.Modified);
+    }
+
+    [Fact]
     public async Task RolePermissions_ClampPersistedAdminRecoveryLevelToLockedMinimum()
     {
         await using var context = CreateContext();
@@ -407,6 +448,42 @@ public sealed class SettingsAdministrationTests
 
         Assert.Equal(clinicianId, ownOnly);
         Assert.Null(all);
+    }
+
+    [Fact]
+    public async Task SchedulingWriteScope_UsesDynamicAllScheduleCapability()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Write Scope Clinic", Slug = $"write-scope-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.AuthorizationMode = AuthorizationRolloutMode.Enforced;
+        policy.RestrictCliniciansToOwnSchedules = false;
+        var allSchedules = await context.RoleCapabilityPermissions.SingleAsync(item =>
+            item.ClinicId == clinic.Id
+            && item.RoleKey == Roles.PT
+            && item.CapabilityKey == CapabilityKey.ScheduleViewAll);
+        allSchedules.Level = PermissionLevel.None;
+        await context.SaveChangesAsync();
+        var clinicianId = Guid.NewGuid();
+        var identity = new Mock<IIdentityContextAccessor>();
+        identity.Setup(accessor => accessor.GetCurrentUserRole()).Returns(Roles.PT);
+        identity.Setup(accessor => accessor.GetCurrentUserId()).Returns(clinicianId);
+        var evaluator = new PermissionEvaluator(context, NullLogger<PermissionEvaluator>.Instance);
+
+        var own = await AppointmentEndpoints.CanAccessClinicianScheduleAsync(
+            context, clinic.Id, clinicianId, identity.Object, evaluator, CancellationToken.None);
+        var otherDenied = await AppointmentEndpoints.CanAccessClinicianScheduleAsync(
+            context, clinic.Id, Guid.NewGuid(), identity.Object, evaluator, CancellationToken.None);
+        allSchedules.Level = PermissionLevel.View;
+        await context.SaveChangesAsync();
+        var otherAllowed = await AppointmentEndpoints.CanAccessClinicianScheduleAsync(
+            context, clinic.Id, Guid.NewGuid(), identity.Object, evaluator, CancellationToken.None);
+
+        Assert.True(own);
+        Assert.False(otherDenied);
+        Assert.True(otherAllowed);
     }
 
     [Fact]
@@ -722,11 +799,12 @@ public sealed class SettingsAdministrationTests
         var identity = new Mock<IIdentityContextAccessor>();
         identity.Setup(accessor => accessor.GetCurrentUserRole()).Returns(Roles.PT);
         identity.Setup(accessor => accessor.GetCurrentUserId()).Returns(clinicianId);
+        var evaluator = new PermissionEvaluator(context, NullLogger<PermissionEvaluator>.Instance);
 
         var own = await AppointmentEndpoints.CanAccessClinicianScheduleAsync(
-            context, clinic.Id, clinicianId, identity.Object, CancellationToken.None);
+            context, clinic.Id, clinicianId, identity.Object, evaluator, CancellationToken.None);
         var other = await AppointmentEndpoints.CanAccessClinicianScheduleAsync(
-            context, clinic.Id, Guid.NewGuid(), identity.Object, CancellationToken.None);
+            context, clinic.Id, Guid.NewGuid(), identity.Object, evaluator, CancellationToken.None);
 
         Assert.True(own);
         Assert.False(other);
@@ -1267,6 +1345,45 @@ public sealed class SettingsAdministrationTests
     }
 
     [Fact]
+    public async Task UnderMinimumNonLegacyPin_RequiresImmediateChangeWithoutGrace()
+    {
+        await using var context = CreateContext();
+        var now = new DateTimeOffset(2026, 9, 18, 20, 0, 0, TimeSpan.Zero);
+        var clinic = new Clinic { Name = "Non-Legacy PIN Clinic", Slug = $"non-legacy-pin-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = "non-legacy-pin-user",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "NonLegacy",
+            LastName = "Pin",
+            Role = Roles.PT,
+            ClinicId = clinic.Id,
+            IsActive = true
+        };
+        context.AddRange(clinic, user);
+        await context.SaveChangesAsync();
+        var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.MinimumPinLength = 10;
+        policy.CreatedAtUtc = now.UtcDateTime;
+        await context.SaveChangesAsync();
+        var audit = CreateAuthAuditService();
+        var time = new MutableTimeProvider(now);
+        var auth = new AuthService(
+            context,
+            NullLogger<AuthService>.Instance,
+            audit.Object,
+            new MfaAuthenticationService(context, new TestSecretProtector(), audit.Object, time),
+            time);
+
+        var result = await auth.AuthenticateAsync(user.Username, "12345678");
+
+        Assert.Equal(AuthStatus.RequiresPinChange, result!.Status);
+        Assert.Equal(10, result.MinimumPinLength);
+        Assert.True(user.MustChangePin);
+        Assert.Null(user.LegacyPinGraceEndsAtUtc);
+    }
+
+    [Fact]
     public async Task ScheduleBlockValidation_RejectsUndefinedWeekdayBits()
     {
         await using var context = CreateContext();
@@ -1291,6 +1408,80 @@ public sealed class SettingsAdministrationTests
 
         Assert.Equal(SettingsOperationStatus.ValidationFailed, result.Status);
         Assert.Contains("weekdays", result.ValidationErrors!.Keys);
+        Assert.Empty(await context.ScheduleBlockRules.ToListAsync());
+    }
+
+    [Fact]
+    public async Task SchedulingPreferences_RejectMissingOrOverlongDefaultViews()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "View Validation Clinic", Slug = $"view-validation-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var current = await context.SchedulingPreferences.SingleAsync(item => item.ClinicId == clinic.Id);
+        var service = new SchedulingAdministrationService(context, CreateAuditService().Object);
+        var request = new UpdateSchedulingPreferencesRequest(
+            45,
+            15,
+            false,
+            true,
+            true,
+            true,
+            true,
+            true,
+            null!,
+            new string('x', 31),
+            null,
+            null,
+            null,
+            true,
+            24,
+            current.Version);
+
+        var result = await service.UpdatePreferencesAsync(
+            clinic.Id, request, Guid.NewGuid(), "invalid-default-views");
+
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, result.Status);
+        Assert.Contains("defaultClinicianView", result.ValidationErrors!.Keys);
+        Assert.Contains("defaultAdminView", result.ValidationErrors.Keys);
+    }
+
+    [Fact]
+    public async Task ScheduleBlockValidation_RejectsCrossClinicClinician()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Block Clinic", Slug = $"block-clinic-{Guid.NewGuid():N}" };
+        var otherClinic = new Clinic { Name = "Other Block Clinic", Slug = $"other-block-{Guid.NewGuid():N}" };
+        var clinician = new User
+        {
+            Username = $"cross-clinic-{Guid.NewGuid():N}",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Cross",
+            LastName = "Clinic",
+            Role = Roles.PT,
+            ClinicId = otherClinic.Id,
+            IsActive = true
+        };
+        context.AddRange(clinic, otherClinic, clinician);
+        await context.SaveChangesAsync();
+        var service = new SchedulingAdministrationService(context, CreateAuditService().Object);
+        var request = new SaveScheduleBlockRequest(
+            clinician.Id,
+            "Cross-clinic block",
+            "administrative",
+            WeekdayFlags.Monday,
+            new TimeOnly(9, 0),
+            new TimeOnly(10, 0),
+            new DateOnly(2026, 9, 20),
+            null,
+            true,
+            true);
+
+        var result = await service.CreateScheduleBlockAsync(
+            clinic.Id, request, Guid.NewGuid(), "cross-clinic-clinician");
+
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, result.Status);
+        Assert.Contains("clinicianId", result.ValidationErrors!.Keys);
         Assert.Empty(await context.ScheduleBlockRules.ToListAsync());
     }
 
@@ -2118,6 +2309,8 @@ public sealed class SettingsAdministrationTests
         Assert.True(numericResult.Succeeded);
         Assert.Equal(SettingsOperationStatus.NotFound, numericReplay.Status);
         Assert.Equal(AppointmentStatus.CheckedIn, appointment.Status);
+        Assert.Equal(IIdentityContextAccessor.SystemUserId, appointment.ModifiedByUserId);
+        Assert.Equal(SyncState.Pending, appointment.SyncState);
         Assert.NotNull(tokenCreatedAudit);
         Assert.Equal(nameof(KioskCheckInToken), tokenCreatedAudit.EntityType);
         Assert.NotEqual(appointment.Id, tokenCreatedAudit.EntityId);
@@ -2131,6 +2324,45 @@ public sealed class SettingsAdministrationTests
 
         Assert.True(qrResult.Succeeded);
         Assert.Equal(2, await context.KioskCheckInTokens.CountAsync(item => item.ConsumedAtUtc != null));
+    }
+
+    [Fact]
+    public async Task AppointmentCheckIn_ConcurrencyFailureReturnsStableConflict()
+    {
+        var interceptor = new ThrowAppointmentCheckInConcurrencyInterceptor();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .AddInterceptors(interceptor)
+            .Options;
+        await using var context = new ApplicationDbContext(options);
+        var clinic = new Clinic { Name = "Check-In Conflict Clinic", Slug = $"check-in-conflict-{Guid.NewGuid():N}" };
+        var patient = new Patient
+        {
+            FirstName = "Conflict",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = clinic.Id,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        var appointment = new Appointment
+        {
+            Patient = patient,
+            PatientId = patient.Id,
+            ClinicId = clinic.Id,
+            ClinicalId = Guid.NewGuid(),
+            StartTimeUtc = DateTime.UtcNow.AddHours(1),
+            EndTimeUtc = DateTime.UtcNow.AddHours(2),
+            Status = AppointmentStatus.Scheduled,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.AddRange(clinic, patient, appointment);
+        await context.SaveChangesAsync();
+        interceptor.Enabled = true;
+
+        var result = await new AppointmentCheckInWorkflow(context, TimeProvider.System)
+            .CheckInAsync(appointment.Id, clinic.Id);
+
+        Assert.Equal(AppointmentCheckInStatus.Conflict, result.Status);
     }
 
     [Fact]
@@ -2553,6 +2785,27 @@ public sealed class SettingsAdministrationTests
         }
 
         return output.ToArray();
+    }
+
+    private sealed class ThrowAppointmentCheckInConcurrencyInterceptor : SaveChangesInterceptor
+    {
+        public bool Enabled { get; set; }
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (Enabled && eventData.Context?.ChangeTracker.Entries<Appointment>()
+                    .Any(entry => entry.State == EntityState.Modified
+                        && entry.Entity.Status == AppointmentStatus.CheckedIn) == true)
+            {
+                Enabled = false;
+                throw new DbUpdateConcurrencyException("Simulated concurrent appointment update.");
+            }
+
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
     }
 
     private sealed class TestSecretProtector : ISettingsSecretProtector

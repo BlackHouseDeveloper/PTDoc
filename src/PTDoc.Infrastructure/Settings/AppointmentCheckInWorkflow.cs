@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Settings;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -51,7 +52,29 @@ public sealed class AppointmentCheckInWorkflow(
         {
             appointment.Status = AppointmentStatus.CheckedIn;
             appointment.LastModifiedUtc = checkedInAt;
-            await context.SaveChangesAsync(cancellationToken);
+            appointment.ModifiedByUserId = IIdentityContextAccessor.SystemUserId;
+            appointment.SyncState = SyncState.Pending;
+            try
+            {
+                await context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                context.Entry(appointment).State = EntityState.Detached;
+                var current = await query
+                    .AsNoTracking()
+                    .SingleOrDefaultAsync(item => item.Id == appointmentId
+                        && (!requiredClinicId.HasValue || item.ClinicId == requiredClinicId), cancellationToken);
+                if (current?.Status is AppointmentStatus.CheckedIn or AppointmentStatus.InProgress)
+                {
+                    return new AppointmentCheckInDecision(
+                        AppointmentCheckInStatus.Succeeded,
+                        current.LastModifiedUtc);
+                }
+
+                return new AppointmentCheckInDecision(
+                    current is null ? AppointmentCheckInStatus.NotFound : AppointmentCheckInStatus.Conflict);
+            }
         }
 
         return new AppointmentCheckInDecision(AppointmentCheckInStatus.Succeeded, checkedInAt);

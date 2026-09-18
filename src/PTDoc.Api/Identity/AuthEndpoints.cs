@@ -123,7 +123,8 @@ public static class PinAuthEndpoints
             {
                 error = "pin_policy_failed",
                 message = $"PIN must contain {minimumPinLength} to 12 numeric digits.",
-                challengeToken = result.ChallengeToken
+                challengeToken = result.ChallengeToken,
+                minimumPinLength
             });
         }
 

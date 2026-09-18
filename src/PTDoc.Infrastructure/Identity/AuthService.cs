@@ -167,9 +167,10 @@ public class AuthService : IAuthService
         }
 
         var policy = await GetSecurityPolicyAsync(user.ClinicId, cancellationToken);
+        var minimumPinLength = PinPolicyRules.NormalizeMinimumLength(policy.MinimumPinLength);
         if (string.IsNullOrEmpty(newPin)
-            || newPin.Length < policy.MinimumPinLength
-            || newPin.Length > 12
+            || newPin.Length < minimumPinLength
+            || newPin.Length > PinPolicyRules.MaximumLength
             || newPin.Any(character => !char.IsDigit(character)))
         {
             return new AuthResult
@@ -181,7 +182,7 @@ public class AuthService : IAuthService
                 Role = user.Role,
                 ClinicId = user.ClinicId,
                 ChallengeToken = challengeToken,
-                MinimumPinLength = policy.MinimumPinLength
+                MinimumPinLength = minimumPinLength
             };
         }
 
@@ -443,19 +444,28 @@ public class AuthService : IAuthService
         CancellationToken cancellationToken)
     {
         var policy = await GetSecurityPolicyAsync(user.ClinicId, cancellationToken);
+        var minimumPinLength = PinPolicyRules.NormalizeMinimumLength(policy.MinimumPinLength);
         var now = _timeProvider.GetUtcNow().UtcDateTime;
-        if (suppliedPin.Length < policy.MinimumPinLength)
+        if (suppliedPin.Length < minimumPinLength)
         {
-            if (!user.LegacyPinGraceEndsAtUtc.HasValue)
+            if (suppliedPin.Length == PinPolicyRules.LegacyGrandfatheredLength)
             {
-                // Anchor the migration window to the clinic policy rollout, not to
-                // an individual user's next login. Dormant legacy accounts must not
-                // receive a fresh weak-PIN window months after deployment.
-                user.LegacyPinGraceEndsAtUtc = policy.CreatedAtUtc.AddDays(14);
-                await _context.SaveChangesAsync(cancellationToken);
-            }
+                if (!user.LegacyPinGraceEndsAtUtc.HasValue)
+                {
+                    // Anchor the migration window to the clinic policy rollout, not to
+                    // an individual user's next login. Dormant legacy accounts must not
+                    // receive a fresh weak-PIN window months after deployment.
+                    user.LegacyPinGraceEndsAtUtc = policy.CreatedAtUtc.AddDays(14);
+                    await _context.SaveChangesAsync(cancellationToken);
+                }
 
-            if (user.LegacyPinGraceEndsAtUtc <= now)
+                if (user.LegacyPinGraceEndsAtUtc <= now)
+                {
+                    user.MustChangePin = true;
+                    await _context.SaveChangesAsync(cancellationToken);
+                }
+            }
+            else if (!user.MustChangePin)
             {
                 user.MustChangePin = true;
                 await _context.SaveChangesAsync(cancellationToken);
@@ -468,7 +478,7 @@ public class AuthService : IAuthService
                 user,
                 AuthStatus.RequiresPinChange,
                 MfaChallengePurpose.PinChange,
-                policy.MinimumPinLength);
+                minimumPinLength);
         }
 
         return await ContinueAfterPinComplianceAsync(

@@ -60,6 +60,16 @@ public enum MfaEnforcementMode
     Enforced = 2
 }
 
+public static class PinPolicyRules
+{
+    public const int MinimumLength = 8;
+    public const int MaximumLength = 12;
+    public const int LegacyGrandfatheredLength = 4;
+
+    public static int NormalizeMinimumLength(int configuredMinimum) =>
+        Math.Clamp(configuredMinimum, MinimumLength, MaximumLength);
+}
+
 [Flags]
 public enum WeekdayFlags
 {

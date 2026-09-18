@@ -132,6 +132,12 @@ public sealed class RolePermissionAdministrationService(
         {
             return SettingsOperationResult<RolePermissionSet>.Conflict();
         }
+        catch (DbUpdateException exception) when (
+            AppointmentCommunicationProcessor.IsUniqueConstraintViolation(exception))
+        {
+            ClearFailedPermissionWriteEntries();
+            return SettingsOperationResult<RolePermissionSet>.Conflict();
+        }
 
         var all = await context.RoleCapabilityPermissions
             .Where(permission => permission.ClinicId == clinicId && permission.RoleKey == role.Key)
@@ -285,6 +291,12 @@ public sealed class RolePermissionAdministrationService(
         {
             return SettingsOperationResult<RolePermissionSet>.Conflict();
         }
+        catch (DbUpdateException exception) when (
+            AppointmentCommunicationProcessor.IsUniqueConstraintViolation(exception))
+        {
+            ClearFailedPermissionWriteEntries();
+            return SettingsOperationResult<RolePermissionSet>.Conflict();
+        }
 
         return SettingsOperationResult<RolePermissionSet>.Success(MapRole(targetRole, target.Values.ToArray()));
     }
@@ -295,6 +307,17 @@ public sealed class RolePermissionAdministrationService(
             .Select(policy => (bool?)policy.AllowRoleCustomization)
             .SingleOrDefaultAsync(cancellationToken)
         ?? true;
+
+    private void ClearFailedPermissionWriteEntries()
+    {
+        foreach (var entry in context.ChangeTracker.Entries()
+                     .Where(entry => entry.State is EntityState.Added or EntityState.Modified)
+                     .Where(entry => entry.Entity is RoleCapabilityPermission or AuditLog)
+                     .ToArray())
+        {
+            entry.State = EntityState.Detached;
+        }
+    }
 
     private static Dictionary<string, string[]> ValidateUpdates(string roleKey, IReadOnlyList<PermissionUpdate> updates)
     {

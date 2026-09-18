@@ -120,8 +120,11 @@ public static class AuthorizationPolicies
     /// <summary>Read clinic Settings — Admin and Owner.</summary>
     public const string SettingsRead = "SettingsRead";
 
-    /// <summary>Mutate clinic Settings — recovery Administrator only; Owner remains read-only.</summary>
+    /// <summary>Mutate non-security clinic Settings through the clinic capability matrix.</summary>
     public const string SettingsWrite = "SettingsWrite";
+
+    /// <summary>Mutate authentication policy or recovery state — always requires the Administrator role.</summary>
+    public const string SecurityAdministrationWrite = "SecurityAdministrationWrite";
 
     /// <summary>Mutate role permissions — requires the dedicated role-administration capability.</summary>
     public const string RolesPermissionsWrite = "RolesPermissionsWrite";
@@ -255,6 +258,15 @@ public static class AuthorizationPolicies
                 [CapabilityKey.ClinicSettingsManage],
                 PermissionLevel.Full,
                 [Roles.Admin])));
+
+        options.AddPolicy(SecurityAdministrationWrite, p =>
+        {
+            p.RequireRole(Roles.Admin);
+            p.Requirements.Add(new DynamicCapabilityRequirement(
+                [CapabilityKey.ClinicSettingsManage],
+                PermissionLevel.Full,
+                [Roles.Admin]));
+        });
 
         options.AddPolicy(RolesPermissionsWrite,
             p => p.Requirements.Add(new DynamicCapabilityRequirement(

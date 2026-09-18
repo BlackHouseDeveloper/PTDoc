@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authentication;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
+using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Identity;
 
 namespace PTDoc.Web.Auth;
@@ -102,10 +103,14 @@ internal static class WebAuthenticationStepFlow
             var retryChallengeToken = string.IsNullOrWhiteSpace(error?.ChallengeToken)
                 ? challengeToken
                 : error.ChallengeToken;
+            var retryMinimumPinLength = Math.Clamp(
+                error?.MinimumPinLength ?? minimumPinLength,
+                PinPolicyRules.MinimumLength,
+                PinPolicyRules.MaximumLength);
             return RenderPinChange(
                 retryChallengeToken,
                 returnUrl,
-                minimumPinLength,
+                retryMinimumPinLength,
                 error?.Message ?? "The PIN does not meet the clinic security policy.");
         }
 
@@ -507,7 +512,7 @@ internal static class WebAuthenticationStepFlow
         public int? MinimumPinLength { get; init; }
     }
 
-    private sealed record WebPinPolicyError(string? Message, string? ChallengeToken);
+    private sealed record WebPinPolicyError(string? Message, string? ChallengeToken, int? MinimumPinLength);
     private sealed record WebMfaVerificationResponse(bool Succeeded, string? CompletionToken, string? ErrorCode);
     private sealed record WebMfaEnrollmentStart(string ManualKey, string OtpAuthUri, string QrSvg, string EnrollmentChallengeToken);
     private sealed record WebMfaEnrollmentCompletion(IReadOnlyList<string> RecoveryCodes, string CompletionToken);

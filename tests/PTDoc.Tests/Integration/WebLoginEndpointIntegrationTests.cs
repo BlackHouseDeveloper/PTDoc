@@ -236,6 +236,65 @@ public sealed class WebLoginEndpointIntegrationTests
     }
 
     [Fact]
+    public async Task AuthPinChange_PolicyRejectionUsesUpdatedMinimumFromApi()
+    {
+        var recordingFactory = new RecordingHttpClientFactory(request =>
+            request.RequestUri?.AbsolutePath switch
+            {
+                "/api/v1/auth/pin-login" => new HttpResponseMessage(HttpStatusCode.Accepted)
+                {
+                    Content = JsonContent.Create(new
+                    {
+                        Status = AuthStatus.RequiresPinChange.ToString(),
+                        ChallengeToken = "pin-change-challenge",
+                        MinimumPinLength = 8
+                    })
+                },
+                "/api/v1/auth/pin-change" => new HttpResponseMessage(HttpStatusCode.UnprocessableEntity)
+                {
+                    Content = JsonContent.Create(new
+                    {
+                        Error = "pin_policy_failed",
+                        Message = "PIN must contain 10 to 12 numeric digits.",
+                        ChallengeToken = "refreshed-pin-change-challenge",
+                        MinimumPinLength = 10
+                    })
+                },
+                _ => throw new InvalidOperationException($"Unexpected auth request: {request.RequestUri}")
+            });
+        await using var factory = new PTDocWebFactory(recordingFactory);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost")
+        });
+        using var loginResponse = await client.PostAsync("/auth/login", new FormUrlEncodedContent(
+            new Dictionary<string, string?>
+            {
+                ["username"] = "alice",
+                ["pin"] = "12345678",
+                ["returnUrl"] = "/patients"
+            }));
+        Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
+
+        using var response = await client.PostAsync("/auth/pin-change", new FormUrlEncodedContent(
+            new Dictionary<string, string?>
+            {
+                ["challengeToken"] = "pin-change-challenge",
+                ["newPin"] = "12345678",
+                ["confirmPin"] = "12345678",
+                ["minimumPinLength"] = "8",
+                ["returnUrl"] = "/patients"
+            }));
+        var html = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("minlength=\"10\"", html, StringComparison.Ordinal);
+        Assert.Contains("refreshed-pin-change-challenge", html, StringComparison.Ordinal);
+        Assert.DoesNotContain(response.Headers, header => header.Key == "Set-Cookie");
+    }
+
+    [Fact]
     public async Task AuthLogin_MfaVerification_CompletesBeforeIssuingCookie()
     {
         var requestCount = 0;

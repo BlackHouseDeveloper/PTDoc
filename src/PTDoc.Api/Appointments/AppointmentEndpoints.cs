@@ -226,6 +226,7 @@ public static class AppointmentEndpoints
         [FromServices] ApplicationDbContext db,
         [FromServices] IConfiguration configuration,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IPermissionEvaluator permissionEvaluator,
         [FromServices] IClinicalVisitOrdinalAllocator visitOrdinalAllocator,
         [FromServices] ISchedulingPolicyEvaluator schedulingPolicyEvaluator,
         CancellationToken cancellationToken)
@@ -262,7 +263,7 @@ public static class AppointmentEndpoints
         }
 
         if (!await CanAccessClinicianScheduleAsync(
-                db, patient.ClinicId, clinician.Id, identityContext, cancellationToken))
+                db, patient.ClinicId, clinician.Id, identityContext, permissionEvaluator, cancellationToken))
         {
             return Results.Forbid();
         }
@@ -364,6 +365,7 @@ public static class AppointmentEndpoints
         [FromServices] ApplicationDbContext db,
         [FromServices] IConfiguration configuration,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IPermissionEvaluator permissionEvaluator,
         [FromServices] ISchedulingPolicyEvaluator schedulingPolicyEvaluator,
         CancellationToken cancellationToken)
     {
@@ -390,7 +392,7 @@ public static class AppointmentEndpoints
         }
 
         if (!await CanAccessClinicianScheduleAsync(
-                db, appointment.ClinicId, appointment.ClinicalId, identityContext, cancellationToken))
+                db, appointment.ClinicId, appointment.ClinicalId, identityContext, permissionEvaluator, cancellationToken))
         {
             return Results.Forbid();
         }
@@ -421,7 +423,7 @@ public static class AppointmentEndpoints
         }
 
         if (!await CanAccessClinicianScheduleAsync(
-                db, patient.ClinicId, clinician.Id, identityContext, cancellationToken))
+                db, patient.ClinicId, clinician.Id, identityContext, permissionEvaluator, cancellationToken))
         {
             return Results.Forbid();
         }
@@ -504,6 +506,7 @@ public static class AppointmentEndpoints
         [FromServices] ApplicationDbContext db,
         [FromServices] IConfiguration configuration,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IPermissionEvaluator permissionEvaluator,
         [FromServices] IAuditService auditService,
         CancellationToken cancellationToken)
     {
@@ -532,7 +535,7 @@ public static class AppointmentEndpoints
         }
 
         if (!await CanAccessClinicianScheduleAsync(
-                db, appointment.ClinicId, appointment.ClinicalId, identityContext, cancellationToken))
+                db, appointment.ClinicId, appointment.ClinicalId, identityContext, permissionEvaluator, cancellationToken))
         {
             return Results.Forbid();
         }
@@ -594,6 +597,7 @@ public static class AppointmentEndpoints
         [FromServices] ApplicationDbContext db,
         [FromServices] IConfiguration configuration,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IPermissionEvaluator permissionEvaluator,
         CancellationToken cancellationToken)
     {
         var appointment = await db.Appointments
@@ -605,7 +609,7 @@ public static class AppointmentEndpoints
         }
 
         if (!await CanAccessClinicianScheduleAsync(
-                db, appointment.ClinicId, appointment.ClinicalId, identityContext, cancellationToken))
+                db, appointment.ClinicId, appointment.ClinicalId, identityContext, permissionEvaluator, cancellationToken))
         {
             return Results.Forbid();
         }
@@ -637,6 +641,7 @@ public static class AppointmentEndpoints
         [FromServices] IPaymentService paymentService,
         [FromServices] IAuditService auditService,
         [FromServices] IIdentityContextAccessor identityContext,
+        [FromServices] IPermissionEvaluator permissionEvaluator,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.OpaqueDataDescriptor) || string.IsNullOrWhiteSpace(request.OpaqueDataToken))
@@ -664,7 +669,7 @@ public static class AppointmentEndpoints
         }
 
         if (!await CanAccessClinicianScheduleAsync(
-                db, appointment.ClinicId, appointment.ClinicalId, identityContext, cancellationToken))
+                db, appointment.ClinicId, appointment.ClinicalId, identityContext, permissionEvaluator, cancellationToken))
         {
             return Results.Forbid();
         }
@@ -1491,10 +1496,11 @@ public static class AppointmentEndpoints
         Guid? clinicId,
         Guid clinicianId,
         IIdentityContextAccessor identityContext,
+        IPermissionEvaluator permissionEvaluator,
         CancellationToken cancellationToken)
     {
-        var restrictedClinicianId = await GetRestrictedClinicianIdAsync(
-            db, clinicId, identityContext, cancellationToken);
+        var restrictedClinicianId = await GetRestrictedReadClinicianIdAsync(
+            db, clinicId, identityContext, permissionEvaluator, cancellationToken);
         return !restrictedClinicianId.HasValue || restrictedClinicianId.Value == clinicianId;
     }
 

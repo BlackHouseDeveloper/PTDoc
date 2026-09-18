@@ -137,7 +137,7 @@ public static class SettingsAdministrationEndpoints
             if (clinicId is null) return Results.NotFound();
             return ToResult(await service.UpdateAsync(clinicId.Value, request, identity.GetCurrentUserId(),
                 httpContext.TraceIdentifier, cancellationToken));
-        }).RequireAuthorization(AuthorizationPolicies.SettingsWrite);
+        }).RequireAuthorization(AuthorizationPolicies.SecurityAdministrationWrite);
 
         group.MapGet("/security-policy/mfa-readiness", async (
             ISecurityPolicyAdministrationService service,
@@ -160,7 +160,7 @@ public static class SettingsAdministrationEndpoints
             if (clinicId is null) return Results.NotFound();
             return ToResult(await service.ForcePinChangeAsync(clinicId.Value, userId, identity.GetCurrentUserId(),
                 httpContext.TraceIdentifier, cancellationToken));
-        }).RequireAuthorization(AuthorizationPolicies.SettingsWrite);
+        }).RequireAuthorization(AuthorizationPolicies.SecurityAdministrationWrite);
 
         group.MapPost("/users/{userId:guid}/reset-mfa", async (
             Guid userId,
@@ -174,7 +174,7 @@ public static class SettingsAdministrationEndpoints
             if (clinicId is null) return Results.NotFound();
             return ToResult(await service.ResetMfaAsync(clinicId.Value, userId, identity.GetCurrentUserId(),
                 httpContext.TraceIdentifier, cancellationToken));
-        }).RequireAuthorization(AuthorizationPolicies.SettingsWrite);
+        }).RequireAuthorization(AuthorizationPolicies.SecurityAdministrationWrite);
     }
 
     private static void MapSchedulingEndpoints(IEndpointRouteBuilder app)
