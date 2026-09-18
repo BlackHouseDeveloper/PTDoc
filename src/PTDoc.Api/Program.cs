@@ -259,7 +259,10 @@ builder.Services.AddScoped<ISchedulingAdministrationService, SchedulingAdministr
 builder.Services.AddScoped<ISchedulingPolicyEvaluator, SchedulingPolicyEvaluator>();
 builder.Services.AddScoped<IAutoCheckInAdministrationService, AutoCheckInAdministrationService>();
 builder.Services.AddScoped<IKioskCheckInService, KioskCheckInService>();
-builder.Services.AddDataProtection();
+DataProtectionConfiguration.AddPtdocDataProtection(
+    builder.Services,
+    builder.Configuration,
+    builder.Environment);
 builder.Services.AddSingleton<ISettingsSecretProtector, DataProtectionSettingsSecretProtector>();
 builder.Services.AddScoped<IMfaAuthenticationService, MfaAuthenticationService>();
 builder.Services.AddScoped<IAppointmentCommunicationProcessor, AppointmentCommunicationProcessor>();

@@ -218,6 +218,25 @@ The JWT bearer middleware now fires an `OnAuthenticationFailed` event that write
 - An Entra External ID token satisfies an enforced clinic MFA policy only when its validated
   `amr` claim explicitly includes `mfa`; otherwise the external request is denied.
 
+### MFA Data Protection key ring
+
+PTDoc.Api uses the stable Data Protection application discriminator `PTDoc.Api`. Development and
+automated-test hosts keep the framework's local key-ring behavior. Every other environment,
+including Beta and Production, fails startup unless both of these settings are present:
+
+```text
+DataProtection__KeyBlobUri=https://<storage-account>.blob.core.windows.net/<container>/ptdoc-api-keys.xml
+DataProtection__KeyVaultKeyIdentifier=https://<vault>.vault.azure.net/keys/<key-name>
+```
+
+The blob URI must not contain a SAS query. The Key Vault identifier must be versionless so Key
+Vault rotation can continue wrapping new Data Protection keys. The API authenticates through
+`DefaultAzureCredential`; deployed App Services should use their managed identity with `Storage
+Blob Data Contributor` scoped to the key-ring container and Key Vault permissions sufficient to
+get, wrap, and unwrap the configured key. Restrict both resources to PTDoc.Api and retain the blob
+plus every Key Vault key version still referenced by the ring. Deleting either can make existing
+TOTP enrollments and outstanding authentication challenges undecryptable.
+
 ### PHI Safety Rules (Logging)
 
 The following rules apply across all logging and telemetry:

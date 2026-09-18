@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Communication;
+using PTDoc.Application.Compliance;
+using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Identity;
 using System.Data.Common;
@@ -50,6 +53,7 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
                         .Where(resetToken => resetToken.TokenHash == tokenHash)
                         .Select(resetToken => new
                         {
+                            resetToken.Id,
                             resetToken.UserId,
                             ClinicId = resetToken.User == null ? null : resetToken.User.ClinicId,
                             resetToken.UsedAtUtc,
@@ -97,10 +101,9 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
 
                     var claimed = await _db.PasswordResetTokens
                         .Where(resetToken =>
-                            resetToken.TokenHash == tokenHash &&
+                            resetToken.Id == tokenMetadata.Id &&
                             resetToken.UsedAtUtc == null &&
-                            resetToken.RevokedAtUtc == null &&
-                            resetToken.ExpiresAtUtc > now)
+                            resetToken.RevokedAtUtc == null)
                         .ExecuteUpdateAsync(
                             setters => setters.SetProperty(resetToken => resetToken.UsedAtUtc, now),
                             cancellationToken);
@@ -124,6 +127,8 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
                         return Failure(PasswordResetCompletionStatus.InvalidToken, "The reset link is invalid or expired.");
                     }
 
+                    StagePinResetAudit(tokenMetadata.UserId, tokenMetadata.ClinicId);
+                    await _db.SaveChangesAsync(cancellationToken);
                     await transaction.CommitAsync(cancellationToken);
 
                     return Succeeded();
@@ -169,6 +174,7 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
             token.User.PinChangedAtUtc = DateTime.UtcNow;
             token.User.LegacyPinGraceEndsAtUtc = null;
             token.UsedAtUtc = now;
+            StagePinResetAudit(token.UserId, token.User.ClinicId);
             await _db.SaveChangesAsync(cancellationToken);
 
             return Succeeded();
@@ -232,6 +238,22 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
 
     private static bool IsValidPin(string pin, int minimumPinLength)
         => pin.Length >= minimumPinLength && pin.Length <= 12 && pin.All(char.IsDigit);
+
+    private void StagePinResetAudit(Guid userId, Guid? clinicId)
+    {
+        _db.AuditLogs.Add(AuditService.CreateAuditLog(new AuditEvent
+        {
+            EventType = "PinChanged",
+            UserId = userId,
+            EntityType = nameof(User),
+            EntityId = userId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["clinicId"] = clinicId?.ToString() ?? "none",
+                ["reasonCode"] = "password_reset"
+            }
+        }));
+    }
 
     private async Task<int> GetMinimumPinLengthAsync(
         Guid? clinicId,

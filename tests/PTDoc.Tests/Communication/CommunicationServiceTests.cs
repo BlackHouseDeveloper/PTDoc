@@ -355,6 +355,117 @@ public sealed class CommunicationServiceTests
         Assert.Equal(PasswordResetCompletionStatus.AlreadyUsed, second.Status);
         Assert.NotEqual("old-hash", (await db.Users.SingleAsync()).PinHash);
         Assert.NotNull(await db.PasswordResetTokens.Select(resetToken => resetToken.UsedAtUtc).SingleAsync());
+        var audit = Assert.Single(await db.AuditLogs.Where(log => log.EventType == "PinChanged").ToListAsync());
+        Assert.Equal(user.Id, audit.UserId);
+        Assert.Equal(nameof(User), audit.EntityType);
+        Assert.Equal(user.Id, audit.EntityId);
+        Assert.Contains("password_reset", audit.MetadataJson, StringComparison.Ordinal);
+        Assert.DoesNotContain(token!, audit.MetadataJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("12345678", audit.MetadataJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PasswordResetTokenService_RelationalResetStagesAuditInResetTransaction()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        await using var db = new ApplicationDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "relational-reset-user",
+            PinHash = "old-hash",
+            FirstName = "Relational",
+            LastName = "Reset",
+            Email = "relational-reset@example.com",
+            Role = "PT",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var emailSender = new FakeEmailSender();
+        var communicationService = CreateService(db, emailSender: emailSender);
+        await communicationService.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest
+        {
+            Recipient = user.Email!
+        });
+        var token = ExtractResetToken(emailSender);
+
+        var result = await new PasswordResetTokenService(db).ResetPinAsync(new PasswordResetCompletionRequest
+        {
+            Token = token,
+            NewPin = "12345678"
+        });
+
+        Assert.True(result.Succeeded);
+        var audit = Assert.Single(await db.AuditLogs.Where(log => log.EventType == "PinChanged").ToListAsync());
+        Assert.Equal(user.Id, audit.UserId);
+        Assert.Equal(nameof(User), audit.EntityType);
+        Assert.Equal(user.Id, audit.EntityId);
+        Assert.Contains("password_reset", audit.MetadataJson, StringComparison.Ordinal);
+        Assert.DoesNotContain(token, audit.MetadataJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("12345678", audit.MetadataJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PasswordResetTokenService_RelationalAuditFailureRollsBackCredentialReset()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        await using var db = new ApplicationDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "audit-failure-reset-user",
+            PinHash = "old-hash",
+            FirstName = "Audit",
+            LastName = "Failure",
+            Email = "audit-failure-reset@example.com",
+            Role = "PT",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var emailSender = new FakeEmailSender();
+        var communicationService = CreateService(db, emailSender: emailSender);
+        await communicationService.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest
+        {
+            Recipient = user.Email!
+        });
+        var token = ExtractResetToken(emailSender);
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TRIGGER RejectPinChangedAudit
+            BEFORE INSERT ON AuditLogs
+            WHEN NEW.EventType = 'PinChanged'
+            BEGIN
+                SELECT RAISE(ABORT, 'audit rejected');
+            END;
+            """);
+
+        await Assert.ThrowsAsync<DbUpdateException>(() =>
+            new PasswordResetTokenService(db).ResetPinAsync(new PasswordResetCompletionRequest
+            {
+                Token = token,
+                NewPin = "12345678"
+            }));
+
+        db.ChangeTracker.Clear();
+        Assert.Equal("old-hash", await db.Users.Where(item => item.Id == user.Id).Select(item => item.PinHash).SingleAsync());
+        Assert.Null(await db.PasswordResetTokens.Select(resetToken => resetToken.UsedAtUtc).SingleAsync());
+        Assert.Empty(await db.AuditLogs.Where(log => log.EventType == "PinChanged").ToListAsync());
     }
 
     [Fact]

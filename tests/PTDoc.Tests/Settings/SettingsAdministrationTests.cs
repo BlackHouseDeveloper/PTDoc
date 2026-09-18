@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PTDoc.Api.Auth;
@@ -62,6 +63,90 @@ public sealed class SettingsAdministrationTests
         var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("amr", amr)], "test"));
 
         Assert.Equal(expected, ExternalMfaAssuranceMiddleware.HasVerifiedMfaMethod(principal));
+    }
+
+    [Fact]
+    public async Task ExternalMfaAssurance_EnforcedClinicRejectsMissingMfaAndAuditsDenial()
+    {
+        await using var context = CreateContext();
+        var now = new DateTimeOffset(2026, 8, 24, 4, 0, 0, TimeSpan.Zero);
+        var clinic = new Clinic { Name = "Enforced MFA Clinic", Slug = $"enforced-mfa-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.MfaEnforcementMode = MfaEnforcementMode.Enforced;
+        policy.MfaEffectiveAtUtc = now.UtcDateTime.AddMinutes(-1);
+        await context.SaveChangesAsync();
+
+        var userId = Guid.NewGuid();
+        var httpContext = CreateEntraHttpContext(userId, clinic.Id);
+        var nextInvoked = false;
+        var audit = CreateAuthAuditService();
+        var resolver = CreatePrincipalResolver(httpContext);
+        var middleware = new ExternalMfaAssuranceMiddleware(_ =>
+        {
+            nextInvoked = true;
+            return Task.CompletedTask;
+        });
+
+        await middleware.InvokeAsync(
+            httpContext,
+            resolver,
+            context,
+            audit.Object,
+            new MutableTimeProvider(now));
+
+        Assert.False(nextInvoked);
+        Assert.Equal(StatusCodes.Status403Forbidden, httpContext.Response.StatusCode);
+        httpContext.Response.Body.Position = 0;
+        using var response = await JsonDocument.ParseAsync(httpContext.Response.Body);
+        Assert.Equal("external_mfa_assurance_required", response.RootElement.GetProperty("error").GetString());
+        audit.Verify(service => service.LogAuthEventAsync(
+            It.Is<AuditEvent>(item =>
+                item.EventType == "ExternalMfaAssuranceDenied"
+                && item.UserId == userId
+                && !item.Success
+                && item.Metadata.ContainsKey("clinicId")
+                && Equals(item.Metadata["clinicId"], clinic.Id)
+                && item.Metadata.ContainsKey("reasonCode")
+                && Equals(item.Metadata["reasonCode"], "missing_verified_mfa_amr")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExternalMfaAssurance_EnforcedClinicAllowsExplicitMfaWithoutDenialAudit()
+    {
+        await using var context = CreateContext();
+        var now = new DateTimeOffset(2026, 8, 24, 4, 0, 0, TimeSpan.Zero);
+        var clinic = new Clinic { Name = "Verified MFA Clinic", Slug = $"verified-mfa-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.MfaEnforcementMode = MfaEnforcementMode.Enforced;
+        policy.MfaEffectiveAtUtc = now.UtcDateTime.AddMinutes(-1);
+        await context.SaveChangesAsync();
+
+        var httpContext = CreateEntraHttpContext(Guid.NewGuid(), clinic.Id, new Claim("amr", "mfa"));
+        var nextInvoked = false;
+        var audit = CreateAuthAuditService();
+        var middleware = new ExternalMfaAssuranceMiddleware(_ =>
+        {
+            nextInvoked = true;
+            return Task.CompletedTask;
+        });
+
+        await middleware.InvokeAsync(
+            httpContext,
+            CreatePrincipalResolver(httpContext),
+            context,
+            audit.Object,
+            new MutableTimeProvider(now));
+
+        Assert.True(nextInvoked);
+        Assert.NotEqual(StatusCodes.Status403Forbidden, httpContext.Response.StatusCode);
+        audit.Verify(service => service.LogAuthEventAsync(
+            It.Is<AuditEvent>(item => item.EventType == "ExternalMfaAssuranceDenied"),
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -2391,6 +2476,28 @@ public sealed class SettingsAdministrationTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         return new ApplicationDbContext(options);
+    }
+
+    private static DefaultHttpContext CreateEntraHttpContext(Guid userId, Guid clinicId, params Claim[] additionalClaims)
+    {
+        var claims = new List<Claim>
+        {
+            new(PTDocClaimTypes.InternalUserId, userId.ToString()),
+            new(HttpTenantContextAccessor.ClinicIdClaimType, clinicId.ToString()),
+            new(PTDocClaimTypes.AuthenticationType, "entra_jwt")
+        };
+        claims.AddRange(additionalClaims);
+        return new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(claims, "test")),
+            Response = { Body = new MemoryStream() }
+        };
+    }
+
+    private static PrincipalRecordResolver CreatePrincipalResolver(HttpContext httpContext)
+    {
+        var accessor = new HttpContextAccessor { HttpContext = httpContext };
+        return new PrincipalRecordResolver(accessor, new ServiceCollection().BuildServiceProvider());
     }
 
     private static Mock<IAuditService> CreateAuditService()
