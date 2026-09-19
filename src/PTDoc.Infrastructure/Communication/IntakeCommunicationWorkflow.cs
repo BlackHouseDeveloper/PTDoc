@@ -93,7 +93,7 @@ public sealed class IntakeCommunicationWorkflow : IIntakeCommunicationWorkflow
         }
 
         if (!string.IsNullOrWhiteSpace(request.TemplateKey)
-            && !AutoCheckInTemplateCatalog.IsSupported(request.TemplateKey))
+            && !PTDoc.Application.Settings.AutoCheckInTemplateCatalog.IsSupported(request.TemplateKey))
         {
             return Failure(intake, request.Channel, "TemplateKey is not supported.", "templateKey");
         }
