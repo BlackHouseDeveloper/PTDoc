@@ -531,6 +531,16 @@ public sealed class AppointmentCommunicationProcessor(
         var candidates = await context.AppointmentReminderDispatches
             .Include(item => item.Appointment)
             .Where(item => item.Status == ReminderDispatchStatus.Pending || item.Status == ReminderDispatchStatus.RetryScheduled)
+            .Where(item => item.Appointment == null
+                || item.Appointment.Status == AppointmentStatus.Cancelled
+                || item.Appointment.Status == AppointmentStatus.Completed
+                || item.Appointment.Status == AppointmentStatus.NoShow
+                || (item.Appointment.LastModifiedUtc == default
+                    ? item.Appointment.StartTimeUtc
+                    : item.Appointment.LastModifiedUtc) != item.AppointmentVersionUtc)
+            .OrderBy(item => item.UpdatedAtUtc)
+            .ThenBy(item => item.Id)
+            .Take(BatchSize)
             .ToListAsync(cancellationToken);
         foreach (var item in candidates)
         {

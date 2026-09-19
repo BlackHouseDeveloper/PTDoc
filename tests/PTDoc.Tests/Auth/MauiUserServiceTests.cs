@@ -66,7 +66,7 @@ public sealed class MauiUserServiceTests
         Assert.True(service.IsAuthenticated);
         Assert.Null(service.PendingAuthenticationStep);
         Assert.Equal("clinician@example.com", service.UserEmail);
-        tokenStore.Verify(store => store.SaveAsync(tokens, It.IsAny<CancellationToken>()), Times.Exactly(2));
+        tokenStore.Verify(store => store.SaveAsync(tokens, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -105,7 +105,49 @@ public sealed class MauiUserServiceTests
         Assert.True(accepted.Succeeded);
         Assert.True(service.IsAuthenticated);
         Assert.Null(service.PendingAuthenticationStep);
-        tokenStore.Verify(store => store.SaveAsync(tokens, It.IsAny<CancellationToken>()), Times.Exactly(2));
+        tokenStore.Verify(store => store.SaveAsync(tokens, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Login_PersistenceFailureDoesNotPublishAuthenticatedUser()
+    {
+        var tokenService = new Mock<ITokenService>();
+        var tokenStore = CreateTokenStore();
+        var tokens = CreateTokens();
+        tokenService.Setup(service => service.LoginAsync(
+                It.IsAny<LoginRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TokenLoginResult(Tokens: tokens));
+        tokenStore.Setup(store => store.SaveAsync(tokens, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("secure storage unavailable"));
+        var service = CreateService(tokenService, tokenStore);
+
+        var result = await service.LoginAsync("clinician", "1234567890");
+
+        Assert.False(result);
+        Assert.False(service.IsAuthenticated);
+        Assert.Null(service.CurrentUser);
+        tokenStore.Verify(store => store.SaveAsync(tokens, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RefreshToken_PersistsReplacementOnlyOnceBeforePublishingUser()
+    {
+        var tokenService = new Mock<ITokenService>();
+        var tokenStore = CreateTokenStore();
+        var current = CreateTokens();
+        var refreshed = CreateTokens();
+        tokenStore.Setup(store => store.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(current);
+        tokenService.Setup(service => service.RefreshAsync(
+                new RefreshTokenRequest(current.RefreshToken), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(refreshed);
+        var service = CreateService(tokenService, tokenStore);
+
+        var result = await service.RefreshTokenAsync();
+
+        Assert.True(result);
+        Assert.True(service.IsAuthenticated);
+        tokenStore.Verify(store => store.SaveAsync(refreshed, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

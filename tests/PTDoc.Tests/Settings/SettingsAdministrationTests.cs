@@ -593,6 +593,48 @@ public sealed class SettingsAdministrationTests
     }
 
     [Fact]
+    public async Task SecurityPolicyAdministration_FirstWriteUniqueRaceReturnsConflictAndClearsFailedEntries()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var clinic = new Clinic { Name = "Security Race Clinic", Slug = $"security-race-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var seeded = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        context.ClinicSecurityPolicies.Remove(seeded);
+        await context.SaveChangesAsync();
+        context.ClinicSecurityPolicies.Add(new ClinicSecurityPolicy
+        {
+            ClinicId = clinic.Id,
+            Version = 1,
+            UpdatedByUserId = Guid.NewGuid()
+        });
+        var service = new SecurityPolicyAdministrationService(context, CreateAuditService().Object);
+
+        var result = await service.UpdateAsync(
+            clinic.Id,
+            new UpdateSecurityPolicyRequest(
+                MfaEnforcementMode.Off,
+                null,
+                true,
+                8,
+                15,
+                true,
+                false,
+                AuthorizationRolloutMode.Static,
+                0),
+            Guid.NewGuid(),
+            "first-security-policy-write-race");
+
+        Assert.Equal(SettingsOperationStatus.Conflict, result.Status);
+        Assert.DoesNotContain(context.ChangeTracker.Entries<ClinicSecurityPolicy>(),
+            entry => entry.State is EntityState.Added or EntityState.Modified);
+    }
+
+    [Fact]
     public async Task RoleAdministration_RejectsUpdatesAndClonesWhenCustomizationIsDisabled()
     {
         await using var context = CreateContext();
@@ -2230,6 +2272,75 @@ public sealed class SettingsAdministrationTests
         Assert.Equal(ReminderDispatchStatus.Sent, replacement.Status);
         communication.Verify(service => service.SendAppointmentReminderEmailAsync(
             It.IsAny<AppointmentReminderDeliveryRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task AppointmentReminderProcessor_CancelsObsoleteDispatchesInBoundedBatches()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var now = new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero);
+        var clinic = new Clinic { Name = "Obsolete Dispatch Clinic", Slug = $"obsolete-{Guid.NewGuid():N}" };
+        var patient = CreateConsentedPatient(clinic.Id, "obsolete@example.invalid", now.UtcDateTime);
+        context.AddRange(clinic, patient);
+
+        for (var index = 0; index < 101; index++)
+        {
+            var appointment = new Appointment
+            {
+                Patient = patient,
+                PatientId = patient.Id,
+                Clinic = clinic,
+                ClinicId = clinic.Id,
+                ClinicalId = Guid.NewGuid(),
+                StartTimeUtc = now.UtcDateTime.AddDays(1).AddMinutes(index),
+                EndTimeUtc = now.UtcDateTime.AddDays(1).AddMinutes(index + 30),
+                Status = AppointmentStatus.Cancelled,
+                LastModifiedUtc = now.UtcDateTime,
+                ModifiedByUserId = Guid.NewGuid()
+            };
+            context.Add(new AppointmentReminderDispatch
+            {
+                ClinicId = clinic.Id,
+                Appointment = appointment,
+                AppointmentId = appointment.Id,
+                AppointmentVersionUtc = appointment.LastModifiedUtc,
+                Purpose = ReminderDispatchPurpose.AppointmentReminder,
+                Channel = ReminderChannel.Email,
+                IdempotencyKey = $"obsolete:{appointment.Id:N}",
+                Status = ReminderDispatchStatus.Pending,
+                EligibleAtUtc = now.UtcDateTime,
+                NextAttemptAtUtc = now.UtcDateTime.AddDays(1),
+                CreatedAtUtc = now.UtcDateTime,
+                UpdatedAtUtc = now.UtcDateTime.AddMinutes(index)
+            });
+        }
+
+        await context.SaveChangesAsync();
+        var communication = new Mock<ICommunicationService>();
+        var processor = new AppointmentCommunicationProcessor(
+            context,
+            communication.Object,
+            Mock.Of<IIntakeCommunicationWorkflow>(),
+            new MutableTimeProvider(now),
+            NullLogger<AppointmentCommunicationProcessor>.Instance);
+
+        await processor.ProcessDueAsync();
+
+        Assert.Equal(100, await context.AppointmentReminderDispatches
+            .CountAsync(item => item.Status == ReminderDispatchStatus.Cancelled));
+        Assert.Equal(1, await context.AppointmentReminderDispatches
+            .CountAsync(item => item.Status == ReminderDispatchStatus.Pending));
+
+        await processor.ProcessDueAsync();
+
+        Assert.Equal(101, await context.AppointmentReminderDispatches
+            .CountAsync(item => item.Status == ReminderDispatchStatus.Cancelled));
+        communication.Verify(service => service.SendAppointmentReminderEmailAsync(
+            It.IsAny<AppointmentReminderDeliveryRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

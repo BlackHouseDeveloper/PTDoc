@@ -94,8 +94,25 @@ public sealed class SecurityPolicyAdministrationService(
         {
             return SettingsOperationResult<SecurityPolicyDto>.Conflict();
         }
+        catch (DbUpdateException exception) when (
+            AppointmentCommunicationProcessor.IsUniqueConstraintViolation(exception))
+        {
+            ClearFailedPolicyWriteEntries();
+            return SettingsOperationResult<SecurityPolicyDto>.Conflict();
+        }
 
         return SettingsOperationResult<SecurityPolicyDto>.Success(updated);
+    }
+
+    private void ClearFailedPolicyWriteEntries()
+    {
+        foreach (var entry in context.ChangeTracker.Entries()
+                     .Where(entry => entry.State is EntityState.Added or EntityState.Modified)
+                     .Where(entry => entry.Entity is ClinicSecurityPolicy or AuditLog)
+                     .ToArray())
+        {
+            entry.State = EntityState.Detached;
+        }
     }
 
     public async Task<MfaReadinessDto> GetMfaReadinessAsync(Guid clinicId, CancellationToken cancellationToken = default)

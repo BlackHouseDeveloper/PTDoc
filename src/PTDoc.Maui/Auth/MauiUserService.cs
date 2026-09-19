@@ -433,9 +433,8 @@ public sealed class MauiUserService : IUserService, IAuthenticationStepUserServi
             return false;
         }
 
-        await tokenStore.SaveAsync(refreshed, cancellationToken);
-        currentUser = principal;
         await authStateProvider.NotifyUserAuthenticationAsync(refreshed);
+        currentUser = principal;
         return true;
     }
 
@@ -493,10 +492,9 @@ public sealed class MauiUserService : IUserService, IAuthenticationStepUserServi
 
         logger.LogInformation("Login successful, saving tokens");
         Volatile.Write(ref logoutTriggered, 0);
-        await tokenStore.SaveAsync(tokens, cancellationToken);
+        await authStateProvider.NotifyUserAuthenticationAsync(tokens);
         currentUser = principal;
         CancelAuthenticationStep();
-        await authStateProvider.NotifyUserAuthenticationAsync(tokens);
         return true;
     }
 

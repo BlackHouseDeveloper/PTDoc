@@ -18,6 +18,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
+using PTDoc.Api.Settings;
 using PTDoc.Application.AI;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Communication;
@@ -2602,6 +2603,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
 public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private const string TestEnv = "Testing";
+    internal static readonly Guid AuthorizationClinicId = new("00000000-0000-0000-0002-000000000001");
 
     private SqliteConnection? _sharedConnection;
     public Guid? LastPdfExportNoteId { get; private set; }
@@ -2789,11 +2791,22 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
                 .AddScheme<AuthenticationSchemeOptions, TestRoleAuthHandler>(
                     TestRoleAuthHandler.SchemeName, _ => { });
 
-            // The shared integration factory intentionally runs its DbContext in
-            // system context (no tenant filter). Model the default Static rollout
-            // mode for dynamic capability policies without weakening the production
-            // handler's requirement for a resolved clinic tenant.
-            services.AddScoped<IAuthorizationHandler, TestStaticCapabilityAuthorizationHandler>();
+            // Keep the data context in system mode for this broad workflow fixture, but
+            // exercise the production dynamic authorization handler against an explicit
+            // clinic instead of bypassing it with a static test handler.
+            var dynamicHandlers = services
+                .Where(descriptor => descriptor.ServiceType == typeof(IAuthorizationHandler)
+                    && descriptor.ImplementationType == typeof(DynamicCapabilityAuthorizationHandler))
+                .ToArray();
+            foreach (var descriptor in dynamicHandlers)
+            {
+                services.Remove(descriptor);
+            }
+
+            services.AddScoped<IAuthorizationHandler>(provider =>
+                new DynamicCapabilityAuthorizationHandler(
+                    new FixedTenantContextAccessor(AuthorizationClinicId),
+                    provider.GetRequiredService<IPermissionEvaluator>()));
         });
     }
 
@@ -2853,6 +2866,17 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
 
     private static async Task SeedTestUsersAsync(ApplicationDbContext db)
     {
+        if (!await db.Clinics.AnyAsync(clinic => clinic.Id == AuthorizationClinicId))
+        {
+            db.Clinics.Add(new Clinic
+            {
+                Id = AuthorizationClinicId,
+                Name = "Integration Authorization Clinic",
+                Slug = "integration-authorization-clinic"
+            });
+            await db.SaveChangesAsync();
+        }
+
         var roles = new[]
         {
             Roles.PT,
@@ -2882,6 +2906,7 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
                 FirstName = "Integration",
                 LastName = role,
                 Role = role,
+                ClinicId = AuthorizationClinicId,
                 CreatedAt = DateTime.UtcNow,
                 IsActive = true
             });
@@ -2938,6 +2963,7 @@ file sealed class TestRoleAuthHandler : AuthenticationHandler<AuthenticationSche
             new(ClaimTypes.NameIdentifier, GetUserIdForRole(role).ToString()),
             new(ClaimTypes.Name, $"Test User ({role})"),
             new(ClaimTypes.Role, role),
+            new(HttpTenantContextAccessor.ClinicIdClaimType, PtDocApiFactory.AuthorizationClinicId.ToString()),
             // Auth type claim prevents ProvisioningGuardMiddleware from triggering a
             // "missing_external_identity" failure on non-Guid NameIdentifier values.
             new(PTDocClaimTypes.AuthenticationType, "integration-test"),
@@ -2968,26 +2994,7 @@ file sealed class TestRoleAuthHandler : AuthenticationHandler<AuthenticationSche
     };
 }
 
-/// <summary>
-/// Test-only handler for the canonical role decision used while dynamic permissions
-/// are in Static rollout mode. This does not alter the production handler's requirement
-/// for a resolved clinic tenant.
-/// </summary>
-file sealed class TestStaticCapabilityAuthorizationHandler
-    : AuthorizationHandler<DynamicCapabilityRequirement>
+file sealed class FixedTenantContextAccessor(Guid clinicId) : ITenantContextAccessor
 {
-    protected override Task HandleRequirementAsync(
-        AuthorizationHandlerContext context,
-        DynamicCapabilityRequirement requirement)
-    {
-        var role = context.User.FindFirst(ClaimTypes.Role)?.Value;
-        if (context.User.Identity?.IsAuthenticated == true &&
-            !string.IsNullOrWhiteSpace(role) &&
-            requirement.StaticAllowedRoles.Contains(role))
-        {
-            context.Succeed(requirement);
-        }
-
-        return Task.CompletedTask;
-    }
+    public Guid? GetCurrentClinicId() => clinicId;
 }
