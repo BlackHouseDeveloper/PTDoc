@@ -142,7 +142,10 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
             AppointmentStatus.Scheduled);
         await db.SaveChangesAsync();
 
-        var updatedLocalStart = new DateTime(2026, 7, 24, 15, 30, 0, DateTimeKind.Local);
+        var updatedClinicLocalStart = new DateTime(2026, 7, 24, 15, 30, 0, DateTimeKind.Unspecified);
+        var expectedUtcStart = TimeZoneInfo.ConvertTimeToUtc(
+            updatedClinicLocalStart,
+            TimeZoneInfo.FindSystemTimeZoneById("America/Los_Angeles"));
         using var client = _factory.CreateClientWithRole(Roles.FrontDesk);
         using var response = await client.PutAsJsonAsync(
             $"/api/v1/appointments/{seeded.AppointmentId:D}",
@@ -151,8 +154,8 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
                 PatientId = seeded.PatientId,
                 ClinicianId = clinician.Id,
                 AppointmentType = "Re-Evaluation",
-                AppointmentDate = updatedLocalStart.Date,
-                AppointmentTime = updatedLocalStart.TimeOfDay,
+                AppointmentDate = updatedClinicLocalStart.Date,
+                AppointmentTime = updatedClinicLocalStart.TimeOfDay,
                 DurationMinutes = 60,
                 Notes = "Updated appointment notes"
             });
@@ -162,15 +165,15 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         Assert.NotNull(payload);
         Assert.Equal("Re-Evaluation", payload!.AppointmentType);
         Assert.Equal("Updated appointment notes", payload.Notes);
-        Assert.Equal(updatedLocalStart.ToUniversalTime(), payload.StartTimeUtc);
-        Assert.Equal(updatedLocalStart.ToUniversalTime().AddMinutes(60), payload.EndTimeUtc);
+        Assert.Equal(expectedUtcStart, payload.StartTimeUtc);
+        Assert.Equal(expectedUtcStart.AddMinutes(60), payload.EndTimeUtc);
 
         db.ChangeTracker.Clear();
         var persisted = await db.Appointments.SingleAsync(appointment => appointment.Id == seeded.AppointmentId);
         Assert.Equal(AppointmentType.ReEvaluation, persisted.AppointmentType);
         Assert.Equal("Updated appointment notes", persisted.Notes);
-        Assert.Equal(updatedLocalStart.ToUniversalTime(), persisted.StartTimeUtc);
-        Assert.Equal(updatedLocalStart.ToUniversalTime().AddMinutes(60), persisted.EndTimeUtc);
+        Assert.Equal(expectedUtcStart, persisted.StartTimeUtc);
+        Assert.Equal(expectedUtcStart.AddMinutes(60), persisted.EndTimeUtc);
     }
 
     [Fact]
