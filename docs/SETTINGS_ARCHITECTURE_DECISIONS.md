@@ -8,7 +8,7 @@
 1. Dynamic permissions are clinic-scoped and enforced by the server. UI visibility is never an authorization boundary.
 2. Visit types are persisted clinic records referenced by stable IDs. Appointment enum/string fields remain compatibility data only during the migration window.
 3. Staff authentication uses numeric PIN credentials and TOTP MFA with hashed single-use recovery codes. These choices are product decisions and are not represented as phishing-resistant or as a formal assurance-level certification.
-4. Every Settings mutation is tenant-scoped, authorized, validated, versioned with `long Version`, and audited without PHI.
+4. Every Settings mutation is tenant-scoped, authorized, validated, versioned with `long Version`, and audited without PHI in the same database unit of work as the mutation.
 5. Clients submit `ExpectedVersion`. A stale mutation returns `409 Conflict`; field validation returns `422`; unauthenticated requests return `401`; insufficient capability returns `403`; tenant-safe missing resources return `404`.
 6. Mandatory compliance/security auditing is permanently enabled and is not configurable from Settings.
 
@@ -20,14 +20,14 @@ Dynamic authorization supports three modes:
 - `Shadow`: the canonical role policy remains authoritative and differences from clinic configuration are emitted as identifier-only telemetry/audit events.
 - `Enforced`: the dynamic capability decision is authoritative, while tenant, patient-self, signed-note, PTA-supervision, last-recovery-admin, and other domain guards remain mandatory.
 
-Missing or invalid permission rows fail closed to the canonical restrictive baseline. Locked minima cannot be reduced. Unsupported capabilities remain `None` and cannot create access to endpoints that do not exist.
+Missing or invalid permission rows fail closed to the canonical restrictive baseline. Locked minima cannot be reduced. Unsupported capabilities remain `None` and cannot create access to endpoints that do not exist. Disabling role customization blocks permission updates and cloning at the administration service boundary.
 
 ## Security defaults and migration
 
 - Clinic time zone: `America/Los_Angeles` using an IANA identifier.
 - Session inactivity: 15 minutes, valid range 5–60.
-- New or changed PIN: 8–12 numeric digits.
-- Existing four-digit PIN hashes: accepted only during the 14-day migration grace period; a compliant PIN is required at reset, forced change, or grace-period expiration.
+- New or changed PIN: the clinic-configured numeric minimum through 12 digits; the configured minimum is constrained to 8–12 and defaults to 8.
+- Existing four-digit PIN hashes: accepted only during the 14-day migration grace period anchored to the clinic security-policy rollout; dormant accounts do not receive a new window at their next login, and a compliant PIN is required at reset, forced change, or grace-period expiration.
 - PIN changes are event-driven (first login, reset, suspected compromise, or administrator action); periodic expiration is disabled.
 - MFA: TOTP with recovery codes. Enrollment is verified before activation, accepted time steps cannot be replayed, and reset forces re-enrollment.
 - Entra External ID satisfies MFA only when the validated token explicitly contains `mfa` in its `amr` claim. Policy-specific ACR values are not inferred. An external token without that assurance is denied when clinic enforcement is active; the user can instead complete PTDoc's local PIN/TOTP workflow.
@@ -40,7 +40,7 @@ path; registration, reset, and required-change paths accept only 8–12 numeric 
 
 ## Scheduling and compatibility
 
-Clinic-local availability is evaluated centrally from IANA time-zone business hours, optional lunch intervals, recurring blocks, configured buffer, existing appointment overlap, and own-schedule restrictions. Daylight-saving gaps and ambiguous local times must be handled explicitly.
+Clinic-local availability is evaluated centrally for both stable visit-type and legacy compatibility requests from IANA time-zone business hours, optional lunch intervals, recurring blocks, configured buffer, existing appointment overlap, and own-schedule restrictions. When the clinic restricts clinicians to their own schedules, authenticated clinician reads and mutations are filtered or denied by internal user ID. Daylight-saving gaps and ambiguous local times must be handled explicitly.
 
 Appointment visit-type migration is release-oriented:
 

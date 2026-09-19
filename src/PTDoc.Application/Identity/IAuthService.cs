@@ -5,7 +5,16 @@ public enum AuthStatus
     Success,
     InvalidCredentials,
     PendingApproval,
-    AccountLocked
+    AccountLocked,
+    RequiresPinChange,
+    RequiresMfaEnrollment,
+    RequiresMfaVerification
+}
+
+public enum AuthSessionMode
+{
+    Stateful,
+    IdentityOnly
 }
 
 /// <summary>
@@ -16,7 +25,7 @@ public interface IAuthService
 {
     /// <summary>
     /// Authenticates a user with their username and PIN.
-    /// Creates a new session and returns session token.
+    /// Creates a stateful session by default, or returns verified identity data without a session for JWT issuance.
     /// Logs the attempt for security monitoring.
     /// </summary>
     /// <param name="username">Username</param>
@@ -29,7 +38,23 @@ public interface IAuthService
         string pin,
         string? ipAddress = null,
         string? userAgent = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        AuthSessionMode sessionMode = AuthSessionMode.Stateful);
+
+    Task<AuthResult?> CompletePinChangeAsync(
+        string challengeToken,
+        string newPin,
+        string? ipAddress = null,
+        string? userAgent = null,
+        CancellationToken cancellationToken = default,
+        AuthSessionMode sessionMode = AuthSessionMode.Stateful);
+
+    Task<AuthResult?> CompleteMfaAsync(
+        string completionToken,
+        string? ipAddress = null,
+        string? userAgent = null,
+        CancellationToken cancellationToken = default,
+        AuthSessionMode sessionMode = AuthSessionMode.Stateful);
 
     /// <summary>
     /// Validates a session token and updates last activity timestamp.
@@ -74,10 +99,13 @@ public class AuthResult
     /// <summary>Username of the authenticated user. Only set on <see cref="AuthStatus.Success"/>.</summary>
     public string? Username { get; init; }
 
-    /// <summary>Session token issued for the authenticated user. Only set on <see cref="AuthStatus.Success"/>.</summary>
+    /// <summary>Email claim carried into issued JWTs when the user has an email address.</summary>
+    public string? Email { get; init; }
+
+    /// <summary>Session token issued for a stateful authentication. Omitted for identity-only JWT authentication.</summary>
     public string? Token { get; init; }
 
-    /// <summary>Expiration timestamp of the issued session token. Only set on <see cref="AuthStatus.Success"/>.</summary>
+    /// <summary>Expiration timestamp of a stateful session token. Omitted for identity-only JWT authentication.</summary>
     public DateTime? ExpiresAt { get; init; }
 
     /// <summary>Role of the authenticated user. Only set on <see cref="AuthStatus.Success"/>.</summary>
@@ -85,6 +113,12 @@ public class AuthResult
 
     /// <summary>Clinic the user belongs to, or null for system accounts. Only set on <see cref="AuthStatus.Success"/>.</summary>
     public Guid? ClinicId { get; init; }
+
+    /// <summary>Short-lived purpose-bound token used before a session is issued.</summary>
+    public string? ChallengeToken { get; init; }
+
+    /// <summary>Clinic-specific minimum PIN length for a PIN-policy validation response.</summary>
+    public int? MinimumPinLength { get; init; }
 }
 
 /// <summary>

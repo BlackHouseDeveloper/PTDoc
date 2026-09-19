@@ -170,6 +170,87 @@ public sealed class IntakeDeliveryServiceTests
     }
 
     [Fact]
+    public async Task SendInviteAsync_RejectsUnsupportedTemplateBeforeCreatingInvite()
+    {
+        await using var db = CreateDbContext();
+        var intake = await SeedOpenIntakeAsync(db);
+        var inviteService = new Mock<IIntakeInviteService>();
+        var communicationService = new Mock<ICommunicationService>();
+        var workflow = new IntakeCommunicationWorkflow(
+            db,
+            inviteService.Object,
+            communicationService.Object,
+            new ContactNormalizer(),
+            new AuditService(db),
+            Options.Create(new CommunicationOptions()));
+
+        var result = await workflow.SendInviteAsync(new IntakeSendInviteRequest
+        {
+            IntakeId = intake.Id,
+            Channel = IntakeDeliveryChannel.Email,
+            TemplateKey = "unsupported-template"
+        });
+
+        Assert.False(result.Success);
+        Assert.Equal("TemplateKey is not supported.", result.ErrorMessage);
+        Assert.Contains("templateKey", result.ValidationErrors!.Keys);
+        inviteService.Verify(service => service.CreateInviteAsync(
+            It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        communicationService.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task SendInviteAsync_ProviderAcceptedAuditFailureReturnsNonRetryableSuccess()
+    {
+        await using var db = CreateDbContext();
+        var intake = await SeedOpenIntakeAsync(db);
+        var inviteService = new Mock<IIntakeInviteService>();
+        inviteService.Setup(service => service.CreateInviteAsync(intake.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IntakeInviteLinkResult(
+                true,
+                intake.Id,
+                intake.PatientId,
+                $"http://localhost/intake/{intake.PatientId:D}?mode=patient&invite=test-token",
+                DateTimeOffset.UtcNow.AddHours(4),
+                null));
+        var accepted = new DeliveryResult
+        {
+            Succeeded = true,
+            Status = DeliveryStatus.Sent,
+            Provider = "Fake",
+            ProviderMessageId = "accepted-message",
+            SentAtUtc = DateTimeOffset.UtcNow,
+            Channel = DeliveryChannel.Email,
+            Purpose = DeliveryPurpose.IntakeLink
+        };
+        var communicationService = new Mock<ICommunicationService>();
+        communicationService.Setup(service => service.SendIntakeLinkEmailAsync(
+                It.IsAny<IntakeLinkDeliveryRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DeliveryAcceptedAuditException(
+                accepted,
+                new DbUpdateException("Audit unavailable.")));
+        var workflow = new IntakeCommunicationWorkflow(
+            db,
+            inviteService.Object,
+            communicationService.Object,
+            new ContactNormalizer(),
+            new AuditService(db),
+            Options.Create(new CommunicationOptions()));
+
+        var result = await workflow.SendInviteAsync(new IntakeSendInviteRequest
+        {
+            IntakeId = intake.Id,
+            Channel = IntakeDeliveryChannel.Email
+        });
+
+        Assert.True(result.Success);
+        Assert.Equal("accepted-message", result.ProviderMessageId);
+        Assert.Contains("accepted", result.ErrorMessage!, StringComparison.OrdinalIgnoreCase);
+        communicationService.Verify(service => service.SendIntakeLinkEmailAsync(
+            It.IsAny<IntakeLinkDeliveryRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task SendInviteAsync_WithPublicBaseUrlOverride_DeliversPublicInviteUrl()
     {
         await using var db = CreateDbContext();

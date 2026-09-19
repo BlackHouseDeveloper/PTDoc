@@ -100,6 +100,72 @@ public sealed class AnonymousNegativePathIntegrationTests : IClassFixture<PtDocA
     }
 
     [Theory]
+    [InlineData("/auth/token", """{"username":"missing-rate-limit-user","password":"12345678"}""")]
+    [InlineData("/api/v1/auth/pin-login", """{"username":"missing-rate-limit-user","pin":"12345678"}""")]
+    public async Task PrimaryPinAuthenticationRateLimit_UsesForwardedClientIpPartition(
+        string endpoint,
+        string body)
+    {
+        var factory = new PtDocApiFactory();
+        try
+        {
+            await factory.InitializeAsync();
+            using var client = factory.CreateUnauthenticatedClient();
+            var subnet = Random.Shared.Next(0, 255);
+            var limitedClientIp = $"198.51.{subnet}.20";
+            var distinctClientIp = $"198.51.{subnet}.21";
+
+            for (var i = 0; i < 10; i++)
+            {
+                using var response = await PostWithForwardedForAsync(
+                    client,
+                    endpoint,
+                    limitedClientIp,
+                    body);
+                Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            }
+
+            using var rateLimitedResponse = await PostWithForwardedForAsync(
+                client,
+                endpoint,
+                limitedClientIp,
+                body);
+            Assert.Equal(HttpStatusCode.TooManyRequests, rateLimitedResponse.StatusCode);
+            Assert.Equal(
+                "authentication_rate_limited",
+                await ReadStringPropertyAsync(rateLimitedResponse, "error"));
+
+            using var distinctClientResponse = await PostWithForwardedForAsync(
+                client,
+                endpoint,
+                distinctClientIp,
+                body);
+            Assert.Equal(HttpStatusCode.Unauthorized, distinctClientResponse.StatusCode);
+        }
+        finally
+        {
+            await factory.DisposeAsync();
+        }
+    }
+
+    [Theory]
+    [InlineData("/api/v1/kiosk/enroll", "{}")]
+    [InlineData("/api/v1/kiosk/enroll", "{\"enrollmentCode\":null}")]
+    [InlineData("/api/v1/kiosk/check-in", "{}")]
+    [InlineData("/api/v1/kiosk/check-in", "{\"deviceCredential\":null,\"appointmentToken\":\"12345678\"}")]
+    [InlineData("/api/v1/kiosk/check-in", "{\"deviceCredential\":\"00000000000000000000000000000000.device\",\"appointmentToken\":null}")]
+    public async Task KioskAuthentication_MissingCredentialsReturnGenericNotFound(
+        string endpoint,
+        string body)
+    {
+        using var client = _factory.CreateUnauthenticatedClient();
+
+        using var response = await client.PostAsync(endpoint, Json(body));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Theory]
     [InlineData("{")]
     [InlineData("[]")]
     [InlineData("""{"token":"definitely-invalid","newPin":"1234"}""")]
@@ -275,6 +341,21 @@ public sealed class AnonymousNegativePathIntegrationTests : IClassFixture<PtDocA
         string body)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/intake/access/send-otp")
+        {
+            Content = Json(body)
+        };
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", forwardedFor);
+        request.Headers.TryAddWithoutValidation("X-Forwarded-Proto", "https");
+        return await client.SendAsync(request);
+    }
+
+    private static async Task<HttpResponseMessage> PostWithForwardedForAsync(
+        HttpClient client,
+        string endpoint,
+        string forwardedFor,
+        string body)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
             Content = Json(body)
         };

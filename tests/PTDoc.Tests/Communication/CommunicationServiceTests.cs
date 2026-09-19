@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
@@ -6,7 +7,9 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Data.Sqlite;
+using Moq;
 using PTDoc.Application.Communication;
+using PTDoc.Application.Settings;
 using PTDoc.Core.Communication;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Communication;
@@ -19,6 +22,111 @@ namespace PTDoc.Tests.Communication;
 [Trait("Category", "CoreCi")]
 public sealed class CommunicationServiceTests
 {
+    [Fact]
+    public async Task AutoCheckInTemplateKey_SelectsRegisteredIntakeTemplate()
+    {
+        await using var db = CreateDbContext();
+        var renderer = new RecordingTemplateRenderer();
+        var service = CreateService(db, templateRenderer: renderer);
+
+        var result = await service.SendIntakeLinkEmailAsync(new IntakeLinkDeliveryRequest
+        {
+            IntakeId = Guid.NewGuid(),
+            PatientId = Guid.NewGuid(),
+            ClinicId = Guid.NewGuid(),
+            Recipient = "template@example.com",
+            InviteUrl = "https://example.invalid/intake/token",
+            ExpiresAtUtc = DateTimeOffset.UtcNow.AddHours(1),
+            TemplateKey = AutoCheckInTemplateCatalog.Default
+        });
+
+        Assert.True(result.Succeeded);
+        Assert.Contains("intake-link-email.html", renderer.TemplateNames);
+    }
+
+    [Fact]
+    public async Task AppointmentReminder_AcceptedProviderResultDistinguishesAuditFailure()
+    {
+        await using var db = CreateDbContext();
+        var emailSender = new FakeEmailSender();
+        var auditWriter = new Mock<ICommunicationAuditWriter>();
+        auditWriter.Setup(writer => writer.WriteAsync(
+                It.IsAny<CommunicationAuditWriteRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("audit unavailable"));
+        var service = CreateService(
+            db,
+            emailSender: emailSender,
+            templateRenderer: new RecordingTemplateRenderer(),
+            auditWriter: auditWriter.Object);
+
+        var exception = await Assert.ThrowsAsync<DeliveryAcceptedAuditException>(() =>
+            service.SendAppointmentReminderEmailAsync(new AppointmentReminderDeliveryRequest
+            {
+                AppointmentId = Guid.NewGuid(),
+                PatientId = Guid.NewGuid(),
+                ClinicId = Guid.NewGuid(),
+                Recipient = "accepted@example.com",
+                AppointmentLocalTime = "Mon, Aug 24 at 9:00 AM Pacific Time"
+            }));
+
+        Assert.True(exception.DeliveryResult.Succeeded);
+        Assert.Single(emailSender.Messages);
+    }
+
+    [Fact]
+    public async Task CommunicationAuditWriter_FailedInsertDoesNotPoisonLaterDispatchSave()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .AddInterceptors(new RejectCommunicationAuditSaveInterceptor())
+            .Options;
+        await using var db = new ApplicationDbContext(options);
+        var writer = new CommunicationAuditWriter(
+            db,
+            Options.Create(new CommunicationOptions
+            {
+                RecipientHashSalt = "test-recipient-hash-salt",
+                PublicBaseUrl = "https://example.invalid"
+            }),
+            new TestHostEnvironment(),
+            new ContactNormalizer());
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => writer.WriteAsync(
+            new CommunicationAuditWriteRequest
+            {
+                ClinicId = Guid.NewGuid(),
+                PatientId = Guid.NewGuid(),
+                Purpose = DeliveryPurpose.AppointmentReminder,
+                Channel = DeliveryChannel.Email,
+                Recipient = "accepted@example.com",
+                Provider = "Test",
+                Status = DeliveryStatus.Sent,
+                SentAtUtc = DateTimeOffset.UtcNow
+            }));
+
+        Assert.Empty(db.ChangeTracker.Entries<CommunicationDeliveryLog>());
+
+        var dispatch = new AppointmentReminderDispatch
+        {
+            ClinicId = Guid.NewGuid(),
+            AppointmentId = Guid.NewGuid(),
+            AppointmentVersionUtc = DateTime.UtcNow,
+            ReminderLeadHours = 24,
+            Purpose = ReminderDispatchPurpose.AppointmentReminder,
+            Channel = ReminderChannel.Email,
+            IdempotencyKey = Guid.NewGuid().ToString("N"),
+            Status = ReminderDispatchStatus.Sent,
+            EligibleAtUtc = DateTime.UtcNow,
+            CompletedAtUtc = DateTime.UtcNow
+        };
+        db.AppointmentReminderDispatches.Add(dispatch);
+
+        await db.SaveChangesAsync();
+
+        Assert.Equal(EntityState.Unchanged, db.Entry(dispatch).State);
+    }
+
     [Fact]
     public async Task PasswordResetEmail_HashesRecipientAndToken_AndDoesNotStoreRawContact()
     {
@@ -233,13 +341,13 @@ public sealed class CommunicationServiceTests
         var first = await resetService.ResetPinAsync(new PasswordResetCompletionRequest
         {
             Token = token!,
-            NewPin = "1234"
+            NewPin = "12345678"
         });
 
         var second = await resetService.ResetPinAsync(new PasswordResetCompletionRequest
         {
             Token = token!,
-            NewPin = "1234"
+            NewPin = "12345678"
         });
 
         Assert.True(first.Succeeded);
@@ -247,6 +355,309 @@ public sealed class CommunicationServiceTests
         Assert.Equal(PasswordResetCompletionStatus.AlreadyUsed, second.Status);
         Assert.NotEqual("old-hash", (await db.Users.SingleAsync()).PinHash);
         Assert.NotNull(await db.PasswordResetTokens.Select(resetToken => resetToken.UsedAtUtc).SingleAsync());
+        var audit = Assert.Single(await db.AuditLogs.Where(log => log.EventType == "PinChanged").ToListAsync());
+        Assert.Equal(user.Id, audit.UserId);
+        Assert.Equal(nameof(User), audit.EntityType);
+        Assert.Equal(user.Id, audit.EntityId);
+        Assert.Contains("password_reset", audit.MetadataJson, StringComparison.Ordinal);
+        Assert.DoesNotContain(token!, audit.MetadataJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("12345678", audit.MetadataJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PasswordResetTokenService_RelationalResetStagesAuditInResetTransaction()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        await using var db = new ApplicationDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "relational-reset-user",
+            PinHash = "old-hash",
+            FirstName = "Relational",
+            LastName = "Reset",
+            Email = "relational-reset@example.com",
+            Role = "PT",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var emailSender = new FakeEmailSender();
+        var communicationService = CreateService(db, emailSender: emailSender);
+        await communicationService.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest
+        {
+            Recipient = user.Email!
+        });
+        var token = ExtractResetToken(emailSender);
+
+        var result = await new PasswordResetTokenService(db).ResetPinAsync(new PasswordResetCompletionRequest
+        {
+            Token = token,
+            NewPin = "12345678"
+        });
+
+        Assert.True(result.Succeeded);
+        var audit = Assert.Single(await db.AuditLogs.Where(log => log.EventType == "PinChanged").ToListAsync());
+        Assert.Equal(user.Id, audit.UserId);
+        Assert.Equal(nameof(User), audit.EntityType);
+        Assert.Equal(user.Id, audit.EntityId);
+        Assert.Contains("password_reset", audit.MetadataJson, StringComparison.Ordinal);
+        Assert.DoesNotContain(token, audit.MetadataJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("12345678", audit.MetadataJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PasswordResetTokenService_RelationalAuditFailureRollsBackCredentialReset()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        await using var db = new ApplicationDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "audit-failure-reset-user",
+            PinHash = "old-hash",
+            FirstName = "Audit",
+            LastName = "Failure",
+            Email = "audit-failure-reset@example.com",
+            Role = "PT",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var emailSender = new FakeEmailSender();
+        var communicationService = CreateService(db, emailSender: emailSender);
+        await communicationService.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest
+        {
+            Recipient = user.Email!
+        });
+        var token = ExtractResetToken(emailSender);
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TRIGGER RejectPinChangedAudit
+            BEFORE INSERT ON AuditLogs
+            WHEN NEW.EventType = 'PinChanged'
+            BEGIN
+                SELECT RAISE(ABORT, 'audit rejected');
+            END;
+            """);
+
+        await Assert.ThrowsAsync<DbUpdateException>(() =>
+            new PasswordResetTokenService(db).ResetPinAsync(new PasswordResetCompletionRequest
+            {
+                Token = token,
+                NewPin = "12345678"
+            }));
+
+        db.ChangeTracker.Clear();
+        Assert.Equal("old-hash", await db.Users.Where(item => item.Id == user.Id).Select(item => item.PinHash).SingleAsync());
+        Assert.Null(await db.PasswordResetTokens.Select(resetToken => resetToken.UsedAtUtc).SingleAsync());
+        Assert.Empty(await db.AuditLogs.Where(log => log.EventType == "PinChanged").ToListAsync());
+    }
+
+    [Fact]
+    public async Task PasswordResetTokenService_ValidatesTokenBeforeReturningPinPolicyErrors()
+    {
+        await using var db = CreateDbContext();
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "reset-validation-order",
+            PinHash = "old-hash",
+            FirstName = "Reset",
+            LastName = "Validation",
+            Email = "reset-validation@example.com",
+            Role = "PT",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var emailSender = new FakeEmailSender();
+        var communicationService = CreateService(db, emailSender: emailSender);
+        await communicationService.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest
+        {
+            Recipient = user.Email!
+        });
+
+        var token = ExtractResetToken(emailSender);
+        var resetService = new PasswordResetTokenService(db);
+        var invalidToken = await resetService.ResetPinAsync(new PasswordResetCompletionRequest
+        {
+            Token = "definitely-invalid",
+            NewPin = "1234"
+        });
+        var invalidPin = await resetService.ResetPinAsync(new PasswordResetCompletionRequest
+        {
+            Token = token,
+            NewPin = "1234"
+        });
+
+        Assert.Equal(PasswordResetCompletionStatus.InvalidToken, invalidToken.Status);
+        Assert.Equal(PasswordResetCompletionStatus.InvalidPin, invalidPin.Status);
+        Assert.Null(await db.PasswordResetTokens.Select(resetToken => resetToken.UsedAtUtc).SingleAsync());
+    }
+
+    [Fact]
+    public async Task PasswordResetTokenService_UsesTargetClinicMinimumPinLength()
+    {
+        await using var db = CreateDbContext();
+        var clinic = new Clinic { Name = "Reset Policy Clinic", Slug = $"reset-policy-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "reset-policy-user",
+            PinHash = "old-hash",
+            FirstName = "Reset",
+            LastName = "Policy",
+            Email = "reset-policy@example.com",
+            Role = "PT",
+            ClinicId = clinic.Id,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        db.AddRange(clinic, user);
+        await db.SaveChangesAsync();
+        var policy = await db.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.MinimumPinLength = 10;
+        await db.SaveChangesAsync();
+        var emailSender = new FakeEmailSender();
+        var communicationService = CreateService(db, emailSender: emailSender);
+        await communicationService.SendPasswordResetEmailAsync(new PasswordResetDeliveryRequest
+        {
+            Recipient = user.Email!
+        });
+        var token = ExtractResetToken(emailSender);
+        var resetService = new PasswordResetTokenService(db);
+
+        var validation = await resetService.ValidateTokenAsync(new PasswordResetTokenValidationRequest
+        {
+            Token = token
+        });
+
+        var rejected = await resetService.ResetPinAsync(new PasswordResetCompletionRequest
+        {
+            Token = token,
+            NewPin = "12345678"
+        });
+        var accepted = await resetService.ResetPinAsync(new PasswordResetCompletionRequest
+        {
+            Token = token,
+            NewPin = "1234567890"
+        });
+
+        Assert.True(validation.IsValid);
+        Assert.Equal(10, validation.MinimumPinLength);
+        Assert.Equal(PasswordResetCompletionStatus.InvalidPin, rejected.Status);
+        Assert.Equal(10, rejected.MinimumPinLength);
+        Assert.Contains("10 to 12", rejected.SafeErrorMessage!, StringComparison.Ordinal);
+        Assert.True(accepted.Succeeded);
+    }
+
+    [Theory]
+    [InlineData(4, "1234567", "12345678", 8)]
+    [InlineData(20, "12345678901", "123456789012", 12)]
+    public async Task PasswordResetTokenService_NormalizesMalformedStoredPinMinimum(
+        int storedMinimum,
+        string rejectedPin,
+        string acceptedPin,
+        int expectedMinimum)
+    {
+        await using var db = CreateDbContext();
+        var clinic = new Clinic { Name = "Malformed Reset Policy", Slug = $"malformed-reset-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = $"malformed-reset-{storedMinimum}",
+            PinHash = "old-hash",
+            FirstName = "Malformed",
+            LastName = "Reset",
+            Email = $"malformed-reset-{storedMinimum}@example.com",
+            Role = "PT",
+            ClinicId = clinic.Id,
+            IsActive = true
+        };
+        db.AddRange(clinic, user);
+        await db.SaveChangesAsync();
+        var policy = await db.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.MinimumPinLength = storedMinimum;
+        await db.SaveChangesAsync();
+        var emailSender = new FakeEmailSender();
+        await CreateService(db, emailSender: emailSender).SendPasswordResetEmailAsync(
+            new PasswordResetDeliveryRequest { Recipient = user.Email! });
+        var token = ExtractResetToken(emailSender);
+        var service = new PasswordResetTokenService(db);
+
+        var rejected = await service.ResetPinAsync(new PasswordResetCompletionRequest
+        {
+            Token = token,
+            NewPin = rejectedPin
+        });
+        var accepted = await service.ResetPinAsync(new PasswordResetCompletionRequest
+        {
+            Token = token,
+            NewPin = acceptedPin
+        });
+
+        Assert.Equal(PasswordResetCompletionStatus.InvalidPin, rejected.Status);
+        Assert.Equal(expectedMinimum, rejected.MinimumPinLength);
+        Assert.True(accepted.Succeeded);
+    }
+
+    [Fact]
+    public async Task PasswordResetTokenService_RelationalClaimRechecksExpiryAtWriteBoundary()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var db = new ApplicationDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+        var user = new User
+        {
+            Username = "expiring-reset-user",
+            PinHash = "old-hash",
+            FirstName = "Expiring",
+            LastName = "Reset",
+            Email = "expiring-reset@example.com",
+            Role = "PT",
+            IsActive = true
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+        var emailSender = new FakeEmailSender();
+        await CreateService(db, emailSender: emailSender).SendPasswordResetEmailAsync(
+            new PasswordResetDeliveryRequest { Recipient = user.Email! });
+        var token = ExtractResetToken(emailSender);
+        var firstCheck = new DateTimeOffset(2026, 9, 18, 20, 0, 0, TimeSpan.Zero);
+        var storedToken = await db.PasswordResetTokens.SingleAsync();
+        storedToken.ExpiresAtUtc = firstCheck.AddSeconds(1);
+        await db.SaveChangesAsync();
+        var timeProvider = new SequenceTimeProvider(firstCheck, firstCheck.AddSeconds(2));
+        var service = new PasswordResetTokenService(db, timeProvider: timeProvider);
+
+        var result = await service.ResetPinAsync(new PasswordResetCompletionRequest
+        {
+            Token = token,
+            NewPin = "12345678"
+        });
+
+        Assert.Equal(PasswordResetCompletionStatus.Expired, result.Status);
+        db.ChangeTracker.Clear();
+        Assert.Equal("old-hash", await db.Users.Select(item => item.PinHash).SingleAsync());
+        Assert.Null(await db.PasswordResetTokens.Select(item => item.UsedAtUtc).SingleAsync());
     }
 
     [Fact]
@@ -807,7 +1218,9 @@ public sealed class CommunicationServiceTests
     private static CommunicationService CreateService(
         ApplicationDbContext db,
         IEmailSender? emailSender = null,
-        ISmsSender? smsSender = null)
+        ISmsSender? smsSender = null,
+        IMessageTemplateRenderer? templateRenderer = null,
+        ICommunicationAuditWriter? auditWriter = null)
     {
         var options = Options.Create(new CommunicationOptions
         {
@@ -822,13 +1235,13 @@ public sealed class CommunicationServiceTests
 
         var environment = new TestHostEnvironment { EnvironmentName = Environments.Development };
         var contactNormalizer = new ContactNormalizer();
-        var auditWriter = new CommunicationAuditWriter(db, options, environment, contactNormalizer);
+        auditWriter ??= new CommunicationAuditWriter(db, options, environment, contactNormalizer);
 
         return new CommunicationService(
             db,
             emailSender ?? new FakeEmailSender(),
             smsSender ?? new FakeSmsSender(),
-            new FakeTemplateRenderer(),
+            templateRenderer ?? new FakeTemplateRenderer(),
             auditWriter,
             contactNormalizer,
             options,
@@ -864,6 +1277,20 @@ public sealed class CommunicationServiceTests
             IReadOnlyDictionary<string, string> values,
             CancellationToken cancellationToken = default)
             => Task.FromResult($"{templateName}:{values["Link"]}");
+    }
+
+    private sealed class RecordingTemplateRenderer : IMessageTemplateRenderer
+    {
+        public List<string> TemplateNames { get; } = [];
+
+        public Task<string> RenderAsync(
+            string templateName,
+            IReadOnlyDictionary<string, string> values,
+            CancellationToken cancellationToken = default)
+        {
+            TemplateNames.Add(templateName);
+            return Task.FromResult(templateName);
+        }
     }
 
     public sealed class FakeEmailSender : IEmailSender
@@ -928,6 +1355,18 @@ public sealed class CommunicationServiceTests
         }
     }
 
+    private sealed class SequenceTimeProvider(params DateTimeOffset[] values) : TimeProvider
+    {
+        private int index;
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            var selected = values[Math.Min(index, values.Length - 1)];
+            index++;
+            return selected;
+        }
+    }
+
     private sealed class EnvironmentVariableScope : IDisposable
     {
         private readonly Dictionary<string, string?> _previousValues = new(StringComparer.Ordinal);
@@ -956,5 +1395,22 @@ public sealed class CommunicationServiceTests
         public string ApplicationName { get; set; } = "PTDoc.Tests";
         public string ContentRootPath { get; set; } = Directory.GetCurrentDirectory();
         public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+    }
+
+    private sealed class RejectCommunicationAuditSaveInterceptor : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context?.ChangeTracker.Entries<CommunicationDeliveryLog>()
+                    .Any(entry => entry.State == EntityState.Added) == true)
+            {
+                throw new DbUpdateException("Communication audit insert rejected for test.");
+            }
+
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
     }
 }

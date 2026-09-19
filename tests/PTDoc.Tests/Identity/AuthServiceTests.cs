@@ -46,7 +46,7 @@ public class AuthServiceTests
         {
             Id = Guid.NewGuid(),
             Username = "testuser",
-            PinHash = AuthService.HashPin("1234"),
+            PinHash = AuthService.HashPin("12345678"),
             FirstName = "Test",
             LastName = "User",
             Role = "PT",
@@ -58,7 +58,7 @@ public class AuthServiceTests
         await context.SaveChangesAsync();
 
         // Act
-        var result = await authService.AuthenticateAsync("testuser", "1234", "127.0.0.1", "TestAgent");
+        var result = await authService.AuthenticateAsync("testuser", "12345678", "127.0.0.1", "TestAgent");
 
         // Assert
         var authResult = Assert.IsType<AuthResult>(result);
@@ -79,6 +79,43 @@ public class AuthServiceTests
         Assert.NotNull(loginAttempt);
         Assert.True(loginAttempt.Success);
         Assert.Equal("127.0.0.1", loginAttempt.IpAddress);
+    }
+
+    [Fact]
+    public async Task AuthenticateAsync_IdentityOnlySuccessDoesNotCreateStatefulSession()
+    {
+        await using var context = CreateInMemoryContext();
+        var authService = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "jwt-user",
+            Email = "jwt-user@example.invalid",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Jwt",
+            LastName = "User",
+            Role = "PT",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var result = await authService.AuthenticateAsync(
+            user.Username,
+            "12345678",
+            "127.0.0.1",
+            "JwtClient",
+            sessionMode: AuthSessionMode.IdentityOnly);
+
+        var authResult = Assert.IsType<AuthResult>(result);
+        Assert.Equal(AuthStatus.Success, authResult.Status);
+        Assert.Equal(user.Id, authResult.UserId);
+        Assert.Equal(user.Email, authResult.Email);
+        Assert.Null(authResult.Token);
+        Assert.Null(authResult.ExpiresAt);
+        Assert.Empty(await context.Sessions.Where(item => item.UserId == user.Id).ToListAsync());
+        Assert.True((await context.LoginAttempts.SingleAsync(item => item.UserId == user.Id)).Success);
     }
 
     [Fact]

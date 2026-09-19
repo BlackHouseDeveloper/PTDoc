@@ -12,7 +12,7 @@ Use these repo-specific rules before guessing structure, commands, or architectu
 - Do not run `dotnet build`, `dotnet test`, or other heavy verification commands automatically. Ask the user to run them and use their output to iterate.
 - Exception: when the task is to fix a GitHub Actions CI failure and the user explicitly asks to rerun the CI test locally, reproduce the relevant workflow command from `.github/workflows/` on the current branch before handing back. Prefer the smallest failing job command first (for example the `Core CI` `Category=CoreCi` test filter) and report the exact command and result.
 - Never create a git commit unless the user has confirmed the relevant build and tests passed, or the user gives explicit permission to commit without that confirmation.
-- Update [`docs/CHANGELOG.md`](docs/CHANGELOG.md) at the end of every repository-changing session before handing off. If no entry is needed, state that explicitly.
+- Update [`docs/CHANGELOG.md`](docs/CHANGELOG.md) at the end of every repository-changing session before handing off. If no entry is needed, state that explicitly. PRs without a changelog entry need the `no-changelog` label to satisfy the `Changelog required` workflow.
 
 ## Release Branching
 
@@ -85,6 +85,8 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 
 - Install the separate Playwright browser QA project: `cd tests/PTDoc.Web.UiQa && npm install && npm run install:browsers`
 - Run the responsive browser suite against local Web/API hosts: `PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> PTDOC_UI_QA_ADMIN_USERNAME=<settings-capable-admin-user> PTDOC_UI_QA_ADMIN_PIN=<admin-pin> npm run test:responsive`
+- Run the isolated branch live-verification harness infrastructure tests: `cd tests/PTDoc.Web.UiQa && npm run test:branch-live-harness`
+- Run the isolated branch live-verification localhost harness after the app is already built and focused tests pass: `cd tests/PTDoc.Web.UiQa && PTDOC_UI_QA_PIN=<local-seeded-pin> npm run test:branch-live-unblock -- --headed`; this harness copies `src/PTDoc.Api/PTDoc.db` into a temporary directory, allocates its own loopback ports, creates disposable fixtures, writes sanitized evidence under `output/playwright/branch-live-verification/`, and must not reuse hosted-beta `.env` fixtures.
 - Run the hosted beta E2E gate against the deployed beta site: `cd tests/PTDoc.Web.UiQa && PTDOC_WEB_BASE_URL=https://ptdoc.bhdevsites.com PTDOC_UI_QA_PIN=<current-out-of-band-beta-pin> npm run test:beta-e2e`
 - Run the no-skip 51-test hosted-beta gate after loading the ignored fixture environment: `cd tests/PTDoc.Web.UiQa && set -a && source .env && set +a && npm test -- --headed --workers=1`; keep `PTDOC_UI_QA_REQUIRE_FULL_FIXTURES=true` in `.env` so missing fixture inputs fail before browser startup.
 - Run the focused patient-document upload browser check: `PTDOC_WEB_BASE_URL=http://localhost:5145 PTDOC_UI_QA_USERNAME=<dev-or-beta-user> PTDOC_UI_QA_PIN=<pin> npm run test:patient-documents`
@@ -93,7 +95,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - Manual GitHub Actions browser run: use workflow `UI Responsive QA`; use `http://localhost:5145` to let the workflow boot local hosts, or point it at a deployed environment, with repo secrets `PTDOC_UI_QA_USERNAME`, `PTDOC_UI_QA_PIN`, `PTDOC_UI_QA_ADMIN_USERNAME`, and `PTDOC_UI_QA_ADMIN_PIN`, plus optional repo variable `PTDOC_UI_QA_NOTE_WORKSPACE_PATH`. Set `upload_artifacts=true` to upload the Playwright report, traces, screenshots, and temporary app logs even when the run passes.
 - Optional authenticated-session alternative: set `PTDOC_UI_QA_STORAGE_STATE` to a Playwright storage-state JSON file instead of credentials; responsive Settings coverage requires that stored session to have Admin/Owner access.
 - Optional patient-chart override for the upload QA: set `PTDOC_UI_QA_PATIENT_CHART_PATH=/patient/<patient-id>` when a different seeded patient should be used.
-- Optional hosted-beta Admin and Patient overrides: set `PTDOC_UI_QA_ADMIN_USERNAME` and `PTDOC_UI_QA_ADMIN_PIN`, plus `PTDOC_UI_QA_PATIENT_USERNAME` and `PTDOC_UI_QA_PATIENT_PIN`, only when the seeded beta fixtures differ from the documented defaults.
+- Optional hosted-beta role overrides: set `PTDOC_UI_QA_ADMIN_USERNAME` and `PTDOC_UI_QA_ADMIN_PIN`, `PTDOC_UI_QA_PT_USERNAME` and `PTDOC_UI_QA_PT_PIN`, `PTDOC_UI_QA_PTA_USERNAME` and optional `PTDOC_UI_QA_PTA_PIN`, plus `PTDOC_UI_QA_PATIENT_USERNAME` and `PTDOC_UI_QA_PATIENT_PIN`, only when the seeded beta fixtures differ from the documented defaults.
 - Optional PT-role override for audit-remediation note-entry coverage: set `PTDOC_UI_QA_PT_USERNAME` and `PTDOC_UI_QA_PT_PIN`.
 - Optional PTA-role override for audit-remediation view/PDF coverage: set `PTDOC_UI_QA_PTA_USERNAME` and optional `PTDOC_UI_QA_PTA_PIN`.
 - Optional intake-route override for audit-remediation coverage: set `PTDOC_UI_QA_INTAKE_PATH=/intake/<patient-id>` when a safe editable intake is available.
@@ -113,7 +115,9 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - The shared beta PIN is managed outside the repo as `BetaAccess__SeedPin`; get it from the beta environment owner and never commit or paste it into issue text, screenshots, or chat logs.
 - `BetaAccess__AllowStartupSeed=true` is Beta-only and assumes the API App Service remains a controlled single-instance deployment; if scale-out is enabled, disable startup seeding first or verify the SQL lock-protected seed path after deployment.
 - `BetaAccess__SeedLockTimeoutSeconds=15` bounds how long Beta startup seeding waits for the SQL Server application lock before reporting `SkippedLockContention`.
-- `Deploy Beta` stamps `PTDOC_SOURCE_SHA` and `PTDOC_RELEASE_ID` onto both App Services and blocks Web deployment until authenticated API `GET /diagnostics/runtime` matches the dispatched source/release values.
+- Before `Deploy Beta`, configure `DataProtection__KeyBlobUri` and `DataProtection__KeyVaultKeyIdentifier` on the API App Service; the workflow requires both before replacing the running API. The system-assigned managed identity needs blob access plus Key Vault get/wrap/unwrap permissions, and the blob plus historical key versions must persist across deployments.
+- `Deploy Beta` stamps `PTDOC_SOURCE_SHA` and `PTDOC_RELEASE_ID` onto both App Services, deploys the live API first, validates API `/health/live`, `/health/ready`, seeded-role sign-in, and authenticated API `GET /diagnostics/runtime`, then deploys Web only after the dispatched source/release values match.
+- `Deploy Beta` also validates the beta Web static asset path `https://ptdoc.bhdevsites.com/_content/PTDoc.UI/css/app.css` and checks `POST https://ptdoc.bhdevsites.com/_blazor/negotiate?negotiateVersion=1` for an advertised `WebSockets` transport before the workflow passes.
 - Use the manual GitHub Actions workflows `Deploy Beta` for Azure beta deploys and `UI Responsive QA` for browser evidence outside the normal PR gate.
 - Beta restart order: apply EF Core migrations out-of-band, confirm `/health/ready`, restart the API with `ASPNETCORE_ENVIRONMENT=Beta`, then verify the logs show the seed completed or deliberately skipped.
 - Beta AI generation is disabled by default for cost control; if a beta pass deliberately enables it, use `Ai__RateLimits__PermitLimit` plus `Ai__RateLimits__WindowMinutes` for the committed rate-limit settings.
@@ -135,6 +139,8 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - `BetaAccess__AllowStartupSeed`: enables the Beta-only startup seed path for hosted manual beta validation.
 - `BetaAccess__SeedPin`: shared beta access PIN configured outside the repo for seeded beta accounts.
 - `BetaAccess__SeedLockTimeoutSeconds`: bounds Beta startup seed lock waits before the app reports `SkippedLockContention`.
+- `DataProtection__KeyBlobUri`: deployed API key-ring blob URI; it must use HTTPS and must not contain a SAS query or fragment.
+- `DataProtection__KeyVaultKeyIdentifier`: versionless HTTPS Azure Key Vault key identifier used to wrap the deployed API Data Protection key ring.
 - `PTDOC_WEB_BASE_URL`: overrides the Playwright browser QA base URL and defaults to `http://localhost:5145`.
 - `PTDOC_UI_QA_USERNAME` and `PTDOC_UI_QA_PIN`: credentials used by the browser QA suite when a route requires sign-in.
 - `PTDOC_UI_QA_STORAGE_STATE`: Playwright storage-state file used instead of credentials for browser QA; it must represent an Admin/Owner-capable session when running responsive Settings coverage.
@@ -144,10 +150,13 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - `PTDOC_UI_QA_PT_USERNAME` and `PTDOC_UI_QA_PT_PIN`: optional PT-role credentials used by the audit-remediation Playwright coverage for Start New Note flows.
 - `PTDOC_UI_QA_PTA_USERNAME` and `PTDOC_UI_QA_PTA_PIN`: optional PTA-role credentials used by the audit-remediation Playwright coverage for View/PDF Tools flows.
 - `PTDOC_UI_QA_PATIENT_USERNAME` and `PTDOC_UI_QA_PATIENT_PIN`: optional hosted-beta Patient-role overrides used by `tests/PTDoc.Web.UiQa` when the seeded beta fixtures differ from the documented defaults.
+- `PTDOC_UI_QA_LIVE_RUN_ID`: optional isolated branch live-verification run identifier used to prefix disposable localhost fixtures and evidence output.
+- `PTDOC_UI_QA_ARTIFACT_DIR`: optional isolated branch live-verification artifact directory override; otherwise the harness writes under `tests/PTDoc.Web.UiQa/output/playwright/branch-live-verification/`.
 - `PTDOC_UI_QA_INTAKE_PATH`: optional editable intake route used by the audit-remediation Playwright coverage.
 - `PTDOC_UI_QA_NOTE_WORKSPACE_PATH`: optional seeded note-workspace route included in the responsive browser QA matrix.
 - `PTDOC_UI_QA_WRITABLE_NOTE_WORKSPACE_PATH`: optional safe PT-role draft note route used by the audit-remediation Playwright coverage for save/reload checks.
 - `PTDOC_UI_QA_EVALUATION_DRAFT_PATH`: optional reversible Evaluation draft route used by the audit-remediation Playwright coverage for exact-value reload and stale-write conflict checks.
+- `PTDOC_UI_QA_FAULT_PROXY_CONTROL_URL` and `PTDOC_UI_QA_FAULT_PROXY_NONCE`: harness-managed variables used only by the isolated branch live-verification fault proxy; do not set them for normal local or hosted-beta browser QA runs.
 - `PTDOC_UI_QA_API_BASE_URL`: optional hosted-beta API health origin override used by the `test:beta-e2e` Playwright coverage.
 - `PTDOC_UI_QA_CHROME_CHANNEL`: optional Chrome channel override for the browser QA Playwright project.
 - `FeatureFlags__EnableAiGeneration`: enables API-side AI draft generation.
@@ -172,6 +181,7 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - Simple health check: `curl http://localhost:5170/health`
 - Liveness check: `curl http://localhost:5170/health/live`
 - Readiness check: `curl http://localhost:5170/health/ready`
+- Core CI format gate: `dotnet format src/PTDoc.Core/PTDoc.Core.csproj --verify-no-changes --verbosity diagnostic` plus the same command for `src/PTDoc.Application`, `src/PTDoc.Infrastructure`, `src/PTDoc.Api`, and `tests/PTDoc.Tests`
 - Authenticated DB diagnostics: `curl -H "Authorization: Bearer <token>" http://localhost:5170/diagnostics/db`
 - Authenticated runtime diagnostics: `curl -H "Authorization: Bearer <token>" http://localhost:5170/diagnostics/runtime`
 - Inspect the active EF Core context wiring: `EF_PROVIDER=sqlite dotnet ef dbcontext info -p src/PTDoc.Infrastructure -s src/PTDoc.Api`

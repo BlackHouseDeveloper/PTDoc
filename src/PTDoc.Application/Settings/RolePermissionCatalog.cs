@@ -81,7 +81,9 @@ public static class RolePermissionCatalog
     {
         var normalizedRole = NormalizeRole(roleKey);
         if (normalizedRole == RolesConstants.Admin &&
-            capability is CapabilityKey.RolesPermissionsManage or CapabilityKey.UsersManage)
+            capability is CapabilityKey.RolesPermissionsManage
+                or CapabilityKey.UsersManage
+                or CapabilityKey.ClinicSettingsManage)
         {
             return PermissionLevel.Full;
         }

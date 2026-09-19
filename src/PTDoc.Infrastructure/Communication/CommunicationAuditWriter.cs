@@ -75,6 +75,17 @@ public sealed class CommunicationAuditWriter : ICommunicationAuditWriter
         };
 
         _db.CommunicationDeliveryLogs.Add(log);
-        await _db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            // A failed audit insert remains Added in EF's tracker. Detach this
+            // writer-owned entity so a caller that must persist a provider-
+            // accepted terminal state does not retry the same failed audit row.
+            _db.Entry(log).State = Microsoft.EntityFrameworkCore.EntityState.Detached;
+            throw;
+        }
     }
 }

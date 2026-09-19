@@ -91,7 +91,7 @@ namespace PTDoc.Application.Auth
         /// <summary>
         /// Completes a password or PIN reset from a secure single-use token.
         /// </summary>
-        Task<bool> CompletePasswordResetAsync(
+        Task<PinResetCompletionResult> CompletePasswordResetAsync(
           string token,
           string newPin,
           CancellationToken cancellationToken = default);
@@ -99,7 +99,7 @@ namespace PTDoc.Application.Auth
         /// <summary>
         /// Checks whether a password or PIN reset token can still be used.
         /// </summary>
-        Task<bool> ValidatePasswordResetTokenAsync(
+        Task<PinResetTokenValidationResult> ValidatePasswordResetTokenAsync(
           string token,
           CancellationToken cancellationToken = default);
 
@@ -114,7 +114,7 @@ namespace PTDoc.Application.Auth
         /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
         /// <param name="roleKey">The staff role key (PT, PTA, Aide, Admin).</param>
         /// <param name="clinicId">The clinic to associate with the user.</param>
-        /// <param name="pin">The user's 4-digit PIN.</param>
+        /// <param name="pin">The user's numeric PIN, including supported legacy credentials during migration.</param>
         /// <returns>A status-aware registration result.</returns>
         Task<RegistrationResult> RegisterAsync(
           string fullName,
@@ -157,5 +157,66 @@ namespace PTDoc.Application.Auth
         /// <param name="cancellationToken">Cancellation token to cancel the operation.</param>
         /// <returns>True if refresh was successful, false otherwise.</returns>
         Task<bool> RefreshTokenAsync(CancellationToken cancellationToken = default);
+    }
+
+    public sealed record PinResetTokenValidationResult(
+        bool IsValid,
+        int MinimumPinLength = 8);
+
+    public sealed record PinResetCompletionResult(
+        PinResetCompletionStatus Status,
+        string? ErrorMessage = null,
+        int? MinimumPinLength = null)
+    {
+        public bool Succeeded => Status == PinResetCompletionStatus.Succeeded;
+    }
+
+    public enum PinResetCompletionStatus
+    {
+        Succeeded,
+        InvalidToken,
+        InvalidPin
+    }
+
+    public interface IAuthenticationStepUserService
+    {
+        AuthenticationStepState? PendingAuthenticationStep { get; }
+
+        Task<AuthenticationStepCompletionResult> CompleteRequiredPinChangeAsync(
+          string newPin,
+          CancellationToken cancellationToken = default);
+
+        Task<AuthenticationStepCompletionResult> VerifyAuthenticatorEnrollmentAsync(
+          string code,
+          CancellationToken cancellationToken = default);
+
+        Task<AuthenticationStepCompletionResult> VerifyMfaAsync(
+          string code,
+          bool useRecoveryCode,
+          CancellationToken cancellationToken = default);
+
+        Task<AuthenticationStepCompletionResult> CompleteAuthenticatorEnrollmentAsync(
+          CancellationToken cancellationToken = default);
+
+        void CancelAuthenticationStep();
+    }
+
+    public sealed record AuthenticationStepState(
+        AuthenticationStepKind Kind,
+        int MinimumPinLength = 8,
+        string? ManualKey = null,
+        string? QrSvg = null,
+        IReadOnlyList<string>? RecoveryCodes = null);
+
+    public sealed record AuthenticationStepCompletionResult(
+        bool Succeeded,
+        string? ErrorMessage = null);
+
+    public enum AuthenticationStepKind
+    {
+        RequiredPinChange,
+        AuthenticatorEnrollment,
+        MfaVerification,
+        RecoveryCodes
     }
 }

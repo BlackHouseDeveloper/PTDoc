@@ -60,6 +60,37 @@ public enum MfaEnforcementMode
     Enforced = 2
 }
 
+public static class MfaPolicyRules
+{
+    public static bool RequiresMfa(
+        MfaEnforcementMode mode,
+        DateTime? effectiveAtUtc,
+        DateTime nowUtc)
+    {
+        if (!Enum.IsDefined(mode))
+        {
+            return true;
+        }
+
+        if (mode != MfaEnforcementMode.Off && !effectiveAtUtc.HasValue)
+        {
+            return true;
+        }
+
+        return mode == MfaEnforcementMode.Enforced && effectiveAtUtc <= nowUtc;
+    }
+}
+
+public static class PinPolicyRules
+{
+    public const int MinimumLength = 8;
+    public const int MaximumLength = 12;
+    public const int LegacyGrandfatheredLength = 4;
+
+    public static int NormalizeMinimumLength(int configuredMinimum) =>
+        Math.Clamp(configuredMinimum, MinimumLength, MaximumLength);
+}
+
 [Flags]
 public enum WeekdayFlags
 {

@@ -109,7 +109,7 @@ public sealed class WebUserService : IUserService
         }
     }
 
-    public async Task<bool> CompletePasswordResetAsync(
+    public async Task<PinResetCompletionResult> CompletePasswordResetAsync(
         string token,
         string newPin,
         CancellationToken cancellationToken = default)
@@ -121,11 +121,13 @@ public sealed class WebUserService : IUserService
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Password reset completion failed");
-            return false;
+            return new PinResetCompletionResult(
+                PinResetCompletionStatus.InvalidToken,
+                "The reset link is invalid or expired.");
         }
     }
 
-    public async Task<bool> ValidatePasswordResetTokenAsync(
+    public async Task<PinResetTokenValidationResult> ValidatePasswordResetTokenAsync(
         string token,
         CancellationToken cancellationToken = default)
     {
@@ -136,7 +138,7 @@ public sealed class WebUserService : IUserService
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Password reset token validation failed");
-            return false;
+            return new PinResetTokenValidationResult(false);
         }
     }
 
