@@ -160,7 +160,7 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var payload = await response.Content.ReadFromJsonAsync<AppointmentListItemResponse>();
         Assert.NotNull(payload);
-        Assert.Equal("Re-evaluation", payload!.AppointmentType);
+        Assert.Equal("Re-Evaluation", payload!.AppointmentType);
         Assert.Equal("Updated appointment notes", payload.Notes);
         Assert.Equal(updatedLocalStart.ToUniversalTime(), payload.StartTimeUtc);
         Assert.Equal(updatedLocalStart.ToUniversalTime().AddMinutes(60), payload.EndTimeUtc);
@@ -813,6 +813,7 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         NoteStatus? noteStatus = null,
         string? payerInfoJson = null)
     {
+        var clinicId = db.Users.Local.Single(user => user.Id == clinicianId).ClinicId;
         var patient = new Patient
         {
             Id = Guid.NewGuid(),
@@ -821,6 +822,7 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
             DateOfBirth = new DateTime(1980, 1, 1),
             MedicalRecordNumber = $"{prefix[..12]}-{suffix}",
             PayerInfoJson = payerInfoJson ?? "{}",
+            ClinicId = clinicId,
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = clinicianId,
             SyncState = SyncState.Pending
@@ -835,6 +837,7 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
             EndTimeUtc = startTimeUtc.AddMinutes(45),
             AppointmentType = AppointmentType.FollowUp,
             Status = appointmentStatus,
+            ClinicId = clinicId,
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = clinicianId,
             SyncState = SyncState.Pending

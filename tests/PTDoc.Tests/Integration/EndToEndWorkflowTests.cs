@@ -10,7 +10,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,6 +29,7 @@ using PTDoc.Application.Integrations;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Pdf;
 using PTDoc.Application.Services;
+using PTDoc.Application.Settings;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Communication;
 using PTDoc.Core.Models;
@@ -2596,7 +2596,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
 
 /// <summary>
 /// WebApplicationFactory for PTDoc.Api that configures an isolated test environment:
-///   - In-memory SQLite database (per-factory instance) with migrations applied once
+///   - Isolated temporary SQLite database (per-factory instance) with migrations applied once
 ///   - Test authentication scheme that reads the role from the X-Test-Role header
 ///   - External service dependencies (AI, PDF, Payment, Fax, HEP) replaced with no-op mocks
 /// </summary>
@@ -2605,7 +2605,6 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
     private const string TestEnv = "Testing";
     internal static readonly Guid AuthorizationClinicId = new("00000000-0000-0000-0002-000000000001");
 
-    private SqliteConnection? _sharedConnection;
     public Guid? LastPdfExportNoteId { get; private set; }
     public string? LastPdfExportContentJson { get; private set; }
     public NoteExportDto? LastPdfExportNote { get; private set; }
@@ -2657,21 +2656,20 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
         builder.ConfigureTestServices(services =>
         {
             // ── Suppress background hosted services to prevent race conditions ─────────
-            // The SyncRetryBackgroundService and SessionCleanupBackgroundService both
-            // access the shared in-memory SQLite connection. Running concurrently with
-            // HTTP-request scopes causes SQLite Error 5 ('unable to delete/modify
-            // user-function due to active statements') when EF Core's SqliteRelational-
-            // Connection tries to register custom functions on an already-open connection
-            // that has active prepared statements. Integration tests do not depend on
+            // Background schedulers can mutate the shared test database while assertions
+            // and HTTP workflows are in progress. Integration tests do not depend on
             // background sync processing — the manual /api/v1/sync/run endpoint exercises
-            // the full push path without the background scheduler.
+            // the full push path without the scheduler.
             var hostedServices = services
                 .Where(d => d.ServiceType == typeof(IHostedService))
                 .ToList();
             foreach (var d in hostedServices)
                 services.Remove(d);
 
-            // ── Replace ApplicationDbContext with a shared in-memory SQLite database ──
+            // ── Replace ApplicationDbContext with an isolated SQLite database ────────
+            // Each scoped context gets its own connection so concurrent HTTP requests
+            // can execute safely. The DI-owned lifetime deletes the temporary database
+            // when this factory's service provider is disposed.
             var descriptors = services
                 .Where(d => d.ServiceType == typeof(DbContextOptions<ApplicationDbContext>) ||
                             d.ServiceType == typeof(ApplicationDbContext))
@@ -2679,12 +2677,10 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
             foreach (var d in descriptors)
                 services.Remove(d);
 
-            _sharedConnection = new SqliteConnection("Data Source=:memory:");
-            _sharedConnection.Open();
-
-            services.AddDbContext<ApplicationDbContext>(options =>
+            services.AddSingleton<TestSqliteDatabase>();
+            services.AddDbContext<ApplicationDbContext>((provider, options) =>
             {
-                options.UseSqlite(_sharedConnection,
+                options.UseSqlite(provider.GetRequiredService<TestSqliteDatabase>().ConnectionString,
                     x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"));
             });
 
@@ -2918,9 +2914,22 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
     public new async Task DisposeAsync()
     {
         await base.DisposeAsync();
-        if (_sharedConnection is not null)
+    }
+}
+
+file sealed class TestSqliteDatabase : IDisposable
+{
+    private readonly string databasePath = Path.Combine(
+        Path.GetTempPath(),
+        $"ptdoc-integration-{Guid.NewGuid():N}.db");
+
+    public string ConnectionString => $"Data Source={databasePath};Pooling=False";
+
+    public void Dispose()
+    {
+        if (File.Exists(databasePath))
         {
-            await _sharedConnection.DisposeAsync();
+            File.Delete(databasePath);
         }
     }
 }
