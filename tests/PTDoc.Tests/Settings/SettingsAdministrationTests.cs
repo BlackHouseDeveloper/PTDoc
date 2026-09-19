@@ -184,6 +184,35 @@ public sealed class SettingsAdministrationTests
     }
 
     [Fact]
+    public async Task ExternalMfaAssurance_MissingPersistedPolicyFailsClosed()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Missing MFA Policy Clinic", Slug = $"missing-mfa-policy-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        context.ClinicSecurityPolicies.Remove(
+            await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id));
+        await context.SaveChangesAsync();
+        var httpContext = CreateEntraHttpContext(Guid.NewGuid(), clinic.Id);
+        var nextInvoked = false;
+        var middleware = new ExternalMfaAssuranceMiddleware(_ =>
+        {
+            nextInvoked = true;
+            return Task.CompletedTask;
+        });
+
+        await middleware.InvokeAsync(
+            httpContext,
+            CreatePrincipalResolver(httpContext),
+            context,
+            CreateAuthAuditService().Object,
+            TimeProvider.System);
+
+        Assert.False(nextInvoked);
+        Assert.Equal(StatusCodes.Status403Forbidden, httpContext.Response.StatusCode);
+    }
+
+    [Fact]
     public void SettingsSecretProtector_NullEnvelopeFailsClosed()
     {
         var provider = new EphemeralDataProtectionProvider();
@@ -1211,6 +1240,95 @@ public sealed class SettingsAdministrationTests
     }
 
     [Fact]
+    public async Task TotpEnrollment_ConcurrentStartsReturnOnlyWinningEnrollmentMaterial()
+    {
+        var connectionString = $"Data Source=mfa-enrollment-claim-{Guid.NewGuid():N};Mode=Memory;Cache=Shared";
+        await using var keeper = new SqliteConnection(connectionString);
+        await keeper.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connectionString)
+            .Options;
+        var protector = new TestSecretProtector();
+        var time = new MutableTimeProvider(new DateTimeOffset(2026, 9, 19, 20, 0, 0, TimeSpan.Zero));
+        Guid userId;
+        await using (var seed = new ApplicationDbContext(options))
+        {
+            await seed.Database.EnsureCreatedAsync();
+            var clinic = new Clinic { Name = "Concurrent Enrollment Clinic", Slug = $"concurrent-enrollment-{Guid.NewGuid():N}" };
+            var user = new User
+            {
+                Username = $"concurrent-enrollment-{Guid.NewGuid():N}",
+                PinHash = AuthService.HashPin("12345678"),
+                FirstName = "Concurrent",
+                LastName = "Enrollment",
+                Role = Roles.Admin,
+                ClinicId = clinic.Id,
+                IsActive = true
+            };
+            seed.AddRange(
+                clinic,
+                user,
+                new UserMfaCredential
+                {
+                    User = user,
+                    UserId = user.Id,
+                    EncryptedSecret = protector.Protect("totp-secret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(20))),
+                    IsActive = false,
+                    LastAcceptedTimeStep = -1
+                });
+            userId = user.Id;
+            await seed.SaveChangesAsync();
+        }
+
+        var bothReady = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var arrivals = 0;
+        Task WaitForBothAsync(CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref arrivals) == 2)
+            {
+                bothReady.TrySetResult(true);
+            }
+
+            return bothReady.Task.WaitAsync(cancellationToken);
+        }
+
+        Mock<IAuditService> CreateCoordinatedAudit()
+        {
+            var audit = new Mock<IAuditService>();
+            audit.Setup(service => service.LogSettingsEventAsync(
+                    It.IsAny<AuditEvent>(),
+                    It.IsAny<CancellationToken>()))
+                .Returns<AuditEvent, CancellationToken>((_, cancellationToken) =>
+                    WaitForBothAsync(cancellationToken));
+            return audit;
+        }
+
+        await using var firstContext = new ApplicationDbContext(options);
+        await using var secondContext = new ApplicationDbContext(options);
+        var first = new MfaAuthenticationService(firstContext, protector, CreateCoordinatedAudit().Object, time);
+        var second = new MfaAuthenticationService(secondContext, protector, CreateCoordinatedAudit().Object, time);
+        var results = await Task.WhenAll(
+            first.BeginEnrollmentAsync(first.CreateChallenge(userId, MfaChallengePurpose.Enrollment)),
+            second.BeginEnrollmentAsync(second.CreateChallenge(userId, MfaChallengePurpose.Enrollment)));
+
+        var winner = Assert.Single(results.Where(item => item.Succeeded));
+        var loser = Assert.Single(results.Where(item => !item.Succeeded));
+        Assert.Equal(SettingsOperationStatus.Forbidden, loser.Status);
+        Assert.Equal("invalid_enrollment_state", loser.ErrorCode);
+
+        await using var verifyContext = new ApplicationDbContext(options);
+        var verifier = new MfaAuthenticationService(
+            verifyContext,
+            protector,
+            CreateAuditService().Object,
+            time);
+        var verification = await verifier.VerifyEnrollmentAsync(
+            winner.Value!.EnrollmentChallengeToken,
+            ComputeTotp(DecodeBase32(winner.Value.ManualKey), time.GetUtcNow()));
+        Assert.True(verification.Succeeded);
+    }
+
+    [Fact]
     public async Task TotpFailures_UseLatestPersistedCountAcrossStaleContexts()
     {
         var connectionString = $"Data Source=mfa-failure-{Guid.NewGuid():N};Mode=Memory;Cache=Shared";
@@ -1960,6 +2078,71 @@ public sealed class SettingsAdministrationTests
             It.IsAny<IntakeSendInviteRequest>(),
             It.IsAny<IntakeCommunicationContext>(),
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task AutoCheckInProcessor_IgnoresCrossClinicIntakeStateForSharedPatientId()
+    {
+        await using var context = CreateContext();
+        var now = new DateTimeOffset(2026, 9, 19, 20, 0, 0, TimeSpan.Zero);
+        var clinic = new Clinic { Name = "Scoped Intake Clinic", Slug = $"scoped-intake-{Guid.NewGuid():N}" };
+        var otherClinic = new Clinic { Name = "Other Intake Clinic", Slug = $"other-intake-{Guid.NewGuid():N}" };
+        context.AddRange(clinic, otherClinic);
+        await context.SaveChangesAsync();
+        var visitType = await context.VisitTypes.FirstAsync(item =>
+            item.ClinicId == clinic.Id && item.RequiresIntake && item.IsActive);
+        (await context.SchedulingPreferences.SingleAsync(item => item.ClinicId == clinic.Id))
+            .SendAppointmentReminders = false;
+        var policy = await context.AutoCheckInPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.IsEnabled = true;
+        policy.LeadHours = 24;
+        policy.EnableEmail = true;
+        policy.EnableSms = false;
+        policy.EligibleVisitTypeIdsJson = JsonSerializer.Serialize(new[] { visitType.Id });
+        var patient = CreateConsentedPatient(clinic.Id, "clinic-scoped-intake@example.invalid", now.UtcDateTime);
+        var appointment = CreateIntakeAppointment(clinic.Id, patient, visitType, now.UtcDateTime.AddHours(24));
+        var clinicIntake = CreateConsentedIntake(
+            clinic.Id,
+            patient,
+            now.UtcDateTime,
+            submittedAt: null);
+        var crossClinicIntake = CreateConsentedIntake(
+            otherClinic.Id,
+            patient,
+            now.UtcDateTime.AddMinutes(1),
+            submittedAt: now.UtcDateTime.AddMinutes(1));
+        context.AddRange(patient, appointment, clinicIntake, crossClinicIntake);
+        await context.SaveChangesAsync();
+        IntakeSendInviteRequest? deliveredRequest = null;
+        var intakeWorkflow = new Mock<IIntakeCommunicationWorkflow>();
+        intakeWorkflow.Setup(service => service.SendInviteAsync(
+                It.IsAny<IntakeSendInviteRequest>(),
+                It.IsAny<IntakeCommunicationContext>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IntakeSendInviteRequest request, IntakeCommunicationContext? _, CancellationToken _) =>
+            {
+                deliveredRequest = request;
+                return new IntakeDeliverySendResult
+                {
+                    Success = true,
+                    IntakeId = request.IntakeId,
+                    PatientId = patient.Id,
+                    Channel = request.Channel
+                };
+            });
+        var processor = new AppointmentCommunicationProcessor(
+            context,
+            Mock.Of<ICommunicationService>(),
+            intakeWorkflow.Object,
+            new MutableTimeProvider(now),
+            NullLogger<AppointmentCommunicationProcessor>.Instance);
+
+        await processor.ProcessDueAsync();
+
+        var dispatch = await context.AppointmentReminderDispatches.SingleAsync();
+        Assert.Equal(ReminderDispatchStatus.Sent, dispatch.Status);
+        Assert.Equal(clinic.Id, dispatch.ClinicId);
+        Assert.Equal(clinicIntake.Id, deliveredRequest!.IntakeId);
     }
 
     [Fact]

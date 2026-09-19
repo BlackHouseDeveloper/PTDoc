@@ -110,11 +110,13 @@ public sealed class AppointmentCommunicationProcessor(
             .ToDictionaryAsync(item => item.ClinicId, cancellationToken);
         var intakeSummaries = await context.IntakeForms
             .AsNoTracking()
-            .Where(item => patientIds.Contains(item.PatientId))
-            .Select(item => new { item.Id, item.PatientId, item.Consents, item.LastModifiedUtc, item.SubmittedAt })
+            .Where(item => item.ClinicId.HasValue
+                && clinicIds.Contains(item.ClinicId.Value)
+                && patientIds.Contains(item.PatientId))
+            .Select(item => new { item.Id, ClinicId = item.ClinicId!.Value, item.PatientId, item.Consents, item.LastModifiedUtc, item.SubmittedAt })
             .ToListAsync(cancellationToken);
         var latestIntakes = intakeSummaries
-            .GroupBy(item => item.PatientId)
+            .GroupBy(item => (item.ClinicId, item.PatientId))
             .ToDictionary(
                 group => group.Key,
                 group => group
@@ -126,7 +128,7 @@ public sealed class AppointmentCommunicationProcessor(
             item => item.Value.Consents);
         var patientsWithCompletedIntake = latestIntakes.Values
             .Where(item => item.SubmittedAt.HasValue)
-            .Select(item => item.PatientId)
+            .Select(item => (item.ClinicId, item.PatientId))
             .ToHashSet();
         var existingIdempotencyKeys = new HashSet<string>(
             await context.AppointmentReminderDispatches
@@ -139,10 +141,11 @@ public sealed class AppointmentCommunicationProcessor(
         foreach (var appointment in appointments)
         {
             if (appointment.Patient?.ConsentSigned != true) continue;
-            var communicationConsent = ResolveCommunicationConsent(
-                intakeConsents.GetValueOrDefault(appointment.PatientId),
-                appointment.Patient);
             var clinicId = appointment.ClinicId!.Value;
+            var intakeKey = (clinicId, appointment.PatientId);
+            var communicationConsent = ResolveCommunicationConsent(
+                intakeConsents.GetValueOrDefault(intakeKey),
+                appointment.Patient);
             if (preferences.TryGetValue(clinicId, out var preference)
                 && preference.SendAppointmentReminders
                 && IsDue(appointment.StartTimeUtc, preference.ReminderLeadHours, now))
@@ -160,7 +163,7 @@ public sealed class AppointmentCommunicationProcessor(
                 && IsDue(appointment.StartTimeUtc, autoPolicy.LeadHours, now)
                 && IsEligibleVisitType(autoPolicy, appointment.VisitTypeId))
             {
-                if (!patientsWithCompletedIntake.Contains(appointment.PatientId))
+                if (!patientsWithCompletedIntake.Contains(intakeKey))
                 {
                     QueueChannels(appointment, ReminderDispatchPurpose.AutoCheckIn,
                         autoPolicy.LeadHours,
@@ -253,7 +256,8 @@ public sealed class AppointmentCommunicationProcessor(
 
         var latestConsentJson = await context.IntakeForms
             .AsNoTracking()
-            .Where(item => item.PatientId == appointment.PatientId)
+            .Where(item => item.ClinicId == dispatch.ClinicId
+                && item.PatientId == appointment.PatientId)
             .OrderByDescending(item => item.LastModifiedUtc)
             .ThenByDescending(item => item.Id)
             .Select(item => item.Consents)
@@ -360,7 +364,10 @@ public sealed class AppointmentCommunicationProcessor(
             ?? AutoCheckInTemplateCatalog.Default;
 
         var intake = await context.IntakeForms
-            .Where(item => item.PatientId == appointment.PatientId && !item.IsLocked && !item.SubmittedAt.HasValue)
+            .Where(item => item.ClinicId == dispatch.ClinicId
+                && item.PatientId == appointment.PatientId
+                && !item.IsLocked
+                && !item.SubmittedAt.HasValue)
             .OrderByDescending(item => item.LastModifiedUtc)
             .FirstOrDefaultAsync(cancellationToken);
         if (intake is null)
@@ -454,7 +461,8 @@ public sealed class AppointmentCommunicationProcessor(
 
         var latestSubmittedAt = await context.IntakeForms
             .AsNoTracking()
-            .Where(item => item.PatientId == appointment.PatientId)
+            .Where(item => item.ClinicId == dispatch.ClinicId
+                && item.PatientId == appointment.PatientId)
             .OrderByDescending(item => item.LastModifiedUtc)
             .ThenByDescending(item => item.Id)
             .Select(item => item.SubmittedAt)

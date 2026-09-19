@@ -169,14 +169,22 @@ public sealed class MfaAuthenticationService(
 
         credential.EncryptedSecret = protector.Protect(SecretProtectionPurpose, Convert.ToBase64String(secret));
         credential.IsActive = false;
-        credential.LastAcceptedTimeStep = -1;
         // Rotating an incomplete enrollment secret must not reset accumulated
         // failures; otherwise callers can restart after four attempts forever.
         // New credentials already begin at zero, and a completed lockout resets
         // the count when it establishes LockedUntilUtc.
         if (context.Entry(credential).State == EntityState.Added)
         {
+            credential.LastAcceptedTimeStep = -1;
             credential.FailedAttemptCount = 0;
+        }
+        else
+        {
+            // LastAcceptedTimeStep is the credential concurrency token. Inactive
+            // credentials do not consume TOTP steps, so toggling between negative
+            // sentinels gives enrollment rotation an optimistic write claim without
+            // affecting the first real code that can be accepted.
+            credential.LastAcceptedTimeStep = credential.LastAcceptedTimeStep == -1 ? -2 : -1;
         }
         credential.LockedUntilUtc = null;
         credential.CreatedAtUtc = now;
@@ -191,8 +199,22 @@ public sealed class MfaAuthenticationService(
         using var qrData = QRCodeGenerator.GenerateQrCode(uri, QRCodeGenerator.ECCLevel.Q);
         var qrSvg = new SvgQRCode(qrData).GetGraphic(4);
 
-        await AuditAsync("MfaEnrollmentStarted", user, credential.Id, cancellationToken);
-        await context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await AuditAsync("MfaEnrollmentStarted", user, credential.Id, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            context.ChangeTracker.Clear();
+            return SettingsOperationResult<MfaEnrollmentStart>.Forbidden("invalid_enrollment_state");
+        }
+        catch (DbUpdateException exception) when (
+            AppointmentCommunicationProcessor.IsUniqueConstraintViolation(exception))
+        {
+            context.ChangeTracker.Clear();
+            return SettingsOperationResult<MfaEnrollmentStart>.Forbidden("invalid_enrollment_state");
+        }
         return SettingsOperationResult<MfaEnrollmentStart>.Success(
             new MfaEnrollmentStart(manualKey, uri, qrSvg, enrollmentChallenge));
     }
