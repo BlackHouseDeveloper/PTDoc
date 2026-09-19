@@ -175,18 +175,39 @@ public sealed class SecurityPolicyAdministrationService(
         {
             credential.IsActive = false;
             credential.EncryptedSecret = string.Empty;
+            credential.LastAcceptedTimeStep = -1;
+            credential.FailedAttemptCount = 0;
+            credential.LockedUntilUtc = null;
+            credential.ActivatedAtUtc = null;
             credential.ResetAtUtc = DateTime.UtcNow;
             credential.ResetByUserId = actorUserId;
             var recoveryCodes = context.UserMfaRecoveryCodes.Where(item => item.UserMfaCredentialId == credential.Id);
             context.UserMfaRecoveryCodes.RemoveRange(recoveryCodes);
         }
 
-        var pendingCompletionChallenges = context.Sessions.Where(item =>
-            item.UserId == userId
-            && item.IsRevoked
+        var now = DateTime.UtcNow;
+        var sessions = await context.Sessions
+            .Where(item => item.UserId == userId)
+            .ToListAsync(cancellationToken);
+        context.Sessions.RemoveRange(sessions.Where(item =>
+            item.IsRevoked
             && item.RevokedAt == null
-            && item.LastActivityAt == null);
-        context.Sessions.RemoveRange(pendingCompletionChallenges);
+            && item.LastActivityAt == null));
+        foreach (var session in sessions.Where(item => !item.IsRevoked))
+        {
+            session.IsRevoked = true;
+            session.RevokedAt = now;
+        }
+
+        var refreshTokenSubject = userId.ToString();
+        var refreshTokens = await context.StoredRefreshTokens
+            .Where(item => item.Subject == refreshTokenSubject && !item.IsRevoked)
+            .ToListAsync(cancellationToken);
+        foreach (var refreshToken in refreshTokens)
+        {
+            refreshToken.IsRevoked = true;
+            refreshToken.RevokedAtUtc = now;
+        }
 
         await AuditUserActionAsync("MfaReset", clinicId, userId, actorUserId, correlationId, cancellationToken);
         await context.SaveChangesAsync(cancellationToken);

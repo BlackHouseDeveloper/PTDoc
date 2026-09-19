@@ -278,6 +278,18 @@ public class AuthService : IAuthService
             return null;
         }
 
+        var credentialIsStillCurrent = principal.CredentialId is { } credentialId
+            && await _context.UserMfaCredentials
+                .AsNoTracking()
+                .AnyAsync(item => item.Id == credentialId
+                    && item.UserId == principal.UserId
+                    && item.IsActive,
+                    cancellationToken);
+        if (!credentialIsStillCurrent)
+        {
+            return null;
+        }
+
         var result = await CompleteAuthenticationAsync(
             user,
             ipAddress,
@@ -501,9 +513,10 @@ public class AuthService : IAuthService
         DateTime? attemptedAt = null)
     {
         var now = _timeProvider.GetUtcNow().UtcDateTime;
-        var isMfaEnforced = policy.MfaEnforcementMode == MfaEnforcementMode.Enforced
-            && policy.MfaEffectiveAtUtc.HasValue
-            && policy.MfaEffectiveAtUtc.Value <= now;
+        var isMfaEnforced = MfaPolicyRules.RequiresMfa(
+            policy.MfaEnforcementMode,
+            policy.MfaEffectiveAtUtc,
+            now);
         if (isMfaEnforced)
         {
             var enrolled = await _context.UserMfaCredentials

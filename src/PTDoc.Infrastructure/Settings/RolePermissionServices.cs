@@ -475,13 +475,22 @@ public sealed class PermissionEvaluator(
                 dynamicAllowed);
         }
 
-        var effectiveAllowed = mode == AuthorizationRolloutMode.Enforced ? dynamicAllowed : staticAllowed;
+        var effectiveAllowed = mode switch
+        {
+            AuthorizationRolloutMode.Static => staticAllowed,
+            AuthorizationRolloutMode.Shadow => staticAllowed,
+            AuthorizationRolloutMode.Enforced => dynamicAllowed,
+            _ => false
+        };
+        var reasonCode = !Enum.IsDefined(mode)
+            ? "invalid_authorization_mode"
+            : effectiveAllowed ? "allowed" : "insufficient_capability";
         return new PermissionEvaluation(
             staticAllowed,
             dynamicAllowed,
             effectiveAllowed,
             mode,
-            effectiveAllowed ? "allowed" : "insufficient_capability");
+            reasonCode);
     }
 
     private static PermissionLevel Max(PermissionLevel left, PermissionLevel right) =>

@@ -60,6 +60,27 @@ public enum MfaEnforcementMode
     Enforced = 2
 }
 
+public static class MfaPolicyRules
+{
+    public static bool RequiresMfa(
+        MfaEnforcementMode mode,
+        DateTime? effectiveAtUtc,
+        DateTime nowUtc)
+    {
+        if (!Enum.IsDefined(mode))
+        {
+            return true;
+        }
+
+        if (mode != MfaEnforcementMode.Off && !effectiveAtUtc.HasValue)
+        {
+            return true;
+        }
+
+        return mode == MfaEnforcementMode.Enforced && effectiveAtUtc <= nowUtc;
+    }
+}
+
 public static class PinPolicyRules
 {
     public const int MinimumLength = 8;

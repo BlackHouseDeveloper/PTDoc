@@ -80,7 +80,13 @@ public sealed class MfaAuthenticationService(
                     && item.LastActivityAt == null
                     && item.ExpiresAt > now)
                 .ExecuteDeleteAsync(cancellationToken);
-            return consumed == 1
+            var credentialIsStillCurrent = consumed == 1 && await context.UserMfaCredentials
+                .AsNoTracking()
+                .AnyAsync(item => item.Id == payload.CredentialId.Value
+                    && item.UserId == payload.UserId
+                    && item.IsActive,
+                    cancellationToken);
+            return credentialIsStillCurrent
                 ? new MfaChallengePrincipal(payload.UserId, payload.Purpose, payload.CredentialId)
                 : null;
         }
@@ -99,7 +105,15 @@ public sealed class MfaAuthenticationService(
         }
 
         context.Sessions.Remove(pendingChallenge);
-        return new MfaChallengePrincipal(payload.UserId, payload.Purpose, payload.CredentialId);
+        var nonRelationalCredentialIsStillCurrent = await context.UserMfaCredentials
+            .AsNoTracking()
+            .AnyAsync(item => item.Id == payload.CredentialId.Value
+                && item.UserId == payload.UserId
+                && item.IsActive,
+                cancellationToken);
+        return nonRelationalCredentialIsStillCurrent
+            ? new MfaChallengePrincipal(payload.UserId, payload.Purpose, payload.CredentialId)
+            : null;
     }
 
     public async Task<SettingsOperationResult<MfaEnrollmentStart>> BeginEnrollmentAsync(

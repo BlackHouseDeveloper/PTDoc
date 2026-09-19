@@ -150,6 +150,39 @@ public sealed class SettingsAdministrationTests
             It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Theory]
+    [InlineData((int)MfaEnforcementMode.Enforced)]
+    [InlineData(999)]
+    public async Task ExternalMfaAssurance_MalformedPersistedPolicyFailsClosed(int storedMode)
+    {
+        await using var context = CreateContext();
+        var now = new DateTimeOffset(2026, 9, 19, 16, 0, 0, TimeSpan.Zero);
+        var clinic = new Clinic { Name = "Malformed MFA Clinic", Slug = $"malformed-mfa-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.MfaEnforcementMode = (MfaEnforcementMode)storedMode;
+        policy.MfaEffectiveAtUtc = null;
+        await context.SaveChangesAsync();
+        var httpContext = CreateEntraHttpContext(Guid.NewGuid(), clinic.Id);
+        var nextInvoked = false;
+        var middleware = new ExternalMfaAssuranceMiddleware(_ =>
+        {
+            nextInvoked = true;
+            return Task.CompletedTask;
+        });
+
+        await middleware.InvokeAsync(
+            httpContext,
+            CreatePrincipalResolver(httpContext),
+            context,
+            CreateAuthAuditService().Object,
+            new MutableTimeProvider(now));
+
+        Assert.False(nextInvoked);
+        Assert.Equal(StatusCodes.Status403Forbidden, httpContext.Response.StatusCode);
+    }
+
     [Fact]
     public void SettingsSecretProtector_NullEnvelopeFailsClosed()
     {
@@ -517,6 +550,29 @@ public sealed class SettingsAdministrationTests
         Assert.False(evaluation.DynamicAllowed);
         Assert.False(evaluation.EffectiveAllowed);
         Assert.Equal(PermissionLevel.None, displayed.Level);
+    }
+
+    [Fact]
+    public async Task PermissionEvaluator_UnknownAuthorizationModeFailsClosed()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Invalid Authorization Mode Clinic", Slug = $"invalid-auth-mode-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.AuthorizationMode = (AuthorizationRolloutMode)999;
+        await context.SaveChangesAsync();
+        var evaluator = new PermissionEvaluator(context, NullLogger<PermissionEvaluator>.Instance);
+
+        var evaluation = await evaluator.EvaluateAsync(
+            clinic.Id,
+            Roles.Admin,
+            CapabilityKey.ClinicSettingsManage,
+            PermissionLevel.View,
+            staticAllowed: true);
+
+        Assert.False(evaluation.EffectiveAllowed);
+        Assert.Equal("invalid_authorization_mode", evaluation.ReasonCode);
     }
 
     [Fact]
@@ -1254,6 +1310,181 @@ public sealed class SettingsAdministrationTests
         Assert.Single(await context.Sessions.Where(item => !item.IsRevoked).ToListAsync());
         Assert.Empty(await context.Sessions.Where(item =>
             item.IsRevoked && item.RevokedAt == null && item.LastActivityAt == null).ToListAsync());
+    }
+
+    [Fact]
+    public async Task AuthenticationCompletion_RechecksCredentialAfterChallengeClaim()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "MFA Completion Reset Race Clinic", Slug = $"mfa-completion-race-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = $"mfa-completion-race-{Guid.NewGuid():N}",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Mfa",
+            LastName = "Race",
+            Role = Roles.Admin,
+            ClinicId = clinic.Id,
+            IsActive = true
+        };
+        var credential = new UserMfaCredential
+        {
+            User = user,
+            UserId = user.Id,
+            EncryptedSecret = "protected-secret",
+            IsActive = true
+        };
+        context.AddRange(clinic, user, credential);
+        await context.SaveChangesAsync();
+        var mfa = new Mock<IMfaAuthenticationService>();
+        mfa.Setup(service => service.ConsumeAuthenticationCompletionChallengeAsync(
+                "completion-token",
+                It.IsAny<TimeSpan>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                credential.IsActive = false;
+                await context.SaveChangesAsync();
+                return (MfaChallengePrincipal?)new MfaChallengePrincipal(
+                    user.Id,
+                    MfaChallengePurpose.AuthenticationCompletion,
+                    credential.Id);
+            });
+        var auth = new AuthService(
+            context,
+            NullLogger<AuthService>.Instance,
+            CreateAuthAuditService().Object,
+            mfa.Object,
+            TimeProvider.System);
+
+        var result = await auth.CompleteMfaAsync("completion-token");
+
+        Assert.Null(result);
+        Assert.Empty(await context.Sessions.Where(item => !item.IsRevoked).ToListAsync());
+    }
+
+    [Theory]
+    [InlineData((int)MfaEnforcementMode.Enforced)]
+    [InlineData(999)]
+    public async Task PinAuthentication_MalformedPersistedMfaPolicyFailsClosed(int storedMode)
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Malformed Local MFA Clinic", Slug = $"malformed-local-mfa-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = $"malformed-mfa-{Guid.NewGuid():N}",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Malformed",
+            LastName = "Policy",
+            Role = Roles.Admin,
+            ClinicId = clinic.Id,
+            IsActive = true
+        };
+        context.AddRange(clinic, user);
+        await context.SaveChangesAsync();
+        var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.RequirePinChangeOnFirstLogin = false;
+        policy.MfaEnforcementMode = (MfaEnforcementMode)storedMode;
+        policy.MfaEffectiveAtUtc = null;
+        await context.SaveChangesAsync();
+        var time = new MutableTimeProvider(new DateTimeOffset(2026, 9, 19, 16, 0, 0, TimeSpan.Zero));
+        var audit = CreateAuthAuditService();
+        var mfa = new MfaAuthenticationService(context, new TestSecretProtector(), audit.Object, time);
+        var auth = new AuthService(context, NullLogger<AuthService>.Instance, audit.Object, mfa, time);
+
+        var result = await auth.AuthenticateAsync(user.Username, "12345678");
+
+        Assert.Equal(AuthStatus.RequiresMfaEnrollment, result!.Status);
+        Assert.False(string.IsNullOrWhiteSpace(result.ChallengeToken));
+        Assert.Null(result.Token);
+    }
+
+    [Fact]
+    public async Task ResetMfa_ClearsCredentialStateAndRevokesAllAuthenticationArtifacts()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Complete MFA Reset Clinic", Slug = $"complete-mfa-reset-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = $"mfa-reset-{Guid.NewGuid():N}",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Reset",
+            LastName = "Mfa",
+            Role = Roles.Admin,
+            ClinicId = clinic.Id,
+            IsActive = true
+        };
+        var credential = new UserMfaCredential
+        {
+            User = user,
+            UserId = user.Id,
+            EncryptedSecret = "protected-secret",
+            IsActive = true,
+            LastAcceptedTimeStep = 42,
+            FailedAttemptCount = 4,
+            LockedUntilUtc = DateTime.UtcNow.AddMinutes(5),
+            ActivatedAtUtc = DateTime.UtcNow.AddDays(-1)
+        };
+        var activeSession = new Session
+        {
+            User = user,
+            UserId = user.Id,
+            TokenHash = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddHours(1)
+        };
+        var pendingChallenge = new Session
+        {
+            User = user,
+            UserId = user.Id,
+            TokenHash = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
+            CreatedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(5),
+            IsRevoked = true
+        };
+        var refreshToken = new StoredRefreshToken
+        {
+            Subject = user.Id.ToString(),
+            TokenHash = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
+            ExpiresAtUtc = DateTimeOffset.UtcNow.AddDays(1)
+        };
+        context.AddRange(
+            clinic,
+            user,
+            credential,
+            activeSession,
+            pendingChallenge,
+            refreshToken,
+            new UserMfaRecoveryCode
+            {
+                Credential = credential,
+                UserMfaCredentialId = credential.Id,
+                CodeHash = BCrypt.Net.BCrypt.HashPassword("RECOVERYCODE")
+            });
+        await context.SaveChangesAsync();
+        var service = new SecurityPolicyAdministrationService(context, CreateAuditService().Object);
+
+        var result = await service.ResetMfaAsync(
+            clinic.Id,
+            user.Id,
+            Guid.NewGuid(),
+            "complete-mfa-reset");
+
+        Assert.True(result.Succeeded);
+        Assert.False(credential.IsActive);
+        Assert.Empty(credential.EncryptedSecret);
+        Assert.Equal(-1, credential.LastAcceptedTimeStep);
+        Assert.Equal(0, credential.FailedAttemptCount);
+        Assert.Null(credential.LockedUntilUtc);
+        Assert.Null(credential.ActivatedAtUtc);
+        Assert.NotNull(credential.ResetAtUtc);
+        Assert.Empty(await context.UserMfaRecoveryCodes.ToListAsync());
+        Assert.False(await context.Sessions.AnyAsync(item => item.Id == pendingChallenge.Id));
+        Assert.True(activeSession.IsRevoked);
+        Assert.NotNull(activeSession.RevokedAt);
+        Assert.True(refreshToken.IsRevoked);
+        Assert.NotNull(refreshToken.RevokedAtUtc);
     }
 
     [Fact]
