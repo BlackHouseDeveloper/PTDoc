@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Identity;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Identity;
 
 /// <summary>
 /// Database-backed refresh token store.
@@ -95,6 +96,11 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
         }
 
         var claims = DeserializeClaims(stored.ClaimsJson);
+        if (!ClaimsMatchCurrentAuthorizationState(claims, user))
+        {
+            return null;
+        }
+
         if (user.ClinicId is { } clinicId)
         {
             var policy = await db.ClinicSecurityPolicies
@@ -117,6 +123,36 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
         }
 
         return new RefreshTokenRecord(stored.Subject, claims, stored.ExpiresAtUtc);
+    }
+
+    private static bool ClaimsMatchCurrentAuthorizationState(
+        IReadOnlyCollection<Claim> claims,
+        User user)
+    {
+        var roles = claims
+            .Where(claim => claim.Type == ClaimTypes.Role && !string.IsNullOrWhiteSpace(claim.Value))
+            .Select(claim => claim.Value)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (roles.Length != 1 || !string.Equals(roles[0], user.Role, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var clinicClaims = claims
+            .Where(claim => claim.Type == HttpTenantContextAccessor.ClinicIdClaimType
+                && !string.IsNullOrWhiteSpace(claim.Value))
+            .Select(claim => claim.Value)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (user.ClinicId is not { } clinicId)
+        {
+            return clinicClaims.Length == 0;
+        }
+
+        return clinicClaims.Length == 1
+            && Guid.TryParse(clinicClaims[0], out var claimedClinicId)
+            && claimedClinicId == clinicId;
     }
 
     public async Task RevokeAsync(string refreshToken, CancellationToken cancellationToken)

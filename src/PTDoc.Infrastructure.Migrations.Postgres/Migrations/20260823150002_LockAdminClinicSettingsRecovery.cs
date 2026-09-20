@@ -40,6 +40,15 @@ public sealed class LockAdminClinicSettingsRecovery : Migration
               AND permission."RoleKey" = 'Admin'
               AND permission."CapabilityKey" = 28;
 
+            UPDATE "RoleCapabilityPermissions" permission
+            SET "Level" = 3, "LockedMinimum" = 0
+            WHERE permission."RoleKey" = 'Admin'
+              AND permission."CapabilityKey" = 28
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM "LockAdminClinicSettingsRecoveryBackup" backup
+                  WHERE backup."ClinicId" = permission."ClinicId");
+
             DROP TABLE "LockAdminClinicSettingsRecoveryBackup";
             """);
     }

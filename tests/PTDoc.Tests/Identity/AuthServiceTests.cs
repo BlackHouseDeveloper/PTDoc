@@ -254,6 +254,66 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task StatefulSessions_DoNotSurviveMfaEnforcementBoundary()
+    {
+        await using var context = CreateInMemoryContext();
+        var now = new DateTimeOffset(2026, 9, 20, 12, 0, 0, TimeSpan.Zero);
+        var timeProvider = new MutableTimeProvider(now);
+        var clinic = new Clinic
+        {
+            Name = "Session MFA Clinic",
+            Slug = $"session-mfa-{Guid.NewGuid():N}"
+        };
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "session-mfa-user",
+            PinHash = AuthService.HashPin("12345678"),
+            PinChangedAtUtc = now.UtcDateTime,
+            FirstName = "Session",
+            LastName = "Mfa",
+            Role = Roles.PT,
+            ClinicId = clinic.Id,
+            IsActive = true,
+            CreatedAt = now.UtcDateTime
+        };
+        context.AddRange(clinic, user);
+        await context.SaveChangesAsync();
+        var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.MfaEnforcementMode = MfaEnforcementMode.Off;
+        policy.MfaEffectiveAtUtc = null;
+        policy.UpdatedAtUtc = now.UtcDateTime.AddMinutes(-1);
+        await context.SaveChangesAsync();
+        var authService = new AuthService(
+            context,
+            NullLogger<AuthService>.Instance,
+            CreateAuditServiceMock(),
+            timeProvider: timeProvider);
+
+        var prePolicyResult = Assert.IsType<AuthResult>(await authService.AuthenticateAsync(
+            user.Username,
+            "12345678"));
+        var prePolicyToken = Assert.IsType<string>(prePolicyResult.Token);
+
+        var effectiveAtUtc = now.UtcDateTime.AddMinutes(10);
+        policy.MfaEnforcementMode = MfaEnforcementMode.GracePeriod;
+        policy.MfaEffectiveAtUtc = effectiveAtUtc;
+        policy.UpdatedAtUtc = now.UtcDateTime;
+        await context.SaveChangesAsync();
+
+        var graceResult = Assert.IsType<AuthResult>(await authService.AuthenticateAsync(
+            user.Username,
+            "12345678"));
+        var graceToken = Assert.IsType<string>(graceResult.Token);
+        Assert.Equal(effectiveAtUtc, graceResult.ExpiresAt);
+
+        timeProvider.Advance(TimeSpan.FromMinutes(11));
+
+        Assert.Null(await authService.ValidateSessionAsync(prePolicyToken));
+        Assert.Null(await authService.ValidateSessionAsync(graceToken));
+    }
+
+    [Fact]
     public async Task AuthenticateAsync_EmailIdentifier_ReturnsAuthResult()
     {
         var context = CreateInMemoryContext();
@@ -280,6 +340,15 @@ public class AuthServiceTests
         var authResult = Assert.IsType<AuthResult>(result);
         Assert.Equal(user.Id, authResult.UserId);
         Assert.Equal("emailuser", authResult.Username);
+    }
+
+    private sealed class MutableTimeProvider(DateTimeOffset value) : TimeProvider
+    {
+        private DateTimeOffset _value = value;
+
+        public override DateTimeOffset GetUtcNow() => _value;
+
+        public void Advance(TimeSpan duration) => _value += duration;
     }
 
     [Fact]

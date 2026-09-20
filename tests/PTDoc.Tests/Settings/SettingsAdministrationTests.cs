@@ -407,6 +407,11 @@ public sealed class SettingsAdministrationTests
     {
         await using var context = CreateContext();
         var clinic = new Clinic { Name = "JWT State Clinic", Slug = $"jwt-state-{Guid.NewGuid():N}" };
+        var reassignedClinic = new Clinic
+        {
+            Name = "JWT Reassigned Clinic",
+            Slug = $"jwt-reassigned-{Guid.NewGuid():N}"
+        };
         var user = new User
         {
             Username = $"jwt-state-{Guid.NewGuid():N}",
@@ -415,6 +420,7 @@ public sealed class SettingsAdministrationTests
             LastName = "State",
             Role = Roles.Admin,
             ClinicId = clinic.Id,
+            PinChangedAtUtc = DateTime.UtcNow,
             CreatedAt = DateTime.UtcNow,
             IsActive = true
         };
@@ -425,7 +431,7 @@ public sealed class SettingsAdministrationTests
             EncryptedSecret = "encrypted",
             IsActive = true
         };
-        context.AddRange(clinic, user, credential);
+        context.AddRange(clinic, reassignedClinic, user, credential);
         await context.SaveChangesAsync();
         var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
         policy.MfaEnforcementMode = MfaEnforcementMode.Enforced;
@@ -435,6 +441,7 @@ public sealed class SettingsAdministrationTests
         [
             new Claim(PTDocClaimTypes.InternalUserId, user.Id.ToString()),
             new Claim(HttpTenantContextAccessor.ClinicIdClaimType, clinic.Id.ToString()),
+            new Claim(ClaimTypes.Role, Roles.Admin),
             new Claim(PTDocClaimTypes.AuthenticationType, "pin_step_up_jwt"),
             new Claim("amr", "mfa")
         ], "test"));
@@ -448,6 +455,22 @@ public sealed class SettingsAdministrationTests
 
         user.MustChangePin = false;
         credential.IsActive = false;
+        await context.SaveChangesAsync();
+        Assert.False(await validator.IsValidAsync(principal));
+
+        credential.IsActive = true;
+        user.Role = Roles.Billing;
+        await context.SaveChangesAsync();
+        Assert.False(await validator.IsValidAsync(principal));
+
+        user.Role = Roles.Admin;
+        user.ClinicId = reassignedClinic.Id;
+        await context.SaveChangesAsync();
+        Assert.False(await validator.IsValidAsync(principal));
+
+        user.ClinicId = clinic.Id;
+        user.PinChangedAtUtc = null;
+        user.LegacyPinGraceEndsAtUtc = DateTime.UtcNow.AddMinutes(-1);
         await context.SaveChangesAsync();
         Assert.False(await validator.IsValidAsync(principal));
     }
@@ -858,6 +881,78 @@ public sealed class SettingsAdministrationTests
 
         Assert.Equal(SettingsOperationStatus.ValidationFailed, result.Status);
         Assert.Contains("mfaEffectiveAtUtc", result.ValidationErrors!.Keys);
+    }
+
+    [Fact]
+    public async Task SecurityPolicyAdministration_ConstrainsSessionsAtMfaTransition()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic
+        {
+            Name = "MFA Session Transition Clinic",
+            Slug = $"mfa-session-transition-{Guid.NewGuid():N}"
+        };
+        var user = new User
+        {
+            Username = $"mfa-session-user-{Guid.NewGuid():N}",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "MFA",
+            LastName = "Session",
+            Role = Roles.PT,
+            ClinicId = clinic.Id,
+            IsActive = true
+        };
+        var session = new Session
+        {
+            User = user,
+            UserId = user.Id,
+            TokenHash = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddHours(8)
+        };
+        context.AddRange(clinic, user, session);
+        await context.SaveChangesAsync();
+        var service = new SecurityPolicyAdministrationService(context, CreateAuditService().Object);
+        var effectiveAtUtc = DateTime.UtcNow.AddHours(1);
+
+        var graceResult = await service.UpdateAsync(
+            clinic.Id,
+            new UpdateSecurityPolicyRequest(
+                MfaEnforcementMode.GracePeriod,
+                effectiveAtUtc,
+                true,
+                8,
+                15,
+                true,
+                false,
+                AuthorizationRolloutMode.Static,
+                1),
+            Guid.NewGuid(),
+            "mfa-session-grace");
+
+        Assert.True(graceResult.Succeeded);
+        Assert.Equal(effectiveAtUtc, session.ExpiresAt);
+        Assert.False(session.IsRevoked);
+
+        var enforcedResult = await service.UpdateAsync(
+            clinic.Id,
+            new UpdateSecurityPolicyRequest(
+                MfaEnforcementMode.Enforced,
+                DateTime.UtcNow.AddMinutes(-1),
+                true,
+                8,
+                15,
+                true,
+                false,
+                AuthorizationRolloutMode.Static,
+                2),
+            Guid.NewGuid(),
+            "mfa-session-enforced");
+
+        Assert.True(enforcedResult.Succeeded);
+        Assert.True(session.IsRevoked);
+        Assert.NotNull(session.RevokedAt);
     }
 
     [Fact]
@@ -2042,7 +2137,11 @@ public sealed class SettingsAdministrationTests
             mfaToken,
             new RefreshTokenRecord(
                 user.Id.ToString(),
-                [new Claim("amr", "mfa")],
+                [
+                    new Claim(ClaimTypes.Role, Roles.PT),
+                    new Claim(HttpTenantContextAccessor.ClinicIdClaimType, clinic.Id.ToString()),
+                    new Claim("amr", "mfa")
+                ],
                 DateTimeOffset.UtcNow.AddDays(1)),
             CancellationToken.None);
         Assert.NotNull(await store.GetAsync(mfaToken, CancellationToken.None));
@@ -2050,6 +2149,58 @@ public sealed class SettingsAdministrationTests
         user.LegacyPinGraceEndsAtUtc = DateTime.UtcNow.AddMinutes(-1);
         await context.SaveChangesAsync();
         Assert.Null(await store.GetAsync(mfaToken, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RefreshTokenStore_RejectsStaleRoleAndClinicClaims()
+    {
+        await using var context = CreateContext();
+        var originalClinic = new Clinic
+        {
+            Name = "Original Refresh Clinic",
+            Slug = $"refresh-original-{Guid.NewGuid():N}"
+        };
+        var reassignedClinic = new Clinic
+        {
+            Name = "Reassigned Refresh Clinic",
+            Slug = $"refresh-reassigned-{Guid.NewGuid():N}"
+        };
+        var user = new User
+        {
+            Username = $"refresh-authorization-{Guid.NewGuid():N}",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Refresh",
+            LastName = "Authorization",
+            Role = Roles.PT,
+            ClinicId = originalClinic.Id,
+            IsActive = true,
+            PinChangedAtUtc = DateTime.UtcNow
+        };
+        context.AddRange(originalClinic, reassignedClinic, user);
+        await context.SaveChangesAsync();
+        var store = new DbRefreshTokenStore(context);
+        const string rawToken = "authorization-state-refresh-token";
+        await store.StoreAsync(
+            rawToken,
+            new RefreshTokenRecord(
+                user.Id.ToString(),
+                [
+                    new Claim(ClaimTypes.Role, Roles.PT),
+                    new Claim(HttpTenantContextAccessor.ClinicIdClaimType, originalClinic.Id.ToString())
+                ],
+                DateTimeOffset.UtcNow.AddDays(1)),
+            CancellationToken.None);
+
+        Assert.NotNull(await store.GetAsync(rawToken, CancellationToken.None));
+
+        user.Role = Roles.Admin;
+        await context.SaveChangesAsync();
+        Assert.Null(await store.GetAsync(rawToken, CancellationToken.None));
+
+        user.Role = Roles.PT;
+        user.ClinicId = reassignedClinic.Id;
+        await context.SaveChangesAsync();
+        Assert.Null(await store.GetAsync(rawToken, CancellationToken.None));
     }
 
     [Fact]

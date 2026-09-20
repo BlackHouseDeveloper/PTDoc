@@ -40,6 +40,16 @@ public sealed class LockAdminClinicSettingsRecovery : Migration
                 ON recovery_backup.[ClinicId] = permission.[ClinicId]
             WHERE permission.[RoleKey] = 'Admin' AND permission.[CapabilityKey] = 28;
 
+            UPDATE permission
+            SET [Level] = 3, [LockedMinimum] = 0
+            FROM [RoleCapabilityPermissions] permission
+            WHERE permission.[RoleKey] = 'Admin'
+              AND permission.[CapabilityKey] = 28
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM [LockAdminClinicSettingsRecoveryBackup] recovery_backup
+                  WHERE recovery_backup.[ClinicId] = permission.[ClinicId]);
+
             DROP TABLE [LockAdminClinicSettingsRecoveryBackup];
             """);
     }

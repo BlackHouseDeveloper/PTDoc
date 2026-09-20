@@ -312,7 +312,7 @@ public class AuthService : IAuthService
         CancellationToken cancellationToken = default)
     {
         var tokenHash = HashToken(token);
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
 
         var session = await _context.Sessions
             .Include(s => s.User)
@@ -329,21 +329,43 @@ public class AuthService : IAuthService
             return null;
         }
 
-        var inactivityMinutes = session.User.ClinicId.HasValue
-            ? await _context.ClinicSecurityPolicies
-                .Where(item => item.ClinicId == session.User.ClinicId.Value)
-                .Select(item => (int?)item.SessionInactivityMinutes)
-                .SingleOrDefaultAsync(cancellationToken) ?? 15
-            : 15;
+        ClinicSecurityPolicy? policy = null;
+        if (session.User.ClinicId is { } clinicId)
+        {
+            policy = await _context.ClinicSecurityPolicies
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(item => item.ClinicId == clinicId, cancellationToken);
+            if (policy is null)
+            {
+                await RevokeSessionAsync(session, now, cancellationToken);
+                return null;
+            }
+
+            if (MfaPolicyRules.RequiresMfa(policy, now))
+            {
+                var effectiveAtUtc = policy.MfaEffectiveAtUtc;
+                var credentialIsActive = await _context.UserMfaCredentials
+                    .AsNoTracking()
+                    .AnyAsync(item => item.UserId == session.UserId && item.IsActive, cancellationToken);
+                if (!effectiveAtUtc.HasValue
+                    || session.CreatedAt < effectiveAtUtc.Value
+                    || !credentialIsActive)
+                {
+                    await RevokeSessionAsync(session, now, cancellationToken);
+                    return null;
+                }
+            }
+        }
+
+        var inactivityMinutes = policy?.SessionInactivityMinutes ?? 15;
 
         // Check clinic-configured inactivity timeout
         var lastActivity = session.LastActivityAt ?? session.CreatedAt;
         if (now - lastActivity > TimeSpan.FromMinutes(Math.Clamp(inactivityMinutes, 5, 60)))
         {
             // Session expired due to inactivity
-            session.IsRevoked = true;
-            session.RevokedAt = now;
-            await _context.SaveChangesAsync(cancellationToken);
+            await RevokeSessionAsync(session, now, cancellationToken);
 
             _logger.LogInformation("Session expired due to inactivity for user {UserId}", session.UserId);
             return null;
@@ -362,6 +384,16 @@ public class AuthService : IAuthService
             LastActivityAt = session.LastActivityAt ?? session.CreatedAt,
             ClinicId = session.User.ClinicId
         };
+    }
+
+    private async Task RevokeSessionAsync(
+        Session session,
+        DateTime revokedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        session.IsRevoked = true;
+        session.RevokedAt = revokedAtUtc;
+        await _context.SaveChangesAsync(cancellationToken);
     }
 
     public async Task LogoutAsync(string token, CancellationToken cancellationToken = default)
@@ -540,7 +572,11 @@ public class AuthService : IAuthService
             userAgent,
             sessionMode,
             cancellationToken,
-            attemptedAt);
+            attemptedAt,
+            sessionExpiryCapUtc: policy.MfaEnforcementMode != MfaEnforcementMode.Off
+                && policy.MfaEffectiveAtUtc > now
+                    ? policy.MfaEffectiveAtUtc
+                    : null);
     }
 
     private AuthResult ChallengeResult(
@@ -566,7 +602,8 @@ public class AuthService : IAuthService
         AuthSessionMode sessionMode,
         CancellationToken cancellationToken,
         DateTime? attemptedAt = null,
-        bool mfaSatisfied = false)
+        bool mfaSatisfied = false,
+        DateTime? sessionExpiryCapUtc = null)
     {
         var now = _timeProvider.GetUtcNow().UtcDateTime;
         string? token = null;
@@ -575,6 +612,10 @@ public class AuthService : IAuthService
         {
             token = GenerateSecureToken();
             expiresAt = now + AbsoluteTimeout;
+            if (sessionExpiryCapUtc.HasValue && sessionExpiryCapUtc.Value < expiresAt.Value)
+            {
+                expiresAt = sessionExpiryCapUtc.Value;
+            }
             _context.Sessions.Add(new Session
             {
                 Id = Guid.NewGuid(),

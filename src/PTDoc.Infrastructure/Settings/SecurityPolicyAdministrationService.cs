@@ -66,6 +66,16 @@ public sealed class SecurityPolicyAdministrationService(
         policy.RestrictCliniciansToOwnSchedules = request.RestrictCliniciansToOwnSchedules;
         policy.AuthorizationMode = request.AuthorizationMode;
 
+        var mfaScheduleChanged = oldPolicy.MfaEnforcementMode != policy.MfaEnforcementMode
+            || oldPolicy.MfaEffectiveAtUtc != policy.MfaEffectiveAtUtc;
+        if (mfaScheduleChanged && policy.MfaEnforcementMode != MfaEnforcementMode.Off)
+        {
+            await ConstrainSessionsForMfaTransitionAsync(
+                clinicId,
+                policy.MfaEffectiveAtUtc,
+                cancellationToken);
+        }
+
         var updated = Map(policy);
         var auditEvent = new AuditEvent
         {
@@ -92,6 +102,7 @@ public sealed class SecurityPolicyAdministrationService(
         }
         catch (DbUpdateConcurrencyException)
         {
+            ClearFailedPolicyWriteEntries();
             return SettingsOperationResult<SecurityPolicyDto>.Conflict();
         }
         catch (DbUpdateException exception) when (
@@ -104,11 +115,39 @@ public sealed class SecurityPolicyAdministrationService(
         return SettingsOperationResult<SecurityPolicyDto>.Success(updated);
     }
 
+    private async Task ConstrainSessionsForMfaTransitionAsync(
+        Guid clinicId,
+        DateTime? effectiveAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var userIds = await context.Users
+            .Where(user => user.ClinicId == clinicId)
+            .Select(user => user.Id)
+            .ToListAsync(cancellationToken);
+        var sessions = await context.Sessions
+            .Where(session => userIds.Contains(session.UserId) && !session.IsRevoked)
+            .ToListAsync(cancellationToken);
+        var nowUtc = DateTime.UtcNow;
+
+        foreach (var session in sessions)
+        {
+            if (!effectiveAtUtc.HasValue || effectiveAtUtc.Value <= nowUtc)
+            {
+                session.IsRevoked = true;
+                session.RevokedAt = nowUtc;
+            }
+            else if (session.ExpiresAt > effectiveAtUtc.Value)
+            {
+                session.ExpiresAt = effectiveAtUtc.Value;
+            }
+        }
+    }
+
     private void ClearFailedPolicyWriteEntries()
     {
         foreach (var entry in context.ChangeTracker.Entries()
                      .Where(entry => entry.State is EntityState.Added or EntityState.Modified)
-                     .Where(entry => entry.Entity is ClinicSecurityPolicy or AuditLog)
+                     .Where(entry => entry.Entity is ClinicSecurityPolicy or AuditLog or Session)
                      .ToArray())
         {
             entry.State = EntityState.Detached;

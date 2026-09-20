@@ -324,6 +324,7 @@ public sealed class SettingsPersistenceModelMetadataTests
         Assert.Contains("LockAdminClinicSettingsRecoveryBackup", downSql, StringComparison.Ordinal);
         Assert.Contains("Level", downSql, StringComparison.Ordinal);
         Assert.Contains("LockedMinimum", downSql, StringComparison.Ordinal);
+        Assert.Contains("NOT EXISTS", downSql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("DROP TABLE", downSql, StringComparison.OrdinalIgnoreCase);
 
         if (activeProvider == "Microsoft.EntityFrameworkCore.SqlServer")
@@ -374,6 +375,43 @@ public sealed class SettingsPersistenceModelMetadataTests
             && item.RoleKey == Roles.Admin
             && item.CapabilityKey == CapabilityKey.ClinicSettingsManage);
         Assert.Equal(PermissionLevel.View, restored.Level);
+        Assert.Equal(PermissionLevel.None, restored.LockedMinimum);
+    }
+
+    [Fact]
+    public async Task SqliteRecoveryLockMigration_RollbackRestoresBaselineForClinicCreatedAfterUpgrade()
+    {
+        const string settingsMigration = "20260821041512_AddClinicSettingsAdministration";
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection, sqlite => sqlite.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"))
+            .Options;
+        await using var context = new ApplicationDbContext(options);
+        var migrator = context.GetService<IMigrator>();
+        await migrator.MigrateAsync();
+
+        var clinic = new Clinic
+        {
+            Name = "Post-upgrade Recovery Clinic",
+            Slug = $"post-upgrade-recovery-{Guid.NewGuid():N}"
+        };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var locked = await context.RoleCapabilityPermissions.AsNoTracking().SingleAsync(item =>
+            item.ClinicId == clinic.Id
+            && item.RoleKey == Roles.Admin
+            && item.CapabilityKey == CapabilityKey.ClinicSettingsManage);
+        Assert.Equal(PermissionLevel.Full, locked.Level);
+        Assert.Equal(PermissionLevel.Full, locked.LockedMinimum);
+
+        await migrator.MigrateAsync(settingsMigration);
+        context.ChangeTracker.Clear();
+        var restored = await context.RoleCapabilityPermissions.AsNoTracking().SingleAsync(item =>
+            item.ClinicId == clinic.Id
+            && item.RoleKey == Roles.Admin
+            && item.CapabilityKey == CapabilityKey.ClinicSettingsManage);
+        Assert.Equal(PermissionLevel.Full, restored.Level);
         Assert.Equal(PermissionLevel.None, restored.LockedMinimum);
     }
 

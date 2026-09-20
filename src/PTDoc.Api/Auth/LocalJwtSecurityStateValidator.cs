@@ -39,15 +39,37 @@ internal sealed class LocalJwtSecurityStateValidator(
             return false;
         }
 
-        if (user.ClinicId is not { } clinicId)
+        var roleClaims = principal.FindAll(ClaimTypes.Role)
+            .Where(claim => !string.IsNullOrWhiteSpace(claim.Value))
+            .Select(claim => claim.Value)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (roleClaims.Length != 1
+            || !string.Equals(roleClaims[0], user.Role, StringComparison.OrdinalIgnoreCase))
         {
-            return true;
+            return false;
         }
 
-        if (!Guid.TryParse(
-                principal.FindFirst(HttpTenantContextAccessor.ClinicIdClaimType)?.Value,
-                out var claimedClinicId)
+        var clinicClaims = principal.FindAll(HttpTenantContextAccessor.ClinicIdClaimType)
+            .Where(claim => !string.IsNullOrWhiteSpace(claim.Value))
+            .Select(claim => claim.Value)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (user.ClinicId is not { } clinicId)
+        {
+            return clinicClaims.Length == 0;
+        }
+
+        if (clinicClaims.Length != 1
+            || !Guid.TryParse(clinicClaims[0], out var claimedClinicId)
             || claimedClinicId != clinicId)
+        {
+            return false;
+        }
+
+        var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
+        if (!user.PinChangedAtUtc.HasValue
+            && (!user.LegacyPinGraceEndsAtUtc.HasValue || user.LegacyPinGraceEndsAtUtc <= nowUtc))
         {
             return false;
         }
@@ -60,7 +82,7 @@ internal sealed class LocalJwtSecurityStateValidator(
             .SingleOrDefaultAsync(item => item.ClinicId == clinicId, cancellationToken);
         var mfaIsRequired = MfaPolicyRules.RequiresMfa(
             policy,
-            timeProvider.GetUtcNow().UtcDateTime);
+            nowUtc);
 
         if (!tokenHasMfaAssurance && !mfaIsRequired)
         {
