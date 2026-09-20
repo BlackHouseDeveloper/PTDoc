@@ -296,7 +296,8 @@ public class AuthService : IAuthService
             ipAddress,
             userAgent,
             sessionMode,
-            cancellationToken);
+            cancellationToken,
+            mfaSatisfied: true);
         if (transaction is not null)
         {
             await transaction.CommitAsync(cancellationToken);
@@ -562,7 +563,8 @@ public class AuthService : IAuthService
         string? userAgent,
         AuthSessionMode sessionMode,
         CancellationToken cancellationToken,
-        DateTime? attemptedAt = null)
+        DateTime? attemptedAt = null,
+        bool mfaSatisfied = false)
     {
         var now = _timeProvider.GetUtcNow().UtcDateTime;
         string? token = null;
@@ -598,27 +600,43 @@ public class AuthService : IAuthService
             Token = token,
             ExpiresAt = expiresAt,
             Role = user.Role,
-            ClinicId = user.ClinicId
+            ClinicId = user.ClinicId,
+            MfaSatisfied = mfaSatisfied
         };
     }
 
     private async Task<ClinicSecurityPolicy> GetSecurityPolicyAsync(Guid? clinicId, CancellationToken cancellationToken)
     {
-        if (clinicId.HasValue)
+        if (!clinicId.HasValue)
         {
-            var stored = await _context.ClinicSecurityPolicies
-                .IgnoreQueryFilters()
-                .SingleOrDefaultAsync(item => item.ClinicId == clinicId.Value, cancellationToken);
-            if (stored is not null) return stored;
+            // System and legacy users without a clinic cannot have a clinic policy.
+            // Preserve their existing authentication behavior; the fail-closed
+            // fallback below applies only when a clinic-bound policy is missing.
+            return new ClinicSecurityPolicy
+            {
+                MinimumPinLength = 8,
+                SessionInactivityMinutes = 15,
+                MfaEnforcementMode = MfaEnforcementMode.Off,
+                CreatedAtUtc = DateTime.UnixEpoch
+            };
+        }
+
+        var stored = await _context.ClinicSecurityPolicies
+            .IgnoreQueryFilters()
+            .SingleOrDefaultAsync(item => item.ClinicId == clinicId.Value, cancellationToken);
+        if (stored is not null)
+        {
+            return stored;
         }
 
         return new ClinicSecurityPolicy
         {
             MinimumPinLength = 8,
             SessionInactivityMinutes = 15,
-            MfaEnforcementMode = MfaEnforcementMode.Off,
+            MfaEnforcementMode = MfaEnforcementMode.Enforced,
+            MfaEffectiveAtUtc = DateTime.UnixEpoch,
             // A missing clinic policy is an invalid rollout state. Use an expired
-            // anchor so legacy credentials fail closed instead of gaining a new grace period.
+            // anchor so both MFA and legacy credentials fail closed.
             CreatedAtUtc = DateTime.UnixEpoch
         };
     }

@@ -140,8 +140,13 @@ public sealed class AppointmentCommunicationProcessor(
 
         foreach (var appointment in appointments)
         {
-            if (appointment.Patient?.ConsentSigned != true) continue;
             var clinicId = appointment.ClinicId!.Value;
+            if (!HasClinicOwnedRelationships(appointment, clinicId)
+                || appointment.Patient!.ConsentSigned != true)
+            {
+                continue;
+            }
+
             var intakeKey = (clinicId, appointment.PatientId);
             var communicationConsent = ResolveCommunicationConsent(
                 intakeConsents.GetValueOrDefault(intakeKey),
@@ -236,10 +241,16 @@ public sealed class AppointmentCommunicationProcessor(
             .Include(item => item.VisitType)
             .SingleOrDefaultAsync(item => item.Id == dispatch.AppointmentId && item.ClinicId == dispatch.ClinicId, cancellationToken);
         if (appointment?.Patient is null
+            || !HasClinicOwnedRelationships(appointment, dispatch.ClinicId)
             || appointment.Status is AppointmentStatus.Cancelled or AppointmentStatus.Completed or AppointmentStatus.NoShow
             || appointment.StartTimeUtc <= now)
         {
-            Suppress(dispatch, "appointment_ineligible", now);
+            Suppress(
+                dispatch,
+                appointment is not null && !HasClinicOwnedRelationships(appointment, dispatch.ClinicId)
+                    ? "tenant_relationship_mismatch"
+                    : "appointment_ineligible",
+                now);
             await context.SaveChangesAsync(cancellationToken);
             return;
         }
@@ -601,6 +612,10 @@ public sealed class AppointmentCommunicationProcessor(
         }
         catch (JsonException) { return false; }
     }
+
+    private static bool HasClinicOwnedRelationships(Appointment appointment, Guid clinicId) =>
+        appointment.Patient?.ClinicId == clinicId
+        && (!appointment.VisitTypeId.HasValue || appointment.VisitType?.ClinicId == clinicId);
 
     private static CommunicationConsent ResolveCommunicationConsent(string? consentJson, Patient patient)
     {

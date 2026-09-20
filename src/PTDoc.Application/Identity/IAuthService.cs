@@ -119,6 +119,9 @@ public class AuthResult
 
     /// <summary>Clinic-specific minimum PIN length for a PIN-policy validation response.</summary>
     public int? MinimumPinLength { get; init; }
+
+    /// <summary>True only when this authentication result completed verified MFA.</summary>
+    public bool MfaSatisfied { get; init; }
 }
 
 /// <summary>

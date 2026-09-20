@@ -96,8 +96,20 @@ public class AuditService : IAuditService
 
     private async Task LogEventAsync(AuditEvent auditEvent, CancellationToken ct)
     {
-        _context.AuditLogs.Add(CreateAuditLog(auditEvent));
-        await _context.SaveChangesAsync(ct);
+        var log = CreateAuditLog(auditEvent);
+        _context.AuditLogs.Add(log);
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+        }
+        catch
+        {
+            // A failed insert remains Added in EF's tracker. Detach only the
+            // entity owned by this call so a caller can persist a terminal
+            // provider-accepted state without retrying the failed audit row.
+            _context.Entry(log).State = EntityState.Detached;
+            throw;
+        }
     }
 
     internal static AuditLog CreateAuditLog(AuditEvent auditEvent)

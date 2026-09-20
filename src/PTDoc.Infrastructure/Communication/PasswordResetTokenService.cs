@@ -130,6 +130,23 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
                         return Failure(PasswordResetCompletionStatus.InvalidToken, "The reset link is invalid or expired.");
                     }
 
+                    var revokedAtUtc = claimTime.UtcDateTime;
+                    await _db.Sessions
+                        .Where(session => session.UserId == tokenMetadata.UserId && !session.IsRevoked)
+                        .ExecuteUpdateAsync(
+                            setters => setters
+                                .SetProperty(session => session.IsRevoked, true)
+                                .SetProperty(session => session.RevokedAt, revokedAtUtc),
+                            cancellationToken);
+                    var subject = tokenMetadata.UserId.ToString();
+                    await _db.StoredRefreshTokens
+                        .Where(refreshToken => refreshToken.Subject == subject && !refreshToken.IsRevoked)
+                        .ExecuteUpdateAsync(
+                            setters => setters
+                                .SetProperty(refreshToken => refreshToken.IsRevoked, true)
+                                .SetProperty(refreshToken => refreshToken.RevokedAtUtc, claimTime),
+                            cancellationToken);
+
                     StagePinResetAudit(tokenMetadata.UserId, tokenMetadata.ClinicId);
                     await _db.SaveChangesAsync(cancellationToken);
                     await transaction.CommitAsync(cancellationToken);
@@ -177,6 +194,25 @@ public sealed class PasswordResetTokenService : IPasswordResetTokenService
             token.User.PinChangedAtUtc = DateTime.UtcNow;
             token.User.LegacyPinGraceEndsAtUtc = null;
             token.UsedAtUtc = now;
+            var activeSessions = await _db.Sessions
+                .Where(session => session.UserId == token.UserId && !session.IsRevoked)
+                .ToListAsync(cancellationToken);
+            foreach (var session in activeSessions)
+            {
+                session.IsRevoked = true;
+                session.RevokedAt = now.UtcDateTime;
+            }
+
+            var subject = token.UserId.ToString();
+            var activeRefreshTokens = await _db.StoredRefreshTokens
+                .Where(refreshToken => refreshToken.Subject == subject && !refreshToken.IsRevoked)
+                .ToListAsync(cancellationToken);
+            foreach (var refreshToken in activeRefreshTokens)
+            {
+                refreshToken.IsRevoked = true;
+                refreshToken.RevokedAtUtc = now;
+            }
+
             StagePinResetAudit(token.UserId, token.User.ClinicId);
             await _db.SaveChangesAsync(cancellationToken);
 

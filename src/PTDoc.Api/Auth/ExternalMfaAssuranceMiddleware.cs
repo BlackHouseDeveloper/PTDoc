@@ -32,11 +32,7 @@ public sealed class ExternalMfaAssuranceMiddleware(RequestDelegate next)
                     .AsNoTracking()
                     .SingleOrDefaultAsync(item => item.ClinicId == clinicId, httpContext.RequestAborted);
                 var now = timeProvider.GetUtcNow().UtcDateTime;
-                var enforcementIsActive = policy is null
-                    || MfaPolicyRules.RequiresMfa(
-                        policy.MfaEnforcementMode,
-                        policy.MfaEffectiveAtUtc,
-                        now);
+                var enforcementIsActive = MfaPolicyRules.RequiresMfa(policy, now);
 
                 if (enforcementIsActive && !HasVerifiedMfaMethod(httpContext.User))
                 {

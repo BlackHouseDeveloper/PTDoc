@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Options;
 using Moq;
 using PTDoc.Application.Communication;
@@ -251,6 +252,76 @@ public sealed class IntakeDeliveryServiceTests
     }
 
     [Fact]
+    public async Task SendInviteAsync_FailedAcceptedDeliveryAuditDoesNotPoisonLaterSave()
+    {
+        var interceptor = new RejectSecondAuditSaveInterceptor();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .AddInterceptors(interceptor)
+            .Options;
+        await using var db = new ApplicationDbContext(options);
+        var intake = await SeedOpenIntakeAsync(db);
+        var inviteService = new Mock<IIntakeInviteService>();
+        inviteService.Setup(service => service.CreateInviteAsync(intake.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IntakeInviteLinkResult(
+                true,
+                intake.Id,
+                intake.PatientId,
+                $"http://localhost/intake/{intake.PatientId:D}?mode=patient&invite=test-token",
+                DateTimeOffset.UtcNow.AddHours(4),
+                null));
+        var communicationService = new Mock<ICommunicationService>();
+        communicationService.Setup(service => service.SendIntakeLinkEmailAsync(
+                It.IsAny<IntakeLinkDeliveryRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DeliveryResult
+            {
+                Succeeded = true,
+                Status = DeliveryStatus.Sent,
+                Provider = "Fake",
+                ProviderMessageId = "accepted-audit-failure",
+                SentAtUtc = DateTimeOffset.UtcNow,
+                Channel = DeliveryChannel.Email,
+                Purpose = DeliveryPurpose.IntakeLink
+            });
+        var workflow = new IntakeCommunicationWorkflow(
+            db,
+            inviteService.Object,
+            communicationService.Object,
+            new ContactNormalizer(),
+            new AuditService(db),
+            Options.Create(new CommunicationOptions()));
+
+        var result = await workflow.SendInviteAsync(new IntakeSendInviteRequest
+        {
+            IntakeId = intake.Id,
+            Channel = IntakeDeliveryChannel.Email
+        });
+
+        Assert.True(result.Success);
+        Assert.Contains("audit", result.ErrorMessage!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            db.ChangeTracker.Entries<AuditLog>(),
+            entry => entry.State == EntityState.Added);
+
+        var dispatch = new AppointmentReminderDispatch
+        {
+            ClinicId = intake.ClinicId!.Value,
+            AppointmentId = Guid.NewGuid(),
+            AppointmentVersionUtc = DateTime.UtcNow,
+            ReminderLeadHours = 24,
+            Purpose = ReminderDispatchPurpose.AppointmentReminder,
+            Channel = ReminderChannel.Email,
+            IdempotencyKey = Guid.NewGuid().ToString("N"),
+            Status = ReminderDispatchStatus.Sent,
+            EligibleAtUtc = DateTime.UtcNow,
+            CompletedAtUtc = DateTime.UtcNow
+        };
+        db.AppointmentReminderDispatches.Add(dispatch);
+        await db.SaveChangesAsync();
+        Assert.Equal(EntityState.Unchanged, db.Entry(dispatch).State);
+    }
+
+    [Fact]
     public async Task SendInviteAsync_WithPublicBaseUrlOverride_DeliversPublicInviteUrl()
     {
         await using var db = CreateDbContext();
@@ -361,5 +432,25 @@ public sealed class IntakeDeliveryServiceTests
             .Options;
 
         return new ApplicationDbContext(options);
+    }
+
+    private sealed class RejectSecondAuditSaveInterceptor : SaveChangesInterceptor
+    {
+        private int auditSaveCount;
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context?.ChangeTracker.Entries<AuditLog>()
+                    .Any(entry => entry.State == EntityState.Added) == true
+                && Interlocked.Increment(ref auditSaveCount) == 2)
+            {
+                throw new DbUpdateException("Accepted-delivery audit rejected for test.");
+            }
+
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
     }
 }

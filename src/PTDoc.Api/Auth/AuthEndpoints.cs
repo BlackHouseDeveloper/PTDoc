@@ -181,6 +181,10 @@ public static class AuthEndpoints
         {
             claims.Add(new Claim(ClaimTypes.Email, result.Email));
         }
+        if (result.MfaSatisfied)
+        {
+            claims.Add(new Claim("amr", "mfa"));
+        }
 
         var identity = new ClaimsIdentity(claims, PTDocAuthSchemes.Bearer);
         return Results.Ok(await issuer.IssueAsync(identity, cancellationToken));

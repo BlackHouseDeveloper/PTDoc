@@ -63,6 +63,14 @@ public enum MfaEnforcementMode
 public static class MfaPolicyRules
 {
     public static bool RequiresMfa(
+        ClinicSecurityPolicy? policy,
+        DateTime nowUtc) =>
+        policy is null || RequiresMfa(
+            policy.MfaEnforcementMode,
+            policy.MfaEffectiveAtUtc,
+            nowUtc);
+
+    public static bool RequiresMfa(
         MfaEnforcementMode mode,
         DateTime? effectiveAtUtc,
         DateTime nowUtc)

@@ -70,18 +70,49 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
             .AsNoTracking()
             .FirstOrDefaultAsync(t => t.TokenHash == hash, cancellationToken);
 
-        if (stored is null || stored.IsRevoked || stored.ExpiresAtUtc <= DateTimeOffset.UtcNow)
+        var now = DateTimeOffset.UtcNow;
+        if (stored is null || stored.IsRevoked || stored.ExpiresAtUtc <= now)
             return null;
 
-        if (!Guid.TryParse(stored.Subject, out var userId)
-            || !await db.Users
+        if (!Guid.TryParse(stored.Subject, out var userId))
+        {
+            return null;
+        }
+
+        var user = await db.Users
                 .IgnoreQueryFilters()
-                .AnyAsync(user => user.Id == userId && user.IsActive && !user.MustChangePin, cancellationToken))
+                .AsNoTracking()
+                .SingleOrDefaultAsync(item => item.Id == userId, cancellationToken);
+        if (user is null
+            || !user.IsActive
+            || user.MustChangePin
+            || user.LegacyPinGraceEndsAtUtc <= now.UtcDateTime)
         {
             return null;
         }
 
         var claims = DeserializeClaims(stored.ClaimsJson);
+        if (user.ClinicId is { } clinicId)
+        {
+            var policy = await db.ClinicSecurityPolicies
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(item => item.ClinicId == clinicId, cancellationToken);
+            if (MfaPolicyRules.RequiresMfa(policy, now.UtcDateTime))
+            {
+                var tokenHasMfaAssurance = claims.Any(claim =>
+                    string.Equals(claim.Type, "amr", StringComparison.Ordinal)
+                    && string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase));
+                var credentialIsActive = await db.UserMfaCredentials
+                    .AsNoTracking()
+                    .AnyAsync(item => item.UserId == userId && item.IsActive, cancellationToken);
+                if (!tokenHasMfaAssurance || !credentialIsActive)
+                {
+                    return null;
+                }
+            }
+        }
+
         return new RefreshTokenRecord(stored.Subject, claims, stored.ExpiresAtUtc);
     }
 
@@ -120,6 +151,7 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
         ClaimTypes.GivenName,
         ClaimTypes.Surname,
         ClaimTypes.Email,
+        "amr",
         "sub",
         "oid",
         // Tenant and patient context claims must be preserved across refresh.

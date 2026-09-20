@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Data.Sqlite;
 using Moq;
+using System.Security.Cryptography;
 using PTDoc.Application.Communication;
 using PTDoc.Application.Settings;
 using PTDoc.Core.Communication;
@@ -318,7 +319,21 @@ public sealed class CommunicationServiceTests
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
-        db.Users.Add(user);
+        var session = new Session
+        {
+            UserId = user.Id,
+            TokenHash = Guid.NewGuid().ToString("N"),
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddHours(1)
+        };
+        var refreshToken = new StoredRefreshToken
+        {
+            Subject = user.Id.ToString(),
+            TokenHash = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
+            ExpiresAtUtc = DateTimeOffset.UtcNow.AddDays(1)
+        };
+        db.AddRange(user, session, refreshToken);
         await db.SaveChangesAsync();
 
         var emailSender = new FakeEmailSender();
@@ -362,6 +377,10 @@ public sealed class CommunicationServiceTests
         Assert.Contains("password_reset", audit.MetadataJson, StringComparison.Ordinal);
         Assert.DoesNotContain(token!, audit.MetadataJson, StringComparison.Ordinal);
         Assert.DoesNotContain("12345678", audit.MetadataJson, StringComparison.Ordinal);
+        Assert.True(session.IsRevoked);
+        Assert.NotNull(session.RevokedAt);
+        Assert.True(refreshToken.IsRevoked);
+        Assert.NotNull(refreshToken.RevokedAtUtc);
     }
 
     [Fact]
@@ -386,7 +405,21 @@ public sealed class CommunicationServiceTests
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
-        db.Users.Add(user);
+        var session = new Session
+        {
+            UserId = user.Id,
+            TokenHash = Guid.NewGuid().ToString("N"),
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddHours(1)
+        };
+        var refreshToken = new StoredRefreshToken
+        {
+            Subject = user.Id.ToString(),
+            TokenHash = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
+            ExpiresAtUtc = DateTimeOffset.UtcNow.AddDays(1)
+        };
+        db.AddRange(user, session, refreshToken);
         await db.SaveChangesAsync();
 
         var emailSender = new FakeEmailSender();
@@ -411,6 +444,8 @@ public sealed class CommunicationServiceTests
         Assert.Contains("password_reset", audit.MetadataJson, StringComparison.Ordinal);
         Assert.DoesNotContain(token, audit.MetadataJson, StringComparison.Ordinal);
         Assert.DoesNotContain("12345678", audit.MetadataJson, StringComparison.Ordinal);
+        Assert.True(await db.Sessions.Where(item => item.Id == session.Id).Select(item => item.IsRevoked).SingleAsync());
+        Assert.True(await db.StoredRefreshTokens.Where(item => item.Id == refreshToken.Id).Select(item => item.IsRevoked).SingleAsync());
     }
 
     [Fact]

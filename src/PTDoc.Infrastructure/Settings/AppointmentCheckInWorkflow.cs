@@ -32,6 +32,12 @@ public sealed class AppointmentCheckInWorkflow(
         if (appointment?.Patient is null) return new AppointmentCheckInDecision(AppointmentCheckInStatus.NotFound);
         if (appointment.Status is AppointmentStatus.Cancelled or AppointmentStatus.NoShow or AppointmentStatus.Completed)
             return new AppointmentCheckInDecision(AppointmentCheckInStatus.Ineligible);
+        if (appointment.Status is AppointmentStatus.CheckedIn or AppointmentStatus.InProgress)
+        {
+            return new AppointmentCheckInDecision(
+                AppointmentCheckInStatus.Succeeded,
+                appointment.LastModifiedUtc);
+        }
 
         var hasPaid = await context.AppointmentPaymentTransactions
             .IgnoreQueryFilters()
@@ -51,36 +57,33 @@ public sealed class AppointmentCheckInWorkflow(
             return new AppointmentCheckInDecision(AppointmentCheckInStatus.PaymentRequired);
 
         var checkedInAt = timeProvider.GetUtcNow().UtcDateTime;
-        if (appointment.Status is not (AppointmentStatus.CheckedIn or AppointmentStatus.InProgress))
+        appointment.Status = AppointmentStatus.CheckedIn;
+        appointment.LastModifiedUtc = checkedInAt;
+        appointment.ModifiedByUserId = IIdentityContextAccessor.SystemUserId;
+        appointment.SyncState = SyncState.Pending;
+        try
         {
-            appointment.Status = AppointmentStatus.CheckedIn;
-            appointment.LastModifiedUtc = checkedInAt;
-            appointment.ModifiedByUserId = IIdentityContextAccessor.SystemUserId;
-            appointment.SyncState = SyncState.Pending;
-            try
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            context.Entry(appointment).State = EntityState.Detached;
+            var current = await query
+                .AsNoTracking()
+                .SingleOrDefaultAsync(item => item.Id == appointmentId
+                    && (!requiredClinicId.HasValue
+                        || (item.ClinicId == requiredClinicId
+                            && item.Patient != null
+                            && item.Patient.ClinicId == requiredClinicId)), cancellationToken);
+            if (current?.Status is AppointmentStatus.CheckedIn or AppointmentStatus.InProgress)
             {
-                await context.SaveChangesAsync(cancellationToken);
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                context.Entry(appointment).State = EntityState.Detached;
-                var current = await query
-                    .AsNoTracking()
-                    .SingleOrDefaultAsync(item => item.Id == appointmentId
-                        && (!requiredClinicId.HasValue
-                            || (item.ClinicId == requiredClinicId
-                                && item.Patient != null
-                                && item.Patient.ClinicId == requiredClinicId)), cancellationToken);
-                if (current?.Status is AppointmentStatus.CheckedIn or AppointmentStatus.InProgress)
-                {
-                    return new AppointmentCheckInDecision(
-                        AppointmentCheckInStatus.Succeeded,
-                        current.LastModifiedUtc);
-                }
-
                 return new AppointmentCheckInDecision(
-                    current is null ? AppointmentCheckInStatus.NotFound : AppointmentCheckInStatus.Conflict);
+                    AppointmentCheckInStatus.Succeeded,
+                    current.LastModifiedUtc);
             }
+
+            return new AppointmentCheckInDecision(
+                current is null ? AppointmentCheckInStatus.NotFound : AppointmentCheckInStatus.Conflict);
         }
 
         return new AppointmentCheckInDecision(AppointmentCheckInStatus.Succeeded, checkedInAt);
