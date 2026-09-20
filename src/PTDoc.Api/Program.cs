@@ -631,7 +631,8 @@ builder.Services.AddAuthentication(options =>
     };
     options.Events = new JwtBearerEvents
     {
-        OnAuthenticationFailed = AuditTokenValidationFailureAsync
+        OnAuthenticationFailed = AuditTokenValidationFailureAsync,
+        OnTokenValidated = ValidateLocalJwtSecurityStateAsync
     };
 })
 .AddJwtBearer("EntraJwt", options =>
@@ -671,6 +672,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 // JwtTokenIssuer is Scoped (not Singleton) because it depends on the Scoped IRefreshTokenStore.
 builder.Services.AddScoped<IRefreshTokenStore, DbRefreshTokenStore>();
 builder.Services.AddScoped<JwtTokenIssuer>();
+builder.Services.AddScoped<LocalJwtSecurityStateValidator>();
 builder.Services.AddScoped<ICredentialValidator, LegacyApiCredentialValidator>();
 
 var app = builder.Build();
@@ -1290,6 +1292,18 @@ static async Task AuditTokenValidationFailureAsync(AuthenticationFailedContext c
     catch
     {
         // Audit failures must never break authentication.
+    }
+}
+
+static async Task ValidateLocalJwtSecurityStateAsync(TokenValidatedContext context)
+{
+    var validator = context.HttpContext.RequestServices
+        .GetRequiredService<LocalJwtSecurityStateValidator>();
+    if (!await validator.IsValidAsync(
+            context.Principal!,
+            context.HttpContext.RequestAborted))
+    {
+        context.Fail("The local authentication state has been revoked or changed.");
     }
 }
 

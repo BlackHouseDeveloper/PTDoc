@@ -12,6 +12,17 @@ public sealed class LockAdminClinicSettingsRecovery : Migration
     protected override void Up(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.Sql("""
+            CREATE TABLE [LockAdminClinicSettingsRecoveryBackup] (
+                [ClinicId] uniqueidentifier NOT NULL PRIMARY KEY,
+                [Level] int NOT NULL,
+                [LockedMinimum] int NOT NULL
+            );
+
+            INSERT INTO [LockAdminClinicSettingsRecoveryBackup] ([ClinicId], [Level], [LockedMinimum])
+            SELECT [ClinicId], [Level], [LockedMinimum]
+            FROM [RoleCapabilityPermissions]
+            WHERE [RoleKey] = 'Admin' AND [CapabilityKey] = 28;
+
             UPDATE [RoleCapabilityPermissions]
             SET [Level] = 3, [LockedMinimum] = 3
             WHERE [RoleKey] = 'Admin' AND [CapabilityKey] = 28;
@@ -21,9 +32,15 @@ public sealed class LockAdminClinicSettingsRecovery : Migration
     protected override void Down(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.Sql("""
-            UPDATE [RoleCapabilityPermissions]
-            SET [LockedMinimum] = 0
-            WHERE [RoleKey] = 'Admin' AND [CapabilityKey] = 28;
+            UPDATE permission
+            SET [Level] = backup.[Level],
+                [LockedMinimum] = backup.[LockedMinimum]
+            FROM [RoleCapabilityPermissions] permission
+            INNER JOIN [LockAdminClinicSettingsRecoveryBackup] backup
+                ON backup.[ClinicId] = permission.[ClinicId]
+            WHERE permission.[RoleKey] = 'Admin' AND permission.[CapabilityKey] = 28;
+
+            DROP TABLE [LockAdminClinicSettingsRecoveryBackup];
             """);
     }
 }

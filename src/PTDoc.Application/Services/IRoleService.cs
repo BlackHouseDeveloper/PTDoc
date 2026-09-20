@@ -308,10 +308,10 @@ public sealed class ClientStaticCapabilityAuthorizationHandler
         AuthorizationHandlerContext context,
         DynamicCapabilityRequirement requirement)
     {
-        var role = context.User.FindFirst(ClaimTypes.Role)?.Value;
         if (context.User.Identity?.IsAuthenticated == true
-            && !string.IsNullOrWhiteSpace(role)
-            && requirement.StaticAllowedRoles.Contains(role))
+            && context.User.FindAll(ClaimTypes.Role)
+                .Select(claim => claim.Value)
+                .Any(requirement.StaticAllowedRoles.Contains))
         {
             context.Succeed(requirement);
         }

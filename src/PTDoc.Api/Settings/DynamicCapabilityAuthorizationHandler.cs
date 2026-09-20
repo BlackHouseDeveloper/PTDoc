@@ -20,30 +20,37 @@ public sealed class DynamicCapabilityAuthorizationHandler(
             return;
         }
 
-        var role = context.User.FindFirst(ClaimTypes.Role)?.Value;
+        var roles = context.User.FindAll(ClaimTypes.Role)
+            .Select(claim => claim.Value)
+            .Where(role => !string.IsNullOrWhiteSpace(role))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
         var clinicId = tenantContext.GetCurrentClinicId();
-        if (string.IsNullOrWhiteSpace(role) || !clinicId.HasValue)
+        if (roles.Length == 0 || !clinicId.HasValue)
         {
             return;
         }
 
-        var staticAllowed = requirement.StaticAllowedRoles.Contains(role);
         var cancellationToken = context.Resource is HttpContext httpContext
             ? httpContext.RequestAborted
             : CancellationToken.None;
-        foreach (var capability in requirement.CapabilityKeys)
+        foreach (var role in roles)
         {
-            var evaluation = await permissionEvaluator.EvaluateAsync(
-                clinicId.Value,
-                role,
-                capability,
-                requirement.RequiredLevel,
-                staticAllowed,
-                cancellationToken);
-            if (evaluation.EffectiveAllowed)
+            var staticAllowed = requirement.StaticAllowedRoles.Contains(role);
+            foreach (var capability in requirement.CapabilityKeys)
             {
-                context.Succeed(requirement);
-                return;
+                var evaluation = await permissionEvaluator.EvaluateAsync(
+                    clinicId.Value,
+                    role,
+                    capability,
+                    requirement.RequiredLevel,
+                    staticAllowed,
+                    cancellationToken);
+                if (evaluation.EffectiveAllowed)
+                {
+                    context.Succeed(requirement);
+                    return;
+                }
             }
         }
     }

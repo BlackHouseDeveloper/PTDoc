@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
@@ -22,6 +23,13 @@ public sealed class ExternalMfaAssuranceMiddleware(RequestDelegate next)
         IAuditService auditService,
         TimeProvider timeProvider)
     {
+        if (httpContext.GetEndpoint()?.Metadata.GetMetadata<IAllowAnonymous>() is not null
+            || httpContext.Request.Path.StartsWithSegments("/health"))
+        {
+            await next(httpContext);
+            return;
+        }
+
         if (IsEntraPrincipal(httpContext.User))
         {
             var provisioning = principalRecordResolver.GetProvisioningResult();

@@ -12,6 +12,17 @@ public sealed class LockAdminClinicSettingsRecovery : Migration
     protected override void Up(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.Sql("""
+            CREATE TABLE "LockAdminClinicSettingsRecoveryBackup" (
+                "ClinicId" TEXT NOT NULL PRIMARY KEY,
+                "Level" INTEGER NOT NULL,
+                "LockedMinimum" INTEGER NOT NULL
+            );
+
+            INSERT INTO "LockAdminClinicSettingsRecoveryBackup" ("ClinicId", "Level", "LockedMinimum")
+            SELECT "ClinicId", "Level", "LockedMinimum"
+            FROM "RoleCapabilityPermissions"
+            WHERE "RoleKey" = 'Admin' AND "CapabilityKey" = 28;
+
             UPDATE "RoleCapabilityPermissions"
             SET "Level" = 3, "LockedMinimum" = 3
             WHERE "RoleKey" = 'Admin' AND "CapabilityKey" = 28;
@@ -22,8 +33,22 @@ public sealed class LockAdminClinicSettingsRecovery : Migration
     {
         migrationBuilder.Sql("""
             UPDATE "RoleCapabilityPermissions"
-            SET "LockedMinimum" = 0
-            WHERE "RoleKey" = 'Admin' AND "CapabilityKey" = 28;
+            SET "Level" = (
+                    SELECT backup."Level"
+                    FROM "LockAdminClinicSettingsRecoveryBackup" backup
+                    WHERE backup."ClinicId" = "RoleCapabilityPermissions"."ClinicId"),
+                "LockedMinimum" = (
+                    SELECT backup."LockedMinimum"
+                    FROM "LockAdminClinicSettingsRecoveryBackup" backup
+                    WHERE backup."ClinicId" = "RoleCapabilityPermissions"."ClinicId")
+            WHERE "RoleKey" = 'Admin'
+              AND "CapabilityKey" = 28
+              AND EXISTS (
+                  SELECT 1
+                  FROM "LockAdminClinicSettingsRecoveryBackup" backup
+                  WHERE backup."ClinicId" = "RoleCapabilityPermissions"."ClinicId");
+
+            DROP TABLE "LockAdminClinicSettingsRecoveryBackup";
             """);
     }
 }

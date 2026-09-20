@@ -85,7 +85,7 @@ public static class MfaPolicyRules
             return true;
         }
 
-        return mode == MfaEnforcementMode.Enforced && effectiveAtUtc <= nowUtc;
+        return mode != MfaEnforcementMode.Off && effectiveAtUtc <= nowUtc;
     }
 }
 

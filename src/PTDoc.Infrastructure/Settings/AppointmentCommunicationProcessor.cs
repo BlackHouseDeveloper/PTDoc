@@ -71,7 +71,9 @@ public sealed class AppointmentCommunicationProcessor(
                     && item.StartTimeUtc <= horizon
                     && item.Status != AppointmentStatus.Cancelled
                     && item.Status != AppointmentStatus.Completed
-                    && item.Status != AppointmentStatus.NoShow)
+                    && item.Status != AppointmentStatus.NoShow
+                    && item.Status != AppointmentStatus.CheckedIn
+                    && item.Status != AppointmentStatus.InProgress)
                 .OrderBy(item => item.StartTimeUtc)
                 .ThenBy(item => item.Id)
                 .Skip(offset)
@@ -242,7 +244,11 @@ public sealed class AppointmentCommunicationProcessor(
             .SingleOrDefaultAsync(item => item.Id == dispatch.AppointmentId && item.ClinicId == dispatch.ClinicId, cancellationToken);
         if (appointment?.Patient is null
             || !HasClinicOwnedRelationships(appointment, dispatch.ClinicId)
-            || appointment.Status is AppointmentStatus.Cancelled or AppointmentStatus.Completed or AppointmentStatus.NoShow
+            || appointment.Status is AppointmentStatus.Cancelled
+                or AppointmentStatus.Completed
+                or AppointmentStatus.NoShow
+                or AppointmentStatus.CheckedIn
+                or AppointmentStatus.InProgress
             || appointment.StartTimeUtc <= now)
         {
             Suppress(
@@ -307,7 +313,7 @@ public sealed class AppointmentCommunicationProcessor(
         try
         {
             var result = dispatch.Purpose == ReminderDispatchPurpose.AutoCheckIn
-                ? await SendAutoCheckInAsync(dispatch, appointment, cancellationToken)
+                ? await SendAutoCheckInAsync(dispatch, appointment, latestConsentJson, cancellationToken)
                 : await SendReminderAsync(dispatch, appointment, reminderTimeZone!, cancellationToken);
             if (result.Success)
             {
@@ -375,6 +381,7 @@ public sealed class AppointmentCommunicationProcessor(
     private async Task<DeliveryOutcome> SendAutoCheckInAsync(
         AppointmentReminderDispatch dispatch,
         Appointment appointment,
+        string? sourceConsentJson,
         CancellationToken cancellationToken)
     {
         var templateKey = await context.AutoCheckInPolicies
@@ -401,7 +408,7 @@ public sealed class AppointmentCommunicationProcessor(
                 AccessToken = PlaceholderHash(),
                 ResponseJson = "{}",
                 PainMapData = "{}",
-                Consents = "{}",
+                Consents = string.IsNullOrWhiteSpace(sourceConsentJson) ? "{}" : sourceConsentJson,
                 LastModifiedUtc = timeProvider.GetUtcNow().UtcDateTime,
                 ModifiedByUserId = IIdentityContextAccessor.SystemUserId,
                 SyncState = SyncState.Pending
@@ -563,6 +570,8 @@ public sealed class AppointmentCommunicationProcessor(
                 || item.Appointment.Status == AppointmentStatus.Cancelled
                 || item.Appointment.Status == AppointmentStatus.Completed
                 || item.Appointment.Status == AppointmentStatus.NoShow
+                || item.Appointment.Status == AppointmentStatus.CheckedIn
+                || item.Appointment.Status == AppointmentStatus.InProgress
                 || (item.Appointment.LastModifiedUtc == default
                     ? item.Appointment.StartTimeUtc
                     : item.Appointment.LastModifiedUtc) != item.AppointmentVersionUtc)
@@ -575,7 +584,11 @@ public sealed class AppointmentCommunicationProcessor(
             var appointment = item.Appointment;
             var version = appointment?.LastModifiedUtc == default ? appointment?.StartTimeUtc : appointment?.LastModifiedUtc;
             if (appointment is null
-                || appointment.Status is AppointmentStatus.Cancelled or AppointmentStatus.Completed or AppointmentStatus.NoShow
+                || appointment.Status is AppointmentStatus.Cancelled
+                    or AppointmentStatus.Completed
+                    or AppointmentStatus.NoShow
+                    or AppointmentStatus.CheckedIn
+                    or AppointmentStatus.InProgress
                 || version != item.AppointmentVersionUtc)
             {
                 item.Status = ReminderDispatchStatus.Cancelled;
