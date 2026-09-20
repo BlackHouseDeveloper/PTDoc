@@ -678,6 +678,34 @@ public sealed class SettingsAdministrationTests
     }
 
     [Fact]
+    public async Task SecurityPolicyAdministration_RejectsMfaEffectiveDateWithoutOffset()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "UTC Policy Clinic", Slug = $"utc-policy-{Guid.NewGuid():N}" };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var service = new SecurityPolicyAdministrationService(context, CreateAuditService().Object);
+
+        var result = await service.UpdateAsync(
+            clinic.Id,
+            new UpdateSecurityPolicyRequest(
+                MfaEnforcementMode.Enforced,
+                new DateTime(2026, 10, 1, 9, 0, 0, DateTimeKind.Unspecified),
+                true,
+                8,
+                15,
+                true,
+                false,
+                AuthorizationRolloutMode.Static,
+                1),
+            Guid.NewGuid(),
+            "unspecified-mfa-effective-date");
+
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, result.Status);
+        Assert.Contains("mfaEffectiveAtUtc", result.ValidationErrors!.Keys);
+    }
+
+    [Fact]
     public async Task SecurityPolicyAdministration_FirstWriteUniqueRaceReturnsConflictAndClearsFailedEntries()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
@@ -1603,6 +1631,83 @@ public sealed class SettingsAdministrationTests
         Assert.NotNull(activeSession.RevokedAt);
         Assert.True(refreshToken.IsRevoked);
         Assert.NotNull(refreshToken.RevokedAtUtc);
+    }
+
+    [Fact]
+    public async Task ForcePinChange_RevokesSessionsAndRefreshTokens()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Forced PIN Clinic", Slug = $"forced-pin-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = $"forced-pin-{Guid.NewGuid():N}",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Forced",
+            LastName = "Pin",
+            Role = Roles.PT,
+            ClinicId = clinic.Id,
+            IsActive = true
+        };
+        var session = new Session
+        {
+            User = user,
+            UserId = user.Id,
+            TokenHash = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddHours(1)
+        };
+        var refreshToken = new StoredRefreshToken
+        {
+            Subject = user.Id.ToString(),
+            TokenHash = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
+            ExpiresAtUtc = DateTimeOffset.UtcNow.AddDays(1)
+        };
+        context.AddRange(clinic, user, session, refreshToken);
+        await context.SaveChangesAsync();
+        var service = new SecurityPolicyAdministrationService(context, CreateAuditService().Object);
+
+        var result = await service.ForcePinChangeAsync(
+            clinic.Id,
+            user.Id,
+            Guid.NewGuid(),
+            "force-pin-revoke-authentication");
+
+        Assert.True(result.Succeeded);
+        Assert.True(user.MustChangePin);
+        Assert.True(session.IsRevoked);
+        Assert.NotNull(session.RevokedAt);
+        Assert.True(refreshToken.IsRevoked);
+        Assert.NotNull(refreshToken.RevokedAtUtc);
+    }
+
+    [Fact]
+    public async Task RefreshTokenStore_UserMustChangePin_RejectsExistingToken()
+    {
+        await using var context = CreateContext();
+        var user = new User
+        {
+            Username = $"refresh-force-pin-{Guid.NewGuid():N}",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Refresh",
+            LastName = "Forced",
+            Role = Roles.PT,
+            IsActive = true
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var store = new DbRefreshTokenStore(context);
+        const string rawToken = "existing-refresh-token";
+        await store.StoreAsync(
+            rawToken,
+            new RefreshTokenRecord(user.Id.ToString(), [], DateTimeOffset.UtcNow.AddDays(1)),
+            CancellationToken.None);
+        user.MustChangePin = true;
+        await context.SaveChangesAsync();
+
+        var result = await store.GetAsync(rawToken, CancellationToken.None);
+
+        Assert.Null(result);
     }
 
     [Fact]
@@ -2888,6 +2993,42 @@ public sealed class SettingsAdministrationTests
             .CheckInAsync(appointment.Id, clinic.Id);
 
         Assert.Equal(AppointmentCheckInStatus.Conflict, result.Status);
+    }
+
+    [Fact]
+    public async Task AppointmentCheckIn_RejectsCrossClinicPatientLink()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Kiosk Clinic", Slug = $"kiosk-clinic-{Guid.NewGuid():N}" };
+        var otherClinic = new Clinic { Name = "Other Patient Clinic", Slug = $"other-patient-{Guid.NewGuid():N}" };
+        var patient = new Patient
+        {
+            FirstName = "Cross",
+            LastName = "Clinic",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = otherClinic.Id,
+            PayerInfoJson = "{\"copayAmount\":0}",
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        var appointment = new Appointment
+        {
+            Patient = patient,
+            PatientId = patient.Id,
+            ClinicId = clinic.Id,
+            ClinicalId = Guid.NewGuid(),
+            StartTimeUtc = DateTime.UtcNow.AddHours(1),
+            EndTimeUtc = DateTime.UtcNow.AddHours(2),
+            Status = AppointmentStatus.Scheduled,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        context.AddRange(clinic, otherClinic, patient, appointment);
+        await context.SaveChangesAsync();
+
+        var result = await new AppointmentCheckInWorkflow(context, TimeProvider.System)
+            .CheckInAsync(appointment.Id, clinic.Id);
+
+        Assert.Equal(AppointmentCheckInStatus.NotFound, result.Status);
+        Assert.Equal(AppointmentStatus.Scheduled, appointment.Status);
     }
 
     [Fact]

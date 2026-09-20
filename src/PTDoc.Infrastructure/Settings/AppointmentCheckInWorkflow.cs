@@ -25,7 +25,10 @@ public sealed class AppointmentCheckInWorkflow(
         var appointment = await query
             .Include(item => item.Patient)
             .SingleOrDefaultAsync(item => item.Id == appointmentId
-                && (!requiredClinicId.HasValue || item.ClinicId == requiredClinicId), cancellationToken);
+                && (!requiredClinicId.HasValue
+                    || (item.ClinicId == requiredClinicId
+                        && item.Patient != null
+                        && item.Patient.ClinicId == requiredClinicId)), cancellationToken);
         if (appointment?.Patient is null) return new AppointmentCheckInDecision(AppointmentCheckInStatus.NotFound);
         if (appointment.Status is AppointmentStatus.Cancelled or AppointmentStatus.NoShow or AppointmentStatus.Completed)
             return new AppointmentCheckInDecision(AppointmentCheckInStatus.Ineligible);
@@ -64,7 +67,10 @@ public sealed class AppointmentCheckInWorkflow(
                 var current = await query
                     .AsNoTracking()
                     .SingleOrDefaultAsync(item => item.Id == appointmentId
-                        && (!requiredClinicId.HasValue || item.ClinicId == requiredClinicId), cancellationToken);
+                        && (!requiredClinicId.HasValue
+                            || (item.ClinicId == requiredClinicId
+                                && item.Patient != null
+                                && item.Patient.ClinicId == requiredClinicId)), cancellationToken);
                 if (current?.Status is AppointmentStatus.CheckedIn or AppointmentStatus.InProgress)
                 {
                     return new AppointmentCheckInDecision(

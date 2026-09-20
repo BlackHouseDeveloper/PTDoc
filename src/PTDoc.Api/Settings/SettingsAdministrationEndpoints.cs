@@ -56,7 +56,7 @@ public static class SettingsAdministrationEndpoints
                 ToResult(await service.RegenerateRecoveryCodesAsync(
                     identity.GetCurrentUserId(), request.Code, cancellationToken)))
             .WithTags("Authentication - MFA")
-            .RequireAuthorization()
+            .RequireAuthorization(AuthorizationPolicies.Authenticated)
             .RequireRateLimiting("MfaAuthentication");
     }
 

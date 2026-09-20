@@ -73,6 +73,14 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
         if (stored is null || stored.IsRevoked || stored.ExpiresAtUtc <= DateTimeOffset.UtcNow)
             return null;
 
+        if (!Guid.TryParse(stored.Subject, out var userId)
+            || !await db.Users
+                .IgnoreQueryFilters()
+                .AnyAsync(user => user.Id == userId && user.IsActive && !user.MustChangePin, cancellationToken))
+        {
+            return null;
+        }
+
         var claims = DeserializeClaims(stored.ClaimsJson);
         return new RefreshTokenRecord(stored.Subject, claims, stored.ExpiresAtUtc);
     }

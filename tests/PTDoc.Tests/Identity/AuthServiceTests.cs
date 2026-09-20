@@ -1,8 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using System.Security.Cryptography;
+using System.Text;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Identity;
@@ -182,6 +185,72 @@ public class AuthServiceTests
         Assert.NotNull(result);
         Assert.Equal(AuthStatus.PendingApproval, result.Status);
         Assert.Equal(user.Id, result.UserId);
+    }
+
+    [Fact]
+    public async Task AuthenticateAsync_InactiveUserWithInvalidPin_DoesNotDiscloseAccountState()
+    {
+        await using var context = CreateInMemoryContext();
+        var authService = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "inactive-enumeration-target",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Inactive",
+            LastName = "Target",
+            Role = Roles.PT,
+            IsActive = false,
+            CreatedAt = DateTime.UtcNow
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var result = await authService.AuthenticateAsync(
+            user.Username,
+            "87654321",
+            "127.0.0.1",
+            "TestAgent");
+
+        Assert.Null(result);
+        var attempt = await context.LoginAttempts.SingleAsync(item => item.UserId == user.Id);
+        Assert.Equal("Invalid PIN", attempt.FailureReason);
+    }
+
+    [Fact]
+    public async Task ValidateSessionAsync_UserMustChangePin_RejectsExistingSession()
+    {
+        await using var context = CreateInMemoryContext();
+        const string token = "force-change-session-token";
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "forced-change-user",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Forced",
+            LastName = "Change",
+            Role = Roles.PT,
+            IsActive = true,
+            MustChangePin = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        context.AddRange(
+            user,
+            new Session
+            {
+                User = user,
+                UserId = user.Id,
+                TokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))).ToLowerInvariant(),
+                CreatedAt = DateTime.UtcNow,
+                LastActivityAt = DateTime.UtcNow,
+                ExpiresAt = DateTime.UtcNow.AddHours(1)
+            });
+        await context.SaveChangesAsync();
+        var authService = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
+
+        var session = await authService.ValidateSessionAsync(token);
+
+        Assert.Null(session);
     }
 
     [Fact]

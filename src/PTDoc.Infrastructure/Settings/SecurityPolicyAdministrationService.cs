@@ -58,7 +58,7 @@ public sealed class SecurityPolicyAdministrationService(
         policy.MfaEnforcementMode = request.MfaEnforcementMode;
         policy.MfaEffectiveAtUtc = request.MfaEnforcementMode == MfaEnforcementMode.Off
             ? null
-            : request.MfaEffectiveAtUtc;
+            : request.MfaEffectiveAtUtc?.ToUniversalTime();
         policy.RequirePinChangeOnFirstLogin = request.RequirePinChangeOnFirstLogin;
         policy.MinimumPinLength = request.MinimumPinLength;
         policy.SessionInactivityMinutes = request.SessionInactivityMinutes;
@@ -149,6 +149,26 @@ public sealed class SecurityPolicyAdministrationService(
         }
 
         user.MustChangePin = true;
+        var now = DateTime.UtcNow;
+        var sessions = await context.Sessions
+            .Where(item => item.UserId == userId && !item.IsRevoked)
+            .ToListAsync(cancellationToken);
+        foreach (var session in sessions)
+        {
+            session.IsRevoked = true;
+            session.RevokedAt = now;
+        }
+
+        var refreshTokenSubject = userId.ToString();
+        var refreshTokens = await context.StoredRefreshTokens
+            .Where(item => item.Subject == refreshTokenSubject && !item.IsRevoked)
+            .ToListAsync(cancellationToken);
+        foreach (var refreshToken in refreshTokens)
+        {
+            refreshToken.IsRevoked = true;
+            refreshToken.RevokedAtUtc = now;
+        }
+
         await AuditUserActionAsync("PinChangeForced", clinicId, userId, actorUserId, correlationId, cancellationToken);
         await context.SaveChangesAsync(cancellationToken);
         return SettingsOperationResult<bool>.Success(true);
@@ -263,6 +283,11 @@ public sealed class SecurityPolicyAdministrationService(
         if (request.MfaEnforcementMode != MfaEnforcementMode.Off && request.MfaEffectiveAtUtc is null)
         {
             errors["mfaEffectiveAtUtc"] = ["An effective date is required when MFA rollout or enforcement is enabled."];
+        }
+        else if (request.MfaEnforcementMode != MfaEnforcementMode.Off
+            && request.MfaEffectiveAtUtc is { Kind: DateTimeKind.Unspecified })
+        {
+            errors["mfaEffectiveAtUtc"] = ["The MFA effective date must include a UTC offset."];
         }
 
         return errors;

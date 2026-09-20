@@ -87,9 +87,24 @@ public class AuthService : IAuthService
                 return null;
             }
 
+            // Verify PIN using BCrypt
+            bool isValidPin = BCrypt.Net.BCrypt.Verify(pin, user.PinHash);
+
+            if (!isValidPin)
+            {
+                // Log failed attempt - invalid PIN
+                await LogLoginAttemptAsync(normalizedIdentifier, user.Id, false, ipAddress, userAgent,
+                    "Invalid PIN", attemptedAt, cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
+                await _auditService.LogAuthEventAsync(
+                    AuditEvent.LoginFailed(ipAddress, "InvalidCredentials"), cancellationToken);
+                return null;
+            }
+
             if (!user.IsActive)
             {
-                // Log failed attempt - user inactive
+                // Account state is disclosed only after the caller proves knowledge
+                // of the credential; otherwise inactive usernames become enumerable.
                 await LogLoginAttemptAsync(normalizedIdentifier, user.Id, false, ipAddress, userAgent,
                     "User account is inactive", attemptedAt, cancellationToken);
                 await _context.SaveChangesAsync(cancellationToken);
@@ -107,20 +122,6 @@ public class AuthService : IAuthService
                     Role = user.Role,
                     ClinicId = user.ClinicId
                 };
-            }
-
-            // Verify PIN using BCrypt
-            bool isValidPin = BCrypt.Net.BCrypt.Verify(pin, user.PinHash);
-
-            if (!isValidPin)
-            {
-                // Log failed attempt - invalid PIN
-                await LogLoginAttemptAsync(normalizedIdentifier, user.Id, false, ipAddress, userAgent,
-                    "Invalid PIN", attemptedAt, cancellationToken);
-                await _context.SaveChangesAsync(cancellationToken);
-                await _auditService.LogAuthEventAsync(
-                    AuditEvent.LoginFailed(ipAddress, "InvalidCredentials"), cancellationToken);
-                return null;
             }
 
             return await ContinueAfterPrimaryAsync(
@@ -314,7 +315,10 @@ public class AuthService : IAuthService
             .Include(s => s.User)
             .Where(s => s.TokenHash == tokenHash
                 && !s.IsRevoked
-                && s.ExpiresAt > now)
+                && s.ExpiresAt > now
+                && s.User != null
+                && s.User.IsActive
+                && !s.User.MustChangePin)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (session == null || session.User == null)

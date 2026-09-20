@@ -56,6 +56,7 @@ public static class Roles
 /// </summary>
 public static class AuthorizationPolicies
 {
+    public const string Authenticated = "Authenticated";
     public const string FaxSend = "FaxSend";
     public const string FaxRead = "FaxRead";
     public const string FaxTriage = "FaxTriage";
@@ -136,6 +137,8 @@ public static class AuthorizationPolicies
     /// </summary>
     public static void AddPTDocAuthorizationPolicies(this AuthorizationOptions options)
     {
+        options.AddPolicy(Authenticated, policy => policy.RequireAuthenticatedUser());
+
         options.AddPolicy(FaxSend,
             p => p.RequireRole(Roles.PT, Roles.PTA, Roles.Admin));
 

@@ -179,6 +179,43 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
+    public async Task LegacyTokenLogin_InactiveAccountStateRequiresValidPin()
+    {
+        using var client = _factory.CreateUnauthenticatedClient();
+        var username = $"inactive-login-{Guid.NewGuid():N}";
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Users.Add(new User
+            {
+                Id = Guid.NewGuid(),
+                Username = username,
+                PinHash = AuthService.HashPin("24681357"),
+                FirstName = "Inactive",
+                LastName = "Login",
+                Role = Roles.PT,
+                CreatedAt = DateTime.UtcNow,
+                IsActive = false
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var invalidPin = await client.PostAsync("/auth/token", JsonContent(new
+        {
+            username,
+            password = "87654321"
+        }));
+        using var validPin = await client.PostAsync("/auth/token", JsonContent(new
+        {
+            username,
+            password = "24681357"
+        }));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, invalidPin.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, validPin.StatusCode);
+    }
+
+    [Fact]
     public async Task LegacyTokenLogin_RequiredStepUp_ReturnsNonSuccessChallenge()
     {
         using var client = _factory.CreateUnauthenticatedClient();
