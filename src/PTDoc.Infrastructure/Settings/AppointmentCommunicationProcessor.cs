@@ -295,11 +295,20 @@ public sealed class AppointmentCommunicationProcessor(
             return;
         }
 
+        TimeZoneInfo? reminderTimeZone = null;
+        if (dispatch.Purpose == ReminderDispatchPurpose.AppointmentReminder
+            && !TryResolveTimeZone(appointment.Clinic?.TimeZoneId, out reminderTimeZone))
+        {
+            Suppress(dispatch, "invalid_clinic_time_zone", now);
+            await context.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
         try
         {
             var result = dispatch.Purpose == ReminderDispatchPurpose.AutoCheckIn
                 ? await SendAutoCheckInAsync(dispatch, appointment, cancellationToken)
-                : await SendReminderAsync(dispatch, appointment, cancellationToken);
+                : await SendReminderAsync(dispatch, appointment, reminderTimeZone!, cancellationToken);
             if (result.Success)
             {
                 dispatch.Status = ReminderDispatchStatus.Sent;
@@ -340,9 +349,9 @@ public sealed class AppointmentCommunicationProcessor(
     private async Task<DeliveryOutcome> SendReminderAsync(
         AppointmentReminderDispatch dispatch,
         Appointment appointment,
+        TimeZoneInfo zone,
         CancellationToken cancellationToken)
     {
-        var zone = ResolveTimeZone(appointment.Clinic?.TimeZoneId);
         var local = TimeZoneInfo.ConvertTimeFromUtc(
             DateTime.SpecifyKind(appointment.StartTimeUtc, DateTimeKind.Utc), zone);
         var zoneName = zone.IsDaylightSavingTime(local)
@@ -633,11 +642,24 @@ public sealed class AppointmentCommunicationProcessor(
     private static string NormalizePhone(string? value) =>
         new((value ?? string.Empty).Where(char.IsDigit).ToArray());
 
-    private static TimeZoneInfo ResolveTimeZone(string? timeZoneId)
+    private static bool TryResolveTimeZone(string? timeZoneId, out TimeZoneInfo timeZone)
     {
-        try { return TimeZoneInfo.FindSystemTimeZoneById(timeZoneId ?? "America/Los_Angeles"); }
-        catch (TimeZoneNotFoundException) { return TimeZoneInfo.Utc; }
-        catch (InvalidTimeZoneException) { return TimeZoneInfo.Utc; }
+        try
+        {
+            timeZone = TimeZoneInfo.FindSystemTimeZoneById(
+                string.IsNullOrWhiteSpace(timeZoneId) ? "America/Los_Angeles" : timeZoneId);
+            return true;
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            timeZone = TimeZoneInfo.Utc;
+            return false;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            timeZone = TimeZoneInfo.Utc;
+            return false;
+        }
     }
 
     private static string PlaceholderHash() =>

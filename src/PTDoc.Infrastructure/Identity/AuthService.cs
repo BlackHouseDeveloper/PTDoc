@@ -273,7 +273,9 @@ public class AuthService : IAuthService
 
         var user = await _context.Users
             .IgnoreQueryFilters()
-            .SingleOrDefaultAsync(item => item.Id == principal.UserId && item.IsActive, cancellationToken);
+            .SingleOrDefaultAsync(item => item.Id == principal.UserId
+                && item.IsActive
+                && !item.MustChangePin, cancellationToken);
         if (user is null)
         {
             return null;

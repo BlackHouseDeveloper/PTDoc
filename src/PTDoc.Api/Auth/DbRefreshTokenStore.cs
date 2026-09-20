@@ -86,7 +86,10 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
         if (user is null
             || !user.IsActive
             || user.MustChangePin
-            || user.LegacyPinGraceEndsAtUtc <= now.UtcDateTime)
+            || (user.ClinicId.HasValue
+                && !user.PinChangedAtUtc.HasValue
+                && (!user.LegacyPinGraceEndsAtUtc.HasValue
+                    || user.LegacyPinGraceEndsAtUtc <= now.UtcDateTime)))
         {
             return null;
         }

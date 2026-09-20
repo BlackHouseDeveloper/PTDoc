@@ -27,6 +27,26 @@ public sealed class TokenServiceTests
         Assert.Equal(10, result.StepUp?.MinimumPinLength);
     }
 
+    [Fact]
+    public async Task CompletePinChangeAsync_PolicyRejectionPreservesRefreshedStepUpState()
+    {
+        using var client = new HttpClient(new StaticResponseHandler(
+            HttpStatusCode.UnprocessableEntity,
+            "{\"status\":\"RequiresPinChange\",\"challengeToken\":\"refreshed-challenge\",\"minimumPinLength\":10,\"message\":\"PIN policy changed.\"}"))
+        {
+            BaseAddress = new Uri("https://localhost")
+        };
+        var service = new TokenService(client);
+
+        var result = await service.CompletePinChangeAsync("stale-challenge", "12345678");
+
+        Assert.Null(result.Tokens);
+        Assert.Equal(PTDoc.Application.Identity.AuthStatus.RequiresPinChange, result.StepUp?.Status);
+        Assert.Equal("refreshed-challenge", result.StepUp?.ChallengeToken);
+        Assert.Equal(10, result.StepUp?.MinimumPinLength);
+        Assert.Equal("PIN policy changed.", result.ErrorMessage);
+    }
+
     private sealed class StaticResponseHandler : HttpMessageHandler
     {
         private readonly HttpStatusCode _statusCode;

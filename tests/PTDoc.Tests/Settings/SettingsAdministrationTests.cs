@@ -1008,6 +1008,40 @@ public sealed class SettingsAdministrationTests
     }
 
     [Fact]
+    public async Task TotpEnrollment_InactiveUserCannotCompletePendingEnrollment()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Inactive MFA Clinic", Slug = $"inactive-mfa-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = $"inactive-mfa-{Guid.NewGuid():N}",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Inactive",
+            LastName = "Enrollment",
+            Role = Roles.Admin,
+            ClinicId = clinic.Id,
+            IsActive = true
+        };
+        context.AddRange(clinic, user);
+        await context.SaveChangesAsync();
+        var time = new MutableTimeProvider(new DateTimeOffset(2026, 9, 20, 18, 0, 0, TimeSpan.Zero));
+        var service = new MfaAuthenticationService(
+            context, new TestSecretProtector(), CreateAuditService().Object, time);
+        var start = await service.BeginEnrollmentAsync(
+            service.CreateChallenge(user.Id, MfaChallengePurpose.Enrollment));
+        var code = ComputeTotp(DecodeBase32(start.Value!.ManualKey), time.GetUtcNow());
+        user.IsActive = false;
+        await context.SaveChangesAsync();
+
+        var result = await service.VerifyEnrollmentAsync(start.Value.EnrollmentChallengeToken, code);
+
+        Assert.Equal(SettingsOperationStatus.Forbidden, result.Status);
+        Assert.Equal("invalid_enrollment_state", result.ErrorCode);
+        Assert.False((await context.UserMfaCredentials.SingleAsync()).IsActive);
+        Assert.Empty(await context.UserMfaRecoveryCodes.ToListAsync());
+    }
+
+    [Fact]
     public async Task TotpRecoveryCodeRegeneration_InvalidatesPriorSet()
     {
         await using var context = CreateContext();
@@ -1510,6 +1544,57 @@ public sealed class SettingsAdministrationTests
         Assert.Empty(await context.Sessions.Where(item => !item.IsRevoked).ToListAsync());
     }
 
+    [Fact]
+    public async Task AuthenticationCompletion_RechecksForcedPinChangeAfterChallengeClaim()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "MFA Completion PIN Clinic", Slug = $"mfa-completion-pin-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = $"mfa-completion-pin-{Guid.NewGuid():N}",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Mfa",
+            LastName = "Pin",
+            Role = Roles.Admin,
+            ClinicId = clinic.Id,
+            IsActive = true
+        };
+        var credential = new UserMfaCredential
+        {
+            User = user,
+            UserId = user.Id,
+            EncryptedSecret = "protected-secret",
+            IsActive = true
+        };
+        context.AddRange(clinic, user, credential);
+        await context.SaveChangesAsync();
+        var mfa = new Mock<IMfaAuthenticationService>();
+        mfa.Setup(service => service.ConsumeAuthenticationCompletionChallengeAsync(
+                "completion-token",
+                It.IsAny<TimeSpan>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                user.MustChangePin = true;
+                await context.SaveChangesAsync();
+                return (MfaChallengePrincipal?)new MfaChallengePrincipal(
+                    user.Id,
+                    MfaChallengePurpose.AuthenticationCompletion,
+                    credential.Id);
+            });
+        var auth = new AuthService(
+            context,
+            NullLogger<AuthService>.Instance,
+            CreateAuthAuditService().Object,
+            mfa.Object,
+            TimeProvider.System);
+
+        var result = await auth.CompleteMfaAsync("completion-token");
+
+        Assert.Null(result);
+        Assert.Empty(await context.Sessions.Where(item => !item.IsRevoked).ToListAsync());
+    }
+
     [Theory]
     [InlineData((int)MfaEnforcementMode.Enforced)]
     [InlineData(999)]
@@ -1695,13 +1780,24 @@ public sealed class SettingsAdministrationTests
             LastActivityAt = DateTime.UtcNow,
             ExpiresAt = DateTime.UtcNow.AddHours(1)
         };
+        var pendingCompletionChallenge = new Session
+        {
+            User = user,
+            UserId = user.Id,
+            TokenHash = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
+            CreatedAt = DateTime.UtcNow,
+            LastActivityAt = null,
+            ExpiresAt = DateTime.UtcNow.AddMinutes(5),
+            IsRevoked = true,
+            RevokedAt = null
+        };
         var refreshToken = new StoredRefreshToken
         {
             Subject = user.Id.ToString(),
             TokenHash = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)),
             ExpiresAtUtc = DateTimeOffset.UtcNow.AddDays(1)
         };
-        context.AddRange(clinic, user, session, refreshToken);
+        context.AddRange(clinic, user, session, pendingCompletionChallenge, refreshToken);
         await context.SaveChangesAsync();
         var service = new SecurityPolicyAdministrationService(context, CreateAuditService().Object);
 
@@ -1715,6 +1811,7 @@ public sealed class SettingsAdministrationTests
         Assert.True(user.MustChangePin);
         Assert.True(session.IsRevoked);
         Assert.NotNull(session.RevokedAt);
+        Assert.False(await context.Sessions.AnyAsync(item => item.Id == pendingCompletionChallenge.Id));
         Assert.True(refreshToken.IsRevoked);
         Assert.NotNull(refreshToken.RevokedAtUtc);
     }
@@ -1798,6 +1895,37 @@ public sealed class SettingsAdministrationTests
         user.LegacyPinGraceEndsAtUtc = DateTime.UtcNow.AddMinutes(-1);
         await context.SaveChangesAsync();
         Assert.Null(await store.GetAsync(mfaToken, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task RefreshTokenStore_UninitializedLegacyPinGraceRejectsExistingToken()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Legacy Refresh Clinic", Slug = $"legacy-refresh-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = $"legacy-refresh-{Guid.NewGuid():N}",
+            PinHash = AuthService.HashPin("1234"),
+            FirstName = "Legacy",
+            LastName = "Refresh",
+            Role = Roles.PT,
+            ClinicId = clinic.Id,
+            IsActive = true,
+            PinChangedAtUtc = null,
+            LegacyPinGraceEndsAtUtc = null
+        };
+        context.AddRange(clinic, user);
+        await context.SaveChangesAsync();
+        var store = new DbRefreshTokenStore(context);
+        const string rawToken = "uninitialized-legacy-refresh-token";
+        await store.StoreAsync(
+            rawToken,
+            new RefreshTokenRecord(user.Id.ToString(), [], DateTimeOffset.UtcNow.AddDays(1)),
+            CancellationToken.None);
+
+        var result = await store.GetAsync(rawToken, CancellationToken.None);
+
+        Assert.Null(result);
     }
 
     [Fact]
@@ -2193,6 +2321,49 @@ public sealed class SettingsAdministrationTests
             It.IsAny<AppointmentReminderDeliveryRequest>(), It.IsAny<CancellationToken>()), Times.Once);
         communication.Verify(service => service.SendAppointmentReminderSmsAsync(
             It.IsAny<AppointmentReminderDeliveryRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task AppointmentReminderProcessor_SuppressesInvalidClinicTimeZone()
+    {
+        await using var context = CreateContext();
+        var now = new DateTimeOffset(2026, 9, 20, 18, 0, 0, TimeSpan.Zero);
+        var clinic = new Clinic
+        {
+            Name = "Invalid Time Zone Clinic",
+            Slug = $"invalid-zone-{Guid.NewGuid():N}",
+            TimeZoneId = "Not/A-Time-Zone"
+        };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var preference = await context.SchedulingPreferences.SingleAsync(item => item.ClinicId == clinic.Id);
+        preference.SendAppointmentReminders = true;
+        preference.ReminderLeadHours = 24;
+        var autoCheckInPolicy = await context.AutoCheckInPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        autoCheckInPolicy.IsEnabled = false;
+        var visitType = await context.VisitTypes.FirstAsync(item => item.ClinicId == clinic.Id);
+        var patient = CreateConsentedPatient(clinic.Id, "invalid-zone@example.invalid", now.UtcDateTime);
+        var appointment = CreateIntakeAppointment(
+            clinic.Id, patient, visitType, now.UtcDateTime.AddHours(24));
+        context.AddRange(
+            patient,
+            appointment,
+            CreateConsentedIntake(clinic.Id, patient, now.UtcDateTime, submittedAt: null));
+        await context.SaveChangesAsync();
+        var communication = new Mock<ICommunicationService>();
+        var processor = new AppointmentCommunicationProcessor(
+            context,
+            communication.Object,
+            Mock.Of<IIntakeCommunicationWorkflow>(),
+            new MutableTimeProvider(now),
+            NullLogger<AppointmentCommunicationProcessor>.Instance);
+
+        await processor.ProcessDueAsync();
+
+        var dispatch = await context.AppointmentReminderDispatches.SingleAsync();
+        Assert.Equal(ReminderDispatchStatus.Suppressed, dispatch.Status);
+        Assert.Equal("invalid_clinic_time_zone", dispatch.LastStatusCode);
+        communication.VerifyNoOtherCalls();
     }
 
     [Fact]
@@ -3212,6 +3383,56 @@ public sealed class SettingsAdministrationTests
             .CheckInAsync(appointment.Id, clinic.Id);
 
         Assert.Equal(AppointmentCheckInStatus.NotFound, result.Status);
+        Assert.Equal(AppointmentStatus.Scheduled, appointment.Status);
+    }
+
+    [Fact]
+    public async Task AppointmentCheckIn_IgnoresPaymentForDifferentPatient()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Payment Patient Clinic", Slug = $"payment-patient-{Guid.NewGuid():N}" };
+        var patient = new Patient
+        {
+            FirstName = "Expected",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = clinic.Id,
+            PayerInfoJson = "{\"copayAmount\":25}",
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        var otherPatient = new Patient
+        {
+            FirstName = "Other",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1991, 1, 1),
+            ClinicId = clinic.Id,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        var appointment = new Appointment
+        {
+            Patient = patient,
+            PatientId = patient.Id,
+            ClinicId = clinic.Id,
+            ClinicalId = Guid.NewGuid(),
+            StartTimeUtc = DateTime.UtcNow.AddHours(1),
+            EndTimeUtc = DateTime.UtcNow.AddHours(2),
+            Status = AppointmentStatus.Scheduled,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        var mismatchedPayment = new AppointmentPaymentTransaction
+        {
+            AppointmentId = appointment.Id,
+            PatientId = otherPatient.Id,
+            Amount = 25,
+            Status = AppointmentPaymentStatus.Succeeded
+        };
+        context.AddRange(clinic, patient, otherPatient, appointment, mismatchedPayment);
+        await context.SaveChangesAsync();
+
+        var result = await new AppointmentCheckInWorkflow(context, TimeProvider.System)
+            .CheckInAsync(appointment.Id, clinic.Id);
+
+        Assert.Equal(AppointmentCheckInStatus.PaymentRequired, result.Status);
         Assert.Equal(AppointmentStatus.Scheduled, appointment.Status);
     }
 

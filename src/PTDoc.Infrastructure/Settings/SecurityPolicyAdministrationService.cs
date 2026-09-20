@@ -159,6 +159,14 @@ public sealed class SecurityPolicyAdministrationService(
             session.RevokedAt = now;
         }
 
+        var pendingCompletionChallenges = await context.Sessions
+            .Where(item => item.UserId == userId
+                && item.IsRevoked
+                && item.RevokedAt == null
+                && item.LastActivityAt == null)
+            .ToListAsync(cancellationToken);
+        context.Sessions.RemoveRange(pendingCompletionChallenges);
+
         var refreshTokenSubject = userId.ToString();
         var refreshTokens = await context.StoredRefreshTokens
             .Where(item => item.Subject == refreshTokenSubject && !item.IsRevoked)

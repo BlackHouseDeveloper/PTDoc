@@ -145,6 +145,62 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
+    public async Task PinChange_PolicyRejectionReturnsRefreshedStepUpContract()
+    {
+        using var client = _factory.CreateUnauthenticatedClient();
+        var username = $"pin-policy-{Guid.NewGuid():N}";
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var clinic = new Clinic
+            {
+                Name = "PIN Policy Clinic",
+                Slug = $"pin-policy-{Guid.NewGuid():N}"
+            };
+            var user = new User
+            {
+                Username = username,
+                PinHash = AuthService.HashPin("12345678"),
+                FirstName = "PIN",
+                LastName = "Policy",
+                Role = Roles.PT,
+                ClinicId = clinic.Id,
+                MustChangePin = true,
+                CreatedAt = DateTime.UtcNow,
+                IsActive = true
+            };
+            db.AddRange(clinic, user);
+            await db.SaveChangesAsync();
+            var policy = await db.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+            policy.MinimumPinLength = 10;
+            await db.SaveChangesAsync();
+        }
+
+        using var loginResponse = await client.PostAsync("/api/v1/auth/pin-login", JsonContent(new
+        {
+            username,
+            pin = "12345678"
+        }));
+        Assert.Equal(HttpStatusCode.Accepted, loginResponse.StatusCode);
+        using var loginPayload = JsonDocument.Parse(await loginResponse.Content.ReadAsStringAsync());
+        var challengeToken = loginPayload.RootElement.GetProperty("challengeToken").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(challengeToken));
+
+        using var response = await client.PostAsync("/api/v1/auth/pin-change", JsonContent(new
+        {
+            challengeToken,
+            newPin = "87654321"
+        }));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(AuthStatus.RequiresPinChange.ToString(), payload.RootElement.GetProperty("status").GetString());
+        Assert.Equal(10, payload.RootElement.GetProperty("minimumPinLength").GetInt32());
+        Assert.False(string.IsNullOrWhiteSpace(payload.RootElement.GetProperty("challengeToken").GetString()));
+    }
+
+    [Fact]
     public async Task LegacyTokenLogin_Failure_WritesAuditWithoutCredentials()
     {
         using var client = _factory.CreateUnauthenticatedClient();

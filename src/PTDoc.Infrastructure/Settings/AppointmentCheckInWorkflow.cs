@@ -42,6 +42,7 @@ public sealed class AppointmentCheckInWorkflow(
         var hasPaid = await context.AppointmentPaymentTransactions
             .IgnoreQueryFilters()
             .AnyAsync(item => item.AppointmentId == appointment.Id
+                && item.PatientId == appointment.PatientId
                 && item.Status == AppointmentPaymentStatus.Succeeded, cancellationToken);
         var normalizedCopay = await context.PatientInsurancePolicies
             .IgnoreQueryFilters()

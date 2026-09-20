@@ -234,7 +234,7 @@ public sealed class MfaAuthenticationService(
         var credential = await context.UserMfaCredentials
             .Include(item => item.User)
             .SingleOrDefaultAsync(item => item.Id == challenge.CredentialId && item.UserId == challenge.UserId, cancellationToken);
-        if (credential?.User is null || credential.IsActive)
+        if (credential?.User is null || !credential.User.IsActive || credential.IsActive)
         {
             return SettingsOperationResult<MfaEnrollmentCompletion>.Forbidden("invalid_enrollment_state");
         }
