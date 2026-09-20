@@ -325,6 +325,12 @@ public sealed class SettingsPersistenceModelMetadataTests
         Assert.Contains("Level", downSql, StringComparison.Ordinal);
         Assert.Contains("LockedMinimum", downSql, StringComparison.Ordinal);
         Assert.Contains("DROP TABLE", downSql, StringComparison.OrdinalIgnoreCase);
+
+        if (activeProvider == "Microsoft.EntityFrameworkCore.SqlServer")
+        {
+            Assert.DoesNotContain(" backup", downSql, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("recovery_backup", downSql, StringComparison.Ordinal);
+        }
     }
 
     [Fact]

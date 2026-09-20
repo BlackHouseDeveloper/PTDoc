@@ -33,11 +33,11 @@ public sealed class LockAdminClinicSettingsRecovery : Migration
     {
         migrationBuilder.Sql("""
             UPDATE permission
-            SET [Level] = backup.[Level],
-                [LockedMinimum] = backup.[LockedMinimum]
+            SET [Level] = recovery_backup.[Level],
+                [LockedMinimum] = recovery_backup.[LockedMinimum]
             FROM [RoleCapabilityPermissions] permission
-            INNER JOIN [LockAdminClinicSettingsRecoveryBackup] backup
-                ON backup.[ClinicId] = permission.[ClinicId]
+            INNER JOIN [LockAdminClinicSettingsRecoveryBackup] recovery_backup
+                ON recovery_backup.[ClinicId] = permission.[ClinicId]
             WHERE permission.[RoleKey] = 'Admin' AND permission.[CapabilityKey] = 28;
 
             DROP TABLE [LockAdminClinicSettingsRecoveryBackup];
