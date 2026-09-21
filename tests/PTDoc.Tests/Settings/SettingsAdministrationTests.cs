@@ -402,8 +402,11 @@ public sealed class SettingsAdministrationTests
         Assert.True(authorizationContext.HasSucceeded);
     }
 
-    [Fact]
-    public async Task LocalJwtSecurityStateValidator_RejectsForcedPinChangeAndMfaReset()
+    [Theory]
+    [InlineData("pin_step_up_jwt")]
+    [InlineData("legacy_jwt")]
+    public async Task LocalJwtSecurityStateValidator_RejectsChangedLocalAuthenticationState(
+        string authenticationType)
     {
         await using var context = CreateContext();
         var clinic = new Clinic { Name = "JWT State Clinic", Slug = $"jwt-state-{Guid.NewGuid():N}" };
@@ -442,7 +445,7 @@ public sealed class SettingsAdministrationTests
             new Claim(PTDocClaimTypes.InternalUserId, user.Id.ToString()),
             new Claim(HttpTenantContextAccessor.ClinicIdClaimType, clinic.Id.ToString()),
             new Claim(ClaimTypes.Role, Roles.Admin),
-            new Claim(PTDocClaimTypes.AuthenticationType, "pin_step_up_jwt"),
+            new Claim(PTDocClaimTypes.AuthenticationType, authenticationType),
             new Claim("amr", "mfa")
         ], "test"));
         var validator = new LocalJwtSecurityStateValidator(context, TimeProvider.System);

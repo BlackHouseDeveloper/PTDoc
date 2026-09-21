@@ -15,10 +15,10 @@ internal sealed class LocalJwtSecurityStateValidator(
         ClaimsPrincipal principal,
         CancellationToken cancellationToken = default)
     {
-        if (!string.Equals(
-                principal.FindFirst(PTDocClaimTypes.AuthenticationType)?.Value,
-                "pin_step_up_jwt",
-                StringComparison.Ordinal))
+        var authenticationType = principal.FindFirst(PTDocClaimTypes.AuthenticationType)?.Value;
+        var isLocalJwt = string.Equals(authenticationType, "pin_step_up_jwt", StringComparison.Ordinal)
+            || string.Equals(authenticationType, "legacy_jwt", StringComparison.Ordinal);
+        if (!isLocalJwt)
         {
             return true;
         }
