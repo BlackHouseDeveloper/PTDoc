@@ -182,7 +182,8 @@ public enum MfaChallengePurpose
 public sealed record MfaChallengePrincipal(
     Guid UserId,
     MfaChallengePurpose Purpose,
-    Guid? CredentialId = null);
+    Guid? CredentialId = null,
+    string? StateBinding = null);
 
 public interface ISettingsSecretProtector
 {
@@ -193,6 +194,8 @@ public interface ISettingsSecretProtector
 public interface IMfaAuthenticationService
 {
     string CreateChallenge(Guid userId, MfaChallengePurpose purpose);
+
+    string CreatePinChangeChallenge(Guid userId, string currentPinHash);
 
     bool TryValidateChallenge(
         string challengeToken,

@@ -167,6 +167,12 @@ public class AuthService : IAuthService
             return null;
         }
 
+        var expectedPinState = CreatePinCredentialBinding(user.PinHash);
+        if (!string.Equals(principal.StateBinding, expectedPinState, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
         var policy = await GetSecurityPolicyAsync(user.ClinicId, cancellationToken);
         var minimumPinLength = PinPolicyRules.NormalizeMinimumLength(policy.MinimumPinLength);
         if (string.IsNullOrEmpty(newPin)
@@ -188,6 +194,7 @@ public class AuthService : IAuthService
         }
 
         var newPinHash = HashPin(newPin);
+        var currentPinHash = user.PinHash;
         var changedAtUtc = _timeProvider.GetUtcNow().UtcDateTime;
         await using var transaction = _context.Database.IsRelational()
             ? await _context.Database.BeginTransactionAsync(cancellationToken)
@@ -197,7 +204,10 @@ public class AuthService : IAuthService
         {
             var claimed = await _context.Users
                 .IgnoreQueryFilters()
-                .Where(item => item.Id == principal.UserId && item.IsActive && item.MustChangePin)
+                .Where(item => item.Id == principal.UserId
+                    && item.IsActive
+                    && item.MustChangePin
+                    && item.PinHash == currentPinHash)
                 .ExecuteUpdateAsync(
                     setters => setters
                         .SetProperty(item => item.PinHash, newPinHash)
@@ -591,9 +601,14 @@ public class AuthService : IAuthService
             Email = user.Email,
             Role = user.Role,
             ClinicId = user.ClinicId,
-            ChallengeToken = _mfaAuthenticationService?.CreateChallenge(user.Id, purpose),
+            ChallengeToken = purpose == MfaChallengePurpose.PinChange
+                ? _mfaAuthenticationService?.CreatePinChangeChallenge(user.Id, user.PinHash)
+                : _mfaAuthenticationService?.CreateChallenge(user.Id, purpose),
             MinimumPinLength = minimumPinLength
         };
+
+    private static string CreatePinCredentialBinding(string pinHash) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(pinHash)));
 
     private async Task<AuthResult> CompleteAuthenticationAsync(
         User user,

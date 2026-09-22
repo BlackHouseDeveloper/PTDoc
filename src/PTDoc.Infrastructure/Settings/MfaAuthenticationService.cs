@@ -24,8 +24,27 @@ public sealed class MfaAuthenticationService(
     private static readonly TimeSpan EnrollmentChallengeLifetime = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(5);
 
-    public string CreateChallenge(Guid userId, MfaChallengePurpose purpose) =>
-        ProtectChallenge(new ChallengePayload(userId, purpose, null));
+    public string CreateChallenge(Guid userId, MfaChallengePurpose purpose)
+    {
+        if (purpose == MfaChallengePurpose.PinChange)
+        {
+            throw new ArgumentException(
+                "PIN-change challenges must be bound to the current credential state.",
+                nameof(purpose));
+        }
+
+        return ProtectChallenge(new ChallengePayload(userId, purpose, null, null));
+    }
+
+    public string CreatePinChangeChallenge(Guid userId, string currentPinHash)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(currentPinHash);
+        return ProtectChallenge(new ChallengePayload(
+            userId,
+            MfaChallengePurpose.PinChange,
+            null,
+            CreatePinCredentialBinding(currentPinHash)));
+    }
 
     public bool TryValidateChallenge(
         string challengeToken,
@@ -41,7 +60,11 @@ public sealed class MfaAuthenticationService(
             return false;
         }
 
-        principal = new MfaChallengePrincipal(payload.UserId, payload.Purpose, payload.CredentialId);
+        principal = new MfaChallengePrincipal(
+            payload.UserId,
+            payload.Purpose,
+            payload.CredentialId,
+            payload.StateBinding);
         return true;
     }
 
@@ -195,7 +218,11 @@ public sealed class MfaAuthenticationService(
         var accountLabel = Uri.EscapeDataString(user.Username);
         var issuer = Uri.EscapeDataString("PTDoc");
         var uri = $"otpauth://totp/PTDoc:{accountLabel}?secret={manualKey}&issuer={issuer}&algorithm=SHA1&digits=6&period={TotpPeriodSeconds}";
-        var enrollmentChallenge = ProtectChallenge(new ChallengePayload(user.Id, MfaChallengePurpose.Enrollment, credential.Id));
+        var enrollmentChallenge = ProtectChallenge(new ChallengePayload(
+            user.Id,
+            MfaChallengePurpose.Enrollment,
+            credential.Id,
+            null));
         using var qrData = QRCodeGenerator.GenerateQrCode(uri, QRCodeGenerator.ECCLevel.Q);
         var qrSvg = new SvgQRCode(qrData).GetGraphic(4);
 
@@ -549,7 +576,8 @@ public sealed class MfaAuthenticationService(
         var token = ProtectChallenge(new ChallengePayload(
             credential.UserId,
             MfaChallengePurpose.AuthenticationCompletion,
-            credential.Id));
+            credential.Id,
+            null));
         var now = timeProvider.GetUtcNow().UtcDateTime;
         context.Sessions.Add(new Session
         {
@@ -572,7 +600,8 @@ public sealed class MfaAuthenticationService(
         var serialized = string.Join('|',
             payload.UserId.ToString("N"),
             ((int)payload.Purpose).ToString(CultureInfo.InvariantCulture),
-            payload.CredentialId?.ToString("N") ?? string.Empty);
+            payload.CredentialId?.ToString("N") ?? string.Empty,
+            payload.StateBinding ?? string.Empty);
         return protector.Protect(ChallengeProtectionPurpose, serialized);
     }
 
@@ -585,7 +614,7 @@ public sealed class MfaAuthenticationService(
         }
 
         var parts = serialized.Split('|');
-        if (parts.Length != 3
+        if (parts.Length is not (3 or 4)
             || !Guid.TryParseExact(parts[0], "N", out var userId)
             || !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var purposeValue)
             || !Enum.IsDefined(typeof(MfaChallengePurpose), purposeValue))
@@ -600,9 +629,20 @@ public sealed class MfaAuthenticationService(
             credentialId = parsedCredentialId;
         }
 
-        payload = new ChallengePayload(userId, (MfaChallengePurpose)purposeValue, credentialId);
+        // Three-part challenges were issued before credential-state binding was
+        // introduced. They remain valid for non-PIN step-up during a rolling
+        // deployment; PIN completion rejects them because their binding is null.
+        var stateBinding = parts.Length == 4 && parts[3].Length > 0 ? parts[3] : null;
+        payload = new ChallengePayload(
+            userId,
+            (MfaChallengePurpose)purposeValue,
+            credentialId,
+            stateBinding);
         return true;
     }
+
+    private static string CreatePinCredentialBinding(string pinHash) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(pinHash)));
 
     private async Task AuditAsync(string eventType, User user, Guid credentialId, CancellationToken cancellationToken)
     {
@@ -671,5 +711,9 @@ public sealed class MfaAuthenticationService(
     private static string NormalizeRecoveryCode(string value) =>
         new(value.Where(char.IsAsciiHexDigit).Select(char.ToUpperInvariant).ToArray());
 
-    private sealed record ChallengePayload(Guid UserId, MfaChallengePurpose Purpose, Guid? CredentialId);
+    private sealed record ChallengePayload(
+        Guid UserId,
+        MfaChallengePurpose Purpose,
+        Guid? CredentialId,
+        string? StateBinding);
 }

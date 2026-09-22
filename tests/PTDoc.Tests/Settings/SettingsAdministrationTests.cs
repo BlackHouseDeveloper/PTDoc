@@ -2279,6 +2279,49 @@ public sealed class SettingsAdministrationTests
     }
 
     [Fact]
+    public async Task PinChangeChallenge_CannotBecomeValidAgainAfterAnotherForcedChange()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "PIN Reforce Clinic", Slug = $"pin-reforce-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = "pin-reforce-admin",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Pin",
+            LastName = "Reforce",
+            Role = Roles.Admin,
+            ClinicId = clinic.Id,
+            IsActive = true,
+            MustChangePin = true
+        };
+        context.AddRange(clinic, user);
+        await context.SaveChangesAsync();
+        var time = new MutableTimeProvider(new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero));
+        var audit = CreateAuthAuditService();
+        var mfa = new MfaAuthenticationService(context, new TestSecretProtector(), audit.Object, time);
+        var auth = new AuthService(context, NullLogger<AuthService>.Instance, audit.Object, mfa, time);
+        var security = new SecurityPolicyAdministrationService(context, CreateAuditService().Object);
+        var login = await auth.AuthenticateAsync(user.Username, "12345678");
+        var originalChallenge = login!.ChallengeToken!;
+
+        var completed = await auth.CompletePinChangeAsync(originalChallenge, "1234567890");
+        Assert.Equal(AuthStatus.Success, completed!.Status);
+        var completedPinHash = user.PinHash;
+
+        var forced = await security.ForcePinChangeAsync(
+            clinic.Id,
+            user.Id,
+            user.Id,
+            "force-pin-after-completion");
+        var replay = await auth.CompletePinChangeAsync(originalChallenge, "0987654321");
+
+        Assert.True(forced.Succeeded);
+        Assert.Null(replay);
+        Assert.Equal(completedPinHash, user.PinHash);
+        Assert.True(user.MustChangePin);
+    }
+
+    [Fact]
     public async Task ExpiredLegacyPinGrace_PersistsRequiredChangeForNextRequest()
     {
         var connectionString = $"Data Source=pin-grace-{Guid.NewGuid():N};Mode=Memory;Cache=Shared";
@@ -2541,7 +2584,7 @@ public sealed class SettingsAdministrationTests
         var auth = new AuthService(context, NullLogger<AuthService>.Instance, audit.Object, mfa, time);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => auth.CompletePinChangeAsync(
-            mfa.CreateChallenge(user.Id, MfaChallengePurpose.PinChange),
+            mfa.CreatePinChangeChallenge(user.Id, user.PinHash),
             "1234567890"));
 
         context.ChangeTracker.Clear();
