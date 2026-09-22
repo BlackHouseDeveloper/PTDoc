@@ -148,18 +148,22 @@ public static class PinAuthEndpoints
         return result is null ? Results.Unauthorized() : Results.Ok(ToResponse(result));
     }
 
-    private static PinLoginResponse ToResponse(AuthResult result) => new()
+    private static PinLoginResponse ToResponse(AuthResult result)
     {
-        Status = result.Status.ToString(),
-        UserId = result.UserId,
-        Username = result.Username,
-        Token = result.Token,
-        ExpiresAt = result.ExpiresAt,
-        Role = result.Role,
-        ClinicId = result.ClinicId,
-        ChallengeToken = result.ChallengeToken,
-        MinimumPinLength = result.MinimumPinLength
-    };
+        var authenticationCompleted = result.Status == AuthStatus.Success;
+        return new PinLoginResponse
+        {
+            Status = result.Status.ToString(),
+            UserId = authenticationCompleted ? result.UserId : null,
+            Username = authenticationCompleted ? result.Username : null,
+            Token = authenticationCompleted ? result.Token : null,
+            ExpiresAt = authenticationCompleted ? result.ExpiresAt : null,
+            Role = authenticationCompleted ? result.Role : null,
+            ClinicId = authenticationCompleted ? result.ClinicId : null,
+            ChallengeToken = result.ChallengeToken,
+            MinimumPinLength = result.MinimumPinLength
+        };
+    }
 
     private static async Task<IResult> Logout(
         HttpContext httpContext,

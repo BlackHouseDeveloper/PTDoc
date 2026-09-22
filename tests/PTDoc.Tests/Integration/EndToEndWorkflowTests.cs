@@ -145,7 +145,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    public async Task PinChange_PolicyRejectionReturnsRefreshedStepUpContract()
+    public async Task PinChange_StepUpOmitsIdentityAndPolicyRejectionRefreshesContract()
     {
         using var client = _factory.CreateUnauthenticatedClient();
         var username = $"pin-policy-{Guid.NewGuid():N}";
@@ -184,6 +184,12 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         }));
         Assert.Equal(HttpStatusCode.Accepted, loginResponse.StatusCode);
         using var loginPayload = JsonDocument.Parse(await loginResponse.Content.ReadAsStringAsync());
+        AssertJsonPropertyIsNullOrAbsent(loginPayload.RootElement, "userId");
+        AssertJsonPropertyIsNullOrAbsent(loginPayload.RootElement, "username");
+        AssertJsonPropertyIsNullOrAbsent(loginPayload.RootElement, "token");
+        AssertJsonPropertyIsNullOrAbsent(loginPayload.RootElement, "expiresAt");
+        AssertJsonPropertyIsNullOrAbsent(loginPayload.RootElement, "role");
+        AssertJsonPropertyIsNullOrAbsent(loginPayload.RootElement, "clinicId");
         var challengeToken = loginPayload.RootElement.GetProperty("challengeToken").GetString();
         Assert.False(string.IsNullOrWhiteSpace(challengeToken));
 
@@ -198,6 +204,12 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         Assert.Equal(AuthStatus.RequiresPinChange.ToString(), payload.RootElement.GetProperty("status").GetString());
         Assert.Equal(10, payload.RootElement.GetProperty("minimumPinLength").GetInt32());
         Assert.False(string.IsNullOrWhiteSpace(payload.RootElement.GetProperty("challengeToken").GetString()));
+    }
+
+    private static void AssertJsonPropertyIsNullOrAbsent(JsonElement element, string propertyName)
+    {
+        Assert.False(element.TryGetProperty(propertyName, out var value)
+            && value.ValueKind != JsonValueKind.Null);
     }
 
     [Fact]
