@@ -278,6 +278,15 @@ public static class AppointmentEndpoints
             });
         }
 
+        var clinicianVisitTypeValidation = ValidateClinicianVisitType(
+            clinician.Role,
+            visitTypeResolution.Value.PtaAllowed,
+            request.VisitTypeId.HasValue ? nameof(request.VisitTypeId) : nameof(request.AppointmentType));
+        if (clinicianVisitTypeValidation is not null)
+        {
+            return clinicianVisitTypeValidation;
+        }
+
         var utcRange = await BuildUtcRangeAsync(
             db, patient.ClinicId, request.AppointmentDate, request.AppointmentTime, request.DurationMinutes, cancellationToken);
         if (utcRange is null)
@@ -438,6 +447,15 @@ public static class AppointmentEndpoints
             });
         }
 
+        var clinicianVisitTypeValidation = ValidateClinicianVisitType(
+            clinician.Role,
+            visitTypeResolution.Value.PtaAllowed,
+            request.VisitTypeId.HasValue ? nameof(request.VisitTypeId) : nameof(request.AppointmentType));
+        if (clinicianVisitTypeValidation is not null)
+        {
+            return clinicianVisitTypeValidation;
+        }
+
         var utcRange = await BuildUtcRangeAsync(
             db, patient.ClinicId, request.AppointmentDate, request.AppointmentTime, request.DurationMinutes, cancellationToken);
         if (utcRange is null)
@@ -560,9 +578,33 @@ public static class AppointmentEndpoints
             return Results.Ok(unchanged);
         }
 
+        var visitTypeResolution = await ResolveVisitTypeAsync(
+            db, appointment.ClinicId, null, request.AppointmentType, cancellationToken);
+        if (visitTypeResolution is null)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.AppointmentType), ["Appointment type is not supported."] }
+            });
+        }
+
+        var clinicianRole = await db.Users.AsNoTracking()
+            .Where(user => user.Id == appointment.ClinicalId && user.ClinicId == appointment.ClinicId)
+            .Select(user => user.Role)
+            .SingleOrDefaultAsync(cancellationToken);
+        var clinicianVisitTypeValidation = ValidateClinicianVisitType(
+            clinicianRole,
+            visitTypeResolution.Value.PtaAllowed,
+            nameof(request.AppointmentType));
+        if (clinicianVisitTypeValidation is not null)
+        {
+            return clinicianVisitTypeValidation;
+        }
+
         var previousAppointmentType = appointment.AppointmentType;
         var modifiedByUserId = identityContext.GetCurrentUserId();
-        appointment.AppointmentType = appointmentType;
+        appointment.AppointmentType = visitTypeResolution.Value.LegacyType;
+        appointment.VisitTypeId = visitTypeResolution.Value.VisitTypeId;
         MarkAppointmentModified(appointment, modifiedByUserId);
 
         try
@@ -1578,7 +1620,7 @@ public static class AppointmentEndpoints
     private static bool TryMapAppointmentType(string appointmentType, out AppointmentType result) =>
         AppointmentTypeCatalog.TryParse(appointmentType, out result);
 
-    private static async Task<(Guid? VisitTypeId, AppointmentType LegacyType)?> ResolveVisitTypeAsync(
+    private static async Task<VisitTypeResolution?> ResolveVisitTypeAsync(
         ApplicationDbContext db,
         Guid? clinicId,
         Guid? visitTypeId,
@@ -1590,7 +1632,12 @@ public static class AppointmentEndpoints
             var visitType = await db.VisitTypes.AsNoTracking().SingleOrDefaultAsync(
                 item => item.Id == visitTypeId.Value && item.ClinicId == clinicId && item.IsActive,
                 cancellationToken);
-            return visitType is null ? null : (visitType.Id, MapVisitTypeToLegacy(visitType.Code));
+            return visitType is null
+                ? null
+                : new VisitTypeResolution(
+                    visitType.Id,
+                    MapVisitTypeToLegacy(visitType.Code),
+                    visitType.PtaAllowed);
         }
 
         if (!TryMapAppointmentType(appointmentType, out var legacyType))
@@ -1605,12 +1652,40 @@ public static class AppointmentEndpoints
             AppointmentType.Discharge => "discharge",
             _ => "follow-up"
         };
-        var persistedId = await db.VisitTypes.AsNoTracking()
+        var persisted = await db.VisitTypes.AsNoTracking()
             .Where(item => item.ClinicId == clinicId && item.Code == legacyCode && item.IsActive)
-            .Select(item => (Guid?)item.Id)
+            .Select(item => new { item.Id, item.PtaAllowed })
             .SingleOrDefaultAsync(cancellationToken);
-        return (persistedId, legacyType);
+        if (persisted is not null)
+        {
+            return new VisitTypeResolution(persisted.Id, legacyType, persisted.PtaAllowed);
+        }
+
+        var canonicalPtaAllowed = SchedulingDefaults.VisitTypes
+            .Single(item => item.Code == legacyCode)
+            .PtaAllowed;
+        return new VisitTypeResolution(null, legacyType, canonicalPtaAllowed);
     }
+
+    private static IResult? ValidateClinicianVisitType(
+        string? clinicianRole,
+        bool ptaAllowed,
+        string fieldName)
+    {
+        if (!IsPtaRole(clinicianRole) || ptaAllowed)
+        {
+            return null;
+        }
+
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            { fieldName, ["The selected visit type is not available for PTA clinicians."] }
+        });
+    }
+
+    private static bool IsPtaRole(string? role) =>
+        string.Equals(role, Roles.PTA, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(role, "Physical Therapist Assistant", StringComparison.OrdinalIgnoreCase);
 
     private static AppointmentType MapVisitTypeToLegacy(string code) => code switch
     {
@@ -1619,6 +1694,11 @@ public static class AppointmentEndpoints
         "discharge" => AppointmentType.Discharge,
         _ => AppointmentType.FollowUp
     };
+
+    private readonly record struct VisitTypeResolution(
+        Guid? VisitTypeId,
+        AppointmentType LegacyType,
+        bool PtaAllowed);
 
     private static async Task<(DateTime StartUtc, DateTime EndUtc)?> BuildUtcRangeAsync(
         ApplicationDbContext db,
