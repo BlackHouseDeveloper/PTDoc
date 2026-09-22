@@ -1250,7 +1250,11 @@ public sealed class SettingsAdministrationTests
         Assert.Equal(10, await context.UserMfaRecoveryCodes.CountAsync());
 
         time.Advance(TimeSpan.FromSeconds(30));
-        var verificationChallenge = service.CreateChallenge(user.Id, MfaChallengePurpose.Verification);
+        var credential = await context.UserMfaCredentials.SingleAsync();
+        var verificationChallenge = service.CreateVerificationChallenge(
+            user.Id,
+            credential.Id,
+            credential.EncryptedSecret);
         var verificationCode = ComputeTotp(DecodeBase32(start.Value.ManualKey), time.GetUtcNow());
         var first = await service.VerifyAsync(verificationChallenge, verificationCode);
         var replay = await service.VerifyAsync(verificationChallenge, verificationCode);
@@ -1329,12 +1333,13 @@ public sealed class SettingsAdministrationTests
         Assert.True(regenerated.Succeeded);
         Assert.Equal(10, regenerated.Value!.RecoveryCodes.Count);
         Assert.Equal(10, await context.UserMfaRecoveryCodes.CountAsync());
+        var credential = await context.UserMfaCredentials.SingleAsync();
 
         var priorResult = await service.RecoverAsync(
-            service.CreateChallenge(user.Id, MfaChallengePurpose.Verification),
+            service.CreateVerificationChallenge(user.Id, credential.Id, credential.EncryptedSecret),
             priorRecoveryCode);
         var newResult = await service.RecoverAsync(
-            service.CreateChallenge(user.Id, MfaChallengePurpose.Verification),
+            service.CreateVerificationChallenge(user.Id, credential.Id, credential.EncryptedSecret),
             regenerated.Value.RecoveryCodes[0]);
 
         Assert.False(priorResult.Succeeded);
@@ -1353,6 +1358,8 @@ public sealed class SettingsAdministrationTests
         var time = new MutableTimeProvider(new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero));
         const string recoveryCode = "ABCD-EF01-2345";
         Guid userId;
+        Guid credentialId;
+        const string encryptedSecret = "unused-for-recovery";
 
         await using (var seed = new ApplicationDbContext(options))
         {
@@ -1372,7 +1379,7 @@ public sealed class SettingsAdministrationTests
             {
                 User = user,
                 UserId = user.Id,
-                EncryptedSecret = "unused-for-recovery",
+                EncryptedSecret = encryptedSecret,
                 IsActive = true,
                 ActivatedAtUtc = time.GetUtcNow().UtcDateTime
             };
@@ -1388,6 +1395,7 @@ public sealed class SettingsAdministrationTests
                     CreatedAtUtc = time.GetUtcNow().UtcDateTime
                 });
             userId = user.Id;
+            credentialId = credential.Id;
             await seed.SaveChangesAsync();
         }
 
@@ -1400,9 +1408,9 @@ public sealed class SettingsAdministrationTests
             secondContext, protector, CreateAuditService().Object, time);
 
         var first = await firstService.RecoverAsync(
-            firstService.CreateChallenge(userId, MfaChallengePurpose.Verification), recoveryCode);
+            firstService.CreateVerificationChallenge(userId, credentialId, encryptedSecret), recoveryCode);
         var second = await secondService.RecoverAsync(
-            secondService.CreateChallenge(userId, MfaChallengePurpose.Verification), recoveryCode);
+            secondService.CreateVerificationChallenge(userId, credentialId, encryptedSecret), recoveryCode);
 
         Assert.True(first.Succeeded);
         Assert.False(second.Succeeded);
@@ -1444,7 +1452,7 @@ public sealed class SettingsAdministrationTests
             new MutableTimeProvider(new DateTimeOffset(2026, 8, 20, 18, 0, 0, TimeSpan.Zero)));
 
         var result = await service.RecoverAsync(
-            service.CreateChallenge(user.Id, MfaChallengePurpose.Verification),
+            service.CreateVerificationChallenge(user.Id, credential.Id, credential.EncryptedSecret),
             null!);
 
         Assert.False(result.Succeeded);
@@ -1656,6 +1664,8 @@ public sealed class SettingsAdministrationTests
         var protector = new TestSecretProtector();
         var secret = RandomNumberGenerator.GetBytes(20);
         Guid userId;
+        Guid credentialId;
+        string encryptedSecret = string.Empty;
 
         await using (var seed = new ApplicationDbContext(options))
         {
@@ -1671,19 +1681,22 @@ public sealed class SettingsAdministrationTests
                 ClinicId = clinic.Id,
                 IsActive = true
             };
+            var seededCredential = new UserMfaCredential
+            {
+                User = user,
+                UserId = user.Id,
+                EncryptedSecret = protector.Protect("totp-secret", Convert.ToBase64String(secret)),
+                IsActive = true,
+                LastAcceptedTimeStep = -1,
+                FailedAttemptCount = 3
+            };
             seed.AddRange(
                 clinic,
                 user,
-                new UserMfaCredential
-                {
-                    User = user,
-                    UserId = user.Id,
-                    EncryptedSecret = protector.Protect("totp-secret", Convert.ToBase64String(secret)),
-                    IsActive = true,
-                    LastAcceptedTimeStep = -1,
-                    FailedAttemptCount = 3
-                });
+                seededCredential);
             userId = user.Id;
+            credentialId = seededCredential.Id;
+            encryptedSecret = seededCredential.EncryptedSecret;
             await seed.SaveChangesAsync();
         }
 
@@ -1697,10 +1710,10 @@ public sealed class SettingsAdministrationTests
         var invalidCode = validCode == "000000" ? "000001" : "000000";
 
         await firstService.VerifyAsync(
-            firstService.CreateChallenge(userId, MfaChallengePurpose.Verification),
+            firstService.CreateVerificationChallenge(userId, credentialId, encryptedSecret),
             invalidCode);
         await secondService.VerifyAsync(
-            secondService.CreateChallenge(userId, MfaChallengePurpose.Verification),
+            secondService.CreateVerificationChallenge(userId, credentialId, encryptedSecret),
             invalidCode);
 
         await using var assertionContext = new ApplicationDbContext(options);
@@ -2007,6 +2020,65 @@ public sealed class SettingsAdministrationTests
         Assert.NotNull(activeSession.RevokedAt);
         Assert.True(refreshToken.IsRevoked);
         Assert.NotNull(refreshToken.RevokedAtUtc);
+    }
+
+    [Fact]
+    public async Task TotpVerificationChallenge_CannotSurviveMfaResetAndReenrollment()
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "MFA Challenge Reset Clinic", Slug = $"mfa-challenge-reset-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = $"mfa-challenge-reset-{Guid.NewGuid():N}",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Mfa",
+            LastName = "Reset",
+            Role = Roles.Admin,
+            ClinicId = clinic.Id,
+            IsActive = true
+        };
+        var protector = new TestSecretProtector();
+        var credential = new UserMfaCredential
+        {
+            User = user,
+            UserId = user.Id,
+            EncryptedSecret = protector.Protect(
+                "totp-secret",
+                Convert.ToBase64String(RandomNumberGenerator.GetBytes(20))),
+            IsActive = true,
+            ActivatedAtUtc = DateTime.UtcNow
+        };
+        context.AddRange(clinic, user, credential);
+        await context.SaveChangesAsync();
+        var time = new MutableTimeProvider(new DateTimeOffset(2026, 9, 22, 18, 0, 0, TimeSpan.Zero));
+        var mfa = new MfaAuthenticationService(context, protector, CreateAuditService().Object, time);
+        var staleChallenge = mfa.CreateVerificationChallenge(
+            user.Id,
+            credential.Id,
+            credential.EncryptedSecret);
+        var security = new SecurityPolicyAdministrationService(context, CreateAuditService().Object);
+
+        var reset = await security.ResetMfaAsync(
+            clinic.Id,
+            user.Id,
+            Guid.NewGuid(),
+            "reset-before-reenrollment");
+        var enrollment = await mfa.BeginEnrollmentAsync(
+            mfa.CreateChallenge(user.Id, MfaChallengePurpose.Enrollment));
+        Assert.True(reset.Succeeded);
+        Assert.True(enrollment.Succeeded);
+        var newSecret = DecodeBase32(enrollment.Value!.ManualKey);
+        var completion = await mfa.VerifyEnrollmentAsync(
+            enrollment.Value.EnrollmentChallengeToken,
+            ComputeTotp(newSecret, time.GetUtcNow()));
+        var staleResult = await mfa.VerifyAsync(
+            staleChallenge,
+            ComputeTotp(newSecret, time.GetUtcNow()));
+
+        Assert.True(completion.Succeeded);
+        Assert.Equal(credential.Id, (await context.UserMfaCredentials.SingleAsync()).Id);
+        Assert.False(staleResult.Succeeded);
+        Assert.Equal("invalid_or_expired_challenge", staleResult.ErrorCode);
     }
 
     [Fact]

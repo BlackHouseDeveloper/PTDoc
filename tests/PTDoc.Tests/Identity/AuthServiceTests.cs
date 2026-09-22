@@ -254,6 +254,59 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task ValidateSessionAsync_LegacyPinGraceExpired_RevokesExistingSession()
+    {
+        await using var context = CreateInMemoryContext();
+        var now = new DateTimeOffset(2026, 9, 22, 12, 0, 0, TimeSpan.Zero);
+        var timeProvider = new MutableTimeProvider(now);
+        const string token = "legacy-pin-grace-session-token";
+        var clinic = new Clinic
+        {
+            Name = "Legacy PIN Session Clinic",
+            Slug = $"legacy-pin-session-{Guid.NewGuid():N}"
+        };
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "legacy-pin-session-user",
+            PinHash = AuthService.HashPin("1234"),
+            FirstName = "Legacy",
+            LastName = "Session",
+            Role = Roles.PT,
+            Clinic = clinic,
+            ClinicId = clinic.Id,
+            IsActive = true,
+            LegacyPinGraceEndsAtUtc = now.UtcDateTime.AddMinutes(5),
+            CreatedAt = now.UtcDateTime
+        };
+        var session = new Session
+        {
+            User = user,
+            UserId = user.Id,
+            TokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))).ToLowerInvariant(),
+            CreatedAt = now.UtcDateTime,
+            LastActivityAt = now.UtcDateTime,
+            ExpiresAt = now.UtcDateTime.AddHours(1)
+        };
+        context.AddRange(clinic, user, session);
+        await context.SaveChangesAsync();
+        var authService = new AuthService(
+            context,
+            NullLogger<AuthService>.Instance,
+            CreateAuditServiceMock(),
+            timeProvider: timeProvider);
+
+        Assert.NotNull(await authService.ValidateSessionAsync(token));
+
+        timeProvider.Advance(TimeSpan.FromMinutes(6));
+        var expired = await authService.ValidateSessionAsync(token);
+
+        Assert.Null(expired);
+        Assert.True(session.IsRevoked);
+        Assert.Equal(timeProvider.GetUtcNow().UtcDateTime, session.RevokedAt!.Value);
+    }
+
+    [Fact]
     public async Task StatefulSessions_DoNotSurviveMfaEnforcementBoundary()
     {
         await using var context = CreateInMemoryContext();

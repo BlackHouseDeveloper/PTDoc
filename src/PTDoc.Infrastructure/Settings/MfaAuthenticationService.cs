@@ -26,10 +26,10 @@ public sealed class MfaAuthenticationService(
 
     public string CreateChallenge(Guid userId, MfaChallengePurpose purpose)
     {
-        if (purpose == MfaChallengePurpose.PinChange)
+        if (purpose is MfaChallengePurpose.PinChange or MfaChallengePurpose.Verification)
         {
             throw new ArgumentException(
-                "PIN-change challenges must be bound to the current credential state.",
+                "PIN-change and verification challenges must be bound to the current credential state.",
                 nameof(purpose));
         }
 
@@ -44,6 +44,19 @@ public sealed class MfaAuthenticationService(
             MfaChallengePurpose.PinChange,
             null,
             CreatePinCredentialBinding(currentPinHash)));
+    }
+
+    public string CreateVerificationChallenge(
+        Guid userId,
+        Guid credentialId,
+        string currentEncryptedSecret)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(currentEncryptedSecret);
+        return ProtectChallenge(new ChallengePayload(
+            userId,
+            MfaChallengePurpose.Verification,
+            credentialId,
+            CreateCredentialStateBinding(currentEncryptedSecret)));
     }
 
     public bool TryValidateChallenge(
@@ -382,17 +395,26 @@ public sealed class MfaAuthenticationService(
         CancellationToken cancellationToken)
     {
         if (!TryReadChallenge(challengeToken, LoginChallengeLifetime, out var challenge)
-            || challenge.Purpose != MfaChallengePurpose.Verification)
+            || challenge.Purpose != MfaChallengePurpose.Verification
+            || challenge.CredentialId is null
+            || challenge.StateBinding is null)
         {
             return new MfaVerificationResult(false, null, "invalid_or_expired_challenge");
         }
 
         var credential = await context.UserMfaCredentials
             .Include(item => item.User)
-            .SingleOrDefaultAsync(item => item.UserId == challenge.UserId && item.IsActive, cancellationToken);
-        if (credential?.User is null)
+            .SingleOrDefaultAsync(item => item.Id == challenge.CredentialId.Value
+                && item.UserId == challenge.UserId
+                && item.IsActive,
+                cancellationToken);
+        if (credential?.User is null
+            || !string.Equals(
+                challenge.StateBinding,
+                CreateCredentialStateBinding(credential.EncryptedSecret),
+                StringComparison.Ordinal))
         {
-            return new MfaVerificationResult(false, null, "mfa_not_enrolled");
+            return new MfaVerificationResult(false, null, "invalid_or_expired_challenge");
         }
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -630,8 +652,8 @@ public sealed class MfaAuthenticationService(
         }
 
         // Three-part challenges were issued before credential-state binding was
-        // introduced. They remain valid for non-PIN step-up during a rolling
-        // deployment; PIN completion rejects them because their binding is null.
+        // introduced. They remain readable during a rolling deployment, while
+        // PIN completion and MFA verification reject them because their binding is null.
         var stateBinding = parts.Length == 4 && parts[3].Length > 0 ? parts[3] : null;
         payload = new ChallengePayload(
             userId,
@@ -642,7 +664,10 @@ public sealed class MfaAuthenticationService(
     }
 
     private static string CreatePinCredentialBinding(string pinHash) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(pinHash)));
+        CreateCredentialStateBinding(pinHash);
+
+    private static string CreateCredentialStateBinding(string credentialState) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(credentialState)));
 
     private async Task AuditAsync(string eventType, User user, Guid credentialId, CancellationToken cancellationToken)
     {

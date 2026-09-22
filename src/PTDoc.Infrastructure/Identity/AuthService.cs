@@ -339,6 +339,15 @@ public class AuthService : IAuthService
             return null;
         }
 
+        if (session.User.ClinicId.HasValue
+            && !session.User.PinChangedAtUtc.HasValue
+            && (!session.User.LegacyPinGraceEndsAtUtc.HasValue
+                || session.User.LegacyPinGraceEndsAtUtc <= now))
+        {
+            await RevokeSessionAsync(session, now, cancellationToken);
+            return null;
+        }
+
         ClinicSecurityPolicy? policy = null;
         if (session.User.ClinicId is { } clinicId)
         {
@@ -568,12 +577,18 @@ public class AuthService : IAuthService
             now);
         if (isMfaEnforced)
         {
-            var enrolled = await _context.UserMfaCredentials
-                .AnyAsync(item => item.UserId == user.Id && item.IsActive, cancellationToken);
-            return ChallengeResult(
-                user,
-                enrolled ? AuthStatus.RequiresMfaVerification : AuthStatus.RequiresMfaEnrollment,
-                enrolled ? MfaChallengePurpose.Verification : MfaChallengePurpose.Enrollment);
+            var credential = await _context.UserMfaCredentials
+                .Where(item => item.UserId == user.Id && item.IsActive)
+                .Select(item => new { item.Id, item.EncryptedSecret })
+                .SingleOrDefaultAsync(cancellationToken);
+            return credential is null
+                ? ChallengeResult(user, AuthStatus.RequiresMfaEnrollment, MfaChallengePurpose.Enrollment)
+                : ChallengeResult(
+                    user,
+                    AuthStatus.RequiresMfaVerification,
+                    MfaChallengePurpose.Verification,
+                    credentialId: credential.Id,
+                    credentialState: credential.EncryptedSecret);
         }
 
         return await CompleteAuthenticationAsync(
@@ -593,7 +608,9 @@ public class AuthService : IAuthService
         User user,
         AuthStatus status,
         MfaChallengePurpose purpose,
-        int? minimumPinLength = null) => new()
+        int? minimumPinLength = null,
+        Guid? credentialId = null,
+        string? credentialState = null) => new()
         {
             Status = status,
             UserId = user.Id,
@@ -601,10 +618,25 @@ public class AuthService : IAuthService
             Email = user.Email,
             Role = user.Role,
             ClinicId = user.ClinicId,
-            ChallengeToken = purpose == MfaChallengePurpose.PinChange
-                ? _mfaAuthenticationService?.CreatePinChangeChallenge(user.Id, user.PinHash)
-                : _mfaAuthenticationService?.CreateChallenge(user.Id, purpose),
+            ChallengeToken = CreateChallenge(user, purpose, credentialId, credentialState),
             MinimumPinLength = minimumPinLength
+        };
+
+    private string? CreateChallenge(
+        User user,
+        MfaChallengePurpose purpose,
+        Guid? credentialId,
+        string? credentialState) => purpose switch
+        {
+            MfaChallengePurpose.PinChange =>
+                _mfaAuthenticationService?.CreatePinChangeChallenge(user.Id, user.PinHash),
+            MfaChallengePurpose.Verification when credentialId.HasValue && credentialState is not null =>
+                _mfaAuthenticationService?.CreateVerificationChallenge(
+                    user.Id,
+                    credentialId.Value,
+                    credentialState),
+            MfaChallengePurpose.Verification => null,
+            _ => _mfaAuthenticationService?.CreateChallenge(user.Id, purpose)
         };
 
     private static string CreatePinCredentialBinding(string pinHash) =>

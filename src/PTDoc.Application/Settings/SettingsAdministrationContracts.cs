@@ -197,6 +197,8 @@ public interface IMfaAuthenticationService
 
     string CreatePinChangeChallenge(Guid userId, string currentPinHash);
 
+    string CreateVerificationChallenge(Guid userId, Guid credentialId, string currentEncryptedSecret);
+
     bool TryValidateChallenge(
         string challengeToken,
         MfaChallengePurpose purpose,
