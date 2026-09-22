@@ -32,6 +32,21 @@ public sealed class DeliveryResult
     public int RetryCount { get; init; }
 }
 
+/// <summary>
+/// Signals that the provider accepted a delivery but a later audit write failed.
+/// Callers must not retry the provider send solely because of this exception.
+/// </summary>
+public sealed class DeliveryAcceptedAuditException : Exception
+{
+    public DeliveryAcceptedAuditException(DeliveryResult deliveryResult, Exception innerException)
+        : base("The provider accepted the delivery, but its audit record could not be persisted.", innerException)
+    {
+        DeliveryResult = deliveryResult;
+    }
+
+    public DeliveryResult DeliveryResult { get; }
+}
+
 public sealed record ContactNormalizationResult(
     bool Succeeded,
     string NormalizedValue,
@@ -61,6 +76,7 @@ public sealed class IntakeLinkDeliveryRequest
     public string Recipient { get; init; } = string.Empty;
     public string InviteUrl { get; init; } = string.Empty;
     public DateTimeOffset ExpiresAtUtc { get; init; }
+    public string? TemplateKey { get; init; }
     public string? CorrelationId { get; init; }
 }
 
@@ -72,6 +88,16 @@ public sealed class IntakeOtpDeliveryRequest
     public string Recipient { get; init; } = string.Empty;
     public string OtpCode { get; init; } = string.Empty;
     public int ExpiresInMinutes { get; init; }
+    public string? CorrelationId { get; init; }
+}
+
+public sealed class AppointmentReminderDeliveryRequest
+{
+    public Guid AppointmentId { get; init; }
+    public Guid PatientId { get; init; }
+    public Guid ClinicId { get; init; }
+    public string Recipient { get; init; } = string.Empty;
+    public string AppointmentLocalTime { get; init; } = string.Empty;
     public string? CorrelationId { get; init; }
 }
 
@@ -132,6 +158,7 @@ public sealed class PasswordResetTokenValidationRequest
 public sealed class PasswordResetTokenValidationResult
 {
     public bool IsValid { get; init; }
+    public int? MinimumPinLength { get; init; }
 }
 
 public sealed class PasswordResetCompletionResult
@@ -139,6 +166,7 @@ public sealed class PasswordResetCompletionResult
     public bool Succeeded { get; init; }
     public PasswordResetCompletionStatus Status { get; init; }
     public string? SafeErrorMessage { get; init; }
+    public int? MinimumPinLength { get; init; }
 }
 
 public enum PasswordResetCompletionStatus

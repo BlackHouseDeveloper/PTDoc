@@ -66,7 +66,7 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
     public async Task<IntakeInviteLinkResult> CreateInviteAsync(Guid intakeId, CancellationToken cancellationToken = default)
     {
         var intake = await _db.IntakeForms
-            .Include(form => form.Patient)
+            .AsNoTracking()
             .FirstOrDefaultAsync(form => form.Id == intakeId, cancellationToken);
 
         if (intake is null)
@@ -117,8 +117,76 @@ public sealed class JwtIntakeInviteService : IIntakeInviteService
                 new Claim(InviteSecretClaim, rawSecret)
             ]);
 
-        intake.InviteToken = token;
-        await _db.SaveChangesAsync(cancellationToken);
+        if (_db.Database.IsRelational())
+        {
+            var claimed = await _db.IntakeForms
+                .Where(form => form.Id == intake.Id
+                    && !form.IsLocked
+                    && !form.SubmittedAt.HasValue
+                    && (form.InviteToken == null
+                        || form.InviteToken == string.Empty
+                        || !form.ExpiresAt.HasValue
+                        || form.ExpiresAt <= now.UtcDateTime
+                        || form.AccessToken == string.Empty))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(form => form.AccessToken, HashInviteSecret(rawSecret))
+                    .SetProperty(form => form.ExpiresAt, expiry.UtcDateTime)
+                    .SetProperty(form => form.InviteToken, token),
+                    cancellationToken);
+            if (claimed == 0)
+            {
+                var current = await _db.IntakeForms
+                    .AsNoTracking()
+                    .SingleOrDefaultAsync(form => form.Id == intake.Id, cancellationToken);
+                if (current is null)
+                {
+                    return new IntakeInviteLinkResult(false, intake.Id, intake.PatientId, null, null, "Intake record was not found.");
+                }
+
+                if (current.IsLocked || current.SubmittedAt.HasValue)
+                {
+                    return new IntakeInviteLinkResult(false, current.Id, current.PatientId, null, null, "Submitted or locked intakes cannot receive invite links.");
+                }
+
+                if (!string.IsNullOrWhiteSpace(current.InviteToken)
+                    && current.ExpiresAt.HasValue
+                    && current.ExpiresAt.Value > now.UtcDateTime
+                    && !string.IsNullOrWhiteSpace(current.AccessToken))
+                {
+                    return new IntakeInviteLinkResult(
+                        true,
+                        current.Id,
+                        current.PatientId,
+                        BuildInviteUrl(baseUrl, current.PatientId, current.InviteToken),
+                        new DateTimeOffset(DateTime.SpecifyKind(current.ExpiresAt.Value, DateTimeKind.Utc)),
+                        null);
+                }
+
+                return new IntakeInviteLinkResult(false, current.Id, current.PatientId, null, null, "Unable to claim an active intake invite link.");
+            }
+        }
+        else
+        {
+            var tracked = await _db.IntakeForms.SingleAsync(form => form.Id == intake.Id, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(tracked.InviteToken)
+                && tracked.ExpiresAt.HasValue
+                && tracked.ExpiresAt.Value > now.UtcDateTime
+                && !string.IsNullOrWhiteSpace(tracked.AccessToken))
+            {
+                return new IntakeInviteLinkResult(
+                    true,
+                    tracked.Id,
+                    tracked.PatientId,
+                    BuildInviteUrl(baseUrl, tracked.PatientId, tracked.InviteToken),
+                    new DateTimeOffset(DateTime.SpecifyKind(tracked.ExpiresAt.Value, DateTimeKind.Utc)),
+                    null);
+            }
+
+            tracked.AccessToken = HashInviteSecret(rawSecret);
+            tracked.ExpiresAt = expiry.UtcDateTime;
+            tracked.InviteToken = token;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
 
         var inviteUrl = BuildInviteUrl(baseUrl, intake.PatientId, token);
 

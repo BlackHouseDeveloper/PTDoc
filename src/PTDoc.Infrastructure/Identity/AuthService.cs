@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Settings;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using System.Security.Cryptography;
@@ -19,16 +20,25 @@ public class AuthService : IAuthService
     private readonly ApplicationDbContext _context;
     private readonly ILogger<AuthService> _logger;
     private readonly IAuditService _auditService;
+    private readonly IMfaAuthenticationService? _mfaAuthenticationService;
+    private readonly TimeProvider _timeProvider;
 
     // HIPAA-compliant session timeouts
-    private static readonly TimeSpan InactivityTimeout = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan AbsoluteTimeout = TimeSpan.FromHours(8);
+    private static readonly TimeSpan AuthenticationChallengeLifetime = TimeSpan.FromMinutes(5);
 
-    public AuthService(ApplicationDbContext context, ILogger<AuthService> logger, IAuditService auditService)
+    public AuthService(
+        ApplicationDbContext context,
+        ILogger<AuthService> logger,
+        IAuditService auditService,
+        IMfaAuthenticationService? mfaAuthenticationService = null,
+        TimeProvider? timeProvider = null)
     {
         _context = context;
         _logger = logger;
         _auditService = auditService;
+        _mfaAuthenticationService = mfaAuthenticationService;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<AuthResult?> AuthenticateAsync(
@@ -36,7 +46,8 @@ public class AuthService : IAuthService
         string pin,
         string? ipAddress = null,
         string? userAgent = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        AuthSessionMode sessionMode = AuthSessionMode.Stateful)
     {
         var attemptedAt = DateTime.UtcNow;
         var normalizedIdentifier = username.Trim();
@@ -76,27 +87,6 @@ public class AuthService : IAuthService
                 return null;
             }
 
-            if (!user.IsActive)
-            {
-                // Log failed attempt - user inactive
-                await LogLoginAttemptAsync(normalizedIdentifier, user.Id, false, ipAddress, userAgent,
-                    "User account is inactive", attemptedAt, cancellationToken);
-                await _context.SaveChangesAsync(cancellationToken);
-                await _auditService.LogAuthEventAsync(
-                    AuditEvent.LoginFailed(ipAddress, "AccountInactive"), cancellationToken);
-
-                return new AuthResult
-                {
-                    Status = AuthStatus.PendingApproval,
-                    UserId = user.Id,
-                    Username = user.Username,
-                    Token = string.Empty,
-                    ExpiresAt = DateTime.UtcNow,
-                    Role = user.Role,
-                    ClinicId = user.ClinicId
-                };
-            }
-
             // Verify PIN using BCrypt
             bool isValidPin = BCrypt.Net.BCrypt.Verify(pin, user.PinHash);
 
@@ -111,50 +101,37 @@ public class AuthService : IAuthService
                 return null;
             }
 
-            // Generate session token
-            var token = GenerateSecureToken();
-            var tokenHash = HashToken(token);
-            var now = DateTime.UtcNow;
-
-            // Create session
-            var session = new Session
+            if (!user.IsActive)
             {
-                Id = Guid.NewGuid(),
-                UserId = user.Id,
-                TokenHash = tokenHash,
-                CreatedAt = now,
-                LastActivityAt = now,
-                ExpiresAt = now + AbsoluteTimeout,
-                IsRevoked = false
-            };
+                // Account state is disclosed only after the caller proves knowledge
+                // of the credential; otherwise inactive usernames become enumerable.
+                await LogLoginAttemptAsync(normalizedIdentifier, user.Id, false, ipAddress, userAgent,
+                    "User account is inactive", attemptedAt, cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
+                await _auditService.LogAuthEventAsync(
+                    AuditEvent.LoginFailed(ipAddress, "AccountInactive"), cancellationToken);
 
-            _context.Sessions.Add(session);
+                return new AuthResult
+                {
+                    Status = AuthStatus.PendingApproval,
+                    UserId = user.Id,
+                    Username = user.Username,
+                    Email = user.Email,
+                    Token = string.Empty,
+                    ExpiresAt = DateTime.UtcNow,
+                    Role = user.Role,
+                    ClinicId = user.ClinicId
+                };
+            }
 
-            // Update user last login
-            user.LastLoginAt = now;
-
-            // Log successful attempt
-            await LogLoginAttemptAsync(normalizedIdentifier, user.Id, true, ipAddress, userAgent,
-                null, attemptedAt, cancellationToken);
-
-            await _context.SaveChangesAsync(cancellationToken);
-
-            _logger.LogInformation("User {UserId} logged in successfully", user.Id);
-
-            // Emit structured audit event for successful login
-            await _auditService.LogAuthEventAsync(
-                AuditEvent.LoginSuccess(user.Id, ipAddress), cancellationToken);
-
-            return new AuthResult
-            {
-                Status = AuthStatus.Success,
-                UserId = user.Id,
-                Username = user.Username,
-                Token = token,
-                ExpiresAt = session.ExpiresAt,
-                Role = user.Role,
-                ClinicId = user.ClinicId
-            };
+            return await ContinueAfterPrimaryAsync(
+                user,
+                pin,
+                ipAddress,
+                userAgent,
+                attemptedAt,
+                sessionMode,
+                cancellationToken);
         }
         catch (Exception ex)
         {
@@ -163,18 +140,198 @@ public class AuthService : IAuthService
         }
     }
 
+    public async Task<AuthResult?> CompletePinChangeAsync(
+        string challengeToken,
+        string newPin,
+        string? ipAddress = null,
+        string? userAgent = null,
+        CancellationToken cancellationToken = default,
+        AuthSessionMode sessionMode = AuthSessionMode.Stateful)
+    {
+        if (_mfaAuthenticationService is null || !_mfaAuthenticationService.TryValidateChallenge(
+                challengeToken,
+                MfaChallengePurpose.PinChange,
+                AuthenticationChallengeLifetime,
+                out var principal))
+        {
+            return null;
+        }
+
+        var user = await _context.Users
+            .IgnoreQueryFilters()
+            .SingleOrDefaultAsync(
+                item => item.Id == principal.UserId && item.IsActive && item.MustChangePin,
+                cancellationToken);
+        if (user is null)
+        {
+            return null;
+        }
+
+        var expectedPinState = CreatePinCredentialBinding(user.PinHash);
+        if (!string.Equals(principal.StateBinding, expectedPinState, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var policy = await GetSecurityPolicyAsync(user.ClinicId, cancellationToken);
+        var minimumPinLength = PinPolicyRules.NormalizeMinimumLength(policy.MinimumPinLength);
+        if (string.IsNullOrEmpty(newPin)
+            || newPin.Length < minimumPinLength
+            || newPin.Length > PinPolicyRules.MaximumLength
+            || newPin.Any(character => !char.IsDigit(character)))
+        {
+            return new AuthResult
+            {
+                Status = AuthStatus.RequiresPinChange,
+                UserId = user.Id,
+                Username = user.Username,
+                Email = user.Email,
+                Role = user.Role,
+                ClinicId = user.ClinicId,
+                ChallengeToken = challengeToken,
+                MinimumPinLength = minimumPinLength
+            };
+        }
+
+        var newPinHash = HashPin(newPin);
+        var currentPinHash = user.PinHash;
+        var changedAtUtc = _timeProvider.GetUtcNow().UtcDateTime;
+        await using var transaction = _context.Database.IsRelational()
+            ? await _context.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+
+        if (_context.Database.IsRelational())
+        {
+            var claimed = await _context.Users
+                .IgnoreQueryFilters()
+                .Where(item => item.Id == principal.UserId
+                    && item.IsActive
+                    && item.MustChangePin
+                    && item.PinHash == currentPinHash)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(item => item.PinHash, newPinHash)
+                        .SetProperty(item => item.MustChangePin, false)
+                        .SetProperty(item => item.PinChangedAtUtc, changedAtUtc)
+                        .SetProperty(item => item.LegacyPinGraceEndsAtUtc, (DateTime?)null),
+                    cancellationToken);
+            if (claimed != 1)
+            {
+                return null;
+            }
+
+            await _context.Entry(user).ReloadAsync(cancellationToken);
+        }
+        else
+        {
+            user.PinHash = newPinHash;
+            user.MustChangePin = false;
+            user.PinChangedAtUtc = changedAtUtc;
+            user.LegacyPinGraceEndsAtUtc = null;
+        }
+
+        await _auditService.LogAuthEventAsync(new AuditEvent
+        {
+            EventType = "PinChanged",
+            UserId = user.Id,
+            EntityType = nameof(User),
+            EntityId = user.Id,
+            Metadata = new Dictionary<string, object>
+            {
+                ["clinicId"] = user.ClinicId?.ToString() ?? "none",
+                ["reasonCode"] = "authentication_required_change"
+            }
+        }, cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        return await ContinueAfterPinComplianceAsync(
+            user,
+            policy,
+            ipAddress,
+            userAgent,
+            sessionMode,
+            cancellationToken);
+    }
+
+    public async Task<AuthResult?> CompleteMfaAsync(
+        string completionToken,
+        string? ipAddress = null,
+        string? userAgent = null,
+        CancellationToken cancellationToken = default,
+        AuthSessionMode sessionMode = AuthSessionMode.Stateful)
+    {
+        if (_mfaAuthenticationService is null)
+        {
+            return null;
+        }
+
+        await using var transaction = _context.Database.IsRelational()
+            ? await _context.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+        var principal = await _mfaAuthenticationService.ConsumeAuthenticationCompletionChallengeAsync(
+            completionToken,
+            AuthenticationChallengeLifetime,
+            cancellationToken);
+        if (principal is null)
+        {
+            return null;
+        }
+
+        var user = await _context.Users
+            .IgnoreQueryFilters()
+            .SingleOrDefaultAsync(item => item.Id == principal.UserId
+                && item.IsActive
+                && !item.MustChangePin, cancellationToken);
+        if (user is null)
+        {
+            return null;
+        }
+
+        var credentialIsStillCurrent = principal.CredentialId is { } credentialId
+            && await _context.UserMfaCredentials
+                .AsNoTracking()
+                .AnyAsync(item => item.Id == credentialId
+                    && item.UserId == principal.UserId
+                    && item.IsActive,
+                    cancellationToken);
+        if (!credentialIsStillCurrent)
+        {
+            return null;
+        }
+
+        var result = await CompleteAuthenticationAsync(
+            user,
+            ipAddress,
+            userAgent,
+            sessionMode,
+            cancellationToken,
+            mfaSatisfied: true);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+        return result;
+    }
+
     public async Task<SessionInfo?> ValidateSessionAsync(
         string token,
         CancellationToken cancellationToken = default)
     {
         var tokenHash = HashToken(token);
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
 
         var session = await _context.Sessions
             .Include(s => s.User)
             .Where(s => s.TokenHash == tokenHash
                 && !s.IsRevoked
-                && s.ExpiresAt > now)
+                && s.ExpiresAt > now
+                && s.User != null
+                && s.User.IsActive
+                && !s.User.MustChangePin)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (session == null || session.User == null)
@@ -182,14 +339,52 @@ public class AuthService : IAuthService
             return null;
         }
 
-        // Check inactivity timeout
+        if (session.User.ClinicId.HasValue
+            && !session.User.PinChangedAtUtc.HasValue
+            && (!session.User.LegacyPinGraceEndsAtUtc.HasValue
+                || session.User.LegacyPinGraceEndsAtUtc <= now))
+        {
+            await RevokeSessionAsync(session, now, cancellationToken);
+            return null;
+        }
+
+        ClinicSecurityPolicy? policy = null;
+        if (session.User.ClinicId is { } clinicId)
+        {
+            policy = await _context.ClinicSecurityPolicies
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(item => item.ClinicId == clinicId, cancellationToken);
+            if (policy is null)
+            {
+                await RevokeSessionAsync(session, now, cancellationToken);
+                return null;
+            }
+
+            if (MfaPolicyRules.RequiresMfa(policy, now))
+            {
+                var effectiveAtUtc = policy.MfaEffectiveAtUtc;
+                var credentialIsActive = await _context.UserMfaCredentials
+                    .AsNoTracking()
+                    .AnyAsync(item => item.UserId == session.UserId && item.IsActive, cancellationToken);
+                if (!effectiveAtUtc.HasValue
+                    || session.CreatedAt < effectiveAtUtc.Value
+                    || !credentialIsActive)
+                {
+                    await RevokeSessionAsync(session, now, cancellationToken);
+                    return null;
+                }
+            }
+        }
+
+        var inactivityMinutes = policy?.SessionInactivityMinutes ?? 15;
+
+        // Check clinic-configured inactivity timeout
         var lastActivity = session.LastActivityAt ?? session.CreatedAt;
-        if (now - lastActivity > InactivityTimeout)
+        if (now - lastActivity > TimeSpan.FromMinutes(Math.Clamp(inactivityMinutes, 5, 60)))
         {
             // Session expired due to inactivity
-            session.IsRevoked = true;
-            session.RevokedAt = now;
-            await _context.SaveChangesAsync(cancellationToken);
+            await RevokeSessionAsync(session, now, cancellationToken);
 
             _logger.LogInformation("Session expired due to inactivity for user {UserId}", session.UserId);
             return null;
@@ -208,6 +403,16 @@ public class AuthService : IAuthService
             LastActivityAt = session.LastActivityAt ?? session.CreatedAt,
             ClinicId = session.User.ClinicId
         };
+    }
+
+    private async Task RevokeSessionAsync(
+        Session session,
+        DateTime revokedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        session.IsRevoked = true;
+        session.RevokedAt = revokedAtUtc;
+        await _context.SaveChangesAsync(cancellationToken);
     }
 
     public async Task LogoutAsync(string token, CancellationToken cancellationToken = default)
@@ -271,17 +476,259 @@ public class AuthService : IAuthService
             .Where(s => !s.IsRevoked && s.ExpiresAt < now)
             .ToListAsync(cancellationToken);
 
+        var expiredAuthenticationChallenges = await _context.Sessions
+            .Where(s => s.IsRevoked
+                && s.RevokedAt == null
+                && s.LastActivityAt == null
+                && s.ExpiresAt < now)
+            .ToListAsync(cancellationToken);
+
         foreach (var session in expiredSessions)
         {
             session.IsRevoked = true;
             session.RevokedAt = now;
         }
 
-        if (expiredSessions.Any())
+        if (expiredAuthenticationChallenges.Count > 0)
+        {
+            _context.Sessions.RemoveRange(expiredAuthenticationChallenges);
+        }
+
+        if (expiredSessions.Count > 0 || expiredAuthenticationChallenges.Count > 0)
         {
             await _context.SaveChangesAsync(cancellationToken);
-            _logger.LogInformation("Cleaned up {Count} expired sessions", expiredSessions.Count);
+            _logger.LogInformation(
+                "Cleaned up {SessionCount} expired sessions and {ChallengeCount} authentication challenges",
+                expiredSessions.Count,
+                expiredAuthenticationChallenges.Count);
         }
+    }
+
+    private async Task<AuthResult> ContinueAfterPrimaryAsync(
+        User user,
+        string suppliedPin,
+        string? ipAddress,
+        string? userAgent,
+        DateTime attemptedAt,
+        AuthSessionMode sessionMode,
+        CancellationToken cancellationToken)
+    {
+        var policy = await GetSecurityPolicyAsync(user.ClinicId, cancellationToken);
+        var minimumPinLength = PinPolicyRules.NormalizeMinimumLength(policy.MinimumPinLength);
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+        if (suppliedPin.Length < minimumPinLength)
+        {
+            if (suppliedPin.Length == PinPolicyRules.LegacyGrandfatheredLength)
+            {
+                if (!user.LegacyPinGraceEndsAtUtc.HasValue)
+                {
+                    // Anchor the migration window to the clinic policy rollout, not to
+                    // an individual user's next login. Dormant legacy accounts must not
+                    // receive a fresh weak-PIN window months after deployment.
+                    user.LegacyPinGraceEndsAtUtc = policy.CreatedAtUtc.AddDays(14);
+                    await _context.SaveChangesAsync(cancellationToken);
+                }
+
+                if (user.LegacyPinGraceEndsAtUtc <= now)
+                {
+                    user.MustChangePin = true;
+                    await _context.SaveChangesAsync(cancellationToken);
+                }
+            }
+            else if (!user.MustChangePin)
+            {
+                user.MustChangePin = true;
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+        }
+
+        if (user.MustChangePin)
+        {
+            return ChallengeResult(
+                user,
+                AuthStatus.RequiresPinChange,
+                MfaChallengePurpose.PinChange,
+                minimumPinLength);
+        }
+
+        return await ContinueAfterPinComplianceAsync(
+            user,
+            policy,
+            ipAddress,
+            userAgent,
+            sessionMode,
+            cancellationToken,
+            attemptedAt);
+    }
+
+    private async Task<AuthResult> ContinueAfterPinComplianceAsync(
+        User user,
+        ClinicSecurityPolicy policy,
+        string? ipAddress,
+        string? userAgent,
+        AuthSessionMode sessionMode,
+        CancellationToken cancellationToken,
+        DateTime? attemptedAt = null)
+    {
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+        var isMfaEnforced = MfaPolicyRules.RequiresMfa(
+            policy.MfaEnforcementMode,
+            policy.MfaEffectiveAtUtc,
+            now);
+        if (isMfaEnforced)
+        {
+            var credential = await _context.UserMfaCredentials
+                .Where(item => item.UserId == user.Id && item.IsActive)
+                .Select(item => new { item.Id, item.EncryptedSecret })
+                .SingleOrDefaultAsync(cancellationToken);
+            return credential is null
+                ? ChallengeResult(user, AuthStatus.RequiresMfaEnrollment, MfaChallengePurpose.Enrollment)
+                : ChallengeResult(
+                    user,
+                    AuthStatus.RequiresMfaVerification,
+                    MfaChallengePurpose.Verification,
+                    credentialId: credential.Id,
+                    credentialState: credential.EncryptedSecret);
+        }
+
+        return await CompleteAuthenticationAsync(
+            user,
+            ipAddress,
+            userAgent,
+            sessionMode,
+            cancellationToken,
+            attemptedAt,
+            sessionExpiryCapUtc: policy.MfaEnforcementMode != MfaEnforcementMode.Off
+                && policy.MfaEffectiveAtUtc > now
+                    ? policy.MfaEffectiveAtUtc
+                    : null);
+    }
+
+    private AuthResult ChallengeResult(
+        User user,
+        AuthStatus status,
+        MfaChallengePurpose purpose,
+        int? minimumPinLength = null,
+        Guid? credentialId = null,
+        string? credentialState = null) => new()
+        {
+            Status = status,
+            UserId = user.Id,
+            Username = user.Username,
+            Email = user.Email,
+            Role = user.Role,
+            ClinicId = user.ClinicId,
+            ChallengeToken = CreateChallenge(user, purpose, credentialId, credentialState),
+            MinimumPinLength = minimumPinLength
+        };
+
+    private string? CreateChallenge(
+        User user,
+        MfaChallengePurpose purpose,
+        Guid? credentialId,
+        string? credentialState) => purpose switch
+        {
+            MfaChallengePurpose.PinChange =>
+                _mfaAuthenticationService?.CreatePinChangeChallenge(user.Id, user.PinHash),
+            MfaChallengePurpose.Verification when credentialId.HasValue && credentialState is not null =>
+                _mfaAuthenticationService?.CreateVerificationChallenge(
+                    user.Id,
+                    credentialId.Value,
+                    credentialState),
+            MfaChallengePurpose.Verification => null,
+            _ => _mfaAuthenticationService?.CreateChallenge(user.Id, purpose)
+        };
+
+    private static string CreatePinCredentialBinding(string pinHash) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(pinHash)));
+
+    private async Task<AuthResult> CompleteAuthenticationAsync(
+        User user,
+        string? ipAddress,
+        string? userAgent,
+        AuthSessionMode sessionMode,
+        CancellationToken cancellationToken,
+        DateTime? attemptedAt = null,
+        bool mfaSatisfied = false,
+        DateTime? sessionExpiryCapUtc = null)
+    {
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+        string? token = null;
+        DateTime? expiresAt = null;
+        if (sessionMode == AuthSessionMode.Stateful)
+        {
+            token = GenerateSecureToken();
+            expiresAt = now + AbsoluteTimeout;
+            if (sessionExpiryCapUtc.HasValue && sessionExpiryCapUtc.Value < expiresAt.Value)
+            {
+                expiresAt = sessionExpiryCapUtc.Value;
+            }
+            _context.Sessions.Add(new Session
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                TokenHash = HashToken(token),
+                CreatedAt = now,
+                LastActivityAt = now,
+                ExpiresAt = expiresAt.Value,
+                IsRevoked = false
+            });
+        }
+
+        user.LastLoginAt = now;
+        await LogLoginAttemptAsync(user.Username, user.Id, true, ipAddress, userAgent, null, attemptedAt ?? now, cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("User {UserId} logged in successfully", user.Id);
+        await _auditService.LogAuthEventAsync(AuditEvent.LoginSuccess(user.Id, ipAddress), cancellationToken);
+
+        return new AuthResult
+        {
+            Status = AuthStatus.Success,
+            UserId = user.Id,
+            Username = user.Username,
+            Email = user.Email,
+            Token = token,
+            ExpiresAt = expiresAt,
+            Role = user.Role,
+            ClinicId = user.ClinicId,
+            MfaSatisfied = mfaSatisfied
+        };
+    }
+
+    private async Task<ClinicSecurityPolicy> GetSecurityPolicyAsync(Guid? clinicId, CancellationToken cancellationToken)
+    {
+        if (!clinicId.HasValue)
+        {
+            // System and legacy users without a clinic cannot have a clinic policy.
+            // Preserve their existing authentication behavior; the fail-closed
+            // fallback below applies only when a clinic-bound policy is missing.
+            return new ClinicSecurityPolicy
+            {
+                MinimumPinLength = 8,
+                SessionInactivityMinutes = 15,
+                MfaEnforcementMode = MfaEnforcementMode.Off,
+                CreatedAtUtc = DateTime.UnixEpoch
+            };
+        }
+
+        var stored = await _context.ClinicSecurityPolicies
+            .IgnoreQueryFilters()
+            .SingleOrDefaultAsync(item => item.ClinicId == clinicId.Value, cancellationToken);
+        if (stored is not null)
+        {
+            return stored;
+        }
+
+        return new ClinicSecurityPolicy
+        {
+            MinimumPinLength = 8,
+            SessionInactivityMinutes = 15,
+            MfaEnforcementMode = MfaEnforcementMode.Enforced,
+            MfaEffectiveAtUtc = DateTime.UnixEpoch,
+            // A missing clinic policy is an invalid rollout state. Use an expired
+            // anchor so both MFA and legacy credentials fail closed.
+            CreatedAtUtc = DateTime.UnixEpoch
+        };
     }
 
     private Task LogLoginAttemptAsync(

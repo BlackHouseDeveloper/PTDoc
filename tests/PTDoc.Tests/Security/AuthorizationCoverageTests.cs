@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using PTDoc.Application.Services;
+using PTDoc.Core.Models;
 using Xunit;
 
 namespace PTDoc.Tests.Security;
@@ -68,6 +69,66 @@ public class AuthorizationCoverageTests
         }
     }
 
+    [Fact]
+    public void AppointmentWritePolicies_RequireTheirMutationCapabilitiesAndExcludeAideBaseline()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddAuthorizationCore(options => options.AddPTDocAuthorizationPolicies());
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AuthorizationOptions>>().Value;
+
+        var create = Assert.Single(options.GetPolicy(AuthorizationPolicies.AppointmentsCreate)!
+            .Requirements.OfType<DynamicCapabilityRequirement>());
+        var modify = Assert.Single(options.GetPolicy(AuthorizationPolicies.AppointmentsModify)!
+            .Requirements.OfType<DynamicCapabilityRequirement>());
+
+        Assert.Equal(CapabilityKey.AppointmentsCreate, Assert.Single(create.CapabilityKeys));
+        Assert.Equal(CapabilityKey.AppointmentsModify, Assert.Single(modify.CapabilityKeys));
+        Assert.Equal(PermissionLevel.Edit, create.RequiredLevel);
+        Assert.Equal(PermissionLevel.Edit, modify.RequiredLevel);
+        Assert.DoesNotContain(Roles.Aide, create.StaticAllowedRoles);
+        Assert.DoesNotContain(Roles.Aide, modify.StaticAllowedRoles);
+    }
+
+    [Fact]
+    public void RolePermissionWritePolicy_RequiresDedicatedFullCapability()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddAuthorizationCore(options => options.AddPTDocAuthorizationPolicies());
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AuthorizationOptions>>().Value;
+
+        var requirement = Assert.Single(options.GetPolicy(AuthorizationPolicies.RolesPermissionsWrite)!
+            .Requirements.OfType<DynamicCapabilityRequirement>());
+
+        Assert.Equal(CapabilityKey.RolesPermissionsManage, Assert.Single(requirement.CapabilityKeys));
+        Assert.Equal(PermissionLevel.Full, requirement.RequiredLevel);
+        Assert.Equal(Roles.Admin, Assert.Single(requirement.StaticAllowedRoles));
+    }
+
+    [Fact]
+    public void SecurityAdministrationWritePolicy_RequiresAdminRoleAndFullSettingsCapability()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddAuthorizationCore(options => options.AddPTDocAuthorizationPolicies());
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AuthorizationOptions>>().Value;
+        var policy = options.GetPolicy(AuthorizationPolicies.SecurityAdministrationWrite)!;
+
+        var roleRequirement = Assert.Single(policy.Requirements
+            .OfType<Microsoft.AspNetCore.Authorization.Infrastructure.RolesAuthorizationRequirement>());
+        var capabilityRequirement = Assert.Single(policy.Requirements
+            .OfType<DynamicCapabilityRequirement>());
+
+        Assert.Equal(Roles.Admin, Assert.Single(roleRequirement.AllowedRoles));
+        Assert.Equal(CapabilityKey.ClinicSettingsManage, Assert.Single(capabilityRequirement.CapabilityKeys));
+        Assert.Equal(PermissionLevel.Full, capabilityRequirement.RequiredLevel);
+        Assert.Equal(Roles.Admin, Assert.Single(capabilityRequirement.StaticAllowedRoles));
+    }
+
     /// <summary>
     /// Validates that the inventory contains at least one entry for every major
     /// resource area (patients, intake, notes, compliance, sync, AI, PDF, diagnostics).
@@ -102,6 +163,8 @@ public class AuthorizationCoverageTests
         Assert.Contains(routes, r => r.StartsWith("/diagnostics"));
         // Auth (intentionally anonymous)
         Assert.Contains(routes, r => r == "/auth/token" || r == "/api/v1/auth/pin-login");
+        // Settings administration
+        Assert.Contains(routes, r => r.StartsWith("/api/v1/admin/security-policy", StringComparison.Ordinal));
         // Health probes (intentionally anonymous)
         Assert.Contains(routes, r => r.StartsWith("/health/"));
     }
@@ -126,11 +189,23 @@ public class AuthorizationCoverageTests
         {
             // JWT auth flow
             "POST /auth/token",
+            "POST /auth/pin-change",
+            "POST /auth/complete",
             "POST /auth/refresh",
             "POST /auth/logout",
             // PIN auth flow
             "POST /api/v1/auth/pin-login",
+            "POST /api/v1/auth/pin-change",
+            "POST /api/v1/auth/complete",
             "POST /api/v1/auth/logout",
+            // MFA challenge endpoints validate purpose-bound challenge tokens in-handler.
+            "POST /api/v1/auth/mfa/enroll",
+            "POST /api/v1/auth/mfa/verify-enrollment",
+            "POST /api/v1/auth/mfa/verify",
+            "POST /api/v1/auth/mfa/recovery",
+            // Kiosk endpoints validate scoped one-time/device credentials in-handler.
+            "POST /api/v1/kiosk/enroll",
+            "POST /api/v1/kiosk/check-in",
             // /me performs manual token validation in-handler; AllowAnonymous lets the
             // request reach the handler so it can return 401 with a body when no token is present.
             "GET /api/v1/auth/me",
@@ -170,14 +245,56 @@ public class AuthorizationCoverageTests
     [
         // ── JWT auth flow (Auth/AuthEndpoints.cs) ─────────────────────────────
         new("POST", "/auth/token",   null, IsIntentionallyAnonymous: true),
+        new("POST", "/auth/pin-change", null, IsIntentionallyAnonymous: true),
+        new("POST", "/auth/complete", null, IsIntentionallyAnonymous: true),
         new("POST", "/auth/refresh", null, IsIntentionallyAnonymous: true),
         new("POST", "/auth/logout",  null, IsIntentionallyAnonymous: true),
 
         // ── PIN auth flow (Identity/AuthEndpoints.cs) ─────────────────────────
         new("POST", "/api/v1/auth/pin-login", null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/auth/pin-change", null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/auth/complete", null, IsIntentionallyAnonymous: true),
         new("POST", "/api/v1/auth/logout",    null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/auth/mfa/enroll", null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/auth/mfa/verify-enrollment", null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/auth/mfa/verify", null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/auth/mfa/recovery", null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/auth/mfa/recovery-codes/regenerate", AuthorizationPolicies.Authenticated),
         // /me performs manual token validation; AllowAnonymous lets it return 401+body.
         new("GET",  "/api/v1/auth/me",        null, IsIntentionallyAnonymous: true),
+
+        // ── Settings administration (Settings/SettingsAdministrationEndpoints.cs) ──
+        new("GET", "/api/v1/admin/roles/permissions", AuthorizationPolicies.SettingsRead),
+        new("PUT", "/api/v1/admin/roles/{roleKey}/permissions", AuthorizationPolicies.RolesPermissionsWrite),
+        new("POST", "/api/v1/admin/roles/{targetRoleKey}/clone", AuthorizationPolicies.RolesPermissionsWrite),
+        new("GET", "/api/v1/admin/security-policy", AuthorizationPolicies.SettingsRead),
+        new("PUT", "/api/v1/admin/security-policy", AuthorizationPolicies.SecurityAdministrationWrite),
+        new("GET", "/api/v1/admin/security-policy/mfa-readiness", AuthorizationPolicies.SettingsRead),
+        new("POST", "/api/v1/admin/users/{userId:guid}/force-pin-change", AuthorizationPolicies.SecurityAdministrationWrite),
+        new("POST", "/api/v1/admin/users/{userId:guid}/reset-mfa", AuthorizationPolicies.SecurityAdministrationWrite),
+        new("GET", "/api/v1/admin/scheduling/preferences", AuthorizationPolicies.SettingsRead),
+        new("PUT", "/api/v1/admin/scheduling/preferences", AuthorizationPolicies.SettingsWrite),
+        new("GET", "/api/v1/admin/scheduling/visit-types", AuthorizationPolicies.SettingsRead),
+        new("POST", "/api/v1/admin/scheduling/visit-types", AuthorizationPolicies.SettingsWrite),
+        new("PUT", "/api/v1/admin/scheduling/visit-types/{visitTypeId:guid}", AuthorizationPolicies.SettingsWrite),
+        new("DELETE", "/api/v1/admin/scheduling/visit-types/{visitTypeId:guid}", AuthorizationPolicies.SettingsWrite),
+        new("GET", "/api/v1/admin/scheduling/blocks", AuthorizationPolicies.SettingsRead),
+        new("POST", "/api/v1/admin/scheduling/blocks", AuthorizationPolicies.SettingsWrite),
+        new("PUT", "/api/v1/admin/scheduling/blocks/{blockId:guid}", AuthorizationPolicies.SettingsWrite),
+        new("DELETE", "/api/v1/admin/scheduling/blocks/{blockId:guid}", AuthorizationPolicies.SettingsWrite),
+        new("GET", "/api/v1/admin/scheduling/clinic-hours", AuthorizationPolicies.SettingsRead),
+        new("PUT", "/api/v1/admin/scheduling/clinic-hours", AuthorizationPolicies.SettingsWrite),
+        new("GET", "/api/v1/appointments/visit-types", AuthorizationPolicies.SchedulingAccess),
+        new("GET", "/api/v1/admin/auto-check-in", AuthorizationPolicies.SettingsRead),
+        new("PUT", "/api/v1/admin/auto-check-in", AuthorizationPolicies.SettingsWrite),
+        new("GET", "/api/v1/admin/kiosk/stations", AuthorizationPolicies.SettingsRead),
+        new("POST", "/api/v1/admin/kiosk/stations", AuthorizationPolicies.SettingsWrite),
+        new("PUT", "/api/v1/admin/kiosk/stations/{stationId:guid}", AuthorizationPolicies.SettingsWrite),
+        new("POST", "/api/v1/admin/kiosk/stations/{stationId:guid}/rotate", AuthorizationPolicies.SettingsWrite),
+        new("DELETE", "/api/v1/admin/kiosk/stations/{stationId:guid}", AuthorizationPolicies.SettingsWrite),
+        new("POST", "/api/v1/admin/kiosk/stations/appointments/{appointmentId:guid}/token", AuthorizationPolicies.SettingsWrite),
+        new("POST", "/api/v1/kiosk/enroll", null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/kiosk/check-in", null, IsIntentionallyAnonymous: true),
 
         // ── Health probes (Program.cs MapHealthChecks) ─────────────────────────
         new("GET", "/health",       null, IsIntentionallyAnonymous: true),
@@ -347,8 +464,14 @@ public class AuthorizationCoverageTests
         new("GET", "/api/v1/navigation/badges", AuthorizationPolicies.PatientRead),
 
         // ── Appointments (Appointments/AppointmentEndpoints.cs) ──────────────
-        new("PATCH", "/api/v1/appointments/{id:guid}/appointment-type", AuthorizationPolicies.SchedulingAccess),
-        new("POST", "/api/v1/appointments/{id:guid}/check-in-payment", AuthorizationPolicies.SchedulingAccess),
+        new("GET", "/api/v1/appointments/", AuthorizationPolicies.SchedulingAccess),
+        new("GET", "/api/v1/appointments/by-patient/{patientId:guid}", AuthorizationPolicies.SchedulingAccess),
+        new("GET", "/api/v1/appointments/clinicians", AuthorizationPolicies.SchedulingAccess),
+        new("POST", "/api/v1/appointments/", AuthorizationPolicies.AppointmentsCreate),
+        new("PUT", "/api/v1/appointments/{id:guid}", AuthorizationPolicies.AppointmentsModify),
+        new("PATCH", "/api/v1/appointments/{id:guid}/appointment-type", AuthorizationPolicies.AppointmentsModify),
+        new("POST", "/api/v1/appointments/{id:guid}/check-in", AuthorizationPolicies.AppointmentsModify),
+        new("POST", "/api/v1/appointments/{id:guid}/check-in-payment", AuthorizationPolicies.AppointmentsModify),
 
         // ── Diagnostics (Diagnostics/DiagnosticsEndpoints.cs) ─────────────────
         new("GET", "/diagnostics/db", AuthorizationPolicies.AdminOnly),

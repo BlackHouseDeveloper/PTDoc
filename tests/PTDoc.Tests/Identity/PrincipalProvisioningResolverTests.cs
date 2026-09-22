@@ -93,6 +93,55 @@ public class PrincipalProvisioningResolverTests
         Assert.Throws<ProvisioningException>(() => accessor.GetCurrentUserId());
     }
 
+    [Fact]
+    public void HttpTenantContextAccessor_RejectsExternalTenantClaimThatConflictsWithMapping()
+    {
+        var services = CreateServices();
+        using var scope = services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var mappedClinicId = Guid.NewGuid();
+        var claimedClinicId = Guid.NewGuid();
+        var externalSubject = Guid.NewGuid().ToString();
+        var user = new User
+        {
+            Username = $"tenant-mismatch-{Guid.NewGuid():N}",
+            PinHash = "unused",
+            FirstName = "Tenant",
+            LastName = "Mismatch",
+            Role = Roles.Admin,
+            ClinicId = mappedClinicId,
+            IsActive = true
+        };
+        context.Users.Add(user);
+        context.ExternalIdentityMappings.Add(new ExternalIdentityMapping
+        {
+            Provider = EntraExternalIdOptions.DefaultProviderKey,
+            ExternalSubject = externalSubject,
+            PrincipalType = PrincipalTypes.User,
+            InternalEntityId = user.Id,
+            TenantId = mappedClinicId
+        });
+        context.SaveChanges();
+
+        var httpContextAccessor = scope.ServiceProvider.GetRequiredService<IHttpContextAccessor>();
+        httpContextAccessor.HttpContext = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(PTDocClaimTypes.ExternalProvider, EntraExternalIdOptions.DefaultProviderKey),
+                new Claim(PTDocClaimTypes.ExternalSubject, externalSubject),
+                new Claim(ClaimTypes.NameIdentifier, externalSubject),
+                new Claim(ClaimTypes.Role, Roles.Admin),
+                new Claim(HttpTenantContextAccessor.ClinicIdClaimType, claimedClinicId.ToString())
+            ], "Test"))
+        };
+
+        var accessor = scope.ServiceProvider.GetRequiredService<ITenantContextAccessor>();
+        var exception = Assert.Throws<ProvisioningException>(() => accessor.GetCurrentClinicId());
+
+        Assert.Equal("tenant_claim_mismatch", exception.FailureCode);
+    }
+
     private static ServiceProvider CreateServices()
     {
         var services = new ServiceCollection();

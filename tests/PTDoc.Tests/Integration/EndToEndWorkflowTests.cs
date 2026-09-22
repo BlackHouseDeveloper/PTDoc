@@ -1,14 +1,15 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,7 +17,9 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
+using PTDoc.Api.Settings;
 using PTDoc.Application.AI;
+using PTDoc.Application.Auth;
 using PTDoc.Application.Communication;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
@@ -26,6 +29,7 @@ using PTDoc.Application.Integrations;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Pdf;
 using PTDoc.Application.Services;
+using PTDoc.Application.Settings;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Communication;
 using PTDoc.Core.Models;
@@ -81,7 +85,12 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         await using (var scope = _factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            db.Users.Add(new User
+            var clinic = new Clinic
+            {
+                Name = "Legacy Login Clinic",
+                Slug = $"legacy-login-{Guid.NewGuid():N}"
+            };
+            db.AddRange(clinic, new User
             {
                 Id = userId,
                 Username = username,
@@ -90,6 +99,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
                 FirstName = "Legacy",
                 LastName = "Login",
                 Role = Roles.PT,
+                ClinicId = clinic.Id,
                 CreatedAt = DateTime.UtcNow,
                 IsActive = true
             });
@@ -103,6 +113,12 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         }));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var tokens = JsonSerializer.Deserialize<TokenResponse>(
+            await response.Content.ReadAsStringAsync(), JsonOpts);
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(tokens!.AccessToken);
+        Assert.Equal(
+            $"{username}@example.com",
+            jwt.Claims.Single(claim => claim.Type == "email" || claim.Type == ClaimTypes.Email).Value);
 
         await using var verifyScope = _factory.Services.CreateAsyncScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -112,6 +128,88 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         Assert.DoesNotContain(username, audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("2468", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("token", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("{\"username\":null,\"password\":\"2468\"}")]
+    [InlineData("{\"username\":\" \" ,\"password\":\"2468\"}")]
+    [InlineData("{\"username\":\"staff\",\"password\":null}")]
+    public async Task LegacyTokenLogin_BlankCredentials_ReturnUnauthorized(string payload)
+    {
+        using var client = _factory.CreateUnauthenticatedClient();
+        using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+
+        using var response = await client.PostAsync("/auth/token", content);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PinChange_StepUpOmitsIdentityAndPolicyRejectionRefreshesContract()
+    {
+        using var client = _factory.CreateUnauthenticatedClient();
+        var username = $"pin-policy-{Guid.NewGuid():N}";
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var clinic = new Clinic
+            {
+                Name = "PIN Policy Clinic",
+                Slug = $"pin-policy-{Guid.NewGuid():N}"
+            };
+            var user = new User
+            {
+                Username = username,
+                PinHash = AuthService.HashPin("12345678"),
+                FirstName = "PIN",
+                LastName = "Policy",
+                Role = Roles.PT,
+                ClinicId = clinic.Id,
+                MustChangePin = true,
+                CreatedAt = DateTime.UtcNow,
+                IsActive = true
+            };
+            db.AddRange(clinic, user);
+            await db.SaveChangesAsync();
+            var policy = await db.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+            policy.MinimumPinLength = 10;
+            await db.SaveChangesAsync();
+        }
+
+        using var loginResponse = await client.PostAsync("/api/v1/auth/pin-login", JsonContent(new
+        {
+            username,
+            pin = "12345678"
+        }));
+        Assert.Equal(HttpStatusCode.Accepted, loginResponse.StatusCode);
+        using var loginPayload = JsonDocument.Parse(await loginResponse.Content.ReadAsStringAsync());
+        AssertJsonPropertyIsNullOrAbsent(loginPayload.RootElement, "userId");
+        AssertJsonPropertyIsNullOrAbsent(loginPayload.RootElement, "username");
+        AssertJsonPropertyIsNullOrAbsent(loginPayload.RootElement, "token");
+        AssertJsonPropertyIsNullOrAbsent(loginPayload.RootElement, "expiresAt");
+        AssertJsonPropertyIsNullOrAbsent(loginPayload.RootElement, "role");
+        AssertJsonPropertyIsNullOrAbsent(loginPayload.RootElement, "clinicId");
+        var challengeToken = loginPayload.RootElement.GetProperty("challengeToken").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(challengeToken));
+
+        using var response = await client.PostAsync("/api/v1/auth/pin-change", JsonContent(new
+        {
+            challengeToken,
+            newPin = "87654321"
+        }));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(AuthStatus.RequiresPinChange.ToString(), payload.RootElement.GetProperty("status").GetString());
+        Assert.Equal(10, payload.RootElement.GetProperty("minimumPinLength").GetInt32());
+        Assert.False(string.IsNullOrWhiteSpace(payload.RootElement.GetProperty("challengeToken").GetString()));
+    }
+
+    private static void AssertJsonPropertyIsNullOrAbsent(JsonElement element, string propertyName)
+    {
+        Assert.False(element.TryGetProperty(propertyName, out var value)
+            && value.ValueKind != JsonValueKind.Null);
     }
 
     [Fact]
@@ -139,13 +237,88 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         var auditDb = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         Assert.Equal(auditCountBefore + 1, await auditDb.AuditLogs.CountAsync(log => log.EventType == "LoginFailed"));
         var audit = await auditDb.AuditLogs
-            .Where(log => log.EventType == "LoginFailed" && log.ErrorMessage == "InvalidCredentials")
+            .Where(log => log.EventType == "LoginFailed" && log.ErrorMessage == "UserNotFound")
             .OrderByDescending(log => log.TimestampUtc)
             .FirstAsync();
         Assert.DoesNotContain(username, audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("2468", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("password", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("token", audit.MetadataJson, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task LegacyTokenLogin_InactiveAccountStateRequiresValidPin()
+    {
+        using var client = _factory.CreateUnauthenticatedClient();
+        var username = $"inactive-login-{Guid.NewGuid():N}";
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Users.Add(new User
+            {
+                Id = Guid.NewGuid(),
+                Username = username,
+                PinHash = AuthService.HashPin("24681357"),
+                FirstName = "Inactive",
+                LastName = "Login",
+                Role = Roles.PT,
+                CreatedAt = DateTime.UtcNow,
+                IsActive = false
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var invalidPin = await client.PostAsync("/auth/token", JsonContent(new
+        {
+            username,
+            password = "87654321"
+        }));
+        using var validPin = await client.PostAsync("/auth/token", JsonContent(new
+        {
+            username,
+            password = "24681357"
+        }));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, invalidPin.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, validPin.StatusCode);
+    }
+
+    [Fact]
+    public async Task LegacyTokenLogin_RequiredStepUp_ReturnsNonSuccessChallenge()
+    {
+        using var client = _factory.CreateUnauthenticatedClient();
+        var username = $"legacy-step-up-{Guid.NewGuid():N}";
+
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Users.Add(new User
+            {
+                Id = Guid.NewGuid(),
+                Username = username,
+                Email = $"{username}@example.com",
+                PinHash = AuthService.HashPin("24681357"),
+                FirstName = "Legacy",
+                LastName = "StepUp",
+                Role = Roles.PT,
+                CreatedAt = DateTime.UtcNow,
+                IsActive = true,
+                MustChangePin = true
+            });
+            await db.SaveChangesAsync();
+        }
+
+        using var response = await client.PostAsync("/auth/token", JsonContent(new
+        {
+            username,
+            password = "24681357"
+        }));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("RequiresPinChange", document.RootElement.GetProperty("status").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(
+            document.RootElement.GetProperty("challengeToken").GetString()));
     }
 
     [Fact]
@@ -2528,15 +2701,15 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
 
 /// <summary>
 /// WebApplicationFactory for PTDoc.Api that configures an isolated test environment:
-///   - In-memory SQLite database (per-factory instance) with migrations applied once
+///   - Isolated temporary SQLite database (per-factory instance) with migrations applied once
 ///   - Test authentication scheme that reads the role from the X-Test-Role header
 ///   - External service dependencies (AI, PDF, Payment, Fax, HEP) replaced with no-op mocks
 /// </summary>
 public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private const string TestEnv = "Testing";
+    internal static readonly Guid AuthorizationClinicId = new("00000000-0000-0000-0002-000000000001");
 
-    private SqliteConnection? _sharedConnection;
     public Guid? LastPdfExportNoteId { get; private set; }
     public string? LastPdfExportContentJson { get; private set; }
     public NoteExportDto? LastPdfExportNote { get; private set; }
@@ -2588,21 +2761,20 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
         builder.ConfigureTestServices(services =>
         {
             // ── Suppress background hosted services to prevent race conditions ─────────
-            // The SyncRetryBackgroundService and SessionCleanupBackgroundService both
-            // access the shared in-memory SQLite connection. Running concurrently with
-            // HTTP-request scopes causes SQLite Error 5 ('unable to delete/modify
-            // user-function due to active statements') when EF Core's SqliteRelational-
-            // Connection tries to register custom functions on an already-open connection
-            // that has active prepared statements. Integration tests do not depend on
+            // Background schedulers can mutate the shared test database while assertions
+            // and HTTP workflows are in progress. Integration tests do not depend on
             // background sync processing — the manual /api/v1/sync/run endpoint exercises
-            // the full push path without the background scheduler.
+            // the full push path without the scheduler.
             var hostedServices = services
                 .Where(d => d.ServiceType == typeof(IHostedService))
                 .ToList();
             foreach (var d in hostedServices)
                 services.Remove(d);
 
-            // ── Replace ApplicationDbContext with a shared in-memory SQLite database ──
+            // ── Replace ApplicationDbContext with an isolated SQLite database ────────
+            // Each scoped context gets its own connection so concurrent HTTP requests
+            // can execute safely. The DI-owned lifetime deletes the temporary database
+            // when this factory's service provider is disposed.
             var descriptors = services
                 .Where(d => d.ServiceType == typeof(DbContextOptions<ApplicationDbContext>) ||
                             d.ServiceType == typeof(ApplicationDbContext))
@@ -2610,12 +2782,10 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
             foreach (var d in descriptors)
                 services.Remove(d);
 
-            _sharedConnection = new SqliteConnection("Data Source=:memory:");
-            _sharedConnection.Open();
-
-            services.AddDbContext<ApplicationDbContext>(options =>
+            services.AddSingleton<TestSqliteDatabase>();
+            services.AddDbContext<ApplicationDbContext>((provider, options) =>
             {
-                options.UseSqlite(_sharedConnection,
+                options.UseSqlite(provider.GetRequiredService<TestSqliteDatabase>().ConnectionString,
                     x => x.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"));
             });
 
@@ -2721,6 +2891,23 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
                 })
                 .AddScheme<AuthenticationSchemeOptions, TestRoleAuthHandler>(
                     TestRoleAuthHandler.SchemeName, _ => { });
+
+            // Keep the data context in system mode for this broad workflow fixture, but
+            // exercise the production dynamic authorization handler against an explicit
+            // clinic instead of bypassing it with a static test handler.
+            var dynamicHandlers = services
+                .Where(descriptor => descriptor.ServiceType == typeof(IAuthorizationHandler)
+                    && descriptor.ImplementationType == typeof(DynamicCapabilityAuthorizationHandler))
+                .ToArray();
+            foreach (var descriptor in dynamicHandlers)
+            {
+                services.Remove(descriptor);
+            }
+
+            services.AddScoped<IAuthorizationHandler>(provider =>
+                new DynamicCapabilityAuthorizationHandler(
+                    new FixedTenantContextAccessor(AuthorizationClinicId),
+                    provider.GetRequiredService<IPermissionEvaluator>()));
         });
     }
 
@@ -2780,6 +2967,17 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
 
     private static async Task SeedTestUsersAsync(ApplicationDbContext db)
     {
+        if (!await db.Clinics.AnyAsync(clinic => clinic.Id == AuthorizationClinicId))
+        {
+            db.Clinics.Add(new Clinic
+            {
+                Id = AuthorizationClinicId,
+                Name = "Integration Authorization Clinic",
+                Slug = "integration-authorization-clinic"
+            });
+            await db.SaveChangesAsync();
+        }
+
         var roles = new[]
         {
             Roles.PT,
@@ -2809,6 +3007,7 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
                 FirstName = "Integration",
                 LastName = role,
                 Role = role,
+                ClinicId = AuthorizationClinicId,
                 CreatedAt = DateTime.UtcNow,
                 IsActive = true
             });
@@ -2820,9 +3019,22 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
     public new async Task DisposeAsync()
     {
         await base.DisposeAsync();
-        if (_sharedConnection is not null)
+    }
+}
+
+file sealed class TestSqliteDatabase : IDisposable
+{
+    private readonly string databasePath = Path.Combine(
+        Path.GetTempPath(),
+        $"ptdoc-integration-{Guid.NewGuid():N}.db");
+
+    public string ConnectionString => $"Data Source={databasePath};Pooling=False";
+
+    public void Dispose()
+    {
+        if (File.Exists(databasePath))
         {
-            await _sharedConnection.DisposeAsync();
+            File.Delete(databasePath);
         }
     }
 }
@@ -2865,6 +3077,7 @@ file sealed class TestRoleAuthHandler : AuthenticationHandler<AuthenticationSche
             new(ClaimTypes.NameIdentifier, GetUserIdForRole(role).ToString()),
             new(ClaimTypes.Name, $"Test User ({role})"),
             new(ClaimTypes.Role, role),
+            new(HttpTenantContextAccessor.ClinicIdClaimType, PtDocApiFactory.AuthorizationClinicId.ToString()),
             // Auth type claim prevents ProvisioningGuardMiddleware from triggering a
             // "missing_external_identity" failure on non-Guid NameIdentifier values.
             new(PTDocClaimTypes.AuthenticationType, "integration-test"),
@@ -2893,4 +3106,9 @@ file sealed class TestRoleAuthHandler : AuthenticationHandler<AuthenticationSche
         Roles.Patient => new Guid("00000000-0000-0000-0001-000000000008"),
         _ => Guid.NewGuid(),
     };
+}
+
+file sealed class FixedTenantContextAccessor(Guid clinicId) : ITenantContextAccessor
+{
+    public Guid? GetCurrentClinicId() => clinicId;
 }

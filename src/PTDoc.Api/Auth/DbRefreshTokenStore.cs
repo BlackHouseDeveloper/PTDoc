@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Identity;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Identity;
 
 /// <summary>
 /// Database-backed refresh token store.
@@ -70,11 +71,88 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
             .AsNoTracking()
             .FirstOrDefaultAsync(t => t.TokenHash == hash, cancellationToken);
 
-        if (stored is null || stored.IsRevoked || stored.ExpiresAtUtc <= DateTimeOffset.UtcNow)
+        var now = DateTimeOffset.UtcNow;
+        if (stored is null || stored.IsRevoked || stored.ExpiresAtUtc <= now)
             return null;
 
+        if (!Guid.TryParse(stored.Subject, out var userId))
+        {
+            return null;
+        }
+
+        var user = await db.Users
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(item => item.Id == userId, cancellationToken);
+        if (user is null
+            || !user.IsActive
+            || user.MustChangePin
+            || (user.ClinicId.HasValue
+                && !user.PinChangedAtUtc.HasValue
+                && (!user.LegacyPinGraceEndsAtUtc.HasValue
+                    || user.LegacyPinGraceEndsAtUtc <= now.UtcDateTime)))
+        {
+            return null;
+        }
+
         var claims = DeserializeClaims(stored.ClaimsJson);
+        if (!ClaimsMatchCurrentAuthorizationState(claims, user))
+        {
+            return null;
+        }
+
+        if (user.ClinicId is { } clinicId)
+        {
+            var policy = await db.ClinicSecurityPolicies
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(item => item.ClinicId == clinicId, cancellationToken);
+            if (MfaPolicyRules.RequiresMfa(policy, now.UtcDateTime))
+            {
+                var tokenHasMfaAssurance = claims.Any(claim =>
+                    string.Equals(claim.Type, "amr", StringComparison.Ordinal)
+                    && string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase));
+                var credentialIsActive = await db.UserMfaCredentials
+                    .AsNoTracking()
+                    .AnyAsync(item => item.UserId == userId && item.IsActive, cancellationToken);
+                if (!tokenHasMfaAssurance || !credentialIsActive)
+                {
+                    return null;
+                }
+            }
+        }
+
         return new RefreshTokenRecord(stored.Subject, claims, stored.ExpiresAtUtc);
+    }
+
+    private static bool ClaimsMatchCurrentAuthorizationState(
+        IReadOnlyCollection<Claim> claims,
+        User user)
+    {
+        var roles = claims
+            .Where(claim => claim.Type == ClaimTypes.Role && !string.IsNullOrWhiteSpace(claim.Value))
+            .Select(claim => claim.Value)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (roles.Length != 1 || !string.Equals(roles[0], user.Role, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var clinicClaims = claims
+            .Where(claim => claim.Type == HttpTenantContextAccessor.ClinicIdClaimType
+                && !string.IsNullOrWhiteSpace(claim.Value))
+            .Select(claim => claim.Value)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (user.ClinicId is not { } clinicId)
+        {
+            return clinicClaims.Length == 0;
+        }
+
+        return clinicClaims.Length == 1
+            && Guid.TryParse(clinicClaims[0], out var claimedClinicId)
+            && claimedClinicId == clinicId;
     }
 
     public async Task RevokeAsync(string refreshToken, CancellationToken cancellationToken)
@@ -112,6 +190,7 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
         ClaimTypes.GivenName,
         ClaimTypes.Surname,
         ClaimTypes.Email,
+        "amr",
         "sub",
         "oid",
         // Tenant and patient context claims must be preserved across refresh.

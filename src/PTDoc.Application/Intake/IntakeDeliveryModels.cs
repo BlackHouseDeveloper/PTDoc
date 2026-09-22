@@ -15,6 +15,7 @@ public sealed class IntakeSendInviteRequest
     public Guid IntakeId { get; set; }
     public IntakeDeliveryChannel Channel { get; set; }
     public string? Destination { get; set; }
+    public string? TemplateKey { get; set; }
 }
 
 /// <summary>Canonical intake invite bundle used for share-link and QR workflows.</summary>
@@ -39,6 +40,7 @@ public sealed class IntakeDeliverySendResult
     public DateTimeOffset? SentAt { get; set; }
     public DateTimeOffset? ExpiresAt { get; set; }
     public string? ErrorMessage { get; set; }
+    public IReadOnlyDictionary<string, string[]>? ValidationErrors { get; set; }
 }
 
 /// <summary>Current invite lifecycle state plus recent outbound-delivery metadata.</summary>

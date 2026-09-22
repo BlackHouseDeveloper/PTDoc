@@ -81,6 +81,22 @@ public sealed class PrincipalRecordResolver
 
     private PrincipalProvisioningResult ResolveProvisioningResult(ClaimsPrincipal principal)
     {
+        var provider = principal.FindFirst(PTDocClaimTypes.ExternalProvider)?.Value;
+        var explicitExternalSubject = principal.FindFirst(PTDocClaimTypes.ExternalSubject)?.Value;
+        var hasExternalIdentity = !string.IsNullOrWhiteSpace(provider)
+            || !string.IsNullOrWhiteSpace(explicitExternalSubject);
+        var externalSubject = hasExternalIdentity
+            ? principal.Claims
+                .Where(c => PTDocClaimTypes.ExternalSubjectAliases().Contains(c.Type, StringComparer.OrdinalIgnoreCase))
+                .Select(c => c.Value)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+            : null;
+
+        if (hasExternalIdentity)
+        {
+            return ResolveExternalProvisioningResult(principal, provider, externalSubject);
+        }
+
         if (TryGetGuidClaim(principal, out var internalUserId, PTDocClaimTypes.InternalUserIdAliases()))
         {
             return new PrincipalProvisioningResult
@@ -109,12 +125,14 @@ public sealed class PrincipalRecordResolver
             };
         }
 
-        var provider = principal.FindFirst(PTDocClaimTypes.ExternalProvider)?.Value;
-        var externalSubject = principal.Claims
-            .Where(c => PTDocClaimTypes.ExternalSubjectAliases().Contains(c.Type, StringComparer.OrdinalIgnoreCase))
-            .Select(c => c.Value)
-            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        return ResolveExternalProvisioningResult(principal, provider, externalSubject);
+    }
 
+    private PrincipalProvisioningResult ResolveExternalProvisioningResult(
+        ClaimsPrincipal principal,
+        string? provider,
+        string? externalSubject)
+    {
         var principalType = HasRole(principal, Roles.Patient) ? PrincipalTypes.Patient : PrincipalTypes.User;
         if (string.IsNullOrWhiteSpace(provider) || string.IsNullOrWhiteSpace(externalSubject))
         {

@@ -9,6 +9,7 @@ public sealed class CreateAppointmentRequest
     public Guid PatientId { get; set; }
     public Guid ClinicianId { get; set; }
     public string AppointmentType { get; set; } = string.Empty;
+    public Guid? VisitTypeId { get; set; }
     public DateTime AppointmentDate { get; set; }
     public TimeSpan AppointmentTime { get; set; }
     public int DurationMinutes { get; set; }
@@ -24,6 +25,7 @@ public sealed class UpdateAppointmentRequest
     public Guid PatientId { get; set; }
     public Guid ClinicianId { get; set; }
     public string AppointmentType { get; set; } = string.Empty;
+    public Guid? VisitTypeId { get; set; }
     public DateTime AppointmentDate { get; set; }
     public TimeSpan AppointmentTime { get; set; }
     public int DurationMinutes { get; set; }
@@ -54,6 +56,8 @@ public sealed class AppointmentListItemResponse
     public DateTime StartTimeUtc { get; set; }
     public DateTime EndTimeUtc { get; set; }
     public string AppointmentType { get; set; } = string.Empty;
+    public Guid? VisitTypeId { get; set; }
+    public string? VisitTypeCode { get; set; }
     public string AppointmentStatus { get; set; } = string.Empty;
     public string VisitWorkflowStatus { get; set; } = string.Empty;
     public Guid? VisitNoteId { get; set; }

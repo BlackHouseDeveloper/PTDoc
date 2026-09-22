@@ -71,6 +71,12 @@ public static class IntakeDeliveryEndpoints
             request,
             CreateContext(httpContext, configuration, environment, identityContext.TryGetCurrentUserId()),
             cancellationToken);
+        if (!result.Success && result.ValidationErrors is { Count: > 0 })
+        {
+            return Results.ValidationProblem(
+                result.ValidationErrors.ToDictionary(error => error.Key, error => error.Value));
+        }
+
         return result.Success
             ? Results.Ok(result)
             : Results.UnprocessableEntity(new

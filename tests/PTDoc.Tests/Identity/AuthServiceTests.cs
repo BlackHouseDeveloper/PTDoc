@@ -1,8 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using System.Security.Cryptography;
+using System.Text;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Identity;
@@ -46,7 +49,7 @@ public class AuthServiceTests
         {
             Id = Guid.NewGuid(),
             Username = "testuser",
-            PinHash = AuthService.HashPin("1234"),
+            PinHash = AuthService.HashPin("12345678"),
             FirstName = "Test",
             LastName = "User",
             Role = "PT",
@@ -58,7 +61,7 @@ public class AuthServiceTests
         await context.SaveChangesAsync();
 
         // Act
-        var result = await authService.AuthenticateAsync("testuser", "1234", "127.0.0.1", "TestAgent");
+        var result = await authService.AuthenticateAsync("testuser", "12345678", "127.0.0.1", "TestAgent");
 
         // Assert
         var authResult = Assert.IsType<AuthResult>(result);
@@ -79,6 +82,43 @@ public class AuthServiceTests
         Assert.NotNull(loginAttempt);
         Assert.True(loginAttempt.Success);
         Assert.Equal("127.0.0.1", loginAttempt.IpAddress);
+    }
+
+    [Fact]
+    public async Task AuthenticateAsync_IdentityOnlySuccessDoesNotCreateStatefulSession()
+    {
+        await using var context = CreateInMemoryContext();
+        var authService = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "jwt-user",
+            Email = "jwt-user@example.invalid",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Jwt",
+            LastName = "User",
+            Role = "PT",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var result = await authService.AuthenticateAsync(
+            user.Username,
+            "12345678",
+            "127.0.0.1",
+            "JwtClient",
+            sessionMode: AuthSessionMode.IdentityOnly);
+
+        var authResult = Assert.IsType<AuthResult>(result);
+        Assert.Equal(AuthStatus.Success, authResult.Status);
+        Assert.Equal(user.Id, authResult.UserId);
+        Assert.Equal(user.Email, authResult.Email);
+        Assert.Null(authResult.Token);
+        Assert.Null(authResult.ExpiresAt);
+        Assert.Empty(await context.Sessions.Where(item => item.UserId == user.Id).ToListAsync());
+        Assert.True((await context.LoginAttempts.SingleAsync(item => item.UserId == user.Id)).Success);
     }
 
     [Fact]
@@ -148,6 +188,185 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task AuthenticateAsync_InactiveUserWithInvalidPin_DoesNotDiscloseAccountState()
+    {
+        await using var context = CreateInMemoryContext();
+        var authService = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "inactive-enumeration-target",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Inactive",
+            LastName = "Target",
+            Role = Roles.PT,
+            IsActive = false,
+            CreatedAt = DateTime.UtcNow
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var result = await authService.AuthenticateAsync(
+            user.Username,
+            "87654321",
+            "127.0.0.1",
+            "TestAgent");
+
+        Assert.Null(result);
+        var attempt = await context.LoginAttempts.SingleAsync(item => item.UserId == user.Id);
+        Assert.Equal("Invalid PIN", attempt.FailureReason);
+    }
+
+    [Fact]
+    public async Task ValidateSessionAsync_UserMustChangePin_RejectsExistingSession()
+    {
+        await using var context = CreateInMemoryContext();
+        const string token = "force-change-session-token";
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "forced-change-user",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Forced",
+            LastName = "Change",
+            Role = Roles.PT,
+            IsActive = true,
+            MustChangePin = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        context.AddRange(
+            user,
+            new Session
+            {
+                User = user,
+                UserId = user.Id,
+                TokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))).ToLowerInvariant(),
+                CreatedAt = DateTime.UtcNow,
+                LastActivityAt = DateTime.UtcNow,
+                ExpiresAt = DateTime.UtcNow.AddHours(1)
+            });
+        await context.SaveChangesAsync();
+        var authService = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
+
+        var session = await authService.ValidateSessionAsync(token);
+
+        Assert.Null(session);
+    }
+
+    [Fact]
+    public async Task ValidateSessionAsync_LegacyPinGraceExpired_RevokesExistingSession()
+    {
+        await using var context = CreateInMemoryContext();
+        var now = new DateTimeOffset(2026, 9, 22, 12, 0, 0, TimeSpan.Zero);
+        var timeProvider = new MutableTimeProvider(now);
+        const string token = "legacy-pin-grace-session-token";
+        var clinic = new Clinic
+        {
+            Name = "Legacy PIN Session Clinic",
+            Slug = $"legacy-pin-session-{Guid.NewGuid():N}"
+        };
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "legacy-pin-session-user",
+            PinHash = AuthService.HashPin("1234"),
+            FirstName = "Legacy",
+            LastName = "Session",
+            Role = Roles.PT,
+            Clinic = clinic,
+            ClinicId = clinic.Id,
+            IsActive = true,
+            LegacyPinGraceEndsAtUtc = now.UtcDateTime.AddMinutes(5),
+            CreatedAt = now.UtcDateTime
+        };
+        var session = new Session
+        {
+            User = user,
+            UserId = user.Id,
+            TokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))).ToLowerInvariant(),
+            CreatedAt = now.UtcDateTime,
+            LastActivityAt = now.UtcDateTime,
+            ExpiresAt = now.UtcDateTime.AddHours(1)
+        };
+        context.AddRange(clinic, user, session);
+        await context.SaveChangesAsync();
+        var authService = new AuthService(
+            context,
+            NullLogger<AuthService>.Instance,
+            CreateAuditServiceMock(),
+            timeProvider: timeProvider);
+
+        Assert.NotNull(await authService.ValidateSessionAsync(token));
+
+        timeProvider.Advance(TimeSpan.FromMinutes(6));
+        var expired = await authService.ValidateSessionAsync(token);
+
+        Assert.Null(expired);
+        Assert.True(session.IsRevoked);
+        Assert.Equal(timeProvider.GetUtcNow().UtcDateTime, session.RevokedAt!.Value);
+    }
+
+    [Fact]
+    public async Task StatefulSessions_DoNotSurviveMfaEnforcementBoundary()
+    {
+        await using var context = CreateInMemoryContext();
+        var now = new DateTimeOffset(2026, 9, 20, 12, 0, 0, TimeSpan.Zero);
+        var timeProvider = new MutableTimeProvider(now);
+        var clinic = new Clinic
+        {
+            Name = "Session MFA Clinic",
+            Slug = $"session-mfa-{Guid.NewGuid():N}"
+        };
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "session-mfa-user",
+            PinHash = AuthService.HashPin("12345678"),
+            PinChangedAtUtc = now.UtcDateTime,
+            FirstName = "Session",
+            LastName = "Mfa",
+            Role = Roles.PT,
+            ClinicId = clinic.Id,
+            IsActive = true,
+            CreatedAt = now.UtcDateTime
+        };
+        context.AddRange(clinic, user);
+        await context.SaveChangesAsync();
+        var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.MfaEnforcementMode = MfaEnforcementMode.Off;
+        policy.MfaEffectiveAtUtc = null;
+        policy.UpdatedAtUtc = now.UtcDateTime.AddMinutes(-1);
+        await context.SaveChangesAsync();
+        var authService = new AuthService(
+            context,
+            NullLogger<AuthService>.Instance,
+            CreateAuditServiceMock(),
+            timeProvider: timeProvider);
+
+        var prePolicyResult = Assert.IsType<AuthResult>(await authService.AuthenticateAsync(
+            user.Username,
+            "12345678"));
+        var prePolicyToken = Assert.IsType<string>(prePolicyResult.Token);
+
+        var effectiveAtUtc = now.UtcDateTime.AddMinutes(10);
+        policy.MfaEnforcementMode = MfaEnforcementMode.GracePeriod;
+        policy.MfaEffectiveAtUtc = effectiveAtUtc;
+        policy.UpdatedAtUtc = now.UtcDateTime;
+        await context.SaveChangesAsync();
+
+        var graceResult = Assert.IsType<AuthResult>(await authService.AuthenticateAsync(
+            user.Username,
+            "12345678"));
+        var graceToken = Assert.IsType<string>(graceResult.Token);
+        Assert.Equal(effectiveAtUtc, graceResult.ExpiresAt);
+
+        timeProvider.Advance(TimeSpan.FromMinutes(11));
+
+        Assert.Null(await authService.ValidateSessionAsync(prePolicyToken));
+        Assert.Null(await authService.ValidateSessionAsync(graceToken));
+    }
+
+    [Fact]
     public async Task AuthenticateAsync_EmailIdentifier_ReturnsAuthResult()
     {
         var context = CreateInMemoryContext();
@@ -174,6 +393,15 @@ public class AuthServiceTests
         var authResult = Assert.IsType<AuthResult>(result);
         Assert.Equal(user.Id, authResult.UserId);
         Assert.Equal("emailuser", authResult.Username);
+    }
+
+    private sealed class MutableTimeProvider(DateTimeOffset value) : TimeProvider
+    {
+        private DateTimeOffset _value = value;
+
+        public override DateTimeOffset GetUtcNow() => _value;
+
+        public void Advance(TimeSpan duration) => _value += duration;
     }
 
     [Fact]

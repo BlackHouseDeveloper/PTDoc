@@ -1,0 +1,366 @@
+using Microsoft.EntityFrameworkCore;
+using PTDoc.Application.Compliance;
+using PTDoc.Application.Settings;
+using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Data;
+
+namespace PTDoc.Infrastructure.Settings;
+
+public sealed class SecurityPolicyAdministrationService(
+    ApplicationDbContext context,
+    IAuditService auditService) : ISecurityPolicyAdministrationService
+{
+    public async Task<SecurityPolicyDto> GetAsync(Guid clinicId, CancellationToken cancellationToken = default)
+    {
+        var policy = await context.ClinicSecurityPolicies
+            .SingleOrDefaultAsync(item => item.ClinicId == clinicId, cancellationToken);
+        return policy is null ? CanonicalDefaults() : Map(policy);
+    }
+
+    public async Task<SettingsOperationResult<SecurityPolicyDto>> UpdateAsync(
+        Guid clinicId,
+        UpdateSecurityPolicyRequest request,
+        Guid actorUserId,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        var errors = Validate(request);
+        if (errors.Count > 0)
+        {
+            return SettingsOperationResult<SecurityPolicyDto>.Validation(errors);
+        }
+
+        var policy = await context.ClinicSecurityPolicies
+            .SingleOrDefaultAsync(item => item.ClinicId == clinicId, cancellationToken);
+        if ((policy?.Version ?? 0) != request.ExpectedVersion)
+        {
+            return SettingsOperationResult<SecurityPolicyDto>.Conflict();
+        }
+
+        var oldPolicy = policy is null ? CanonicalDefaults() : Map(policy);
+        if (policy is null)
+        {
+            policy = new ClinicSecurityPolicy
+            {
+                ClinicId = clinicId,
+                Version = 1,
+                UpdatedByUserId = actorUserId
+            };
+            context.ClinicSecurityPolicies.Add(policy);
+        }
+        else
+        {
+            policy.Version++;
+            policy.UpdatedAtUtc = DateTime.UtcNow;
+            policy.UpdatedByUserId = actorUserId;
+        }
+
+        policy.MfaEnforcementMode = request.MfaEnforcementMode;
+        policy.MfaEffectiveAtUtc = request.MfaEnforcementMode == MfaEnforcementMode.Off
+            ? null
+            : request.MfaEffectiveAtUtc?.ToUniversalTime();
+        policy.RequirePinChangeOnFirstLogin = request.RequirePinChangeOnFirstLogin;
+        policy.MinimumPinLength = request.MinimumPinLength;
+        policy.SessionInactivityMinutes = request.SessionInactivityMinutes;
+        policy.AllowRoleCustomization = request.AllowRoleCustomization;
+        policy.RestrictCliniciansToOwnSchedules = request.RestrictCliniciansToOwnSchedules;
+        policy.AuthorizationMode = request.AuthorizationMode;
+
+        var mfaScheduleChanged = oldPolicy.MfaEnforcementMode != policy.MfaEnforcementMode
+            || oldPolicy.MfaEffectiveAtUtc != policy.MfaEffectiveAtUtc;
+        if (mfaScheduleChanged && policy.MfaEnforcementMode != MfaEnforcementMode.Off)
+        {
+            await ConstrainSessionsForMfaTransitionAsync(
+                clinicId,
+                policy.MfaEffectiveAtUtc,
+                cancellationToken);
+        }
+
+        var updated = Map(policy);
+        var auditEvent = new AuditEvent
+        {
+            EventType = "SecurityPolicyUpdated",
+            UserId = actorUserId,
+            CorrelationId = correlationId,
+            EntityType = nameof(ClinicSecurityPolicy),
+            EntityId = policy.Id,
+            Metadata = new Dictionary<string, object>
+            {
+                ["clinicId"] = clinicId,
+                ["oldVersion"] = oldPolicy.Version,
+                ["newVersion"] = updated.Version,
+                ["oldMfaMode"] = oldPolicy.MfaEnforcementMode.ToString(),
+                ["newMfaMode"] = updated.MfaEnforcementMode.ToString(),
+                ["oldAuthorizationMode"] = oldPolicy.AuthorizationMode.ToString(),
+                ["newAuthorizationMode"] = updated.AuthorizationMode.ToString()
+            }
+        };
+        try
+        {
+            await auditService.LogSettingsEventAsync(auditEvent, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            ClearFailedPolicyWriteEntries();
+            return SettingsOperationResult<SecurityPolicyDto>.Conflict();
+        }
+        catch (DbUpdateException exception) when (
+            AppointmentCommunicationProcessor.IsUniqueConstraintViolation(exception))
+        {
+            ClearFailedPolicyWriteEntries();
+            return SettingsOperationResult<SecurityPolicyDto>.Conflict();
+        }
+
+        return SettingsOperationResult<SecurityPolicyDto>.Success(updated);
+    }
+
+    private async Task ConstrainSessionsForMfaTransitionAsync(
+        Guid clinicId,
+        DateTime? effectiveAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var userIds = await context.Users
+            .Where(user => user.ClinicId == clinicId)
+            .Select(user => user.Id)
+            .ToListAsync(cancellationToken);
+        var sessions = await context.Sessions
+            .Where(session => userIds.Contains(session.UserId) && !session.IsRevoked)
+            .ToListAsync(cancellationToken);
+        var nowUtc = DateTime.UtcNow;
+
+        foreach (var session in sessions)
+        {
+            if (!effectiveAtUtc.HasValue || effectiveAtUtc.Value <= nowUtc)
+            {
+                session.IsRevoked = true;
+                session.RevokedAt = nowUtc;
+            }
+            else if (session.ExpiresAt > effectiveAtUtc.Value)
+            {
+                session.ExpiresAt = effectiveAtUtc.Value;
+            }
+        }
+    }
+
+    private void ClearFailedPolicyWriteEntries()
+    {
+        foreach (var entry in context.ChangeTracker.Entries()
+                     .Where(entry => entry.State is EntityState.Added or EntityState.Modified)
+                     .Where(entry => entry.Entity is ClinicSecurityPolicy or AuditLog or Session)
+                     .ToArray())
+        {
+            entry.State = EntityState.Detached;
+        }
+    }
+
+    public async Task<MfaReadinessDto> GetMfaReadinessAsync(Guid clinicId, CancellationToken cancellationToken = default)
+    {
+        var users = await context.Users
+            .Where(user => user.ClinicId == clinicId && user.IsActive)
+            .Select(user => new
+            {
+                user.Role,
+                IsEnrolled = user.MfaCredential != null && user.MfaCredential.IsActive
+            })
+            .ToListAsync(cancellationToken);
+
+        return new MfaReadinessDto(
+            users.Count,
+            users.Count(user => user.IsEnrolled),
+            users.Count(user => user.Role == "Admin"),
+            users.Count(user => user.Role == "Admin" && user.IsEnrolled));
+    }
+
+    public async Task<SettingsOperationResult<bool>> ForcePinChangeAsync(
+        Guid clinicId,
+        Guid userId,
+        Guid actorUserId,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await context.Users.SingleOrDefaultAsync(
+            item => item.Id == userId && item.ClinicId == clinicId,
+            cancellationToken);
+        if (user is null)
+        {
+            return SettingsOperationResult<bool>.NotFound();
+        }
+
+        user.MustChangePin = true;
+        var now = DateTime.UtcNow;
+        var sessions = await context.Sessions
+            .Where(item => item.UserId == userId && !item.IsRevoked)
+            .ToListAsync(cancellationToken);
+        foreach (var session in sessions)
+        {
+            session.IsRevoked = true;
+            session.RevokedAt = now;
+        }
+
+        var pendingCompletionChallenges = await context.Sessions
+            .Where(item => item.UserId == userId
+                && item.IsRevoked
+                && item.RevokedAt == null
+                && item.LastActivityAt == null)
+            .ToListAsync(cancellationToken);
+        context.Sessions.RemoveRange(pendingCompletionChallenges);
+
+        var refreshTokenSubject = userId.ToString();
+        var refreshTokens = await context.StoredRefreshTokens
+            .Where(item => item.Subject == refreshTokenSubject && !item.IsRevoked)
+            .ToListAsync(cancellationToken);
+        foreach (var refreshToken in refreshTokens)
+        {
+            refreshToken.IsRevoked = true;
+            refreshToken.RevokedAtUtc = now;
+        }
+
+        await AuditUserActionAsync("PinChangeForced", clinicId, userId, actorUserId, correlationId, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
+        return SettingsOperationResult<bool>.Success(true);
+    }
+
+    public async Task<SettingsOperationResult<bool>> ResetMfaAsync(
+        Guid clinicId,
+        Guid userId,
+        Guid actorUserId,
+        string correlationId,
+        CancellationToken cancellationToken = default)
+    {
+        var userExists = await context.Users.AnyAsync(
+            item => item.Id == userId && item.ClinicId == clinicId,
+            cancellationToken);
+        if (!userExists)
+        {
+            return SettingsOperationResult<bool>.NotFound();
+        }
+
+        var credential = await context.UserMfaCredentials
+            .SingleOrDefaultAsync(item => item.UserId == userId, cancellationToken);
+        if (credential is not null)
+        {
+            credential.IsActive = false;
+            credential.EncryptedSecret = string.Empty;
+            credential.LastAcceptedTimeStep = -1;
+            credential.FailedAttemptCount = 0;
+            credential.LockedUntilUtc = null;
+            credential.ActivatedAtUtc = null;
+            credential.ResetAtUtc = DateTime.UtcNow;
+            credential.ResetByUserId = actorUserId;
+            var recoveryCodes = context.UserMfaRecoveryCodes.Where(item => item.UserMfaCredentialId == credential.Id);
+            context.UserMfaRecoveryCodes.RemoveRange(recoveryCodes);
+        }
+
+        var now = DateTime.UtcNow;
+        var sessions = await context.Sessions
+            .Where(item => item.UserId == userId)
+            .ToListAsync(cancellationToken);
+        context.Sessions.RemoveRange(sessions.Where(item =>
+            item.IsRevoked
+            && item.RevokedAt == null
+            && item.LastActivityAt == null));
+        foreach (var session in sessions.Where(item => !item.IsRevoked))
+        {
+            session.IsRevoked = true;
+            session.RevokedAt = now;
+        }
+
+        var refreshTokenSubject = userId.ToString();
+        var refreshTokens = await context.StoredRefreshTokens
+            .Where(item => item.Subject == refreshTokenSubject && !item.IsRevoked)
+            .ToListAsync(cancellationToken);
+        foreach (var refreshToken in refreshTokens)
+        {
+            refreshToken.IsRevoked = true;
+            refreshToken.RevokedAtUtc = now;
+        }
+
+        await AuditUserActionAsync("MfaReset", clinicId, userId, actorUserId, correlationId, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
+        return SettingsOperationResult<bool>.Success(true);
+    }
+
+    private async Task AuditUserActionAsync(
+        string eventType,
+        Guid clinicId,
+        Guid targetUserId,
+        Guid actorUserId,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        await auditService.LogSettingsEventAsync(new AuditEvent
+        {
+            EventType = eventType,
+            UserId = actorUserId,
+            CorrelationId = correlationId,
+            EntityType = nameof(User),
+            EntityId = targetUserId,
+            Metadata = new Dictionary<string, object>
+            {
+                ["clinicId"] = clinicId,
+                ["targetUserId"] = targetUserId
+            }
+        }, cancellationToken);
+    }
+
+    private static Dictionary<string, string[]> Validate(UpdateSecurityPolicyRequest request)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (!Enum.IsDefined(request.MfaEnforcementMode))
+        {
+            errors["mfaEnforcementMode"] = ["MFA enforcement mode is invalid."];
+        }
+
+        if (!Enum.IsDefined(request.AuthorizationMode))
+        {
+            errors["authorizationMode"] = ["Authorization rollout mode is invalid."];
+        }
+
+        if (request.MinimumPinLength is < 8 or > 12)
+        {
+            errors["minimumPinLength"] = ["Minimum PIN length must be between 8 and 12 digits."];
+        }
+
+        if (request.SessionInactivityMinutes is < 5 or > 60)
+        {
+            errors["sessionInactivityMinutes"] = ["Session inactivity timeout must be between 5 and 60 minutes."];
+        }
+
+        if (request.MfaEnforcementMode != MfaEnforcementMode.Off && request.MfaEffectiveAtUtc is null)
+        {
+            errors["mfaEffectiveAtUtc"] = ["An effective date is required when MFA rollout or enforcement is enabled."];
+        }
+        else if (request.MfaEnforcementMode != MfaEnforcementMode.Off
+            && request.MfaEffectiveAtUtc is { Kind: DateTimeKind.Unspecified })
+        {
+            errors["mfaEffectiveAtUtc"] = ["The MFA effective date must include a UTC offset."];
+        }
+
+        return errors;
+    }
+
+    private static SecurityPolicyDto CanonicalDefaults() => new(
+        MfaEnforcementMode.Off,
+        null,
+        true,
+        8,
+        15,
+        true,
+        false,
+        AuthorizationRolloutMode.Static,
+        true,
+        0);
+
+    private static SecurityPolicyDto Map(ClinicSecurityPolicy policy) => new(
+        policy.MfaEnforcementMode,
+        policy.MfaEffectiveAtUtc,
+        policy.RequirePinChangeOnFirstLogin,
+        policy.MinimumPinLength,
+        policy.SessionInactivityMinutes,
+        policy.AllowRoleCustomization,
+        policy.RestrictCliniciansToOwnSchedules,
+        policy.AuthorizationMode,
+        true,
+        policy.Version);
+}
