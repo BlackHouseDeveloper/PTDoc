@@ -5,6 +5,9 @@ namespace PTDoc.Api.Security;
 
 internal static class DataProtectionConfiguration
 {
+    private const string AzureBlobHostSuffix = ".blob.core.windows.net";
+    private const string AzureKeyVaultHostSuffix = ".vault.azure.net";
+
     internal const string ApplicationName = "PTDoc.Api";
     internal const string BlobUriConfigurationKey = "DataProtection:KeyBlobUri";
     internal const string KeyVaultKeyConfigurationKey = "DataProtection:KeyVaultKeyIdentifier";
@@ -56,19 +59,21 @@ internal static class DataProtectionConfiguration
 
     private static void ValidateBlobUri(Uri uri)
     {
-        if (!string.IsNullOrEmpty(uri.Query)
+        if (!IsSupportedAzureHost(uri, AzureBlobHostSuffix)
+            || !string.IsNullOrEmpty(uri.Query)
             || !string.IsNullOrEmpty(uri.Fragment)
             || uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries).Length < 2)
         {
             throw new InvalidOperationException(
-                $"{BlobUriConfigurationKey} must identify a blob without a SAS query or fragment.");
+                $"{BlobUriConfigurationKey} must identify an Azure Blob Storage blob on *.blob.core.windows.net without a SAS query or fragment.");
         }
     }
 
     private static void ValidateVersionlessKeyIdentifier(Uri uri)
     {
         var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (!string.IsNullOrEmpty(uri.Query)
+        if (!IsSupportedAzureHost(uri, AzureKeyVaultHostSuffix)
+            || !string.IsNullOrEmpty(uri.Query)
             || !string.IsNullOrEmpty(uri.Fragment)
             || segments.Length != 2
             || !string.Equals(segments[0], "keys", StringComparison.OrdinalIgnoreCase)
@@ -78,4 +83,9 @@ internal static class DataProtectionConfiguration
                 $"{KeyVaultKeyConfigurationKey} must be a versionless Azure Key Vault key identifier in the form https://<vault>/keys/<key-name>.");
         }
     }
+
+    private static bool IsSupportedAzureHost(Uri uri, string requiredSuffix) =>
+        uri.IsDefaultPort
+        && uri.IdnHost.Length > requiredSuffix.Length
+        && uri.IdnHost.EndsWith(requiredSuffix, StringComparison.OrdinalIgnoreCase);
 }

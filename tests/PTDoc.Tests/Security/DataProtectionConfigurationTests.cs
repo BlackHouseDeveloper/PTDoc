@@ -54,6 +54,31 @@ public sealed class DataProtectionConfigurationTests
         Assert.Contains(DataProtectionConfiguration.KeyVaultKeyConfigurationKey, exception.Message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(
+        "https://attacker.example/data-protection/ptdoc-api-keys.xml",
+        "https://ptdoc.vault.azure.net/keys/data-protection",
+        DataProtectionConfiguration.BlobUriConfigurationKey)]
+    [InlineData(
+        "https://ptdoc.blob.core.windows.net/data-protection/ptdoc-api-keys.xml",
+        "https://attacker.example/keys/data-protection",
+        DataProtectionConfiguration.KeyVaultKeyConfigurationKey)]
+    public void DeployedConfiguration_RejectsUntrustedDataProtectionHosts(
+        string blobUri,
+        string keyVaultKeyIdentifier,
+        string expectedConfigurationKey)
+    {
+        var configuration = CreateConfiguration(blobUri, keyVaultKeyIdentifier);
+
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            DataProtectionConfiguration.AddPtdocDataProtection(
+                new ServiceCollection(),
+                configuration,
+                new TestHostEnvironment(Environments.Production)));
+
+        Assert.Contains(expectedConfigurationKey, exception.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void DeployedConfiguration_AcceptsManagedIdentityBlobAndVersionlessKeyUris()
     {
