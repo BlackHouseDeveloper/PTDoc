@@ -42,6 +42,8 @@ public class LegacyApiCredentialValidatorTests
         Assert.Equal(userId.ToString(), identity.FindFirst(ClaimTypes.NameIdentifier)?.Value);
         Assert.Equal(clinicId.ToString(), identity.FindFirst(HttpTenantContextAccessor.ClinicIdClaimType)?.Value);
         Assert.Equal("legacy_jwt", identity.FindFirst(PTDocClaimTypes.AuthenticationType)?.Value);
+        var user = await context.Users.SingleAsync();
+        Assert.Equal(PinCredentialBinding.Create(user.PinHash), identity.FindFirst(PTDocClaimTypes.PinCredentialBinding)?.Value);
     }
 
     [Fact]

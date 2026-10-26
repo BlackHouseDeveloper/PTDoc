@@ -86,8 +86,8 @@ test.describe('PTDoc responsive UI QA', () => {
     await page.locator('#roleKey').selectOption('PT');
     await expect(page.locator('#licenseNumber')).toBeVisible();
     await page.locator('#clinicId').selectOption({ index: 1 });
-    await page.locator('#pinSignup').fill('1234');
-    await page.locator('#confirmPinSignup').fill('1234');
+    await page.locator('#pinSignup').fill('12345678');
+    await page.locator('#confirmPinSignup').fill('12345678');
     await page.locator('#licenseNumber').fill('PT-1001');
     await page.locator('#licenseState').selectOption('MA');
 

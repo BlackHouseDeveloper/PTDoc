@@ -80,7 +80,8 @@ public sealed class LegacyApiCredentialValidator : ICredentialValidator
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.Username),
             new(ClaimTypes.Role, user.Role),
-            new(PTDocClaimTypes.AuthenticationType, "legacy_jwt")
+            new(PTDocClaimTypes.AuthenticationType, "legacy_jwt"),
+            new(PTDocClaimTypes.PinCredentialBinding, PinCredentialBinding.Create(user.PinHash))
         };
 
         if (!string.IsNullOrWhiteSpace(user.Email))

@@ -15,6 +15,20 @@ namespace PTDoc.Tests.Integration;
 [Trait("Category", "CoreCi")]
 public sealed class SettingsPersistenceModelMetadataTests
 {
+    [Fact]
+    public void AuthorizedOverlap_IsAlwaysWrittenByEfWhileRetainingDatabaseDefault()
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite("Data Source=:memory:", sqlite => sqlite.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"))
+            .Options;
+        using var context = new ApplicationDbContext(options);
+        var property = context.Model.FindEntityType(typeof(Appointment))!
+            .FindProperty(nameof(Appointment.AuthorizedOverlap))!;
+
+        Assert.Equal(ValueGenerated.Never, property.ValueGenerated);
+        Assert.Equal(false, property.GetDefaultValue());
+    }
+
     private const string PreviousSettingsMigration = "20260809010000_AddClinicalVisitOrdinal";
 
     public static TheoryData<string, string> ProviderMigrations => new()
@@ -281,6 +295,124 @@ public sealed class SettingsPersistenceModelMetadataTests
             checkInTokens.ForeignKeys,
             foreignKey => foreignKey.PrincipalTable == "Clinics"
                 && foreignKey.Columns.SequenceEqual(new[] { "ClinicId" }));
+    }
+
+    [Theory]
+    [MemberData(nameof(ProviderMigrations))]
+    public void RecoveryLockMigration_PreservesPriorPermissionForRollback(
+        string assemblyName,
+        string activeProvider)
+    {
+        var assembly = Assembly.Load(assemblyName);
+        var migrationType = assembly.GetType(
+            "PTDoc.Infrastructure.Data.Migrations.LockAdminClinicSettingsRecovery",
+            throwOnError: true)!;
+        var migration = Activator.CreateInstance(migrationType)!;
+        var upBuilder = new MigrationBuilder(activeProvider);
+        var downBuilder = new MigrationBuilder(activeProvider);
+
+        migrationType.GetMethod("Up", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(migration, [upBuilder]);
+        migrationType.GetMethod("Down", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(migration, [downBuilder]);
+
+        var upSql = string.Join(Environment.NewLine,
+            upBuilder.Operations.OfType<SqlOperation>().Select(operation => operation.Sql));
+        var downSql = string.Join(Environment.NewLine,
+            downBuilder.Operations.OfType<SqlOperation>().Select(operation => operation.Sql));
+        Assert.Contains("LockAdminClinicSettingsRecoveryBackup", upSql, StringComparison.Ordinal);
+        Assert.Contains("LockAdminClinicSettingsRecoveryBackup", downSql, StringComparison.Ordinal);
+        Assert.Contains("Level", downSql, StringComparison.Ordinal);
+        Assert.Contains("LockedMinimum", downSql, StringComparison.Ordinal);
+        Assert.Contains("NOT EXISTS", downSql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("DROP TABLE", downSql, StringComparison.OrdinalIgnoreCase);
+
+        if (activeProvider == "Microsoft.EntityFrameworkCore.SqlServer")
+        {
+            Assert.DoesNotContain(" backup", downSql, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("recovery_backup", downSql, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task SqliteRecoveryLockMigration_RollbackRestoresPriorPermissionLevel()
+    {
+        const string settingsMigration = "20260821041512_AddClinicSettingsAdministration";
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection, sqlite => sqlite.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"))
+            .Options;
+        await using var context = new ApplicationDbContext(options);
+        var migrator = context.GetService<IMigrator>();
+        await migrator.MigrateAsync(PreviousSettingsMigration);
+        var clinicId = Guid.NewGuid();
+        await context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "Clinics" ("Id", "Name", "Slug", "IsActive", "CreatedAt")
+            VALUES ({clinicId}, {"Recovery Clinic"}, {$"recovery-{clinicId:N}"}, {true}, {DateTime.UtcNow});
+            """);
+        await migrator.MigrateAsync(settingsMigration);
+        await context.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE "RoleCapabilityPermissions"
+            SET "Level" = {1}, "LockedMinimum" = {0}
+            WHERE "ClinicId" = {clinicId}
+              AND "RoleKey" = {Roles.Admin}
+              AND "CapabilityKey" = {(int)CapabilityKey.ClinicSettingsManage};
+            """);
+
+        await migrator.MigrateAsync();
+        var locked = await context.RoleCapabilityPermissions.AsNoTracking().SingleAsync(item =>
+            item.ClinicId == clinicId
+            && item.RoleKey == Roles.Admin
+            && item.CapabilityKey == CapabilityKey.ClinicSettingsManage);
+        Assert.Equal(PermissionLevel.Full, locked.Level);
+        Assert.Equal(PermissionLevel.Full, locked.LockedMinimum);
+
+        await migrator.MigrateAsync(settingsMigration);
+        context.ChangeTracker.Clear();
+        var restored = await context.RoleCapabilityPermissions.AsNoTracking().SingleAsync(item =>
+            item.ClinicId == clinicId
+            && item.RoleKey == Roles.Admin
+            && item.CapabilityKey == CapabilityKey.ClinicSettingsManage);
+        Assert.Equal(PermissionLevel.View, restored.Level);
+        Assert.Equal(PermissionLevel.None, restored.LockedMinimum);
+    }
+
+    [Fact]
+    public async Task SqliteRecoveryLockMigration_RollbackRestoresBaselineForClinicCreatedAfterUpgrade()
+    {
+        const string settingsMigration = "20260821041512_AddClinicSettingsAdministration";
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection, sqlite => sqlite.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite"))
+            .Options;
+        await using var context = new ApplicationDbContext(options);
+        var migrator = context.GetService<IMigrator>();
+        await migrator.MigrateAsync();
+
+        var clinic = new Clinic
+        {
+            Name = "Post-upgrade Recovery Clinic",
+            Slug = $"post-upgrade-recovery-{Guid.NewGuid():N}"
+        };
+        context.Clinics.Add(clinic);
+        await context.SaveChangesAsync();
+        var locked = await context.RoleCapabilityPermissions.AsNoTracking().SingleAsync(item =>
+            item.ClinicId == clinic.Id
+            && item.RoleKey == Roles.Admin
+            && item.CapabilityKey == CapabilityKey.ClinicSettingsManage);
+        Assert.Equal(PermissionLevel.Full, locked.Level);
+        Assert.Equal(PermissionLevel.Full, locked.LockedMinimum);
+
+        await migrator.MigrateAsync(settingsMigration);
+        context.ChangeTracker.Clear();
+        var restored = await context.RoleCapabilityPermissions.AsNoTracking().SingleAsync(item =>
+            item.ClinicId == clinic.Id
+            && item.RoleKey == Roles.Admin
+            && item.CapabilityKey == CapabilityKey.ClinicSettingsManage);
+        Assert.Equal(PermissionLevel.Full, restored.Level);
+        Assert.Equal(PermissionLevel.None, restored.LockedMinimum);
     }
 
     [Fact]

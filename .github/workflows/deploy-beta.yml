@@ -196,6 +196,8 @@ jobs:
           --output json)"
         test "$(jq -r '.[] | select(.name == "BetaAccess__AllowStartupSeed") | .value' <<< "$production_settings")" = true
         test "$(jq -r '.[] | select(.name == "BetaAccess__SeedLockTimeoutSeconds") | .value' <<< "$production_settings")" = 15
+        test -n "$(jq -r '[.[] | select(.name == "DataProtection__KeyBlobUri") | .value][0] // empty' <<< "$production_settings")"
+        test -n "$(jq -r '[.[] | select(.name == "DataProtection__KeyVaultKeyIdentifier") | .value][0] // empty' <<< "$production_settings")"
         config="$(az webapp config show \
           --resource-group "$AZURE_RESOURCE_GROUP" \
           --name "$API_APP_NAME" \

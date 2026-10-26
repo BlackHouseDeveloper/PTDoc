@@ -85,12 +85,32 @@ public class PfptRoleComplianceTests : IAsyncDisposable
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddAuthorizationCore(options => options.AddPTDocAuthorizationPolicies());
+        services.AddSingleton<IAuthorizationHandler, StaticCapabilityAuthorizationHandler>();
         var sp = services.BuildServiceProvider();
         var authService = sp.GetRequiredService<IAuthorizationService>();
         var identity = new ClaimsIdentity(new[] { new Claim(ClaimTypes.Role, role) }, "Test");
         var user = new ClaimsPrincipal(identity);
         var result = await authService.AuthorizeAsync(user, null, policyName);
         return result.Succeeded;
+    }
+
+    private sealed class StaticCapabilityAuthorizationHandler
+        : AuthorizationHandler<DynamicCapabilityRequirement>
+    {
+        protected override Task HandleRequirementAsync(
+            AuthorizationHandlerContext context,
+            DynamicCapabilityRequirement requirement)
+        {
+            var role = context.User.FindFirst(ClaimTypes.Role)?.Value;
+            if (context.User.Identity?.IsAuthenticated == true &&
+                !string.IsNullOrWhiteSpace(role) &&
+                requirement.StaticAllowedRoles.Contains(role))
+            {
+                context.Succeed(requirement);
+            }
+
+            return Task.CompletedTask;
+        }
     }
 
     // ─── U-C1: Auth + RBAC ──────────────────────────────────────────────────

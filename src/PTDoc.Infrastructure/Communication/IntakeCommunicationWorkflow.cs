@@ -92,6 +92,12 @@ public sealed class IntakeCommunicationWorkflow : IIntakeCommunicationWorkflow
             return Failure(intake, request.Channel, "Only email and SMS are valid outbound invite channels.");
         }
 
+        if (!string.IsNullOrWhiteSpace(request.TemplateKey)
+            && !PTDoc.Application.Settings.AutoCheckInTemplateCatalog.IsSupported(request.TemplateKey))
+        {
+            return Failure(intake, request.Channel, "TemplateKey is not supported.", "templateKey");
+        }
+
         var destination = ResolveDestination(request, intake.Patient);
         if (string.IsNullOrWhiteSpace(destination))
         {
@@ -149,26 +155,44 @@ public sealed class IntakeCommunicationWorkflow : IIntakeCommunicationWorkflow
             Recipient = normalizedDestination.NormalizedValue,
             InviteUrl = inviteUrl,
             ExpiresAtUtc = invite.ExpiresAt.Value,
+            TemplateKey = request.TemplateKey,
             CorrelationId = context?.CorrelationId
         };
 
-        var deliveryResult = request.Channel == IntakeDeliveryChannel.Email
-            ? await _communicationService.SendIntakeLinkEmailAsync(deliveryRequest, cancellationToken)
-            : await _communicationService.SendIntakeLinkSmsAsync(deliveryRequest, cancellationToken);
+        DeliveryResult deliveryResult;
+        var acceptedWithAuditFailure = false;
+        try
+        {
+            deliveryResult = request.Channel == IntakeDeliveryChannel.Email
+                ? await _communicationService.SendIntakeLinkEmailAsync(deliveryRequest, cancellationToken)
+                : await _communicationService.SendIntakeLinkSmsAsync(deliveryRequest, cancellationToken);
+        }
+        catch (DeliveryAcceptedAuditException exception)
+        {
+            deliveryResult = exception.DeliveryResult;
+            acceptedWithAuditFailure = true;
+        }
 
         var maskedDestination = MaskDestination(normalizedDestination.NormalizedValue);
-        await LogInviteEventAsync(
-            intake.Id,
-            intake.PatientId,
-            deliveryResult.Succeeded ? "IntakeInviteDelivered" : "IntakeInviteDeliveryFailed",
-            request.Channel,
-            deliveryResult.Succeeded,
-            maskedDestination,
-            deliveryResult.Provider ?? "Unknown",
-            deliveryResult.ProviderMessageId,
-            invite.ExpiresAt,
-            deliveryResult.SafeErrorMessage,
-            cancellationToken);
+        try
+        {
+            await LogInviteEventAsync(
+                intake.Id,
+                intake.PatientId,
+                deliveryResult.Succeeded ? "IntakeInviteDelivered" : "IntakeInviteDeliveryFailed",
+                request.Channel,
+                deliveryResult.Succeeded,
+                maskedDestination,
+                deliveryResult.Provider ?? "Unknown",
+                deliveryResult.ProviderMessageId,
+                invite.ExpiresAt,
+                deliveryResult.SafeErrorMessage,
+                cancellationToken);
+        }
+        catch (Exception) when (deliveryResult.Succeeded)
+        {
+            acceptedWithAuditFailure = true;
+        }
 
         return new IntakeDeliverySendResult
         {
@@ -180,7 +204,9 @@ public sealed class IntakeCommunicationWorkflow : IIntakeCommunicationWorkflow
             ProviderMessageId = deliveryResult.ProviderMessageId,
             SentAt = deliveryResult.Succeeded ? deliveryResult.SentAtUtc : null,
             ExpiresAt = invite.ExpiresAt,
-            ErrorMessage = deliveryResult.SafeErrorMessage
+            ErrorMessage = acceptedWithAuditFailure
+                ? "The delivery was accepted, but its audit record could not be persisted."
+                : deliveryResult.SafeErrorMessage
         };
     }
 
@@ -258,14 +284,21 @@ public sealed class IntakeCommunicationWorkflow : IIntakeCommunicationWorkflow
         return count >= Math.Max(1, _communicationOptions.RateLimits.IntakeMaxPerDay);
     }
 
-    private static IntakeDeliverySendResult Failure(IntakeForm intake, IntakeDeliveryChannel channel, string message)
+    private static IntakeDeliverySendResult Failure(
+        IntakeForm intake,
+        IntakeDeliveryChannel channel,
+        string message,
+        string? field = null)
         => new()
         {
             Success = false,
             IntakeId = intake.Id,
             PatientId = intake.PatientId,
             Channel = channel,
-            ErrorMessage = message
+            ErrorMessage = message,
+            ValidationErrors = field is null
+                ? null
+                : new Dictionary<string, string[]> { [field] = [message] }
         };
 
     private static string ApplyPublicBaseUrl(string inviteUrl, string? publicBaseUrlOverride)

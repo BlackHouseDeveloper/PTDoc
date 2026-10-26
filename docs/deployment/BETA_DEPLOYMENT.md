@@ -62,6 +62,8 @@ Database__AutoMigrate=false
 ConnectionStrings__DefaultConnection=<Azure SQL connection string>
 Jwt__SigningKey=<minimum 32 character secret>
 IntakeInvite__SigningKey=<minimum 32 character secret>
+DataProtection__KeyBlobUri=https://<storage-account>.blob.core.windows.net/<container>/ptdoc-api-keys.xml
+DataProtection__KeyVaultKeyIdentifier=https://<vault>.vault.azure.net/keys/<key-name>
 BetaAccess__AllowStartupSeed=true
 BetaAccess__SeedPin=<4 digit beta access PIN from secret store>
 BetaAccess__SeedLockTimeoutSeconds=15
@@ -103,6 +105,13 @@ non-development startup rejects endpoints containing a path, query string,
 fragment, or embedded credentials.
 
 Do not commit real connection strings, signing keys, publish profiles, ACS credentials, Azure OpenAI keys, or Entra client secrets.
+
+Enable the API App Service system-assigned managed identity before deployment. Grant it `Storage
+Blob Data Contributor` on the Data Protection container and Key Vault key access for get, wrap,
+and unwrap operations. Use a blob URI without SAS credentials and a versionless Key Vault key
+identifier. `Deploy Beta` validates that both settings are present before replacing the running
+API; preserve the key-ring blob and historical Key Vault key versions across deployments and
+rotation.
 
 The workflow deploys directly to the live Beta apps, so configure these settings on the primary App Service resources. No staging-slot settings are required.
 

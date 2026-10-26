@@ -51,6 +51,43 @@ public sealed class JwtIntakeInviteServiceTests
     }
 
     [Fact]
+    public async Task CreateInviteAsync_ConcurrentClaimsReuseSingleActiveInvite()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"ptdoc-invite-claim-{Guid.NewGuid():N}.db");
+        try
+        {
+            Guid intakeId;
+            await using (var setupDb = CreateSqliteDbContext(dbPath))
+            {
+                await setupDb.Database.EnsureCreatedAsync();
+                intakeId = (await SeedOpenIntakeAsync(setupDb)).Id;
+            }
+
+            await using var firstDb = CreateSqliteDbContext(dbPath);
+            await using var secondDb = CreateSqliteDbContext(dbPath);
+            var results = await Task.WhenAll(
+                CreateService(firstDb).CreateInviteAsync(intakeId),
+                CreateService(secondDb).CreateInviteAsync(intakeId));
+
+            Assert.All(results, result => Assert.True(result.Success));
+            Assert.Equal(results[0].InviteUrl, results[1].InviteUrl);
+
+            await using var verifyDb = CreateSqliteDbContext(dbPath);
+            var stored = await verifyDb.IntakeForms.AsNoTracking().SingleAsync(item => item.Id == intakeId);
+            Assert.Equal(ReadInviteToken(results[0].InviteUrl!), stored.InviteToken);
+            Assert.False(string.IsNullOrWhiteSpace(stored.AccessToken));
+            Assert.NotNull(stored.ExpiresAt);
+        }
+        finally
+        {
+            if (File.Exists(dbPath))
+            {
+                File.Delete(dbPath);
+            }
+        }
+    }
+
+    [Fact]
     public async Task CreateInviteAsync_OnLockedIntake_ReturnsFailure()
     {
         await using var db = CreateDbContext();

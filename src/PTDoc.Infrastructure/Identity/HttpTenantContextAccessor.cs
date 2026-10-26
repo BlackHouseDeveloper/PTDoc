@@ -32,15 +32,36 @@ public class HttpTenantContextAccessor : ITenantContextAccessor
         var principal = _httpContextAccessor.HttpContext?.User;
         var claim = principal?.FindFirst(ClinicIdClaimType)?.Value;
 
+        if (principal?.Identity?.IsAuthenticated == true && _principalRecordResolver is not null)
+        {
+            var provisioning = _principalRecordResolver.GetProvisioningResult();
+            if (provisioning.ClinicId is { } resolvedClinicId)
+            {
+                if (!string.IsNullOrWhiteSpace(claim)
+                    && (!Guid.TryParse(claim, out var claimedClinicId)
+                        || claimedClinicId != resolvedClinicId))
+                {
+                    throw new ProvisioningException(new PrincipalProvisioningResult
+                    {
+                        IsAuthenticated = true,
+                        IsProvisioned = false,
+                        PrincipalType = provisioning.PrincipalType,
+                        Provider = provisioning.Provider,
+                        ExternalSubject = provisioning.ExternalSubject,
+                        FailureCode = "tenant_claim_mismatch",
+                        FailureReason = "Authenticated principal tenant claim does not match its PTDoc tenant mapping."
+                    });
+                }
+
+                return resolvedClinicId;
+            }
+
+            throw new ProvisioningException(provisioning);
+        }
+
         if (claim != null && Guid.TryParse(claim, out var clinicId))
         {
             return clinicId;
-        }
-
-        var resolvedClinicId = _principalRecordResolver?.TryResolveClinicId();
-        if (resolvedClinicId.HasValue)
-        {
-            return resolvedClinicId.Value;
         }
 
         if (principal?.Identity?.IsAuthenticated == true)

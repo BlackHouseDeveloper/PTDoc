@@ -175,7 +175,11 @@ public static class CommunicationEndpoints
             Token = ReadStringProperty(document.RootElement, "token") ?? string.Empty
         };
         var result = await passwordResetTokenService.ValidateTokenAsync(request, cancellationToken);
-        return Results.Ok(new { isValid = result.IsValid });
+        return Results.Ok(new
+        {
+            isValid = result.IsValid,
+            minimumPinLength = result.IsValid ? result.MinimumPinLength : null
+        });
     }
 
     private static Task<IResult> SendPasswordResetEmail(
@@ -275,12 +279,25 @@ public static class CommunicationEndpoints
 
         if (result.Succeeded)
         {
-            return Results.Ok(new { message = "Your PTDoc PIN has been reset." });
+            return Results.Ok(new
+            {
+                status = PasswordResetCompletionStatus.Succeeded.ToString(),
+                message = "Your PTDoc PIN has been reset."
+            });
         }
 
         return result.Status == PasswordResetCompletionStatus.InvalidPin
-            ? Results.BadRequest(new { error = result.SafeErrorMessage })
-            : Results.BadRequest(new { error = "The reset link is invalid or expired." });
+            ? Results.BadRequest(new
+            {
+                status = PasswordResetCompletionStatus.InvalidPin.ToString(),
+                error = result.SafeErrorMessage,
+                minimumPinLength = result.MinimumPinLength
+            })
+            : Results.BadRequest(new
+            {
+                status = PasswordResetCompletionStatus.InvalidToken.ToString(),
+                error = "The reset link is invalid or expired."
+            });
     }
 
     private static string ResolveRecipient(

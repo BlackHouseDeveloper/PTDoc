@@ -21,13 +21,25 @@ public sealed class EntraExternalIdClaimsTransformation : IClaimsTransformation
 
     public Task<ClaimsPrincipal> TransformAsync(ClaimsPrincipal principal)
     {
-        if (!_options.Enabled || principal.Identity is not ClaimsIdentity identity)
+        if (!_options.Enabled || principal.Identity is not ClaimsIdentity identity
+            || !identity.IsAuthenticated
+            || (identity.AuthenticationType != PTDocClaimTypes.EntraJwtIdentityType
+                && identity.AuthenticationType != PTDocClaimTypes.EntraOidcIdentityType))
         {
             return Task.FromResult(principal);
         }
 
         var transformed = new ClaimsIdentity(identity);
         var claims = transformed.Claims.ToList();
+
+        // These are application-owned identity markers, not issuer-controlled extensions.
+        foreach (var claim in transformed.Claims.Where(claim =>
+                     claim.Type == PTDocClaimTypes.ExternalSubject
+                     || claim.Type == PTDocClaimTypes.ExternalProvider
+                     || claim.Type == PTDocClaimTypes.AuthenticationType).ToArray())
+        {
+            transformed.RemoveClaim(claim);
+        }
 
         AddSingleClaimIfMissing(
             transformed,
@@ -69,21 +81,8 @@ public sealed class EntraExternalIdClaimsTransformation : IClaimsTransformation
             claims,
             _options.Claims.PatientIdClaimType);
 
-        AddSingleClaimIfMissing(
-            transformed,
-            PTDocClaimTypes.ExternalProvider,
-            claims,
-            PTDocClaimTypes.ExternalProvider);
-
-        if (!transformed.HasClaim(c => c.Type == PTDocClaimTypes.ExternalProvider))
-        {
-            transformed.AddClaim(new Claim(PTDocClaimTypes.ExternalProvider, _options.ProviderKey));
-        }
-
-        if (!transformed.HasClaim(c => c.Type == PTDocClaimTypes.AuthenticationType))
-        {
-            transformed.AddClaim(new Claim(PTDocClaimTypes.AuthenticationType, "entra_jwt"));
-        }
+        transformed.AddClaim(new Claim(PTDocClaimTypes.ExternalProvider, _options.ProviderKey));
+        transformed.AddClaim(new Claim(PTDocClaimTypes.AuthenticationType, "entra_jwt"));
 
         foreach (var role in GetClaimValues(claims, _options.Claims.RoleClaimType, _options.Claims.StandardRoleClaimType)
                      .SelectMany(ExpandRoleAliases)

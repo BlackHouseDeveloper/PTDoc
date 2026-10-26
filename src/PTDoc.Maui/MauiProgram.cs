@@ -40,6 +40,8 @@ public static class MauiProgram
         builder.Services.AddMauiBlazorWebView();
 
         builder.Services.AddAuthorizationCore(options => options.AddPTDocAuthorizationPolicies());
+        builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler,
+            ClientStaticCapabilityAuthorizationHandler>();
         builder.Services.AddScoped<AuthenticationStateProvider, MauiAuthenticationStateProvider>();
         builder.Services.AddScoped<ITokenStore, SecureStorageTokenStore>();
         // ITokenService is registered via typed HttpClient below

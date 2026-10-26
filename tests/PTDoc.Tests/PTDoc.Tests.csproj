@@ -35,6 +35,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- MAUI authentication orchestration is platform-neutral; link the production files so the
+         net8.0 test project can exercise them without requiring a device workload target. -->
+    <Compile Include="..\..\src\PTDoc.Maui\Auth\MauiAuthenticationStateProvider.cs" Link="MauiAuth\MauiAuthenticationStateProvider.cs" />
+    <Compile Include="..\..\src\PTDoc.Maui\Auth\MauiUserService.cs" Link="MauiAuth\MauiUserService.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\PTDoc.Core\PTDoc.Core.csproj" />
     <ProjectReference Include="..\..\src\PTDoc.Application\PTDoc.Application.csproj" />
     <ProjectReference Include="..\..\src\PTDoc.Infrastructure\PTDoc.Infrastructure.csproj" />

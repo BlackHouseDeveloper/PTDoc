@@ -142,7 +142,10 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
             AppointmentStatus.Scheduled);
         await db.SaveChangesAsync();
 
-        var updatedLocalStart = new DateTime(2026, 7, 24, 15, 30, 0, DateTimeKind.Local);
+        var updatedClinicLocalStart = new DateTime(2026, 7, 24, 15, 30, 0, DateTimeKind.Unspecified);
+        var expectedUtcStart = TimeZoneInfo.ConvertTimeToUtc(
+            updatedClinicLocalStart,
+            TimeZoneInfo.FindSystemTimeZoneById("America/Los_Angeles"));
         using var client = _factory.CreateClientWithRole(Roles.FrontDesk);
         using var response = await client.PutAsJsonAsync(
             $"/api/v1/appointments/{seeded.AppointmentId:D}",
@@ -151,8 +154,8 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
                 PatientId = seeded.PatientId,
                 ClinicianId = clinician.Id,
                 AppointmentType = "Re-Evaluation",
-                AppointmentDate = updatedLocalStart.Date,
-                AppointmentTime = updatedLocalStart.TimeOfDay,
+                AppointmentDate = updatedClinicLocalStart.Date,
+                AppointmentTime = updatedClinicLocalStart.TimeOfDay,
                 DurationMinutes = 60,
                 Notes = "Updated appointment notes"
             });
@@ -160,17 +163,206 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var payload = await response.Content.ReadFromJsonAsync<AppointmentListItemResponse>();
         Assert.NotNull(payload);
-        Assert.Equal("Re-evaluation", payload!.AppointmentType);
+        Assert.Equal("Re-Evaluation", payload!.AppointmentType);
         Assert.Equal("Updated appointment notes", payload.Notes);
-        Assert.Equal(updatedLocalStart.ToUniversalTime(), payload.StartTimeUtc);
-        Assert.Equal(updatedLocalStart.ToUniversalTime().AddMinutes(60), payload.EndTimeUtc);
+        Assert.Equal(expectedUtcStart, payload.StartTimeUtc);
+        Assert.Equal(expectedUtcStart.AddMinutes(60), payload.EndTimeUtc);
 
         db.ChangeTracker.Clear();
         var persisted = await db.Appointments.SingleAsync(appointment => appointment.Id == seeded.AppointmentId);
         Assert.Equal(AppointmentType.ReEvaluation, persisted.AppointmentType);
         Assert.Equal("Updated appointment notes", persisted.Notes);
-        Assert.Equal(updatedLocalStart.ToUniversalTime(), persisted.StartTimeUtc);
-        Assert.Equal(updatedLocalStart.ToUniversalTime().AddMinutes(60), persisted.EndTimeUtc);
+        Assert.Equal(expectedUtcStart, persisted.StartTimeUtc);
+        Assert.Equal(expectedUtcStart.AddMinutes(60), persisted.EndTimeUtc);
+    }
+
+    [Fact]
+    public async Task CreateAndUpdateAppointment_AcceptStableVisitTypeIdWithoutLegacyType()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinicId = Guid.NewGuid();
+        var clinicianId = Guid.NewGuid();
+        var localStart = new DateTime(2035, 8, 13, 9, 0, 0);
+        var clinic = new Clinic
+        {
+            Id = clinicId,
+            Name = "Stable Visit Type Clinic",
+            Slug = $"stable-visit-type-{Guid.NewGuid():N}"
+        };
+        var clinician = new User
+        {
+            Id = clinicianId,
+            Username = $"stable-visit-type-pt-{Guid.NewGuid():N}",
+            PinHash = "integration-test-pin-hash",
+            FirstName = "Stable",
+            LastName = "Clinician",
+            Role = Roles.PT,
+            ClinicId = clinicId,
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true
+        };
+        var visitTypes = new Dictionary<string, VisitType>
+        {
+            ["follow-up"] = new()
+            {
+                ClinicId = clinicId,
+                Code = "follow-up",
+                Name = "Follow-up",
+                DurationMinutes = 45,
+                PtaAllowed = true,
+                DisplayOrder = 1,
+                UpdatedByUserId = clinicianId
+            },
+            ["discharge"] = new()
+            {
+                ClinicId = clinicId,
+                Code = "discharge",
+                Name = "Discharge",
+                DurationMinutes = 45,
+                PtaAllowed = true,
+                DisplayOrder = 2,
+                UpdatedByUserId = clinicianId
+            }
+        };
+        var businessHours = new ClinicBusinessHour
+        {
+            ClinicId = clinicId,
+            DayOfWeek = localStart.DayOfWeek,
+            IsOpen = true,
+            StartLocalTime = new TimeOnly(8, 0),
+            EndLocalTime = new TimeOnly(17, 0),
+            UpdatedByUserId = clinicianId
+        };
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Stable Visit Type",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1980, 1, 1),
+            ClinicId = clinicId,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = clinician.Id,
+            SyncState = SyncState.Pending
+        };
+        db.AddRange(clinic, clinician, visitTypes["follow-up"], visitTypes["discharge"], businessHours, patient);
+        await db.SaveChangesAsync();
+
+        using var client = _factory.CreateClientWithRole(Roles.FrontDesk);
+        using var createResponse = await client.PostAsJsonAsync(
+            "/api/v1/appointments/",
+            new CreateAppointmentRequest
+            {
+                PatientId = patient.Id,
+                ClinicianId = clinician.Id,
+                VisitTypeId = visitTypes["follow-up"].Id,
+                AppointmentDate = localStart.Date,
+                AppointmentTime = localStart.TimeOfDay,
+                DurationMinutes = 45
+            });
+
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var created = await createResponse.Content.ReadFromJsonAsync<AppointmentListItemResponse>();
+        Assert.NotNull(created);
+        Assert.Equal(visitTypes["follow-up"].Id, created!.VisitTypeId);
+        Assert.Equal("Follow-up", created.AppointmentType);
+
+        using var updateResponse = await client.PutAsJsonAsync(
+            $"/api/v1/appointments/{created.Id:D}",
+            new UpdateAppointmentRequest
+            {
+                PatientId = patient.Id,
+                ClinicianId = clinician.Id,
+                VisitTypeId = visitTypes["discharge"].Id,
+                AppointmentDate = localStart.Date,
+                AppointmentTime = localStart.TimeOfDay,
+                DurationMinutes = 45
+            });
+
+        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+        var updated = await updateResponse.Content.ReadFromJsonAsync<AppointmentListItemResponse>();
+        Assert.NotNull(updated);
+        Assert.Equal(visitTypes["discharge"].Id, updated!.VisitTypeId);
+        Assert.Equal("Discharge", updated.AppointmentType);
+
+        db.ChangeTracker.Clear();
+        var persisted = await db.Appointments.SingleAsync(item => item.Id == created.Id);
+        Assert.Equal(visitTypes["discharge"].Id, persisted.VisitTypeId);
+        Assert.Equal(AppointmentType.Discharge, persisted.AppointmentType);
+    }
+
+    [Fact]
+    public async Task CreateAndUpdateAppointment_RejectPtaDisallowedVisitTypes()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var pta = await db.Users.SingleAsync(user => user.Username == "integration-pta");
+        var visitTypes = await db.VisitTypes
+            .Where(item => item.ClinicId == pta.ClinicId
+                && (item.Code == "follow-up" || item.Code == "initial-evaluation"))
+            .ToDictionaryAsync(item => item.Code);
+        var patient = new Patient
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "PTA Visit Type",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1980, 1, 1),
+            ClinicId = pta.ClinicId,
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = pta.Id,
+            SyncState = SyncState.Pending
+        };
+        db.Patients.Add(patient);
+        await db.SaveChangesAsync();
+
+        using var client = _factory.CreateClientWithRole(Roles.PTA);
+        var localStart = new DateTime(2035, 8, 13, 9, 0, 0, DateTimeKind.Unspecified);
+        using var rejectedCreate = await client.PostAsJsonAsync(
+            "/api/v1/appointments/",
+            new CreateAppointmentRequest
+            {
+                PatientId = patient.Id,
+                ClinicianId = pta.Id,
+                VisitTypeId = visitTypes["initial-evaluation"].Id,
+                AppointmentDate = localStart.Date,
+                AppointmentTime = localStart.TimeOfDay,
+                DurationMinutes = 60
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, rejectedCreate.StatusCode);
+
+        using var allowedCreate = await client.PostAsJsonAsync(
+            "/api/v1/appointments/",
+            new CreateAppointmentRequest
+            {
+                PatientId = patient.Id,
+                ClinicianId = pta.Id,
+                VisitTypeId = visitTypes["follow-up"].Id,
+                AppointmentDate = localStart.Date,
+                AppointmentTime = localStart.TimeOfDay,
+                DurationMinutes = 30
+            });
+        Assert.Equal(HttpStatusCode.Created, allowedCreate.StatusCode);
+        var created = await allowedCreate.Content.ReadFromJsonAsync<AppointmentListItemResponse>();
+        Assert.NotNull(created);
+
+        using var rejectedUpdate = await client.PutAsJsonAsync(
+            $"/api/v1/appointments/{created!.Id:D}",
+            new UpdateAppointmentRequest
+            {
+                PatientId = patient.Id,
+                ClinicianId = pta.Id,
+                VisitTypeId = visitTypes["initial-evaluation"].Id,
+                AppointmentDate = localStart.Date,
+                AppointmentTime = localStart.TimeOfDay,
+                DurationMinutes = 60
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, rejectedUpdate.StatusCode);
+        db.ChangeTracker.Clear();
+        var persisted = await db.Appointments.SingleAsync(item => item.Id == created.Id);
+        Assert.Equal(visitTypes["follow-up"].Id, persisted.VisitTypeId);
+        Assert.Equal(AppointmentType.FollowUp, persisted.AppointmentType);
     }
 
     [Fact]
@@ -217,6 +409,11 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         Assert.Equal(before.EndTimeUtc, after.EndTimeUtc);
         Assert.Equal(before.Notes, after.Notes);
         Assert.Equal(before.ClinicalVisitOrdinal, after.ClinicalVisitOrdinal);
+        var dischargeVisitTypeId = await db.VisitTypes.AsNoTracking()
+            .Where(item => item.ClinicId == clinician.ClinicId && item.Code == "discharge")
+            .Select(item => item.Id)
+            .SingleAsync();
+        Assert.Equal(dischargeVisitTypeId, after.VisitTypeId);
         var audit = await db.AuditLogs.AsNoTracking()
             .SingleAsync(entry => entry.EventType == "AppointmentTypeChanged"
                 && entry.EntityId == seeded.AppointmentId);
@@ -232,6 +429,45 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
             });
 
         Assert.Equal(HttpStatusCode.Conflict, staleResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateAppointmentType_RejectsPtaDisallowedLegacyType()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var pta = await db.Users.SingleAsync(user => user.Username == "integration-pta");
+        var followUpVisitTypeId = await db.VisitTypes
+            .Where(item => item.ClinicId == pta.ClinicId && item.Code == "follow-up")
+            .Select(item => item.Id)
+            .SingleAsync();
+        var seeded = SeedAppointmentCase(
+            db,
+            pta.Id,
+            $"PTA-PATCH-{Guid.NewGuid():N}",
+            "Appointment",
+            new DateTime(2035, 8, 14, 16, 0, 0, DateTimeKind.Utc),
+            AppointmentStatus.Scheduled);
+        var appointment = db.Appointments.Local.Single(item => item.Id == seeded.AppointmentId);
+        appointment.VisitTypeId = followUpVisitTypeId;
+        await db.SaveChangesAsync();
+        var expectedVersion = appointment.LastModifiedUtc;
+
+        using var client = _factory.CreateClientWithRole(Roles.PTA);
+        using var response = await client.PatchAsJsonAsync(
+            $"/api/v1/appointments/{seeded.AppointmentId:D}/appointment-type",
+            new UpdateAppointmentTypeRequest
+            {
+                AppointmentType = "Re-Evaluation",
+                ExpectedLastModifiedUtc = expectedVersion
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        db.ChangeTracker.Clear();
+        var persisted = await db.Appointments.SingleAsync(item => item.Id == seeded.AppointmentId);
+        Assert.Equal(followUpVisitTypeId, persisted.VisitTypeId);
+        Assert.Equal(AppointmentType.FollowUp, persisted.AppointmentType);
+        Assert.Equal(expectedVersion, persisted.LastModifiedUtc);
     }
 
     [Fact]
@@ -698,6 +934,7 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         NoteStatus? noteStatus = null,
         string? payerInfoJson = null)
     {
+        var clinicId = db.Users.Local.Single(user => user.Id == clinicianId).ClinicId;
         var patient = new Patient
         {
             Id = Guid.NewGuid(),
@@ -706,6 +943,7 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
             DateOfBirth = new DateTime(1980, 1, 1),
             MedicalRecordNumber = $"{prefix[..12]}-{suffix}",
             PayerInfoJson = payerInfoJson ?? "{}",
+            ClinicId = clinicId,
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = clinicianId,
             SyncState = SyncState.Pending
@@ -720,6 +958,7 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
             EndTimeUtc = startTimeUtc.AddMinutes(45),
             AppointmentType = AppointmentType.FollowUp,
             Status = appointmentStatus,
+            ClinicId = clinicId,
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = clinicianId,
             SyncState = SyncState.Pending
