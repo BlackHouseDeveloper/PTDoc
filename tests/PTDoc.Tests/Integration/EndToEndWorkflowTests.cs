@@ -741,6 +741,17 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         Assert.True(accessPayload.IsValid);
         Assert.False(string.IsNullOrWhiteSpace(accessPayload.AccessToken));
 
+        // A later intake must not change the record selected by an already-issued link.
+        var laterIntakeId = await CreateIntakeAsync(frontDeskClient, patientId);
+        Assert.NotEqual(intakeId, laterIntakeId);
+        using var latestRequest = new HttpRequestMessage(HttpMethod.Get,
+            $"/api/v1/intake/access/patient/{patientId}/latest");
+        latestRequest.Headers.Add(IntakeAccessHeaders.AccessToken, accessPayload.AccessToken);
+        using var latestResponse = await anonymousClient.SendAsync(latestRequest);
+        Assert.Equal(HttpStatusCode.OK, latestResponse.StatusCode);
+        var linkedLatest = JsonSerializer.Deserialize<IntakeResponse>(await latestResponse.Content.ReadAsStringAsync(), JsonOpts)!;
+        Assert.Equal(intakeId, linkedLatest.Id);
+
         using var draftRequest = new HttpRequestMessage(
             HttpMethod.Get,
             $"/api/v1/intake/access/patient/{patientId}/draft");
@@ -771,6 +782,8 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
 
         using var updateResponse = await anonymousClient.SendAsync(updateRequest);
         Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+        var updatedIntake = JsonSerializer.Deserialize<IntakeResponse>(await updateResponse.Content.ReadAsStringAsync(), JsonOpts)!;
+        Assert.Equal(draft.TemplateVersion, updatedIntake.TemplateVersion);
 
         using var submitRequest = new HttpRequestMessage(
             HttpMethod.Post,
