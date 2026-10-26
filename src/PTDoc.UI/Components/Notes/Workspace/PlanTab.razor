@@ -1134,28 +1134,8 @@
     private async Task<EditableNarrativeAcceptResult> HandleClinicalSummaryAcceptedAsync(string acceptedText)
     {
         if (!CanAcceptNarrative(NoteNarrativePurpose.SoapSummary)) return EditableNarrativeAcceptResult.Fail("The note changed. Generate a new suggestion.");
-        var context = _narrativeContextKey;
         try
         {
-            if (NoteId != Guid.Empty)
-            {
-                var acceptance = await NoteWorkspaceService.AcceptAiSuggestionAsync(
-                    NoteId,
-                    section: "plan",
-                    generatedText: acceptedText,
-                    generationType: "ClinicalSummary");
-
-                if (!acceptance.Success)
-                {
-                    _errorMessage = acceptance.ErrorMessage ?? "Unable to accept AI-generated summary content.";
-                    ToastService.ShowError(_errorMessage, "AI acceptance failed");
-                    await InvokeAsync(StateHasChanged);
-                    return EditableNarrativeAcceptResult.Fail(_errorMessage);
-                }
-            }
-
-            if (context != _narrativeContextKey || !CanAcceptNarrative(NoteNarrativePurpose.SoapSummary))
-                return EditableNarrativeAcceptResult.Fail("The note changed. Generate a new suggestion.");
             await SetAndNotify(vm =>
         {
             vm.ClinicalSummary = acceptedText;

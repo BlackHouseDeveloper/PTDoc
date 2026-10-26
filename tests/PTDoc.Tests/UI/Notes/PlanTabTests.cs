@@ -638,18 +638,6 @@ public sealed class PlanTabTests : TestContext
             .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((NoteNarrativeRequest request, CancellationToken _) => CreateSuccessfulPlanResult(request, "AI summary draft"));
 
-        workspaceService
-            .Setup(service => service.AcceptAiSuggestionAsync(
-                noteId,
-                "plan",
-                "AI summary draft",
-                "ClinicalSummary",
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new NoteWorkspaceAiAcceptanceResult
-            {
-                Success = true
-            });
-
         var cut = RenderSavedPlanTab(vm, noteId, workspaceService, aiService);
 
         cut.Find("[data-testid='clinical-summary-box-textarea']").Input("Manual summary");
@@ -765,124 +753,22 @@ public sealed class PlanTabTests : TestContext
         aiService.VerifyAll();
     }
 
-    [Fact]
-    public void PlanTab_ClinicalSummaryAcceptFailure_ShowsVisibleErrorAndPreservesVmValue()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PlanTab_ChangedSourceInvalidatesPendingAcceptance(bool signed)
     {
-        var noteId = Guid.NewGuid();
-        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
-        var vm = new PlanVm
-        {
-            ClinicalSummary = "Original summary"
-        };
-
-        aiService
-            .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((NoteNarrativeRequest request, CancellationToken _) => CreateSuccessfulPlanResult(request, "AI summary draft"));
-
-        workspaceService
-            .Setup(service => service.AcceptAiSuggestionAsync(
-                noteId,
-                "plan",
-                "AI summary draft",
-                "ClinicalSummary",
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new NoteWorkspaceAiAcceptanceResult
-            {
-                Success = false,
-                ErrorMessage = "Unable to accept AI-generated summary content."
-            });
-
-        var cut = RenderSavedPlanTab(vm, noteId, workspaceService, aiService);
-
+        var workspace = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var client = new Mock<INoteNarrativeClient>();
+        client.Setup(c => c.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((NoteNarrativeRequest request, CancellationToken _) => CreateSuccessfulPlanResult(request, "AI draft"));
+        var vm = new PlanVm { ClinicalSummary = "Original" };
+        var cut = RenderSavedPlanTab(vm, Guid.NewGuid(), workspace, client);
         cut.Find("[data-testid='generate-summary-btn']").Click();
-
-        cut.WaitForAssertion(() =>
-        {
-            cut.Find("[data-testid='clinical-summary-box-review-banner']");
-            Assert.Equal("Original summary", vm.ClinicalSummary);
-        });
-
-        cut.Find("[data-testid='clinical-summary-box-accept-btn']").Click();
-
-        cut.WaitForAssertion(() =>
-        {
-            Assert.Contains("Unable to accept AI-generated summary content.", cut.Find("[data-testid='clinical-summary-box-error']").TextContent, StringComparison.Ordinal);
-            Assert.Equal("Original summary", vm.ClinicalSummary);
-            cut.Find("[data-testid='clinical-summary-box-review-banner']");
-            cut.Find("[data-testid='clinical-summary-box-actions']");
-            Assert.Equal("AI summary draft", cut.Find("[data-testid='clinical-summary-box-textarea']").GetAttribute("value"));
-            Assert.Empty(cut.FindAll("[data-testid='clinical-summary-box-accepted-note']"));
-        });
-
-        cut.Find("[data-testid='clinical-summary-box-discard-btn']").Click();
-
-        cut.WaitForAssertion(() =>
-        {
-            Assert.Equal("Original summary", vm.ClinicalSummary);
-            Assert.Equal("Original summary", cut.Find("[data-testid='clinical-summary-box-textarea']").GetAttribute("value"));
-            Assert.Empty(cut.FindAll("[data-testid='clinical-summary-box-review-banner']"));
-            Assert.Empty(cut.FindAll("[data-testid='clinical-summary-box-error']"));
-        });
-
-        aiService.VerifyAll();
-        workspaceService.VerifyAll();
-    }
-
-    [Fact]
-    public void PlanTab_ClinicalSummaryAcceptException_ShowsVisibleErrorAndKeepsReviewPending()
-    {
-        var noteId = Guid.NewGuid();
-        var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
-        var vm = new PlanVm
-        {
-            ClinicalSummary = "Original summary"
-        };
-
-        aiService
-            .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((NoteNarrativeRequest request, CancellationToken _) => CreateSuccessfulPlanResult(request, "AI summary draft"));
-
-        workspaceService
-            .Setup(service => service.AcceptAiSuggestionAsync(
-                noteId,
-                "plan",
-                "AI summary draft",
-                "ClinicalSummary",
-                It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("accept request failed"));
-
-        var cut = RenderSavedPlanTab(vm, noteId, workspaceService, aiService);
-
-        cut.Find("[data-testid='generate-summary-btn']").Click();
-
-        cut.WaitForAssertion(() => cut.Find("[data-testid='clinical-summary-box-review-banner']"));
-
-        cut.Find("[data-testid='clinical-summary-box-accept-btn']").Click();
-
-        cut.WaitForAssertion(() =>
-        {
-            Assert.Contains("Unable to accept AI-generated summary content.", cut.Find("[data-testid='clinical-summary-box-error']").TextContent, StringComparison.Ordinal);
-            Assert.Equal("Original summary", vm.ClinicalSummary);
-            cut.Find("[data-testid='clinical-summary-box-review-banner']");
-            cut.Find("[data-testid='clinical-summary-box-actions']");
-            Assert.Equal("AI summary draft", cut.Find("[data-testid='clinical-summary-box-textarea']").GetAttribute("value"));
-            Assert.Empty(cut.FindAll("[data-testid='clinical-summary-box-accepted-note']"));
-        });
-
-        cut.Find("[data-testid='clinical-summary-box-discard-btn']").Click();
-
-        cut.WaitForAssertion(() =>
-        {
-            Assert.Equal("Original summary", vm.ClinicalSummary);
-            Assert.Equal("Original summary", cut.Find("[data-testid='clinical-summary-box-textarea']").GetAttribute("value"));
-            Assert.Empty(cut.FindAll("[data-testid='clinical-summary-box-review-banner']"));
-            Assert.Empty(cut.FindAll("[data-testid='clinical-summary-box-error']"));
-        });
-
-        aiService.VerifyAll();
-        workspaceService.VerifyAll();
+        cut.SetParametersAndRender(p => p.Add(c => c.HasUnsavedChanges, !signed).Add(c => c.IsNoteSigned, signed));
+        Assert.Equal("Original", vm.ClinicalSummary);
+        Assert.Empty(cut.FindAll("[data-testid='clinical-summary-box-accept-btn']"));
+        workspace.Verify(service => service.AcceptAiSuggestionAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

@@ -29,6 +29,7 @@ public sealed class NoteWorkspacePageTests : TestContext
     public NoteWorkspacePageTests()
     {
         Services.AddLogging();
+        Services.AddSingleton(Mock.Of<INoteNarrativeClient>());
         Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
         Services.AddSingleton<IToastService, ToastService>();
 
@@ -1759,7 +1760,8 @@ public sealed class NoteWorkspacePageTests : TestContext
         var noteId = Guid.NewGuid();
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
         var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
+        Services.AddSingleton(Mock.Of<IAiClinicalGenerationService>());
 
         patientService
             .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
@@ -1777,6 +1779,7 @@ public sealed class NoteWorkspacePageTests : TestContext
             {
                 Success = true,
                 NoteId = noteId,
+                LastModifiedUtc = new DateTime(2026, 10, 26, 12, 0, 0, DateTimeKind.Utc),
                 WorkspaceNoteType = "Progress Note",
                 DateOfService = new DateTime(2026, 4, 18),
                 Status = NoteStatus.Draft,
@@ -1797,18 +1800,12 @@ public sealed class NoteWorkspacePageTests : TestContext
             });
 
         aiService
-            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new PlanGenerationResult
+            .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((NoteNarrativeRequest request, CancellationToken _) => new NoteNarrativeResult
             {
-                GeneratedText = "AI summary draft",
-                Confidence = 0.85,
-                SourceInputs = new PlanOfCareGenerationRequest
-                {
-                    NoteId = noteId,
-                    Diagnosis = "Progress note",
-                    SelectedBodyPart = "Knee"
-                },
-                Success = true
+                Success = true, NoteId = request.NoteId, Purpose = request.Purpose,
+                SourceLastModifiedUtc = request.ExpectedLastModifiedUtc, SourceSha256 = "synthetic",
+                Sections = [new(NoteNarrativePurpose.SubjectiveSummary, "AI summary draft", null)]
             });
 
         Services.AddAuthorizationCore();
@@ -1861,7 +1858,8 @@ public sealed class NoteWorkspacePageTests : TestContext
         var noteId = Guid.NewGuid();
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
         var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
+        Services.AddSingleton(Mock.Of<IAiClinicalGenerationService>());
 
         patientService
             .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
@@ -1879,6 +1877,7 @@ public sealed class NoteWorkspacePageTests : TestContext
             {
                 Success = true,
                 NoteId = noteId,
+                LastModifiedUtc = new DateTime(2026, 10, 26, 12, 0, 0, DateTimeKind.Utc),
                 WorkspaceNoteType = "Progress Note",
                 DateOfService = new DateTime(2026, 4, 18),
                 Status = NoteStatus.Draft,
@@ -1899,30 +1898,12 @@ public sealed class NoteWorkspacePageTests : TestContext
             });
 
         aiService
-            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new PlanGenerationResult
+            .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((NoteNarrativeRequest request, CancellationToken _) => new NoteNarrativeResult
             {
-                GeneratedText = "AI summary draft",
-                Confidence = 0.85,
-                SourceInputs = new PlanOfCareGenerationRequest
-                {
-                    NoteId = noteId,
-                    Diagnosis = "Progress note",
-                    SelectedBodyPart = "Knee"
-                },
-                Success = true
-            });
-
-        noteWorkspaceService
-            .Setup(service => service.AcceptAiSuggestionAsync(
-                noteId,
-                "plan",
-                "AI summary draft",
-                "ClinicalSummary",
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new NoteWorkspaceAiAcceptanceResult
-            {
-                Success = true
+                Success = true, NoteId = request.NoteId, Purpose = request.Purpose,
+                SourceLastModifiedUtc = request.ExpectedLastModifiedUtc, SourceSha256 = "synthetic",
+                Sections = [new(NoteNarrativePurpose.SubjectiveSummary, "AI summary draft", null)]
             });
 
         Services.AddAuthorizationCore();
@@ -1988,7 +1969,8 @@ public sealed class NoteWorkspacePageTests : TestContext
         var noteId = Guid.NewGuid();
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
         var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
+        Services.AddSingleton(Mock.Of<IAiClinicalGenerationService>());
 
         patientService
             .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
@@ -2006,6 +1988,7 @@ public sealed class NoteWorkspacePageTests : TestContext
             {
                 Success = true,
                 NoteId = noteId,
+                LastModifiedUtc = new DateTime(2026, 10, 26, 12, 0, 0, DateTimeKind.Utc),
                 WorkspaceNoteType = "Progress Note",
                 DateOfService = new DateTime(2026, 4, 18),
                 Status = NoteStatus.Draft,
@@ -2026,20 +2009,8 @@ public sealed class NoteWorkspacePageTests : TestContext
             });
 
         aiService
-            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new PlanGenerationResult
-            {
-                GeneratedText = string.Empty,
-                Confidence = 0,
-                SourceInputs = new PlanOfCareGenerationRequest
-                {
-                    NoteId = noteId,
-                    Diagnosis = "Progress note",
-                    SelectedBodyPart = "Knee"
-                },
-                Success = false,
-                ErrorMessage = "AI generation failed. Please try again or contact support. Reference ID: ai-ref-123"
-            });
+            .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteNarrativeResult { Success = false, ErrorMessage = "AI generation failed. Please try again or contact support. Reference ID: ai-ref-123" });
 
         Services.AddAuthorizationCore();
         Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
@@ -2082,7 +2053,8 @@ public sealed class NoteWorkspacePageTests : TestContext
         var noteId = Guid.NewGuid();
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
         var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
+        Services.AddSingleton(Mock.Of<IAiClinicalGenerationService>());
 
         patientService
             .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
@@ -2100,6 +2072,7 @@ public sealed class NoteWorkspacePageTests : TestContext
             {
                 Success = true,
                 NoteId = noteId,
+                LastModifiedUtc = new DateTime(2026, 10, 26, 12, 0, 0, DateTimeKind.Utc),
                 WorkspaceNoteType = "Progress Note",
                 DateOfService = new DateTime(2026, 4, 18),
                 Status = NoteStatus.Draft,
@@ -2120,7 +2093,7 @@ public sealed class NoteWorkspacePageTests : TestContext
             });
 
         aiService
-            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("network timeout"));
 
         Services.AddAuthorizationCore();
@@ -2147,7 +2120,7 @@ public sealed class NoteWorkspacePageTests : TestContext
         cut.WaitForAssertion(() =>
         {
             var alert = cut.Find("[data-testid='note-workspace-alert']");
-            Assert.Contains("Unable to generate a clinical summary.", alert.TextContent, StringComparison.Ordinal);
+            Assert.Contains("Unable to generate a summary. You can continue editing manually.", alert.TextContent, StringComparison.Ordinal);
             Assert.DoesNotContain("AI-generated clinical summary ready for review", cut.Markup, StringComparison.Ordinal);
             Assert.DoesNotContain("Accept Summary", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Existing summary", cut.Markup, StringComparison.Ordinal);
@@ -2158,13 +2131,14 @@ public sealed class NoteWorkspacePageTests : TestContext
     }
 
     [Fact]
-    public void ReviewPage_AcceptSummaryException_ShowsSharedErrorAndKeepsPendingSummaryForRetry()
+    public void ReviewPage_AcceptSummary_DoesNotWriteThroughLegacyMergeEndpoint()
     {
         var patientId = Guid.NewGuid();
         var noteId = Guid.NewGuid();
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
         var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
+        Services.AddSingleton(Mock.Of<IAiClinicalGenerationService>());
 
         patientService
             .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
@@ -2182,6 +2156,7 @@ public sealed class NoteWorkspacePageTests : TestContext
             {
                 Success = true,
                 NoteId = noteId,
+                LastModifiedUtc = new DateTime(2026, 10, 26, 12, 0, 0, DateTimeKind.Utc),
                 WorkspaceNoteType = "Progress Note",
                 DateOfService = new DateTime(2026, 4, 18),
                 Status = NoteStatus.Draft,
@@ -2202,28 +2177,13 @@ public sealed class NoteWorkspacePageTests : TestContext
             });
 
         aiService
-            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new PlanGenerationResult
+            .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((NoteNarrativeRequest request, CancellationToken _) => new NoteNarrativeResult
             {
-                GeneratedText = "AI summary draft",
-                Confidence = 0.85,
-                SourceInputs = new PlanOfCareGenerationRequest
-                {
-                    NoteId = noteId,
-                    Diagnosis = "Progress note",
-                    SelectedBodyPart = "Knee"
-                },
-                Success = true
+                Success = true, NoteId = request.NoteId, Purpose = request.Purpose,
+                SourceLastModifiedUtc = request.ExpectedLastModifiedUtc, SourceSha256 = "synthetic",
+                Sections = [new(NoteNarrativePurpose.SubjectiveSummary, "AI summary draft", null)]
             });
-
-        noteWorkspaceService
-            .Setup(service => service.AcceptAiSuggestionAsync(
-                noteId,
-                "plan",
-                "AI summary draft",
-                "ClinicalSummary",
-                It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("accept request failed"));
 
         Services.AddAuthorizationCore();
         Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
@@ -2255,14 +2215,15 @@ public sealed class NoteWorkspacePageTests : TestContext
         cut.WaitForAssertion(() =>
         {
             var alert = cut.Find("[data-testid='note-workspace-alert']");
-            Assert.Contains("Unable to accept AI-generated summary content.", alert.TextContent, StringComparison.Ordinal);
-            Assert.Contains("AI-generated clinical summary ready for review", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains("Clinical summary accepted.", alert.TextContent, StringComparison.Ordinal);
+            Assert.DoesNotContain("AI-generated clinical summary ready for review", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("AI summary draft", cut.Markup, StringComparison.Ordinal);
-            Assert.Contains("Accept Summary", cut.Markup, StringComparison.Ordinal);
-            Assert.DoesNotContain("Unsaved", cut.Markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Accept Summary", cut.Markup, StringComparison.Ordinal);
+            Assert.True(Services.GetRequiredService<DraftAutosaveService>().IsDirty);
         });
 
         noteWorkspaceService.Verify(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Once);
+        noteWorkspaceService.Verify(service => service.AcceptAiSuggestionAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         noteWorkspaceService.VerifyAll();
         aiService.VerifyAll();
     }

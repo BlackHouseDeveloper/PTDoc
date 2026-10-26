@@ -1598,38 +1598,24 @@ else
         && !_note.IsDirty && !DraftAutosaveService.IsDirty && _pendingSummaryResult.NoteId == _note.NoteId
         && _pendingSummaryResult.SourceLastModifiedUtc == _lastModifiedUtc;
 
-    private async Task HandleAcceptPendingSummaryAsync()
+    private Task HandleAcceptPendingSummaryAsync()
     {
         if (string.IsNullOrWhiteSpace(_pendingClinicalSummary))
         {
-            return;
+            return Task.CompletedTask;
         }
 
         if (!_note.NoteId.HasValue)
         {
             SetStatusMessage("Save the note before accepting AI-generated summary content.", "error", showToast: true, toastTitle: "AI acceptance unavailable");
-            return;
+            return Task.CompletedTask;
         }
 
         if (!CanAcceptPendingSummary)
-        { SetStatusMessage("The note changed. Generate a new summary before accepting.", "error"); return; }
+        { SetStatusMessage("The note changed. Generate a new summary before accepting.", "error"); return Task.CompletedTask; }
         var accepting = _pendingSummaryResult;
         try
         {
-            var acceptance = await NoteWorkspaceService.AcceptAiSuggestionAsync(
-                _note.NoteId.Value,
-                section: "plan",
-                generatedText: _pendingClinicalSummary,
-                generationType: "ClinicalSummary");
-
-            if (!acceptance.Success)
-            {
-                SetStatusMessage(acceptance.ErrorMessage ?? "Unable to accept AI-generated summary content.", "error", showToast: true, toastTitle: "AI acceptance failed");
-                return;
-            }
-
-            if (!CanAcceptPendingSummary || _pendingSummaryResult != accepting)
-            { SetStatusMessage("The note changed. Generate a new summary before accepting.", "error"); return; }
             _note.Plan.AcceptedNarrativeProvenance[nameof(PlanVm.ClinicalSummary)] = accepting!.ToProvenance();
             _note.Plan.ClinicalSummary = _pendingClinicalSummary;
             _pendingClinicalSummary = null;
@@ -1646,6 +1632,7 @@ else
                 _note.NoteId.HasValue);
             SetStatusMessage("Unable to accept AI-generated summary content.", "error", showToast: true, toastTitle: "AI acceptance failed");
         }
+        return Task.CompletedTask;
     }
 
     private Task HandleDiscardPendingSummaryAsync()
