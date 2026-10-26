@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -24,7 +24,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 type: "nvarchar(20)",
                 maxLength: 20,
                 nullable: true);
+        }
 
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
             migrationBuilder.DropColumn(
                 name: "TotalVisitLimit",
                 table: "PatientInsurancePolicies");
@@ -32,13 +36,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
             migrationBuilder.DropColumn(
                 name: "VisitLimitType",
                 table: "PatientInsurancePolicies");
-
-            migrationBuilder.CreateIndex(
-                name: "UX_NoteTemplates_ClinicId_NoteType_Variant_Active",
-                table: "NoteTemplates",
-                columns: new[] { "ClinicId", "NoteType", "Variant" },
-                unique: true,
-                filter: "[IsArchived] = 0");
         }
     }
 }
