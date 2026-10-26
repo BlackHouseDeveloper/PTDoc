@@ -12,7 +12,7 @@
 
 ## Current evidence and changes
 
-Baseline main 6276027: the new synthetic component reproducer fails 3 of 4 cases. Duplicate-only success, blank success and transient-failure-then-success retry remove the existing pending candidate. The new-ninth-candidate case already passes, showing no UI eight-goal cap in this path. After the fix all four cases pass within 72 focused regressions. Accepted goal IDs/count and mapped save/reload state remain intact; generated candidates stay unaccepted and excluded from persisted accepted goals until explicit acceptance. No provider quota, prompt template, short/long-term behavior or clinical scoring is changed.
+Baseline main 6276027: the new synthetic component reproducer fails 3 of 4 cases. Duplicate-only success, blank success and transient-failure-then-success retry remove the existing pending candidate. The new-ninth-candidate case already passes, showing no UI eight-goal cap in this path. After the fix all four cases pass within 72 focused regressions. Accepted goal IDs/count and mapped save/reload state remain intact; generated candidates stay unaccepted and excluded from persisted accepted goals until explicit acceptance. No provider quota, prompt template, short/long-term behavior or clinical scoring is changed. CI follow-up corrected initializer whitespace using the owning-project formatter. The C# diff changes only initializer spacing/line breaks, confirmed by whitespace-normalized source comparison; feature behavior and prior passing feature tests are unchanged.
 
 ## Dependencies, blockers and owners
 
@@ -73,6 +73,7 @@ Blindly raising limits may increase cost without fixing loss; diagnose before co
 | --- | --- |
 | dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~GoalRegenerationTests&#124;FullyQualifiedName~AssessmentWorkspaceSectionPrognosisTests&#124;FullyQualifiedName~NoteWorkspacePayloadMapperTests&#124;FullyQualifiedName~ClinicalGenerationServiceTests' --verbosity minimal | 72 passed, 0 failed, 0 skipped. The baseline reproducer previously failed 3 of its 4 cases; all four now pass. |
 | python3 workflow.py check 29; git diff --check | Traceability, local links and whitespace pass. |
+| dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity minimal; task-local whitespace-normalized source comparison | PASS: complete owning-project CI formatter; whitespace-only C# correction. Existing feature-test results remain applicable. |
 
 ## Remaining acceptance work
 

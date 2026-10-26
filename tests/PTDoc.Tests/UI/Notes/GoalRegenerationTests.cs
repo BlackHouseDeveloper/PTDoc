@@ -90,7 +90,9 @@ public sealed class GoalRegenerationTests : TestContext
 
     private static GoalGenerationResult Result(string text, bool success) => new()
     {
-        Success = success, GeneratedText = text, Confidence = success ? .8 : 0,
+        Success = success,
+        GeneratedText = text,
+        Confidence = success ? .8 : 0,
         ErrorMessage = success ? null : "Synthetic transient failure",
         SourceInputs = new GoalNarrativesGenerationRequest { NoteId = Guid.NewGuid(), Diagnosis = "Synthetic diagnosis", FunctionalLimitations = "Synthetic limitation" }
     };

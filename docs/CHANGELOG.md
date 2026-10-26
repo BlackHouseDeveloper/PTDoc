@@ -54,6 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - Client review Plan 04
 
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
+### Changed - Plan 29 CI formatting
+
+- Applied the owning-project initializer formatting required by CI; no runtime behavior changed.
+
 ### Changed - Client review Plan 29
 
 - Preserve pending goal candidates during regeneration and show explicit empty/duplicate-only outcomes. Synthetic tests reproduce and repair pending loss after eight accepted goals; exact provider exhaustion and clinical quality reports remain open.
