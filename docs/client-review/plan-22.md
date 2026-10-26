@@ -6,7 +6,7 @@
 - Original plan status: Ready for Development
 - Branch: `codex/plan-22-mmt-joint-mobility`
 - Base: `codex/plan-21-rom-dimensions`
-- Expected GitHub number: #176; actual: assigned by GitHub at publication
+- Expected GitHub number: #176; actual: [#178](https://github.com/BlackHouseDeveloper/PTDoc/pull/178)
 - [Authoritative plan brief](https://github.com/BlackHouseDeveloper/PTDoc/blob/codex/plan-01-session-verification/docs/client-review/source/implementation-plan.md#pr-22)
 - Inspected main: `6276027251609df64ffbbfa883f66e2d83dd57e4` (2026-10-26); this supersedes the source plan’s earlier repository snapshot.
 
@@ -82,6 +82,7 @@ Combined historical records may be ambiguous. Preserve them with explicit legacy
 | dotnet build src/PTDoc.Web/PTDoc.Web.csproj --no-restore -m:1 | Succeeded with 0 warnings and 0 errors; final code also compiled in the passing test dependency graph. |
 | Task-local Playwright CLI synthetic note: inspect empty seeded MMT, enter distinct grades, remove matching ROM, save/reload, verify database, keyboard and 390/768/1440 viewports | Passed: separate grade choices; 3 MMT and 3 joint grades retained; two Knee MMT grades survive complete Knee ROM removal; unsided cervical assessments; JSON/typed persistence; keyboard Tab and no horizontal overflow; mobile screenshot visually inspected. |
 | python3 workflow.py check 22; git diff --check; git diff codex/plan-21-rom-dimensions --stat | Requirement/section/local-link/path and whitespace checks pass; incremental diff contains only Plan 22 changes. |
+| dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~GradedObservation&#124;FullyQualifiedName~ObjectiveMetric&#124;FullyQualifiedName~RomObservationEditorTests&#124;FullyQualifiedName~NoteWorkspacePayloadMapperTests&#124;FullyQualifiedName~NoteWorkspaceV2ServiceTests&#124;FullyQualifiedName~SyncClientProtocolTests&#124;FullyQualifiedName~DailyNoteServiceTests&#124;FullyQualifiedName~NoteWriteServiceTests&#124;FullyQualifiedName~PdfIntegrationTests&#124;FullyQualifiedName~StructuredWorkspaceEditorsTests' --verbosity minimal -m:1 | PASS 217 after rebasing onto Plan 21 provider migration corrections; own incremental feature diff remains separate. |
 
 ## Remaining acceptance work
 

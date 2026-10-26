@@ -56,6 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
 ### Changed - Client review Plan 22
 
+- Rebased onto corrected SQL Server/PostgreSQL ROM migration operations; complete measurement branch passed 217 focused regressions.
+
 - Separated MMT and joint mobility with distinct grading catalogs, preserved paired/unsided observations and reused ROM movement selections with empty strength values. Added server/offline validation, schema compatibility, independent export tables and rapid-edit/save/reload regression coverage.
 
 ### Fixed - Plan 21 provider migration CI
