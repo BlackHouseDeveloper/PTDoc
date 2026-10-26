@@ -1,0 +1,40 @@
+@using Microsoft.JSInterop
+@using PTDoc.UI.Components.Intake.Models
+
+<h2 id="@($"intake-section-{Section}")" tabindex="-1" @ref="_heading">@ChildContent</h2>
+
+@code {
+    [Parameter, EditorRequired] public IntakeReviewTarget Section { get; set; }
+    [Parameter] public bool FocusRequested { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private ElementReference _heading;
+    private bool _focused;
+
+    protected override void OnParametersSet()
+    {
+        if (!FocusRequested)
+        {
+            _focused = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!FocusRequested || _focused)
+        {
+            return;
+        }
+
+        _focused = true;
+        try
+        {
+            // Native focus scrolls the heading into view without a scripted animation.
+            await _heading.FocusAsync(preventScroll: false);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JSException)
+        {
+            // Static renderers and disconnected circuits cannot perform browser focus.
+        }
+    }
+}

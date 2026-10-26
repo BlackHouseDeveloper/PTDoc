@@ -537,6 +537,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added Plan 05 evidence, development specification, acceptance criteria and exact decision/dependency gates. This is planning documentation; the feature is not implemented.
 
+### Changed - Client review Plan 09
+
+- Added section-specific Review Edit navigation with focus after render, single-row scrollable intake progress, visible front/back selection and concise body-map instructions. Existing answers are retained and no clinical schema changes are required.
+
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 
 - Selected external MFA enforcement from the server-authenticated Entra identity type instead of an issuer-supplied PTDoc marker. Entra normalization replaces duplicate/conflicting application-owned authentication, provider, and subject claims; focused tests cover JWT/OIDC identities, missing/conflicting markers, and repeated transformations.

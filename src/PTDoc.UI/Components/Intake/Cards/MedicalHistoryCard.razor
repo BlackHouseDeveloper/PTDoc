@@ -6,7 +6,7 @@
 <section class="intake-card">
     <div class="intake-card__header">
         <div>
-            <h2>Medical History</h2>
+            <IntakeSectionHeading Section="IntakeReviewTarget.MedicalHistory" FocusRequested="@FocusRequested">Medical History</IntakeSectionHeading>
             <p class="intake-card__subtext">Use the validated intake lists instead of typing where structured options are available.</p>
         </div>
         <div class="intake-card__status-group">
@@ -175,6 +175,8 @@
 </section>
 
 @code {
+    [Parameter] public bool FocusRequested { get; set; }
+
     [Parameter, EditorRequired] public IntakeWizardState State { get; set; } = new();
     [Parameter] public EventCallback StateChanged { get; set; }
 
