@@ -6,7 +6,7 @@
 - Original plan status: Ready for Development
 - Branch: `codex/plan-21-rom-dimensions`
 - Base: `main`
-- Expected GitHub number: #175; actual: assigned by GitHub at publication
+- Expected GitHub number: #175; actual: [#177](https://github.com/BlackHouseDeveloper/PTDoc/pull/177)
 - [Authoritative plan brief](https://github.com/BlackHouseDeveloper/PTDoc/blob/codex/plan-01-session-verification/docs/client-review/source/implementation-plan.md#pr-21)
 - Inspected main: `6276027251609df64ffbbfa883f66e2d83dd57e4` (2026-10-26); this supersedes the source plan’s earlier repository snapshot.
 
@@ -84,6 +84,7 @@ Clinical mislabeling and legacy data duplication are primary risks. Use additive
 | EF_PROVIDER=sqlite dotnet ef database update <AddObjectiveMetricDimensions&#124;preceding migration&#124;AddObjectiveMetricDimensions> -p src/PTDoc.Infrastructure.Migrations.Sqlite -s src/PTDoc.Api --no-build (isolated synthetic databases) | Upgrade/rollback/re-upgrade passed; populated legacy observation, foreign key and index preserved; newly re-added dimensions null. |
 | Task-local Playwright CLI: synthetic Knee/Cervical ROM save/reload; typed/JSON comparison; 390/768/1440 widths; mobile screenshot inspection | All six current/prior cells retained exact region/side/mode; typed rows match JSON; no horizontal overflow; normal/reference precedes current and mobile inputs remain visible. |
 | python3 workflow.py check 21; git diff --check | Requirement/section/local-link/sensitive-path and whitespace checks passed. |
+| dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~StructuredWorkspaceEditorsTests' --verbosity minimal -m:1 | 10 passed after updating inherited ROM assertions for four cells, fixed region identity and read-only reference values; existing MMT behavior unchanged in this lower layer. |
 
 ## Remaining acceptance work
 
