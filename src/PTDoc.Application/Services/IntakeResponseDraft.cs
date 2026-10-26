@@ -6,6 +6,11 @@ public sealed class IntakeResponseDraft
 {
     public Guid? IntakeId { get; set; }
     public Guid? PatientId { get; set; }
+
+    public Guid? EncounterNoteId { get; set; }
+    public string? QuestionnaireDefinitionId { get; set; }
+    public bool EncounterIsReEvaluation { get; set; }
+
     public IntakeProfilePrefill? ProfilePrefill { get; set; }
     public IntakeProfilePrefill? PrefilledDemographics { get; set; }
     public bool OmitPrimaryPolicy { get; set; }

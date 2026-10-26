@@ -41,11 +41,16 @@ public sealed class MockIntakeService : IIntakeService
         return Task.FromResult(draft is null ? null : Clone(draft));
     }
 
+    public Task<IntakeResponseDraft?> GetForNoteAsync(Guid patientId, Guid noteId, CancellationToken cancellationToken = default)
+        => Task.FromResult<IntakeResponseDraft?>(null);
+
     public Task<IntakeEnsureDraftResult> EnsureDraftAsync(
         Guid patientId,
         IntakeResponseDraft? seedState = null,
         CancellationToken cancellationToken = default)
     {
+        if (seedState?.EncounterNoteId is not null)
+            return Task.FromResult(IntakeEnsureDraftResult.Locked("Encounter intake requires a persisted clinical note."));
         if (_drafts.TryGetValue(patientId, out var draft))
         {
             return Task.FromResult(draft.IsLocked

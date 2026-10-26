@@ -100,7 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prefilled new intakes with clinic-scoped patient contact data and coherent primary/secondary policy values through both creation routes. Older editable drafts now offer explicit blank-field prefill; existing answers, submitted records and unknown response fields are retained. Added synthetic service, component and API coverage; no schema migration.
 ### Changed - Client review Plan 08
 
-- Fixed patient intake links selecting a newer intake instead of the token-bound record and preserved issued template versions during answer updates. Added a synthetic OTP regression with a later intake. Full note-type and encounter orchestration remains draft work with outcome/discharge gates.
+- Added note-bound Evaluation/Re-evaluation intake with fresh profile-only seeds, immutable definition and optimistic concurrency, exact-record patient links, explicit matching-note subjective copy, and additive three-provider migrations. Prevented sync-only acknowledgements from invalidating answer versions. Daily, Progress and Discharge integration remain draft dependency/content work.
 
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 

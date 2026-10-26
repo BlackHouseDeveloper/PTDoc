@@ -28,8 +28,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.Property<bool>("AuthorizedOverlap")
                         .HasColumnType("INTEGER")
-                        .HasDefaultValue(false)
-                        .ValueGeneratedNever();
+                        .HasDefaultValue(false);
 
                     b.Property<string>("CancellationReason")
                         .HasMaxLength(500)
@@ -1393,6 +1392,13 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("EncounterIsReEvaluation")
+                        .HasDefaultValue(false)
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("EncounterNoteId")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("ExpiresAt")
                         .HasColumnType("TEXT");
 
@@ -1404,6 +1410,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("LastModifiedUtc")
+                        .IsConcurrencyToken()
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("ModifiedByUserId")
@@ -1414,6 +1421,10 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("PatientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("QuestionnaireDefinitionId")
+                        .HasMaxLength(50)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ResponseJson")
@@ -1447,6 +1458,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasIndex("ClinicId")
                         .HasFilter("ClinicId IS NOT NULL");
+
+                    b.HasIndex("EncounterNoteId")
+                        .IsUnique();
 
                     b.HasIndex("LastModifiedUtc");
 
@@ -1931,13 +1945,12 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasAlternateKey("ClinicId", "Id");
-
                     b.HasIndex("ClinicId", "Name")
                         .IsUnique();
 
                     b.ToTable("KioskStations");
                 });
+
             modelBuilder.Entity("PTDoc.Core.Models.LoginAttempt", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3829,8 +3842,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasAlternateKey("ClinicId", "Id");
-
                     b.HasIndex("ClinicId", "Code")
                         .IsUnique();
 
@@ -4142,6 +4153,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasForeignKey("ClinicId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("PTDoc.Core.Models.ClinicalNote", null)
+                        .WithMany()
+                        .HasForeignKey("EncounterNoteId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("PTDoc.Core.Models.Patient", "Patient")
                         .WithMany("IntakeForms")
                         .HasForeignKey("PatientId")
@@ -4265,6 +4281,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.Navigation("Clinic");
                 });
+
             modelBuilder.Entity("PTDoc.Core.Models.NoteTaxonomySelection", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.ClinicalNote", "Note")

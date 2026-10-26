@@ -47,6 +47,10 @@ public static class IntakeEndpoints
             .WithSummary("Ensure an unlocked intake draft exists for a patient")
             .RequireAuthorization(AuthorizationPolicies.IntakeWrite);
 
+        group.MapGet("/patient/{patientId:guid}/note/{noteId:guid}", GetForNote)
+            .WithName("GetEncounterIntake")
+            .RequireAuthorization(AuthorizationPolicies.IntakeRead);
+
         group.MapGet("/patients/eligible", ListEligiblePatients)
             .WithName("ListEligibleIntakePatients")
             .WithSummary("List patients that can be used in intake and send-intake workflows")
@@ -242,7 +246,7 @@ public static class IntakeEndpoints
     {
         var intake = await db.IntakeForms
             .AsNoTracking()
-            .Where(f => f.PatientId == patientId && !f.IsLocked)
+            .Where(f => f.PatientId == patientId && f.EncounterNoteId == null && !f.IsLocked)
             .OrderByDescending(f => f.LastModifiedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -260,7 +264,7 @@ public static class IntakeEndpoints
     {
         var intake = await db.IntakeForms
             .AsNoTracking()
-            .Where(f => f.PatientId == patientId)
+            .Where(f => f.PatientId == patientId && f.EncounterNoteId == null)
             .OrderByDescending(f => f.SubmittedAt ?? f.LastModifiedUtc)
             .ThenByDescending(f => f.LastModifiedUtc)
             .ThenByDescending(f => f.Id)
@@ -270,6 +274,14 @@ public static class IntakeEndpoints
             return Results.NotFound(new { error = $"No intake record found for patient {patientId}." });
 
         return Results.Ok(await ToResponseWithProfileAsync(intake, db, cancellationToken));
+    }
+
+    private static async Task<IResult> GetForNote(
+        Guid patientId, Guid noteId, ApplicationDbContext db, CancellationToken cancellationToken)
+    {
+        var intake = await db.IntakeForms.AsNoTracking()
+            .FirstOrDefaultAsync(form => form.PatientId == patientId && form.EncounterNoteId == noteId, cancellationToken);
+        return intake is null ? Results.NotFound() : Results.Ok(await ToResponseWithProfileAsync(intake, db, cancellationToken));
     }
 
     // POST /api/v1/intake/drafts/{patientId}
@@ -337,7 +349,7 @@ public static class IntakeEndpoints
         }
 
         // For a newly created draft, apply the pre-validated override fields.
-        if (result.Status == IntakeEnsureDraftStatus.Created && request is not null)
+        if (result.Status == IntakeEnsureDraftStatus.Created && request is not null && request.EncounterNoteId is null)
         {
             var newIntake = await db.IntakeForms
                 .FirstOrDefaultAsync(form => form.Id == intakeId.Value, cancellationToken);
@@ -412,6 +424,11 @@ public static class IntakeEndpoints
         if (intake.IsLocked)
             return Results.Conflict(new { error = "Intake is locked and cannot be modified." });
 
+        if (await IntakeEncounterRules.ValidateWriteAsync(db, intake, request.ExpectedLastModifiedUtc, cancellationToken) is { } encounterProblem)
+            return Results.Conflict(new { error = encounterProblem });
+        if (!IntakeEncounterRules.HasSupportedResponseVersion(intake, request.ResponseJson))
+            return Results.UnprocessableEntity(new { error = "The issued questionnaire version must be preserved." });
+
         if (!TryResolveStructuredData(
                 request.StructuredData,
                 request.PainMapData,
@@ -447,7 +464,7 @@ public static class IntakeEndpoints
         }
         intake.PainMapData = painMapData;
         intake.Consents = normalizedConsents;
-        intake.ResponseJson = responseJson;
+        intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, responseJson);
         if (request.StructuredData is not null)
         {
             intake.StructuredDataJson = structuredDataJson;
@@ -465,7 +482,11 @@ public static class IntakeEndpoints
         intake.ModifiedByUserId = identityContext.GetCurrentUserId();
         intake.SyncState = SyncState.Pending;
 
-        await db.SaveChangesAsync(cancellationToken);
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Results.Conflict(new { error = "This intake changed in another session. Reload it before continuing." });
+        }
         await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, cancellationToken);
         return Results.Ok(ToResponse(intake));
     }
@@ -478,7 +499,8 @@ public static class IntakeEndpoints
         [FromServices] IAuditService auditService,
         [FromServices] IPatientContextAccessor patientContext,
         [FromServices] ISyncEngine syncEngine,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        [FromBody] SubmitIntakeRequest? request = null)
     {
         var intake = await db.IntakeForms
             .Include(f => f.Patient)
@@ -499,6 +521,9 @@ public static class IntakeEndpoints
         if (intake.IsLocked)
             return Results.Conflict(new { error = "Intake is already locked." });
 
+        if (await IntakeEncounterRules.ValidateWriteAsync(db, intake, request?.ExpectedLastModifiedUtc, cancellationToken) is { } encounterProblem)
+            return Results.Conflict(new { error = encounterProblem });
+
         if (!TryNormalizeConsents(intake.Consents, requireHipaaAcknowledgement: true, out var normalizedConsents, out var consentPacket, out var submitValidationProblem))
             return submitValidationProblem!;
 
@@ -518,13 +543,18 @@ public static class IntakeEndpoints
             intake.PatientId,
             intake.SubmittedAt.Value,
             intake.LastModifiedUtc);
+        intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, intake.ResponseJson);
         ApplySubmittedIntakePatientFields(intake);
         if (intake.Patient is not null)
         {
             await IntakeDomainProjection.UpsertAsync(db, intake.Patient, intake.ResponseJson, intake.ModifiedByUserId, cancellationToken);
         }
 
-        await db.SaveChangesAsync(cancellationToken);
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Results.Conflict(new { error = "This intake changed in another session. Reload it before continuing." });
+        }
         await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, cancellationToken);
 
         await auditService.LogIntakeEventAsync(
@@ -881,6 +911,9 @@ public static class IntakeEndpoints
     internal static IntakeResponse ToResponse(IntakeForm f) => new()
     {
         Id = f.Id,
+        EncounterNoteId = f.EncounterNoteId,
+        QuestionnaireDefinitionId = f.QuestionnaireDefinitionId,
+        EncounterIsReEvaluation = f.EncounterIsReEvaluation,
         PatientId = f.PatientId,
         PainMapData = f.PainMapData,
         Consents = f.Consents,
@@ -991,6 +1024,7 @@ public static class IntakeEndpoints
         }
 
         draft.PatientId = patientId;
+        draft.EncounterNoteId = request.EncounterNoteId;
         return draft;
     }
 

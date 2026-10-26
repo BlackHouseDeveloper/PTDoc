@@ -65,13 +65,32 @@ public sealed class NoteWorkspaceV2Service(
         return await BuildLoadResponseAsync(note, cancellationToken);
     }
 
+    public async Task<NoteWorkspaceV2EvaluationSeedResponse?> GetEncounterEvaluationSeedAsync(
+        Guid patientId, Guid noteId, CancellationToken cancellationToken = default)
+    {
+        var note = await db.ClinicalNotes.AsNoTracking()
+            .FirstOrDefaultAsync(note => note.Id == noteId && note.PatientId == patientId &&
+                note.NoteType == NoteType.Evaluation && note.NoteStatus == NoteStatus.Draft && !note.IsAddendum &&
+                note.SignedUtc == null && string.IsNullOrEmpty(note.SignatureHash), cancellationToken);
+        if (note is null) return null;
+        var intake = await db.IntakeForms.AsNoTracking().FirstOrDefaultAsync(form =>
+            form.PatientId == patientId && form.ClinicId == note.ClinicId && form.EncounterNoteId == noteId &&
+            form.EncounterIsReEvaluation == note.IsReEvaluation && form.IsLocked && form.SubmittedAt.HasValue &&
+            form.QuestionnaireDefinitionId == IntakeQuestionnaireDefinitions.EvaluationFullV1, cancellationToken);
+        return intake is null || !IntakeEncounterRules.HasSupportedResponseVersion(intake, intake.ResponseJson) ? null : new NoteWorkspaceV2EvaluationSeedResponse
+        {
+            PatientId = patientId, SourceIntakeId = intake.Id, FromLockedSubmittedIntake = true,
+            Payload = BuildEvaluationSeedPayload(intake, true)
+        };
+    }
+
     public async Task<NoteWorkspaceV2EvaluationSeedResponse?> GetEvaluationSeedAsync(
         Guid patientId,
         CancellationToken cancellationToken = default)
     {
         var intake = await db.IntakeForms
             .AsNoTracking()
-            .Where(form => form.PatientId == patientId && (form.IsLocked || form.SubmittedAt.HasValue))
+            .Where(form => form.PatientId == patientId && form.EncounterNoteId == null && (form.IsLocked || form.SubmittedAt.HasValue))
             .OrderByDescending(form => form.SubmittedAt ?? form.LastModifiedUtc)
             .ThenByDescending(form => form.LastModifiedUtc)
             .FirstOrDefaultAsync(cancellationToken);
@@ -82,7 +101,7 @@ public sealed class NoteWorkspaceV2Service(
         {
             intake = await db.IntakeForms
                 .AsNoTracking()
-                .Where(form => form.PatientId == patientId && !form.IsLocked)
+                .Where(form => form.PatientId == patientId && form.EncounterNoteId == null && !form.IsLocked)
                 .OrderByDescending(form => form.LastModifiedUtc)
                 .FirstOrDefaultAsync(cancellationToken);
 

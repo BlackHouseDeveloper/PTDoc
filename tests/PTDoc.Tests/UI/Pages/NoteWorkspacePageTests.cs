@@ -48,6 +48,65 @@ public sealed class NoteWorkspacePageTests : TestContext
     }
 
     [Fact]
+    public void ReviewedEncounterIntake_ReplacesSubjectiveOnly_AfterExplicitAcceptance()
+    {
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("synthetic-pt");
+        authorization.SetRoles(Roles.PT);
+        authorization.SetPolicies(AuthorizationPolicies.HepRead, AuthorizationPolicies.IntakeWrite);
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var service = new Mock<INoteWorkspaceService>();
+        var patient = new Mock<IPatientService>();
+        patient.Setup(value => value.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse { Id = patientId, FirstName = "Synthetic", LastName = "Review", DateOfBirth = new DateTime(1990, 1, 1) });
+        service.Setup(value => value.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceLoadResult
+            {
+                Success = true,
+                NoteId = noteId,
+                LastModifiedUtc = DateTime.UtcNow,
+                Payload = new NoteWorkspacePayload
+                {
+                    Subjective = new SubjectiveVm { SelectedBodyPart = "Cervical", KnownCause = "Original cause" },
+                    Objective = new ObjectiveVm { SelectedBodyPart = "Cervical", ClinicalObservationNotes = "Measured findings", Metrics = [new() { Name = "Flexion", BodyPart = "Cervical", Value = "44" }] },
+                    Assessment = new AssessmentWorkspaceVm { AssessmentNarrative = "Accepted assessment" },
+                    Plan = new PlanVm { HomeExerciseProgramNotes = "Accepted plan" },
+                    StructuredPayload = new NoteWorkspaceV2Payload()
+                }
+            });
+        service.Setup(value => value.GetEncounterEvaluationSeedAsync(patientId, noteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceEvaluationSeedResult { Success = true, HasSeed = true, Payload = new NoteWorkspacePayload { Subjective = new SubjectiveVm { SelectedBodyPart = "Knee", KnownCause = "Current patient answer" }, StructuredPayload = new NoteWorkspaceV2Payload() } });
+        NoteWorkspaceDraft? saved = null;
+        service.Setup(value => value.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()))
+            .Callback<NoteWorkspaceDraft, CancellationToken>((value, _) => saved = value)
+            .ReturnsAsync(new NoteWorkspaceSaveResult { Success = true, NoteId = noteId, LastModifiedUtc = DateTime.UtcNow.AddSeconds(1) });
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
+        Services.AddSingleton(patient.Object);
+        Services.AddSingleton(service.Object);
+        Services.AddSingleton(Mock.Of<IAiClinicalGenerationService>());
+        Services.AddSingleton(new DraftAutosaveService());
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString()).Add(component => component.NoteId, noteId.ToString()));
+        cut.WaitForAssertion(() => Assert.Contains("Original cause", cut.Markup));
+        cut.FindAll("button").Single(button => button.TextContent == "Review submitted intake").Click();
+        cut.WaitForAssertion(() => Assert.Contains("Replace subjective with reviewed intake", cut.Markup));
+        Assert.Contains("Original cause", cut.Markup);
+        Assert.Null(saved);
+        cut.FindAll("button").Single(button => button.TextContent == "Replace subjective with reviewed intake").Click();
+        cut.Find("button[aria-label='Save draft']").Click();
+        cut.WaitForAssertion(() => Assert.NotNull(saved));
+        Assert.Equal("Current patient answer", saved!.Payload.Subjective.KnownCause);
+        Assert.Equal("Cervical", saved.Payload.Subjective.SelectedBodyPart);
+        Assert.Equal("Cervical", saved.Payload.Objective.SelectedBodyPart);
+        Assert.Equal("Cervical", Assert.Single(saved.Payload.Objective.Metrics).BodyPart);
+        Assert.Equal("44", Assert.Single(saved.Payload.Objective.Metrics).Value);
+        Assert.Equal("Measured findings", saved.Payload.Objective.ClinicalObservationNotes);
+        Assert.Equal("Accepted assessment", saved.Payload.Assessment.AssessmentNarrative);
+        Assert.Equal("Accepted plan", saved.Payload.Plan.HomeExerciseProgramNotes);
+    }
+
+    [Fact]
     public void NewNotePage_AutoStartsEvaluation_WhenApplicableIntakeSeedExists()
     {
         var patientId = Guid.NewGuid();

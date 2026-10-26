@@ -75,6 +75,25 @@ else
             var completionState = CurrentCompletionState;
         }
 
+        @if (_note.NoteId.HasValue && _patientGuid.HasValue && CanSaveDraft && IsEvaluationNoteType(_note.NoteType))
+        {
+            <AuthorizeView Policy="@AuthorizationPolicies.IntakeWrite">
+                <Authorized>
+                    <a class="btn btn--secondary" href="@($"/intake/{_patientGuid.Value}?noteId={_note.NoteId.Value}")">Open evaluation intake</a>
+                    <button type="button" class="btn btn--secondary" disabled="@(_note.IsDirty || DraftAutosaveService.IsSaving || _loadingEncounterIntake)"
+                            @onclick="ReviewEncounterIntakeAsync">Review submitted intake</button>
+                    @if (_pendingEncounterSeed is not null)
+                    {
+                        <section class="note-workspace__alert" role="status">
+                            <p>A completed intake is available for this visit. <a href="@($"/intake/{_patientGuid.Value}?noteId={_note.NoteId.Value}")" target="_blank" rel="noopener">Review the full submitted intake</a> before replacing this draft's subjective answers.</p>
+                            <button type="button" class="btn btn--primary" disabled="@(!CanApplyEncounterIntake)" @onclick="ApplyEncounterIntakeAsync">Replace subjective with reviewed intake</button>
+                            <button type="button" class="btn btn--secondary" @onclick="() => _pendingEncounterSeed = null">Keep current answers</button>
+                        </section>
+                    }
+                </Authorized>
+            </AuthorizeView>
+        }
+
         @if (!string.IsNullOrWhiteSpace(_workspaceNotice))
         {
             <div class="note-workspace__alert note-workspace__alert--info" role="status" data-testid="note-workspace-notice">
@@ -2554,6 +2573,60 @@ else
            && _sourceAppointmentId.HasValue
            && IsDailyTreatment
            && !IsPtaUser;
+
+    private NoteWorkspaceEvaluationSeedResult? _pendingEncounterSeed;
+    private Guid? _encounterSeedNoteId;
+    private DateTime? _encounterSeedVersion;
+    private bool _loadingEncounterIntake;
+    private bool CanApplyEncounterIntake => CanPersistDraft && !_note.IsDirty && !DraftAutosaveService.IsSaving &&
+        _pendingEncounterSeed is not null && _encounterSeedNoteId == _note.NoteId && _encounterSeedVersion == _lastModifiedUtc;
+
+    private async Task ReviewEncounterIntakeAsync()
+    {
+        if (!CanPersistDraft || _note.IsDirty || DraftAutosaveService.IsSaving || !_note.NoteId.HasValue || !_patientGuid.HasValue) return;
+        var noteId = _note.NoteId;
+        var version = _lastModifiedUtc;
+        _pendingEncounterSeed = null;
+        _loadingEncounterIntake = true;
+        try
+        {
+            var result = await NoteWorkspaceService.GetEncounterEvaluationSeedAsync(_patientGuid.Value, noteId.Value);
+            if (_disposed || _note.NoteId != noteId || _lastModifiedUtc != version || _note.IsDirty || !CanPersistDraft) return;
+            if (!result.Success || !result.HasSeed)
+            {
+                SetStatusMessage(result.ErrorMessage ?? "No completed intake is available for this visit.", "info");
+                return;
+            }
+            _pendingEncounterSeed = result;
+            _encounterSeedNoteId = noteId;
+            _encounterSeedVersion = version;
+        }
+        catch (HttpRequestException)
+        {
+            if (!_disposed && _note.NoteId == noteId)
+                SetStatusMessage("The submitted intake could not be loaded. Try again when the connection is restored.", "error");
+        }
+        finally { _loadingEncounterIntake = false; }
+    }
+
+    private Task ApplyEncounterIntakeAsync()
+    {
+        if (!CanApplyEncounterIntake || _pendingEncounterSeed is null) return Task.CompletedTask;
+        var payload = _pendingEncounterSeed.Payload;
+        _pendingEncounterSeed = null;
+        if (_note.StructuredWorkspacePayload is not null && payload.StructuredPayload is not null)
+        {
+            _note.StructuredWorkspacePayload.Subjective = payload.StructuredPayload.Subjective;
+            _note.StructuredWorkspacePayload.SeedContext = payload.StructuredPayload.SeedContext;
+        }
+        // Intake answers must not retarget existing ROM/MMT rows through the shared
+        // body-part selector. A clinician can change that note context separately.
+        payload.Subjective.SelectedBodyPart = _note.Subjective.SelectedBodyPart ?? _note.Objective.SelectedBodyPart;
+        _note.Subjective = payload.Subjective;
+        MarkUnsaved();
+        SetStatusMessage("Reviewed intake answers copied into this draft's subjective section. Review the body region and existing findings before signing.", "success");
+        return Task.CompletedTask;
+    }
 
     private void ApplyEvaluationSeed(NoteWorkspacePayload payload)
     {

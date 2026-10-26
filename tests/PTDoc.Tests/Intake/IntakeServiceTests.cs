@@ -1363,6 +1363,94 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.DoesNotContain(patients, patient => patient.Id == lockedPatient.Id);
     }
 
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EncounterDraft_IsDistinctFromLockedHistory_AndIdempotentForTheNote(bool reevaluation)
+    {
+        var patient = CreatePatient("Synthetic", "Repeat");
+        _context.Patients.Add(patient);
+        var first = new ClinicalNote { PatientId = patient.Id, ClinicId = _clinicId, NoteType = NoteType.Evaluation };
+        var second = new ClinicalNote { PatientId = patient.Id, ClinicId = _clinicId, NoteType = NoteType.Evaluation, IsReEvaluation = reevaluation };
+        _context.ClinicalNotes.AddRange(first, second);
+        await _context.SaveChangesAsync();
+        var initial = (await _service.EnsureDraftAsync(patient.Id, new() { EncounterNoteId = first.Id })).Draft!;
+        initial.MedicalHistoryNotes = "Earlier visit history";
+        initial.ConsentPacket = new IntakeConsentPacket { TreatmentConsentAccepted = true };
+        await _service.SubmitAsync(initial);
+        var before = (await _context.IntakeForms.AsNoTracking().SingleAsync(form => form.Id == initial.IntakeId)).ResponseJson;
+
+        var next = (await _service.EnsureDraftAsync(patient.Id, new() { EncounterNoteId = second.Id, MedicalHistoryNotes = "Untrusted seed" })).Draft!;
+        Assert.NotEqual(initial.IntakeId, next.IntakeId);
+        Assert.Equal(second.Id, next.EncounterNoteId);
+        Assert.Equal(reevaluation, next.EncounterIsReEvaluation);
+        Assert.Equal(IntakeQuestionnaireDefinitions.EvaluationFullV1, next.QuestionnaireDefinitionId);
+        Assert.Equal(2, next.IntakeFlowVersion);
+        Assert.Null(next.MedicalHistoryNotes);
+        Assert.NotEqual(true, next.ConsentPacket?.TreatmentConsentAccepted);
+        Assert.Equal("Synthetic Repeat", next.FullName);
+        Assert.Equal(next.IntakeId, (await _service.EnsureDraftAsync(patient.Id, new() { EncounterNoteId = second.Id })).Draft!.IntakeId);
+        Assert.Equal(before, (await _context.IntakeForms.AsNoTracking().SingleAsync(form => form.Id == initial.IntakeId)).ResponseJson);
+        Assert.Null(await _service.GetLatestByPatientIdAsync(patient.Id));
+        Assert.Contains(await _service.SearchEligiblePatientsAsync(), row => row.Id == patient.Id);
+    }
+
+    [Theory]
+    [InlineData(NoteType.Daily, NoteStatus.Draft, false, false)]
+    [InlineData(NoteType.ProgressNote, NoteStatus.Draft, false, false)]
+    [InlineData(NoteType.Discharge, NoteStatus.Draft, false, false)]
+    [InlineData(NoteType.Evaluation, NoteStatus.Signed, false, false)]
+    [InlineData(NoteType.Evaluation, NoteStatus.Draft, true, false)]
+    [InlineData(NoteType.Evaluation, NoteStatus.Draft, false, true)]
+    public async Task EncounterDraft_RejectsUnsupportedOrFinalizedNotes(NoteType type, NoteStatus status, bool addendum, bool signature)
+    {
+        var patient = CreatePatient("Synthetic", "Unsupported");
+        _context.Patients.Add(patient);
+        var note = new ClinicalNote { PatientId = patient.Id, ClinicId = _clinicId, NoteType = type, NoteStatus = status, IsAddendum = addendum, SignatureHash = signature ? "fixture" : null };
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+        Assert.Equal(IntakeEnsureDraftStatus.Locked, (await _service.EnsureDraftAsync(patient.Id, new() { EncounterNoteId = note.Id })).Status);
+        Assert.Empty(_context.IntakeForms);
+    }
+
+    [Fact]
+    public async Task EncounterDraft_RejectsAnotherPatientOrClinicNote()
+    {
+        var patient = CreatePatient("Synthetic", "Scope");
+        _context.Patients.Add(patient);
+        var otherPatientNote = new ClinicalNote { PatientId = Guid.NewGuid(), ClinicId = _clinicId, NoteType = NoteType.Evaluation };
+        var otherClinicNote = new ClinicalNote { PatientId = patient.Id, ClinicId = Guid.NewGuid(), NoteType = NoteType.Evaluation };
+        _context.ClinicalNotes.AddRange(otherPatientNote, otherClinicNote);
+        await _context.SaveChangesAsync();
+        foreach (var note in new[] { otherPatientNote, otherClinicNote })
+            Assert.Equal(IntakeEnsureDraftStatus.PatientNotFound, (await _service.EnsureDraftAsync(patient.Id, new() { EncounterNoteId = note.Id })).Status);
+    }
+
+    [Fact]
+    public async Task EncounterSave_RequiresCurrentVersionAndExplicitId_AndRejectsFinalizedDestination()
+    {
+        var patient = CreatePatient("Synthetic", "Version");
+        _context.Patients.Add(patient);
+        var note = new ClinicalNote { PatientId = patient.Id, ClinicId = _clinicId, NoteType = NoteType.Evaluation };
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id, new() { EncounterNoteId = note.Id })).Draft!;
+        var stale = (await _service.GetForNoteAsync(patient.Id, note.Id))!;
+        draft.MedicalHistoryNotes = "Saved current answer";
+        await _service.SaveDraftAsync(draft);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SaveDraftAsync(stale));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SubmitAsync(stale));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SaveDraftAsync(new() { PatientId = patient.Id, EncounterNoteId = note.Id }));
+        draft.IntakeFlowVersion = 1;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SaveDraftAsync(draft));
+        draft.IntakeFlowVersion = 2;
+        note.SignedUtc = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SaveDraftAsync(draft));
+        Assert.Equal("Saved current answer", (await _service.GetForNoteAsync(patient.Id, note.Id))!.MedicalHistoryNotes);
+    }
+
     public void Dispose()
     {
         _context.Database.EnsureDeleted();
