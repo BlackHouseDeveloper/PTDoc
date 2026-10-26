@@ -34,6 +34,8 @@ public sealed class CreateIntakeRequest
 /// <summary>Request DTO for ensuring an intake draft exists for a patient.</summary>
 public sealed class EnsureIntakeDraftRequest
 {
+    public Guid? EncounterNoteId { get; set; }
+
     /// <summary>Optional body-region pain map data to seed a new draft.</summary>
     public string PainMapData { get; set; } = "{}";
 
@@ -57,6 +59,8 @@ public sealed class EnsureIntakeDraftRequest
 /// <summary>Request DTO for updating an existing intake draft.</summary>
 public sealed class UpdateIntakeRequest
 {
+    public DateTime? ExpectedLastModifiedUtc { get; set; }
+
     /// <summary>Body-region pain map data as a JSON string.</summary>
     public string PainMapData { get; set; } = "{}";
 
@@ -75,6 +79,11 @@ public sealed class UpdateIntakeRequest
     /// <summary>Template version identifier.</summary>
     [MaxLength(50)]
     public string TemplateVersion { get; set; } = "1.0";
+}
+
+public sealed class SubmitIntakeRequest
+{
+    public DateTime? ExpectedLastModifiedUtc { get; set; }
 }
 
 /// <summary>Request DTO for revoking one or more intake consent authorizations based on written notice.</summary>
@@ -97,6 +106,10 @@ public sealed class RevokeIntakeConsentRequest
 /// <summary>Response DTO for an intake form (aligned with TDD IntakeResponse contract).</summary>
 public sealed class IntakeResponse
 {
+    public Guid? EncounterNoteId { get; set; }
+    public string? QuestionnaireDefinitionId { get; set; }
+    public bool EncounterIsReEvaluation { get; set; }
+
     public IntakeProfilePrefill? ProfilePrefill { get; set; }
     public Guid Id { get; set; }
     public Guid PatientId { get; set; }

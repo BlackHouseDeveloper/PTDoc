@@ -14,6 +14,11 @@ public class IntakeForm : ISyncTrackedEntity
     // Association
     public Guid PatientId { get; set; }
 
+    public Guid? EncounterNoteId { get; set; }
+    public string? QuestionnaireDefinitionId { get; set; }
+    public bool EncounterIsReEvaluation { get; set; }
+
+
     // Template
     public string TemplateVersion { get; set; } = string.Empty;
 

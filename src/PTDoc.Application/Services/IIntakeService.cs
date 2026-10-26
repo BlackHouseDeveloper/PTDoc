@@ -4,6 +4,7 @@ namespace PTDoc.Application.Services;
 
 public interface IIntakeService
 {
+    Task<IntakeResponseDraft?> GetForNoteAsync(Guid patientId, Guid noteId, CancellationToken cancellationToken = default);
     Task<IntakeResponseDraft?> GetDraftByPatientIdAsync(Guid patientId, CancellationToken cancellationToken = default);
     Task<IntakeResponseDraft?> GetLatestByPatientIdAsync(Guid patientId, CancellationToken cancellationToken = default);
     Task<IntakeEnsureDraftResult> EnsureDraftAsync(

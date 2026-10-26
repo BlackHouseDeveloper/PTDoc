@@ -74,6 +74,52 @@ public sealed class NoteWorkspaceApiService(
         };
     }
 
+    public async Task<NoteWorkspaceEvaluationSeedResult> GetEncounterEvaluationSeedAsync(
+        Guid patientId,
+        Guid noteId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.GetAsync(
+            $"/api/v2/notes/workspace/{patientId}/{noteId}/intake-seed",
+            cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new NoteWorkspaceEvaluationSeedResult
+            {
+                Success = true,
+                HasSeed = false
+            };
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return new NoteWorkspaceEvaluationSeedResult
+            {
+                Success = false,
+                ErrorMessage = await ReadErrorAsync(response, cancellationToken)
+            };
+        }
+
+        var seed = await response.Content.ReadFromJsonAsync<NoteWorkspaceV2EvaluationSeedResponse>(SerializerOptions, cancellationToken);
+        if (seed is null)
+        {
+            return new NoteWorkspaceEvaluationSeedResult
+            {
+                Success = false,
+                ErrorMessage = "Evaluation seed payload was empty."
+            };
+        }
+
+        return new NoteWorkspaceEvaluationSeedResult
+        {
+            Success = true,
+            HasSeed = true,
+            FromLockedSubmittedIntake = seed.FromLockedSubmittedIntake,
+            Payload = _payloadMapper.MapToUiPayload(seed.Payload)
+        };
+    }
+
     public async Task<NoteWorkspaceEvaluationSeedResult> GetEvaluationSeedAsync(
         Guid patientId,
         CancellationToken cancellationToken = default)

@@ -5,20 +5,20 @@
 - Requirements: R010, R062, R074
 - Original plan status: Ready for Development
 - Branch: `codex/plan-08-note-type-intake`
-- Base: `main`
-- Expected GitHub number: #162; actual: assigned by GitHub at publication
+- Base: `codex/plan-07-intake-prefill`
+- Expected GitHub number: #162; actual: [#163](https://github.com/BlackHouseDeveloper/PTDoc/pull/163)
 - [Authoritative plan brief](https://github.com/BlackHouseDeveloper/PTDoc/blob/codex/plan-01-session-verification/docs/client-review/source/implementation-plan.md#pr-08)
 - Inspected main: `6276027251609df64ffbbfa883f66e2d83dd57e4` (2026-10-26); this supersedes the source plan’s earlier repository snapshot.
 
 ## Current evidence and changes
 
-Reproduced the later-intake failure with the existing real API/OTP integration harness: expected 200, received 403 when a newer intake existed. Token claims already bind intake_id, but the read selected latest-by-patient before checking that claim. The fix filters by that ID before selecting the record. Ordinary answer updates now preserve the issued template version. These are independent prerequisites for repeat encounters; this bounded diff does not implement the note-type matrix or encounter-specific creation. It targets main because these fixes do not consume new Plan 07 contracts. Existing legacy tokens without intake_id retain their previous behavior and require a reviewed compatibility strategy before multiple-encounter activation.
+The branch now consumes Plan 07 profile-prefill contracts. A saved draft Evaluation or Re-evaluation receives one unique intake associated with its note, patient, clinic and immutable evaluation-full-v1 definition. Earlier locked intakes do not prevent later encounters and are never reused as new answers or consent. Staff and verified patient-link updates/submits require the current answer version; unsupported definitions, legacy sync writes and finalized/addendum destinations are rejected. Legacy patient-wide routes exclude encounter-bound forms, and old links remain pinned to their issued record. Submitted answers are offered only to the matching editable note, with full-intake review and explicit acceptance. Copying preserves existing measurement body-region context and manual assessment/plan fields. Browser testing exposed sync acknowledgements advancing answer versions; the production metadata interceptor now leaves encounter answer versions unchanged for sync-only acknowledgements. Three-provider additive migrations are included; SQL Server/Postgres snapshots materialize the old dynamic helper to avoid duplicate model entities, while unrelated generated index operations are excluded.
 
 ## Dependencies, blockers and owners
 
-- January/clinical owner: Plan 24 needs approved patient instrument versions/scoring; progress intake outcomes cannot be activated from the unapproved PDFs.
-- January: provide the exact discharge questionnaire/source for Plan 31; discharge activation remains blocked.
-- Engineering: complete encounter/type/version association, safe draft selection/save/submit and matching-note projection using Plans 20/30 and approved outcome contracts; this is remaining implementation, not completed by this prerequisite fix.
+- User merge checkpoint: accept Plans 07/08 and Plan 20 before integrating the Daily questionnaire into the shared encounter-intake contract; no duplicate foundation commits or multi-parent stack.
+- January/clinical approver: approve exact versions, scoring, missing-answer rules, reproduction rights and fixtures for all selected patient instruments (Plan 24); Progress integration also consumes Plan 30.
+- January: identify the exact discharge questionnaire/source for Plan 31. Discharge intake remains disabled.
 
 ## Decisions and options
 
@@ -78,15 +78,16 @@ Existing links and clinical projections can regress. Introduce by note type and 
 
 | Command/check | Result |
 | --- | --- |
-| dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --filter 'FullyQualifiedName~Standalone_Intake_Invite_Allows_Draft_Load_Update_And_Submit' --verbosity minimal -m:1 -p:BuildInParallel=false | Before fix: expected regression failure, 403 instead of 200 after creating a later intake. |
-| dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~Intake&#124;FullyQualifiedName~AuthorizationCoverageTests' --verbosity minimal -m:1 -p:BuildInParallel=false | PASS on independent main base: 299 passed, 0 failed/skipped; Debug test graph compiled. |
-| dotnet format whitespace src/PTDoc.Api/PTDoc.Api.csproj --no-restore --include src/PTDoc.Api/Intake/IntakeAccessEndpoints.cs src/PTDoc.Api/Intake/IntakeEndpoints.cs --verify-no-changes --verbosity minimal | PASS |
-| dotnet format whitespace tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --include tests/PTDoc.Tests/Integration/EndToEndWorkflowTests.cs --verify-no-changes --verbosity minimal | PASS |
-| python3 /private/tmp/ptdoc-client-implementation/workflow.py check 8 | PASS: requirements, sections, links, sensitive paths and whitespace. |
+| dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --filter 'FullyQualifiedName~Intake&#124;FullyQualifiedName~NoteWorkspaceV2ServiceTests&#124;FullyQualifiedName~NoteWorkspacePageTests&#124;FullyQualifiedName~SendIntakeModalTests&#124;FullyQualifiedName~SyncClientProtocolTests' --verbosity minimal | PASS: 413 passed; 0 failed/skipped. Includes real OTP scope, concurrent writes, production sync interceptor, note copy preservation and legacy regressions. |
+| dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --verbosity minimal | PASS: API/Web/shared test graph, 0 warnings/errors; subsequent focused test compilation also passed. |
+| EF_PROVIDER=<sqlite&#124;sqlserver&#124;postgres> dotnet ef migrations has-pending-model-changes --no-build -p src/PTDoc.Infrastructure.Migrations.<Provider> -s src/PTDoc.Api | PASS: all three provider models match their snapshots. No SQL Server/Postgres live database was used. |
+| SQLite migration upgrade → populated downgrade → upgrade | PASS: historical answers, IDs, consent, lock/review timestamps, dependent FK record and indexes preserved; new fields remain unset on legacy rows. |
+| Synthetic browser + persisted database checks | PASS: full Evaluation history/pain/review/save/submit/lock; explicit matching-note copy; existing measurements and manual assessment/plan preserved; distinct Re-evaluation with fresh consent; earlier submitted intake unchanged. |
+| dotnet format whitespace (changed C# files); git diff --check | PASS on formatted changed source; final whitespace/document check before commit. |
 
 ## Remaining acceptance work
 
-Complete the approved evaluation/re-evaluation and daily encounter paths, and retain explicit activation gates for progress outcomes and discharge content. Add encounter-specific persisted context and concurrency rules; update all patient-wide latest/save/submit/seed queries together. Test legacy and new issued links with their original definitions. This PR contains only the verified link/version prerequisites.
+AC1 and the Evaluation/Re-evaluation portions of AC4/AC5 have synthetic service/API/OTP/browser evidence. AC2 Daily and AC3 Progress remain unimplemented in this branch pending the explicit merge checkpoints and instrument gates above; Discharge remains gated by Plan 31. Roll out the additive database migration before the new API, keep unsupported encounter types disabled, and validate the combined release and native clients. SQL Server/Postgres live database upgrade/downgrade and MAUI builds were not run. Export encounter associations before any downgrade; older schemas cannot represent those three added fields. Clinical/client acceptance remains open.
 
 ## Publication and merge boundary
 

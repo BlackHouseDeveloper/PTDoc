@@ -72,6 +72,15 @@ public sealed class IntakeApiService(
         return intake is null ? null : ToDraft(intake);
     }
 
+    public async Task<IntakeResponseDraft?> GetForNoteAsync(Guid patientId, Guid noteId, CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.GetAsync($"/api/v1/intake/patient/{patientId}/note/{noteId}", cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound) return null;
+        if (!response.IsSuccessStatusCode) throw await CreateHttpRequestExceptionAsync(response, cancellationToken);
+        var intake = await response.Content.ReadFromJsonAsync<IntakeResponse>(SerializerOptions, cancellationToken);
+        return intake is null ? null : ToDraft(intake);
+    }
+
     public async Task<IntakeEnsureDraftResult> EnsureDraftAsync(
         Guid patientId,
         IntakeResponseDraft? seedState = null,
@@ -80,6 +89,7 @@ public sealed class IntakeApiService(
         var includeConsentPayload = HasConsentPayload(seedState);
         var request = new EnsureIntakeDraftRequest
         {
+            EncounterNoteId = seedState?.EncounterNoteId,
             PainMapData = BuildPainMapJson(seedState),
             Consents = includeConsentPayload ? BuildConsentJson(seedState) : "{}",
             ConsentPacket = includeConsentPayload ? BuildConsentPacket(seedState) : null,
@@ -185,9 +195,14 @@ public sealed class IntakeApiService(
             return;
         }
 
-        var existing = await GetIntakeByPatientAsync(state.PatientId.Value, cancellationToken);
+        if (state.EncounterNoteId.HasValue && !state.IntakeId.HasValue)
+            throw new HttpRequestException("Open the intake associated with this note before saving.", null, HttpStatusCode.Conflict);
+
+        var existing = await GetIntakeByPatientAsync(state.PatientId.Value, cancellationToken, state.IntakeId);
         if (existing is null)
         {
+            if (state.IntakeId.HasValue)
+                throw new HttpRequestException("The selected intake is unavailable.", null, HttpStatusCode.NotFound);
             if (await TryGetStandaloneAccessTokenAsync(cancellationToken) is not null)
             {
                 throw new HttpRequestException(
@@ -210,7 +225,7 @@ public sealed class IntakeApiService(
                 return;
             }
 
-            existing = await GetIntakeByPatientAsync(state.PatientId.Value, cancellationToken);
+            existing = await GetIntakeByPatientAsync(state.PatientId.Value, cancellationToken, state.IntakeId);
             if (existing is null)
             {
                 throw new HttpRequestException(
@@ -222,11 +237,14 @@ public sealed class IntakeApiService(
 
         if (existing.Locked)
         {
+            if (state.IntakeId.HasValue)
+                throw new HttpRequestException("The selected intake is locked.", null, HttpStatusCode.Conflict);
             return;
         }
 
         var updateRequest = new UpdateIntakeRequest
         {
+            ExpectedLastModifiedUtc = state.LastModifiedUtc,
             PainMapData = BuildPainMapJson(state),
             Consents = BuildConsentJson(state),
             ConsentPacket = BuildConsentPacket(state),
@@ -245,6 +263,13 @@ public sealed class IntakeApiService(
         {
             throw await CreateHttpRequestExceptionAsync(response, cancellationToken);
         }
+        state.IntakeId = existing.Id;
+        if (existing.EncounterNoteId.HasValue)
+        {
+            var saved = await response.Content.ReadFromJsonAsync<IntakeResponse>(SerializerOptions, cancellationToken)
+                ?? throw new InvalidOperationException("The saved intake version was not returned.");
+            state.LastModifiedUtc = saved.LastModifiedUtc;
+        }
     }
 
     public async Task SubmitAsync(IntakeResponseDraft state, CancellationToken cancellationToken = default)
@@ -256,7 +281,7 @@ public sealed class IntakeApiService(
 
         await SaveDraftAsync(state, cancellationToken);
 
-        var existing = await GetIntakeByPatientAsync(state.PatientId.Value, cancellationToken);
+        var existing = await GetIntakeByPatientAsync(state.PatientId.Value, cancellationToken, state.IntakeId);
         if (existing is null)
         {
             throw new InvalidOperationException($"Cannot submit intake; no draft intake found for patient {state.PatientId.Value}.");
@@ -271,7 +296,7 @@ public sealed class IntakeApiService(
             HttpMethod.Post,
             authenticatedPath: $"/api/v1/intake/{existing.Id}/submit",
             standalonePath: $"/api/v1/intake/access/{existing.Id}/submit",
-            body: null,
+            body: existing.EncounterNoteId.HasValue ? new SubmitIntakeRequest { ExpectedLastModifiedUtc = state.LastModifiedUtc } : null,
             cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
@@ -293,11 +318,11 @@ public sealed class IntakeApiService(
         return ToDraft(intake);
     }
 
-    private async Task<IntakeResponse?> GetIntakeByPatientAsync(Guid patientId, CancellationToken cancellationToken)
+    private async Task<IntakeResponse?> GetIntakeByPatientAsync(Guid patientId, CancellationToken cancellationToken, Guid? intakeId = null)
     {
         var response = await SendWithOptionalStandaloneAccessAsync(
             HttpMethod.Get,
-            authenticatedPath: $"/api/v1/intake/patient/{patientId}/draft",
+            authenticatedPath: intakeId.HasValue ? $"/api/v1/intake/{intakeId.Value}" : $"/api/v1/intake/patient/{patientId}/draft",
             standalonePath: $"/api/v1/intake/access/patient/{patientId}/draft",
             body: null,
             cancellationToken);
@@ -311,7 +336,10 @@ public sealed class IntakeApiService(
             throw await CreateHttpRequestExceptionAsync(response, cancellationToken);
         }
 
-        return await response.Content.ReadFromJsonAsync<IntakeResponse>(SerializerOptions, cancellationToken);
+        var intake = await response.Content.ReadFromJsonAsync<IntakeResponse>(SerializerOptions, cancellationToken);
+        if (intake is not null && (intake.PatientId != patientId || (intakeId.HasValue && intake.Id != intakeId.Value)))
+            throw new HttpRequestException("The selected intake does not match this patient link.", null, HttpStatusCode.Forbidden);
+        return intake;
     }
 
     private async Task CreateIntakeAsync(Guid patientId, IntakeResponseDraft state, CancellationToken cancellationToken)
@@ -458,6 +486,9 @@ public sealed class IntakeApiService(
         draft.ReviewedAtUtc = response.ReviewedAtUtc;
         draft.ReviewedByUserId = response.ReviewedByUserId;
         draft.LastModifiedUtc = response.LastModifiedUtc;
+        draft.EncounterNoteId = response.EncounterNoteId;
+        draft.QuestionnaireDefinitionId = response.QuestionnaireDefinitionId;
+        draft.EncounterIsReEvaluation = response.EncounterIsReEvaluation;
         return draftCanonicalizer.CreateCanonicalCopy(draft);
     }
 
