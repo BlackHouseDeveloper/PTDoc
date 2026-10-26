@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed - PR 153 complete review and previously missed findings
 
+- Applied repository formatting to Settings write-conflict test object initializers to satisfy the Core CI format gate; test behavior is unchanged.
 - Assigned the Settings write-conflict regression tests to `CoreCi`, matching existing Settings coverage and ensuring the CI owner-category convention and filtered gate include the new tests.
 - Corrected authentication regression fixtures: migrate the derived MFA endpoint test host's isolated database before real refresh-token persistence, and use a supported but incorrect numeric PIN when asserting failed-credential auditing. Production credential-binding and PIN-format checks remain unchanged.
 - Bound local MFA completion, access JWTs, and refresh claims to the exact credential generation so reset/re-enrollment cannot revive old tokens; old unbound MFA credentials require reauthentication. Added issuance, reset/re-enrollment, and refresh regressions without a schema change.

@@ -90,19 +90,32 @@ public sealed class SettingsWriteConflictTests
         var clinic = new Clinic { Name = "Kiosk Race", Slug = $"kiosk-race-{Guid.NewGuid():N}" };
         var clinician = new User
         {
-            ClinicId = clinic.Id, Username = "kiosk-race-clinician", FirstName = "Test", LastName = "Clinician",
-            Role = "PT", IsActive = true, PinHash = "not-used"
+            ClinicId = clinic.Id,
+            Username = "kiosk-race-clinician",
+            FirstName = "Test",
+            LastName = "Clinician",
+            Role = "PT",
+            IsActive = true,
+            PinHash = "not-used"
         };
         var patient = new Patient
         {
-            ClinicId = clinic.Id, FirstName = "Test", LastName = "Patient",
-            DateOfBirth = new DateTime(1990, 1, 1), ModifiedByUserId = clinician.Id
+            ClinicId = clinic.Id,
+            FirstName = "Test",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ModifiedByUserId = clinician.Id
         };
         var appointment = new Appointment
         {
-            ClinicId = clinic.Id, Patient = patient, PatientId = patient.Id, ClinicalId = clinician.Id,
-            StartTimeUtc = DateTime.UtcNow.AddHours(1), EndTimeUtc = DateTime.UtcNow.AddHours(2),
-            Status = AppointmentStatus.Scheduled, ModifiedByUserId = clinician.Id
+            ClinicId = clinic.Id,
+            Patient = patient,
+            PatientId = patient.Id,
+            ClinicalId = clinician.Id,
+            StartTimeUtc = DateTime.UtcNow.AddHours(1),
+            EndTimeUtc = DateTime.UtcNow.AddHours(2),
+            Status = AppointmentStatus.Scheduled,
+            ModifiedByUserId = clinician.Id
         };
         context.AddRange(clinic, clinician, patient, appointment);
         await context.SaveChangesAsync();
@@ -131,7 +144,9 @@ public sealed class SettingsWriteConflictTests
         audit.Setup(service => service.LogSettingsEventAsync(It.IsAny<AuditEvent>(), It.IsAny<CancellationToken>()))
             .Callback<AuditEvent, CancellationToken>((value, _) => context.AuditLogs.Add(new AuditLog
             {
-                EventType = value.EventType, EntityId = value.EntityId, CorrelationId = value.CorrelationId ?? string.Empty,
+                EventType = value.EventType,
+                EntityId = value.EntityId,
+                CorrelationId = value.CorrelationId ?? string.Empty,
                 TimestampUtc = DateTime.UtcNow
             }))
             .Returns(Task.CompletedTask);
