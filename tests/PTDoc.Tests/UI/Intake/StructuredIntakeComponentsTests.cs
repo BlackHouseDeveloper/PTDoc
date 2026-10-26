@@ -172,7 +172,68 @@ public sealed class StructuredIntakeComponentsTests : TestContext
 
         Assert.Equal("contact-jane", Assert.Single(state.ConsentPacket.PhiAuthorizedContactIds));
         Assert.False(cut.Find("[data-testid='submit-button']").HasAttribute("disabled"));
-        Assert.Contains("Authorized recipients: Jane Smith", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Authorized recipients: Jane Smith", cut.Find("[data-testid='release-and-contacts']").TextContent, StringComparison.Ordinal);
+        Assert.True(IntakeConsentJson.TryParse(IntakeConsentJson.Serialize(state.ConsentPacket), out var reloaded, out _));
+        Assert.Equal("contact-jane", Assert.Single(reloaded.PhiAuthorizedContactIds));
+        Assert.Equal("Jane Smith", Assert.Single(reloaded.AuthorizedContacts).Name);
+        Assert.True(IntakeConsentJson.IsPhiReleaseConsentActive(reloaded));
+    }
+
+    [Fact]
+    public void ReviewStep_NewIntakeGroupsReleaseWithContactsAndHasNoRevocationInputs()
+    {
+        var cut = RenderComponent<ReviewStep>(parameters => parameters
+            .Add(component => component.State, new IntakeWizardState()));
+        var group = cut.Find("[data-testid='release-and-contacts']");
+        Assert.Contains("PHI Release Status", group.TextContent);
+        Assert.Contains("Authorized Contacts", group.TextContent);
+        Assert.NotNull(group.QuerySelector("input[aria-label='Contact 1 name']"));
+        Assert.Contains("Not Authorized", group.QuerySelector("[data-testid='phi-release-choice']")!.TextContent);
+        Assert.Empty(cut.FindAll("[data-testid='recorded-consent-revocations']"));
+        Assert.DoesNotContain(cut.FindAll("label"), label => label.TextContent.Contains("Revoke", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ReviewStep_RecordedRevocationsStayInactiveAndRoundTripUnchanged(bool submitted)
+    {
+        var packet = new IntakeConsentPacket
+        {
+            HipaaAcknowledged = true,
+            TreatmentConsentAccepted = true,
+            PhiReleaseAuthorized = true,
+            CommunicationCallConsent = true,
+            CommunicationTextConsent = true,
+            CommunicationEmailConsent = true,
+            CreditCardAuthorizationAccepted = true,
+            WrittenRevocationReceived = true,
+            LastRevocationAtUtc = new DateTime(2026, 8, 21, 18, 30, 0, DateTimeKind.Utc),
+            RevokedConsentKeys = ["hipaaAcknowledged", "treatmentConsentAccepted", "phiReleaseAuthorized", "communicationCallConsent", "communicationTextConsent", "communicationEmailConsent", "creditCardAuthorizationAccepted"],
+            AuthorizedContacts = [new AuthorizedContact { Id = "historical-contact", Name = "Synthetic contact", Relationship = "Care coordinator" }],
+            PhiAuthorizedContactIds = ["historical-contact"]
+        };
+        var before = IntakeConsentJson.Serialize(packet);
+        var state = new IntakeWizardState { ConsentPacket = packet, IsSubmitted = submitted, IsLocked = submitted };
+        var cut = RenderComponent<ReviewStep>(parameters => parameters.Add(component => component.State, state));
+        var record = cut.Find("[data-testid='recorded-consent-revocations']");
+        Assert.Empty(record.QuerySelectorAll("input,button"));
+        Assert.Contains("PHI Release: Revoked", record.TextContent);
+        Assert.Contains("2026-08-21 18:30 UTC", record.TextContent);
+        foreach (var copy in new[] { "HIPAA Notice", "Allow phone", "Allow text", "Allow email", "I authorize release", "I authorize the billing" })
+        {
+            var input = cut.FindAll("label").Single(label => label.TextContent.Contains(copy, StringComparison.Ordinal)).QuerySelector("input")!;
+            Assert.False(input.HasAttribute("checked"));
+            Assert.True(input.HasAttribute("disabled"));
+        }
+        Assert.False(cut.Find(".review-step__recipient-fieldset input").HasAttribute("checked"));
+        Assert.Contains("Revoked", cut.Find("[data-testid='phi-release-choice']").TextContent);
+        Assert.Equal(before, IntakeConsentJson.Serialize(state.EnsureConsentPacket()));
+        var persisted = IntakeDraftPersistence.BuildCanonicalConsentPacket(new IntakeResponseDraft { ConsentPacket = state.ConsentPacket });
+        Assert.Equal(packet.RevokedConsentKeys, persisted.RevokedConsentKeys);
+        Assert.Equal(packet.LastRevocationAtUtc, persisted.LastRevocationAtUtc);
+        Assert.True(persisted.PhiReleaseAuthorized);
+        Assert.False(IntakeConsentJson.IsPhiReleaseConsentActive(persisted));
     }
 
     [Fact]
