@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Plan 14 validation clarity
+
+- Clarified that the insurance helper validates payer-approval fields; server access policies remain independent and unchanged. Insurance and authorization regression checks passed.
+
 ### Changed - Client review Plan 14
 
 - Consolidated the patient insurance workflow, keeping policy and authorization/referral records distinct while coordinating one save with version checks. Reused Plan 12 patient concurrency for older payer forms; preserved historical values and unknown JSON.
