@@ -41,6 +41,13 @@ public class ObjectiveVm
 
 public sealed class ObjectiveMetricRowEntry
 {
+    public string? MovementId { get; set; }
+    public RomMotionMode? MotionMode { get; set; }
+    public string? ReferenceDocumentPath { get; set; }
+    public string? ReferenceVersion { get; set; }
+    public string? Side { get; set; }
+    public string? Unit { get; set; }
+
     public string Name { get; set; } = string.Empty;
     public string? BodyPart { get; set; }
     public MetricType MetricType { get; set; } = MetricType.Other;

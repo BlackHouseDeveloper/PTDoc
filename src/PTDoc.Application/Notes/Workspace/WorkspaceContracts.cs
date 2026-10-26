@@ -274,6 +274,7 @@ public sealed class SubjectNarrativeContextV2
 
 public sealed class WorkspaceObjectiveV2
 {
+    public int? MeasurementSchemaVersion { get; set; }
     public BodyPart PrimaryBodyPart { get; set; } = BodyPart.Other;
     public List<ObjectiveMetricInputV2> Metrics { get; set; } = new();
     public List<string> RecommendedOutcomeMeasures { get; set; } = new();
@@ -288,6 +289,13 @@ public sealed class WorkspaceObjectiveV2
 
 public sealed class ObjectiveMetricInputV2
 {
+    public string? MovementId { get; set; }
+    public RomMotionMode? MotionMode { get; set; }
+    public string? ReferenceDocumentPath { get; set; }
+    public string? ReferenceVersion { get; set; }
+    public string? Side { get; set; }
+    public string? Unit { get; set; }
+
     public string Name { get; set; } = string.Empty;
     public BodyPart BodyPart { get; set; } = BodyPart.Other;
     public MetricType MetricType { get; set; } = MetricType.Other;

@@ -1,3 +1,5 @@
+using PTDoc.Infrastructure.Notes.Workspace;
+using PTDoc.Application.Notes.Workspace;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -1416,6 +1418,16 @@ public class SyncEngine : ISyncEngine
                         m.BodyPart,
                         m.MetricType,
                         m.Value,
+                        m.Name,
+                        m.MovementId,
+                        m.Side,
+                        m.MotionMode,
+                        m.Unit,
+                        m.NormValue,
+                        m.PreviousValue,
+                        m.ReferenceDocumentPath,
+                        m.ReferenceVersion,
+
                         m.IsWNL,
                         NoteLastModifiedUtc = n.LastModifiedUtc
                     })
@@ -1435,6 +1447,16 @@ public class SyncEngine : ISyncEngine
                         m.BodyPart,
                         m.MetricType,
                         m.Value,
+                        m.Name,
+                        m.MovementId,
+                        m.Side,
+                        m.MotionMode,
+                        m.Unit,
+                        m.NormValue,
+                        m.PreviousValue,
+                        m.ReferenceDocumentPath,
+                        m.ReferenceVersion,
+
                         m.IsWNL
                     }, jsonOptions),
                     LastModifiedUtc = m.NoteLastModifiedUtc
@@ -2492,6 +2514,8 @@ public class SyncEngine : ISyncEngine
                 var templateVersion = _noteTemplates is null
                     ? null
                     : await _noteTemplates.ResolveAsync(noteType, templateVariant, cancellationToken);
+                ObjectiveMetricDimensions.EnsureValidJsonRevision(null, normalizedContentJson);
+
                 var note = new ClinicalNote
                 {
                     Id = serverId,
@@ -2517,6 +2541,7 @@ public class SyncEngine : ISyncEngine
                     SyncState = SyncState.Synced
                 };
                 _context.ClinicalNotes.Add(note);
+                await ObjectiveMetricPersistence.ReplaceVersionedAsync(_context, note, cancellationToken);
             }
             else
             {
@@ -2543,6 +2568,7 @@ public class SyncEngine : ISyncEngine
                         updatedDateOfService,
                         normalizedContentJson);
 
+                    ObjectiveMetricDimensions.EnsureValidJsonRevision(existing.ContentJson, normalizedContentJson);
                     existing.CreatedUtc = TryGetDateTime(root, "createdUtc") ?? TryGetDateTime(root, "CreatedUtc") ?? existing.CreatedUtc;
                     existing.ParentNoteId = TryGetGuid(root, "parentNoteId") ?? TryGetGuid(root, "ParentNoteId") ?? existing.ParentNoteId;
                     existing.IsAddendum = TryGetBool(root, "isAddendum") ?? TryGetBool(root, "IsAddendum") ?? existing.IsAddendum;
@@ -2559,6 +2585,7 @@ public class SyncEngine : ISyncEngine
                     existing.LastModifiedUtc = item.LastModifiedUtc;
                     existing.ModifiedByUserId = actingUserId;
                     existing.SyncState = SyncState.Synced;
+                    await ObjectiveMetricPersistence.ReplaceVersionedAsync(_context, existing, cancellationToken);
                 }
             }
         }
