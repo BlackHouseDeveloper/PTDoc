@@ -2873,6 +2873,7 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
 
             // ── Replace external service dependencies with no-op mocks ───────────────
             ReplaceWithMock<IAiService>(services);
+            ReplaceWithMock<INoteNarrativeGenerator>(services);
             ReplaceWithMock<IPaymentService>(services);
             ReplaceWithMock<IFaxService>(services);
             ReplaceWithMock<IHomeExerciseProgramService>(services);

@@ -16,6 +16,7 @@ namespace PTDoc.Tests.UI.Notes;
 [Trait("Category", "CoreCi")]
 public sealed class PlanTabTests : TestContext
 {
+    private static readonly DateTime SavedVersion = new(2026, 10, 26, 12, 0, 0, DateTimeKind.Utc);
     private const string CptSource = "docs/clinicrefdata/Commonly used CPT codes and modifiers.md";
 
     public PlanTabTests()
@@ -27,7 +28,7 @@ public sealed class PlanTabTests : TestContext
     public void PlanTab_SearchResultAddsSuggestedModifierSelection()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Loose);
         var vm = new PlanVm();
 
         workspaceService
@@ -87,7 +88,7 @@ public sealed class PlanTabTests : TestContext
     public void PlanTab_RendersQuickPicksWithoutCustomizeButton()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Loose);
 
         Services.AddSingleton(workspaceService.Object);
         Services.AddSingleton(aiService.Object);
@@ -107,7 +108,7 @@ public sealed class PlanTabTests : TestContext
     public async Task PlanTab_QuickPickToggle_RemovesExistingEntryUsingNormalizedCodeMatch()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Loose);
         var vm = new PlanVm
         {
             SelectedCptCodes =
@@ -146,7 +147,7 @@ public sealed class PlanTabTests : TestContext
     public async Task PlanTab_SearchResultNormalizesCodeBeforeApplyingTimedDefaultUnits()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Loose);
         var vm = new PlanVm();
 
         workspaceService
@@ -194,7 +195,7 @@ public sealed class PlanTabTests : TestContext
     public void PlanTab_NormalizesLegacyTimedCodesForMinutesInputAndBillingAdvisories()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Loose);
 
         Services.AddSingleton(workspaceService.Object);
         Services.AddSingleton(aiService.Object);
@@ -225,7 +226,7 @@ public sealed class PlanTabTests : TestContext
     public async Task PlanTab_QuickPicksUseLookupBackedModifierMetadata()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Loose);
         var vm = new PlanVm();
         var quickPickCodes = new[] { "97140", "97110", "97112", "97530", "97116", "97535" };
 
@@ -282,7 +283,7 @@ public sealed class PlanTabTests : TestContext
     public void PlanTab_ShowsBillingAdvisoriesForMissingMinutesAndSuggestedModifiers()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Loose);
 
         Services.AddSingleton(workspaceService.Object);
         Services.AddSingleton(aiService.Object);
@@ -314,7 +315,7 @@ public sealed class PlanTabTests : TestContext
     public void PlanTab_LoadsCatalogBackedTreatmentFocusesAndInterventions()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Loose);
         var vm = new PlanVm();
 
         workspaceService
@@ -364,7 +365,7 @@ public sealed class PlanTabTests : TestContext
     public void PlanTab_InterventionRowsCaptureCptAssistanceCueingAndHepLink()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Loose);
         var vm = new PlanVm
         {
             GeneralInterventions =
@@ -430,7 +431,7 @@ public sealed class PlanTabTests : TestContext
     public void PlanTab_WhenNoteIsUnsaved_DisablesAllAiButtonsAndShowsSaveFirstReason()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
 
         Services.AddLogging();
         Services.AddSingleton(workspaceService.Object);
@@ -462,7 +463,7 @@ public sealed class PlanTabTests : TestContext
     public void PlanTab_WhenReadOnlyForNonSignedReason_HidesAiButtons()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
 
         Services.AddLogging();
         Services.AddSingleton(workspaceService.Object);
@@ -494,7 +495,7 @@ public sealed class PlanTabTests : TestContext
     public void PlanTab_WhenSignedEvenIfNotReadOnly_ShowsSignedDisabledReason()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
 
         Services.AddLogging();
         Services.AddSingleton(workspaceService.Object);
@@ -527,13 +528,13 @@ public sealed class PlanTabTests : TestContext
     public void PlanTab_DischargeSuggestionAfterManualEdit_RequiresExplicitAcceptance()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
         var noteId = Guid.NewGuid();
         var vm = new PlanVm();
 
         aiService
-            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateSuccessfulPlanResult(noteId, "AI discharge guidance"));
+            .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((NoteNarrativeRequest request, CancellationToken _) => CreateSuccessfulPlanResult(request, "AI discharge guidance"));
 
         var cut = RenderSavedPlanTab(vm, noteId, workspaceService, aiService);
 
@@ -571,20 +572,20 @@ public sealed class PlanTabTests : TestContext
             cut.Find("[data-testid='discharge-planning-box-accepted-note']");
         });
 
-        aiService.Verify(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        aiService.Verify(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
     [Fact]
     public void PlanTab_FollowUpSuggestionAfterManualEdit_RequiresExplicitAcceptance()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
         var noteId = Guid.NewGuid();
         var vm = new PlanVm();
 
         aiService
-            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateSuccessfulPlanResult(noteId, "AI follow-up instructions"));
+            .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((NoteNarrativeRequest request, CancellationToken _) => CreateSuccessfulPlanResult(request, "AI follow-up instructions"));
 
         var cut = RenderSavedPlanTab(vm, noteId, workspaceService, aiService);
 
@@ -622,7 +623,7 @@ public sealed class PlanTabTests : TestContext
             cut.Find("[data-testid='followup-instructions-box-accepted-note']");
         });
 
-        aiService.Verify(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        aiService.Verify(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
     [Fact]
@@ -630,12 +631,12 @@ public sealed class PlanTabTests : TestContext
     {
         var noteId = Guid.NewGuid();
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
         var vm = new PlanVm();
 
         aiService
-            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateSuccessfulPlanResult(noteId, "AI summary draft"));
+            .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((NoteNarrativeRequest request, CancellationToken _) => CreateSuccessfulPlanResult(request, "AI summary draft"));
 
         workspaceService
             .Setup(service => service.AcceptAiSuggestionAsync(
@@ -683,6 +684,7 @@ public sealed class PlanTabTests : TestContext
         {
             Assert.Equal("AI summary draft", vm.ClinicalSummary);
             cut.Find("[data-testid='clinical-summary-box-accepted-note']");
+            Assert.Equal("source-hash", vm.AcceptedNarrativeProvenance[nameof(PlanVm.ClinicalSummary)].SourceSha256);
         });
 
         aiService.VerifyAll();
@@ -690,11 +692,11 @@ public sealed class PlanTabTests : TestContext
     }
 
     [Fact]
-    public void PlanTab_PlanRequestDeduplicatesStructuredInputs()
+    public void PlanTab_RequestContainsOnlySavedIdentityVersionAndPurpose()
     {
         var noteId = Guid.NewGuid();
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
         var vm = new PlanVm
         {
             ClinicalSummary = "Existing summary",
@@ -705,11 +707,11 @@ public sealed class PlanTabTests : TestContext
         vm.TreatmentFocuses.Add("Strength");
         vm.SelectedCptCodes.Add(new CptCodeEntry { Code = "97110", Description = "Therapeutic exercise" });
 
-        PlanOfCareGenerationRequest? capturedRequest = null;
+        NoteNarrativeRequest? capturedRequest = null;
         aiService
-            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
-            .Callback<PlanOfCareGenerationRequest, CancellationToken>((request, _) => capturedRequest = request)
-            .ReturnsAsync(CreateSuccessfulPlanResult(noteId, "AI summary draft"));
+            .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<NoteNarrativeRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .ReturnsAsync((NoteNarrativeRequest request, CancellationToken _) => CreateSuccessfulPlanResult(request, "AI summary draft"));
 
         var structuredInputs = new[]
         {
@@ -727,16 +729,10 @@ public sealed class PlanTabTests : TestContext
         cut.WaitForAssertion(() =>
         {
             Assert.NotNull(capturedRequest);
-            Assert.Equal(5, capturedRequest!.StructuredInputs.Count);
-            Assert.All(capturedRequest.StructuredInputs, input => Assert.Equal("Lumbar", input.BodyPart));
-            Assert.All(capturedRequest.StructuredInputs, input =>
-            {
-                var matchingRows = capturedRequest.StructuredInputs.Count(candidate =>
-                    string.Equals(candidate.Label, input.Label, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(candidate.Value, input.Value, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(candidate.BodyPart, input.BodyPart, StringComparison.OrdinalIgnoreCase));
-                Assert.Equal(1, matchingRows);
-            });
+            Assert.Equal(noteId, capturedRequest!.NoteId);
+            Assert.Equal(SavedVersion, capturedRequest.ExpectedLastModifiedUtc);
+            Assert.Equal(NoteNarrativePurpose.SoapSummary, capturedRequest.Purpose);
+            Assert.Equal(3, typeof(NoteNarrativeRequest).GetProperties().Length);
         });
     }
 
@@ -744,22 +740,14 @@ public sealed class PlanTabTests : TestContext
     public void PlanTab_GenerationFailureShowsVisibleErrorMessage()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
         var noteId = Guid.NewGuid();
         var vm = new PlanVm();
 
         aiService
-            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new PlanGenerationResult
+            .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteNarrativeResult
             {
-                GeneratedText = string.Empty,
-                Confidence = 0,
-                SourceInputs = new PlanOfCareGenerationRequest
-                {
-                    NoteId = noteId,
-                    Diagnosis = "Lumbar strain",
-                    SelectedBodyPart = "Lumbar"
-                },
                 ErrorMessage = "AI generation failed. Please try again or contact support. Reference ID: ai-ref-123",
                 Success = false
             });
@@ -782,15 +770,15 @@ public sealed class PlanTabTests : TestContext
     {
         var noteId = Guid.NewGuid();
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
         var vm = new PlanVm
         {
             ClinicalSummary = "Original summary"
         };
 
         aiService
-            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateSuccessfulPlanResult(noteId, "AI summary draft"));
+            .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((NoteNarrativeRequest request, CancellationToken _) => CreateSuccessfulPlanResult(request, "AI summary draft"));
 
         workspaceService
             .Setup(service => service.AcceptAiSuggestionAsync(
@@ -846,15 +834,15 @@ public sealed class PlanTabTests : TestContext
     {
         var noteId = Guid.NewGuid();
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
         var vm = new PlanVm
         {
             ClinicalSummary = "Original summary"
         };
 
         aiService
-            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateSuccessfulPlanResult(noteId, "AI summary draft"));
+            .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((NoteNarrativeRequest request, CancellationToken _) => CreateSuccessfulPlanResult(request, "AI summary draft"));
 
         workspaceService
             .Setup(service => service.AcceptAiSuggestionAsync(
@@ -901,7 +889,7 @@ public sealed class PlanTabTests : TestContext
     public void PlanTab_GenerateSummary_WhenReviewUnavailable_ShowsErrorToastOnly()
     {
         var noteId = Guid.NewGuid();
-        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        var aiService = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
         var vm = new PlanVm
         {
@@ -909,8 +897,8 @@ public sealed class PlanTabTests : TestContext
         };
 
         aiService
-            .Setup(service => service.GeneratePlanOfCareAsync(It.IsAny<PlanOfCareGenerationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateSuccessfulPlanResult(noteId, "AI summary draft"));
+            .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((NoteNarrativeRequest request, CancellationToken _) => CreateSuccessfulPlanResult(request, "AI summary draft"));
 
         var cut = RenderSavedPlanTab(vm, noteId, workspaceService, aiService, forceAiReviewUnavailable: true);
 
@@ -929,11 +917,61 @@ public sealed class PlanTabTests : TestContext
         workspaceService.VerifyAll();
     }
 
+    [Theory]
+    [InlineData("dirty")]
+    [InlineData("version")]
+    [InlineData("note")]
+    [InlineData("signed")]
+    [InlineData("disposed")]
+    public async Task PlanTab_DropsLateSuggestionWhenSourceContextChanges(string change)
+    {
+        var noteId = Guid.NewGuid();
+        var vm = new PlanVm { ClinicalSummary = "Accepted original" };
+        var workspace = new Mock<INoteWorkspaceService>(MockBehavior.Loose);
+        var ai = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
+        var pending = new TaskCompletionSource<NoteNarrativeResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken token = default;
+        NoteNarrativeRequest? request = null;
+        ai.Setup(c => c.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<NoteNarrativeRequest, CancellationToken>((r, ct) => { request = r; token = ct; })
+            .Returns(pending.Task);
+        var cut = RenderSavedPlanTab(vm, noteId, workspace, ai);
+        var click = cut.Find("[data-testid='generate-summary-btn']").ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+        cut.WaitForAssertion(() => Assert.NotNull(request));
+        if (change == "disposed") await cut.InvokeAsync(cut.Instance.Dispose);
+        else cut.SetParametersAndRender(p =>
+        {
+            if (change == "dirty") p.Add(c => c.HasUnsavedChanges, true);
+            if (change == "version") p.Add(c => c.SourceLastModifiedUtc, SavedVersion.AddSeconds(1));
+            if (change == "note") p.Add(c => c.NoteId, Guid.NewGuid());
+            if (change == "signed") p.Add(c => c.IsNoteSigned, true);
+        });
+        Assert.True(token.IsCancellationRequested);
+        pending.SetResult(CreateSuccessfulPlanResult(request!, "Late suggestion"));
+        await click;
+        Assert.Equal("Accepted original", vm.ClinicalSummary);
+        Assert.Empty(vm.AcceptedNarrativeProvenance);
+        if (change != "disposed") Assert.Empty(cut.FindAll("[data-testid='clinical-summary-box-review-banner']"));
+    }
+
+    [Fact]
+    public void PlanTab_DirtySavedNoteCannotGenerateAndManualTextRemainsEditable()
+    {
+        var ai = new Mock<INoteNarrativeClient>(MockBehavior.Strict);
+        var vm = new PlanVm();
+        var cut = RenderSavedPlanTab(vm, Guid.NewGuid(), new Mock<INoteWorkspaceService>(MockBehavior.Loose), ai);
+        cut.SetParametersAndRender(p => p.Add(c => c.HasUnsavedChanges, true));
+        Assert.True(cut.Find("[data-testid='generate-summary-btn']").HasAttribute("disabled"));
+        cut.Find("[data-testid='clinical-summary-box-textarea']").Input("Manual editing works");
+        Assert.Equal("Manual editing works", vm.ClinicalSummary);
+        ai.VerifyNoOtherCalls();
+    }
+
     private IRenderedComponent<PlanTab> RenderSavedPlanTab(
         PlanVm vm,
         Guid noteId,
         Mock<INoteWorkspaceService> workspaceService,
-        Mock<IAiClinicalGenerationService> aiService,
+        Mock<INoteNarrativeClient> aiService,
         bool forceAiReviewUnavailable = false,
         IReadOnlyList<AiStructuredInput>? structuredInputs = null,
         string selectedBodyPart = "Lumbar")
@@ -953,6 +991,7 @@ public sealed class PlanTabTests : TestContext
             .Add(component => component.Vm, vm)
             .Add(component => component.VmChanged, EventCallback.Factory.Create<PlanVm>(this, _ => { }))
             .Add(component => component.NoteId, noteId)
+            .Add(component => component.SourceLastModifiedUtc, SavedVersion)
             .Add(component => component.IsReadOnly, false)
             .Add(component => component.SelectedBodyPart, selectedBodyPart)
             .Add(component => component.DiagnosisSummary, "Lumbar strain")
@@ -962,19 +1001,11 @@ public sealed class PlanTabTests : TestContext
         return cut;
     }
 
-    private static PlanGenerationResult CreateSuccessfulPlanResult(Guid noteId, string generatedText)
+    private static NoteNarrativeResult CreateSuccessfulPlanResult(NoteNarrativeRequest request, string generatedText) => new()
     {
-        return new PlanGenerationResult
-        {
-            GeneratedText = generatedText,
-            Confidence = 0.85,
-            SourceInputs = new PlanOfCareGenerationRequest
-            {
-                NoteId = noteId,
-                Diagnosis = "Lumbar strain",
-                SelectedBodyPart = "Lumbar"
-            },
-            Success = true
-        };
-    }
+        NoteId = request.NoteId, Purpose = request.Purpose, SourceLastModifiedUtc = request.ExpectedLastModifiedUtc,
+        SourceSha256 = "source-hash",
+        Sections = [new(request.Purpose, generatedText, new AiPromptMetadata { TemplateVersion = "section-narrative-v1", Model = "test-model", GeneratedAtUtc = DateTime.UtcNow })],
+        Success = true
+    };
 }

@@ -9,6 +9,7 @@ namespace PTDoc.UI.Components.Notes.Models;
 /// </summary>
 public class PlanVm
 {
+    public Dictionary<string, PTDoc.Application.AI.NoteNarrativeProvenance> AcceptedNarrativeProvenance { get; set; } = new();
     // CPT Codes
     public List<CptCodeEntry> SelectedCptCodes { get; set; } = new();
 
