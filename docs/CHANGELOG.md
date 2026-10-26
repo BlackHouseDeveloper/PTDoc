@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Plan 08 CI follow-up
+
+- Preserve the existing note-template index when downgrading encounter intake on SQL Server; add provider-operation regressions and correct Infrastructure formatting.
+
 ### Changed - Client review Plan 07
 
 - Prefilled new intakes with clinic-scoped patient contact data and coherent primary/secondary policy values through both creation routes. Older editable drafts now offer explicit blank-field prefill; existing answers, submitted records and unknown response fields are retained. Added synthetic service, component and API coverage; no schema migration.
