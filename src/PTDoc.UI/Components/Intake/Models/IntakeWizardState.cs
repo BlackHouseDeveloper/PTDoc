@@ -6,6 +6,10 @@ namespace PTDoc.UI.Components.Intake.Models;
 
 public sealed class IntakeWizardState
 {
+    public IntakeProfilePrefill? ProfilePrefill { get; set; }
+    public Guid? PrefilledPrimaryPolicyId { get; set; }
+    public Guid? PrefilledSecondaryPolicyId { get; set; }
+    public DateTime? ProfilePrefillSourceModifiedUtc { get; set; }
     public Guid? IntakeId { get; set; }
     public Guid? PatientId { get; set; }
     public IntakeStep CurrentStep { get; set; } = IntakeStep.Demographics;

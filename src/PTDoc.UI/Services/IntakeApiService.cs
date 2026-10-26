@@ -447,6 +447,7 @@ public sealed class IntakeApiService(
             }
         }
 
+        draft.ProfilePrefill = response.ProfilePrefill;
         draft.PatientId = response.PatientId;
         draft.IntakeId = response.Id;
         draft.ConsentPacket = response.ConsentPacket ?? draft.ConsentPacket;

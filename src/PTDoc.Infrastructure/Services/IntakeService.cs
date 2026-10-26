@@ -57,7 +57,7 @@ public sealed class IntakeService : IIntakeService
         if (intake is null)
             return null;
 
-        return DeserializeDraft(intake);
+        return await WithProfilePrefillAsync(intake, cancellationToken);
     }
 
     public async Task<IntakeResponseDraft?> GetLatestByPatientIdAsync(Guid patientId, CancellationToken cancellationToken = default)
@@ -73,7 +73,7 @@ public sealed class IntakeService : IIntakeService
         if (intake is null)
             return null;
 
-        return DeserializeDraft(intake);
+        return await WithProfilePrefillAsync(intake, cancellationToken);
     }
 
     public async Task<IntakeEnsureDraftResult> EnsureDraftAsync(
@@ -83,7 +83,7 @@ public sealed class IntakeService : IIntakeService
     {
         var patientExists = await _context.Patients
             .AsNoTracking()
-            .AnyAsync(patient => patient.Id == patientId, cancellationToken);
+            .AnyAsync(patient => patient.Id == patientId && patient.ClinicId == _tenantContext.GetCurrentClinicId() && !patient.IsArchived, cancellationToken);
 
         if (!patientExists)
         {
@@ -98,7 +98,7 @@ public sealed class IntakeService : IIntakeService
 
         if (existingDraft is not null)
         {
-            return IntakeEnsureDraftResult.Existing(DeserializeDraft(existingDraft));
+            return IntakeEnsureDraftResult.Existing(await WithProfilePrefillAsync(existingDraft, cancellationToken));
         }
 
         var hasLockedIntake = await _context.IntakeForms
@@ -113,9 +113,11 @@ public sealed class IntakeService : IIntakeService
         var userId = _identityContext.GetCurrentUserId();
         var clinicId = _tenantContext.GetCurrentClinicId();
         var draft = Clone(seedState ?? new IntakeResponseDraft());
+        var profile = await IntakeProfilePrefillReader.ReadAsync(_context, patientId, clinicId, cancellationToken);
         draft.PatientId = patientId;
         draft.IsLocked = false;
         draft.IsSubmitted = false;
+        profile?.ApplyTo(draft);
 
         var intake = new IntakeForm
         {
@@ -429,6 +431,9 @@ public sealed class IntakeService : IIntakeService
     {
         target.PatientId = source.PatientId;
         target.IntakeFlowVersion = source.IntakeFlowVersion;
+        target.PrefilledPrimaryPolicyId = source.PrefilledPrimaryPolicyId;
+        target.PrefilledSecondaryPolicyId = source.PrefilledSecondaryPolicyId;
+        target.ProfilePrefillSourceModifiedUtc = source.ProfilePrefillSourceModifiedUtc;
         target.CurrentStep = source.CurrentStep;
         target.ConsentPacket = IntakeDraftPersistence.CloneConsentPacket(source.ConsentPacket);
         target.HipaaAcknowledged = source.HipaaAcknowledged;
@@ -501,6 +506,16 @@ public sealed class IntakeService : IIntakeService
         target.ReviewedAtUtc = source.ReviewedAtUtc;
         target.ReviewedByUserId = source.ReviewedByUserId;
         target.LastModifiedUtc = source.LastModifiedUtc;
+    }
+
+    private async Task<IntakeResponseDraft> WithProfilePrefillAsync(IntakeForm intake, CancellationToken cancellationToken)
+    {
+        var draft = DeserializeDraft(intake);
+        if (!draft.IsLocked && !draft.IsSubmitted)
+        {
+            draft.ProfilePrefill = await IntakeProfilePrefillReader.ReadAsync(_context, intake.PatientId, intake.ClinicId, cancellationToken);
+        }
+        return draft;
     }
 
     private IntakeResponseDraft DeserializeDraft(IntakeForm intake)

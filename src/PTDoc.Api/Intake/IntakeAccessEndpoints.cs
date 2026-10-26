@@ -239,7 +239,7 @@ public static class IntakeAccessEndpoints
             return authorization;
         }
 
-        return Results.Ok(IntakeEndpoints.ToResponse(intake));
+        return Results.Ok(await IntakeEndpoints.ToResponseWithProfileAsync(intake, db, cancellationToken));
     }
 
     private static async Task<IResult> GetPatientLatest(
@@ -270,7 +270,7 @@ public static class IntakeAccessEndpoints
             return authorization;
         }
 
-        return Results.Ok(IntakeEndpoints.ToResponse(intake));
+        return Results.Ok(await IntakeEndpoints.ToResponseWithProfileAsync(intake, db, cancellationToken));
     }
 
     private static async Task<IResult> UpdateIntakeDraft(
