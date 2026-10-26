@@ -100,8 +100,10 @@ public sealed class AutoCheckInAdministrationService(
             await auditService.LogSettingsEventAsync(auditEvent, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateConcurrencyException)
+        catch (DbUpdateException exception) when (exception is DbUpdateConcurrencyException
+            || AppointmentCommunicationProcessor.IsUniqueConstraintViolation(exception))
         {
+            SettingsWriteFailure.Detach(context, "AutoCheckInPolicyUpdated", policy.Id, [policy]);
             return SettingsOperationResult<AutoCheckInPolicyDto>.Conflict();
         }
         return SettingsOperationResult<AutoCheckInPolicyDto>.Success(Map(policy));
@@ -528,22 +530,37 @@ public sealed class KioskCheckInService(
             trackedToken.ConsumedAtUtc = checkedInAt;
         }
         station.LastSeenAtUtc = checkedInAt;
-        await auditService.LogSettingsEventAsync(new AuditEvent
+        try
         {
-            EventType = "KioskAppointmentCheckedIn",
-            EntityType = nameof(Appointment),
-            EntityId = token.AppointmentId,
-            Metadata = new Dictionary<string, object>
+            await auditService.LogSettingsEventAsync(new AuditEvent
             {
-                ["clinicId"] = station.ClinicId,
-                ["stationId"] = station.Id,
-                ["appointmentId"] = token.AppointmentId
+                EventType = "KioskAppointmentCheckedIn",
+                EntityType = nameof(Appointment),
+                EntityId = token.AppointmentId,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["clinicId"] = station.ClinicId,
+                    ["stationId"] = station.Id,
+                    ["appointmentId"] = token.AppointmentId
+                }
+            }, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
             }
-        }, cancellationToken);
-        await context.SaveChangesAsync(cancellationToken);
-        if (transaction is not null)
+        }
+        catch (DbUpdateConcurrencyException)
         {
-            await transaction.CommitAsync(cancellationToken);
+            SettingsWriteFailure.Detach(context, "KioskAppointmentCheckedIn", token.AppointmentId,
+                context.ChangeTracker.Entries().Where(entry => entry.Entity switch
+                {
+                    KioskStation item => item.Id == station.Id,
+                    KioskCheckInToken item => item.Id == token.Id,
+                    Appointment item => item.Id == token.AppointmentId,
+                    _ => false
+                }).Select(entry => entry.Entity));
+            return SettingsOperationResult<KioskCheckInResult>.NotFound();
         }
         return SettingsOperationResult<KioskCheckInResult>.Success(
             new KioskCheckInResult(token.AppointmentId, checkedInAt));

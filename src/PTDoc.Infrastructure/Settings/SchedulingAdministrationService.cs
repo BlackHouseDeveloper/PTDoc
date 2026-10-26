@@ -255,8 +255,10 @@ public sealed partial class SchedulingAdministrationService(
                 actorUserId, correlationId, new() { ["version"] = preferences.Version }, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateConcurrencyException)
+        catch (DbUpdateException exception) when (exception is DbUpdateConcurrencyException
+            || AppointmentCommunicationProcessor.IsUniqueConstraintViolation(exception))
         {
+            SettingsWriteFailure.Detach(context, "SchedulingPreferencesUpdated", preferences.Id, [preferences]);
             return SettingsOperationResult<SchedulingPreferencesDto>.Conflict();
         }
         return SettingsOperationResult<SchedulingPreferencesDto>.Success(MapPreferences(preferences));
@@ -344,8 +346,11 @@ public sealed partial class SchedulingAdministrationService(
                 cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateConcurrencyException)
+        catch (DbUpdateException exception) when (exception is DbUpdateConcurrencyException
+            || AppointmentCommunicationProcessor.IsUniqueConstraintViolation(exception))
         {
+            SettingsWriteFailure.Detach(context, "ClinicHoursUpdated", clinicId,
+                existing.Values.Cast<object>().Append(clinic));
             return SettingsOperationResult<ClinicHoursDto>.Conflict();
         }
         return SettingsOperationResult<ClinicHoursDto>.Success(new ClinicHoursDto(

@@ -101,24 +101,26 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
             return null;
         }
 
-        if (user.ClinicId is { } clinicId)
-        {
-            var policy = await db.ClinicSecurityPolicies
+        var tokenHasMfaAssurance = claims.Any(claim =>
+            string.Equals(claim.Type, "amr", StringComparison.Ordinal)
+            && string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase));
+        var policy = user.ClinicId.HasValue
+            ? await db.ClinicSecurityPolicies
                 .IgnoreQueryFilters()
                 .AsNoTracking()
-                .SingleOrDefaultAsync(item => item.ClinicId == clinicId, cancellationToken);
-            if (MfaPolicyRules.RequiresMfa(policy, now.UtcDateTime))
+                .SingleOrDefaultAsync(item => item.ClinicId == user.ClinicId.Value, cancellationToken)
+            : null;
+        if (tokenHasMfaAssurance || (user.ClinicId.HasValue && MfaPolicyRules.RequiresMfa(policy, now.UtcDateTime)))
+        {
+            var credential = await db.UserMfaCredentials
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(item => item.UserId == userId && item.IsActive, cancellationToken);
+            var bindings = claims.Where(claim => claim.Type == PTDocClaimTypes.MfaCredentialBinding).ToArray();
+            if (!tokenHasMfaAssurance || credential is null || bindings.Length != 1
+                || bindings[0].Value != MfaCredentialBinding.Create(credential.Id, credential.EncryptedSecret))
             {
-                var tokenHasMfaAssurance = claims.Any(claim =>
-                    string.Equals(claim.Type, "amr", StringComparison.Ordinal)
-                    && string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase));
-                var credentialIsActive = await db.UserMfaCredentials
-                    .AsNoTracking()
-                    .AnyAsync(item => item.UserId == userId && item.IsActive, cancellationToken);
-                if (!tokenHasMfaAssurance || !credentialIsActive)
-                {
-                    return null;
-                }
+                return null;
             }
         }
 
@@ -184,6 +186,7 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
         PTDocClaimTypes.ExternalProvider,
         PTDocClaimTypes.ExternalSubject,
         PTDocClaimTypes.AuthenticationType,
+        PTDocClaimTypes.MfaCredentialBinding,
         ClaimTypes.NameIdentifier,
         ClaimTypes.Name,
         ClaimTypes.Role,

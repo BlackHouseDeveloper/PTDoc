@@ -1,6 +1,7 @@
 using PTDoc.Application.Auth;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
+using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Identity;
 using System.Security.Claims;
 
@@ -17,7 +18,7 @@ public static class AuthEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+            if (string.IsNullOrWhiteSpace(request.Username) || !PinPolicyRules.IsValidLoginShape(request.Password))
             {
                 return Results.Unauthorized();
             }
@@ -158,7 +159,8 @@ public static class AuthEndpoints
         CancellationToken cancellationToken)
     {
         if (result.Status != AuthStatus.Success || result.UserId is null ||
-            string.IsNullOrWhiteSpace(result.Username) || string.IsNullOrWhiteSpace(result.Role))
+            string.IsNullOrWhiteSpace(result.Username) || string.IsNullOrWhiteSpace(result.Role)
+            || (result.MfaSatisfied && string.IsNullOrWhiteSpace(result.MfaCredentialBinding)))
         {
             return Results.Problem(
                 "Authentication service returned an incomplete success result.",
@@ -184,6 +186,7 @@ public static class AuthEndpoints
         if (result.MfaSatisfied)
         {
             claims.Add(new Claim("amr", "mfa"));
+            claims.Add(new Claim(PTDocClaimTypes.MfaCredentialBinding, result.MfaCredentialBinding!));
         }
 
         var identity = new ClaimsIdentity(claims, PTDocAuthSchemes.Bearer);

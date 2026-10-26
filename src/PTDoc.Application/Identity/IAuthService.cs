@@ -122,6 +122,9 @@ public class AuthResult
 
     /// <summary>True only when this authentication result completed verified MFA.</summary>
     public bool MfaSatisfied { get; init; }
+
+    /// <summary>Opaque binding to the credential generation verified by this authentication.</summary>
+    public string? MfaCredentialBinding { get; init; }
 }
 
 /// <summary>

@@ -6,6 +6,7 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.Settings;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Identity;
 using QRCoder;
 
 namespace PTDoc.Infrastructure.Settings;
@@ -88,18 +89,19 @@ public sealed class MfaAuthenticationService(
     {
         if (!TryReadChallenge(completionToken, maximumAge, out var payload)
             || payload.Purpose != MfaChallengePurpose.AuthenticationCompletion
-            || payload.CredentialId is null)
+            || payload.CredentialId is null
+            || string.IsNullOrWhiteSpace(payload.StateBinding))
         {
             return null;
         }
 
-        var credentialIsCurrent = await context.UserMfaCredentials
+        var credential = await context.UserMfaCredentials
             .AsNoTracking()
-            .AnyAsync(item => item.Id == payload.CredentialId.Value
+            .SingleOrDefaultAsync(item => item.Id == payload.CredentialId.Value
                 && item.UserId == payload.UserId
                 && item.IsActive,
                 cancellationToken);
-        if (!credentialIsCurrent)
+        if (credential is null || payload.StateBinding != MfaCredentialBinding.Create(credential.Id, credential.EncryptedSecret))
         {
             return null;
         }
@@ -120,10 +122,11 @@ public sealed class MfaAuthenticationService(
                 .AsNoTracking()
                 .AnyAsync(item => item.Id == payload.CredentialId.Value
                     && item.UserId == payload.UserId
-                    && item.IsActive,
+                    && item.IsActive
+                    && item.EncryptedSecret == credential.EncryptedSecret,
                     cancellationToken);
             return credentialIsStillCurrent
-                ? new MfaChallengePrincipal(payload.UserId, payload.Purpose, payload.CredentialId)
+                ? new MfaChallengePrincipal(payload.UserId, payload.Purpose, payload.CredentialId, payload.StateBinding)
                 : null;
         }
 
@@ -145,10 +148,11 @@ public sealed class MfaAuthenticationService(
             .AsNoTracking()
             .AnyAsync(item => item.Id == payload.CredentialId.Value
                 && item.UserId == payload.UserId
-                && item.IsActive,
+                && item.IsActive
+                && item.EncryptedSecret == credential.EncryptedSecret,
                 cancellationToken);
         return nonRelationalCredentialIsStillCurrent
-            ? new MfaChallengePrincipal(payload.UserId, payload.Purpose, payload.CredentialId)
+            ? new MfaChallengePrincipal(payload.UserId, payload.Purpose, payload.CredentialId, payload.StateBinding)
             : null;
     }
 
@@ -383,8 +387,19 @@ public sealed class MfaAuthenticationService(
 
         credential.FailedAttemptCount = 0;
         credential.LockedUntilUtc = null;
-        await AuditAsync("MfaRecoveryCodesRegenerated", credential.User, credential.Id, cancellationToken);
-        await context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await AuditAsync("MfaRecoveryCodesRegenerated", credential.User, credential.Id, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            SettingsWriteFailure.Detach(context, "MfaRecoveryCodesRegenerated", credential.Id,
+                context.ChangeTracker.Entries<UserMfaRecoveryCode>()
+                    .Where(entry => entry.Entity.UserMfaCredentialId == credential.Id)
+                    .Select(entry => (object)entry.Entity).Append(credential));
+            return SettingsOperationResult<MfaRecoveryCodeSet>.Conflict();
+        }
         return SettingsOperationResult<MfaRecoveryCodeSet>.Success(new MfaRecoveryCodeSet(recoveryCodes));
     }
 
@@ -599,7 +614,7 @@ public sealed class MfaAuthenticationService(
             credential.UserId,
             MfaChallengePurpose.AuthenticationCompletion,
             credential.Id,
-            null));
+            MfaCredentialBinding.Create(credential.Id, credential.EncryptedSecret)));
         var now = timeProvider.GetUtcNow().UtcDateTime;
         context.Sessions.Add(new Session
         {

@@ -50,6 +50,11 @@ public class AuthService : IAuthService
         AuthSessionMode sessionMode = AuthSessionMode.Stateful)
     {
         var attemptedAt = DateTime.UtcNow;
+        if (string.IsNullOrWhiteSpace(username) || !PinPolicyRules.IsValidLoginShape(pin))
+        {
+            return null;
+        }
+
         var normalizedIdentifier = username.Trim();
         var normalizedIdentifierLower = normalizedIdentifier.ToLowerInvariant();
         var identifierCandidates = normalizedIdentifier.Equals(normalizedIdentifierLower, StringComparison.Ordinal)
@@ -291,14 +296,14 @@ public class AuthService : IAuthService
             return null;
         }
 
-        var credentialIsStillCurrent = principal.CredentialId is { } credentialId
-            && await _context.UserMfaCredentials
-                .AsNoTracking()
-                .AnyAsync(item => item.Id == credentialId
-                    && item.UserId == principal.UserId
-                    && item.IsActive,
-                    cancellationToken);
-        if (!credentialIsStillCurrent)
+        var credential = await _context.UserMfaCredentials
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Id == principal.CredentialId
+                && item.UserId == principal.UserId
+                && item.IsActive,
+                cancellationToken);
+        if (credential is null
+            || principal.StateBinding != MfaCredentialBinding.Create(credential.Id, credential.EncryptedSecret))
         {
             return null;
         }
@@ -309,7 +314,8 @@ public class AuthService : IAuthService
             userAgent,
             sessionMode,
             cancellationToken,
-            mfaSatisfied: true);
+            mfaSatisfied: true,
+            mfaCredentialBinding: principal.StateBinding);
         if (transaction is not null)
         {
             await transaction.CommitAsync(cancellationToken);
@@ -650,7 +656,8 @@ public class AuthService : IAuthService
         CancellationToken cancellationToken,
         DateTime? attemptedAt = null,
         bool mfaSatisfied = false,
-        DateTime? sessionExpiryCapUtc = null)
+        DateTime? sessionExpiryCapUtc = null,
+        string? mfaCredentialBinding = null)
     {
         var now = _timeProvider.GetUtcNow().UtcDateTime;
         string? token = null;
@@ -691,7 +698,8 @@ public class AuthService : IAuthService
             ExpiresAt = expiresAt,
             Role = user.Role,
             ClinicId = user.ClinicId,
-            MfaSatisfied = mfaSatisfied
+            MfaSatisfied = mfaSatisfied,
+            MfaCredentialBinding = mfaCredentialBinding
         };
     }
 

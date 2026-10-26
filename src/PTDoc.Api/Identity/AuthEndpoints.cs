@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using PTDoc.Application.Identity;
+using PTDoc.Core.Models;
 
 namespace PTDoc.Api.Identity;
 
@@ -48,6 +49,11 @@ public static class PinAuthEndpoints
         if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Pin))
         {
             return Results.BadRequest(new { error = "Username or email and PIN are required" });
+        }
+
+        if (!PinPolicyRules.IsValidLoginShape(request.Pin))
+        {
+            return Results.Unauthorized();
         }
 
         var ipAddress = httpContext.Connection.RemoteIpAddress?.ToString();

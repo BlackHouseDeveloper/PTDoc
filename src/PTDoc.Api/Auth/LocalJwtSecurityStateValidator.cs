@@ -55,20 +55,22 @@ internal sealed class LocalJwtSecurityStateValidator(
             .Select(claim => claim.Value)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
-        if (user.ClinicId is not { } clinicId)
+        if (user.ClinicId is { } clinicId)
         {
-            return clinicClaims.Length == 0;
+            if (clinicClaims.Length != 1
+                || !Guid.TryParse(clinicClaims[0], out var claimedClinicId)
+                || claimedClinicId != clinicId)
+            {
+                return false;
+            }
         }
-
-        if (clinicClaims.Length != 1
-            || !Guid.TryParse(clinicClaims[0], out var claimedClinicId)
-            || claimedClinicId != clinicId)
+        else if (clinicClaims.Length != 0)
         {
             return false;
         }
 
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
-        if (!user.PinChangedAtUtc.HasValue
+        if (user.ClinicId.HasValue && !user.PinChangedAtUtc.HasValue
             && (!user.LegacyPinGraceEndsAtUtc.HasValue || user.LegacyPinGraceEndsAtUtc <= nowUtc))
         {
             return false;
@@ -76,11 +78,13 @@ internal sealed class LocalJwtSecurityStateValidator(
 
         var tokenHasMfaAssurance = principal.FindAll("amr").Any(claim =>
             string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase));
-        var policy = await context.ClinicSecurityPolicies
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .SingleOrDefaultAsync(item => item.ClinicId == clinicId, cancellationToken);
-        var mfaIsRequired = MfaPolicyRules.RequiresMfa(
+        var policy = user.ClinicId.HasValue
+            ? await context.ClinicSecurityPolicies
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .SingleOrDefaultAsync(item => item.ClinicId == user.ClinicId.Value, cancellationToken)
+            : null;
+        var mfaIsRequired = user.ClinicId.HasValue && MfaPolicyRules.RequiresMfa(
             policy,
             nowUtc);
 
@@ -89,10 +93,12 @@ internal sealed class LocalJwtSecurityStateValidator(
             return true;
         }
 
-        var credentialIsActive = await context.UserMfaCredentials
+        var credential = await context.UserMfaCredentials
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .AnyAsync(item => item.UserId == userId && item.IsActive, cancellationToken);
-        return tokenHasMfaAssurance && credentialIsActive;
+            .SingleOrDefaultAsync(item => item.UserId == userId && item.IsActive, cancellationToken);
+        var bindings = principal.FindAll(PTDocClaimTypes.MfaCredentialBinding).ToArray();
+        return tokenHasMfaAssurance && credential is not null && bindings.Length == 1
+            && bindings[0].Value == MfaCredentialBinding.Create(credential.Id, credential.EncryptedSecret);
     }
 }

@@ -38,6 +38,20 @@ public class AuthServiceTests
         return mock.Object;
     }
 
+    [Theory]
+    [InlineData("1234", true)]
+    [InlineData("12345678", true)]
+    [InlineData("123456789012", true)]
+    [InlineData("12345", false)]
+    [InlineData("abcdefgh", false)]
+    [InlineData("1234567890123", false)]
+    [InlineData("１２３４５６７８", true)]
+    [InlineData(null, false)]
+    public void PinPolicyRules_LoginShapeAcceptsOnlyLegacyOrCurrentDigits(string? pin, bool expected)
+    {
+        Assert.Equal(expected, PinPolicyRules.IsValidLoginShape(pin));
+    }
+
     [Fact]
     public async Task AuthenticateAsync_ValidPin_ReturnsAuthResult()
     {
@@ -144,7 +158,8 @@ public class AuthServiceTests
         await context.SaveChangesAsync();
 
         // Act
-        var result = await authService.AuthenticateAsync("testuser", "wrong", "127.0.0.1", "TestAgent");
+        // Use a supported PIN shape so this exercises credential failure, not format rejection.
+        var result = await authService.AuthenticateAsync("testuser", "9999", "127.0.0.1", "TestAgent");
 
         // Assert
         Assert.Null(result);

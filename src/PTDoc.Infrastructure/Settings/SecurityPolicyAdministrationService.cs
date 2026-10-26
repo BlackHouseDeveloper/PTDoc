@@ -276,8 +276,30 @@ public sealed class SecurityPolicyAdministrationService(
             refreshToken.RevokedAtUtc = now;
         }
 
-        await AuditUserActionAsync("MfaReset", clinicId, userId, actorUserId, correlationId, cancellationToken);
-        await context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await AuditUserActionAsync("MfaReset", clinicId, userId, actorUserId, correlationId, cancellationToken);
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Do not leave the failed reset staged for a later SaveChanges call.
+            foreach (var entry in context.ChangeTracker.Entries().Where(entry => entry.Entity switch
+            {
+                UserMfaCredential item => item.UserId == userId,
+                UserMfaRecoveryCode item => item.UserMfaCredentialId == credential?.Id,
+                Session item => item.UserId == userId,
+                StoredRefreshToken item => item.Subject == refreshTokenSubject,
+                AuditLog item => item.EventType == "MfaReset" && item.CorrelationId == correlationId,
+                _ => false
+            }).ToArray())
+            {
+                entry.State = EntityState.Detached;
+            }
+
+            return SettingsOperationResult<bool>.Conflict();
+        }
+
         return SettingsOperationResult<bool>.Success(true);
     }
 

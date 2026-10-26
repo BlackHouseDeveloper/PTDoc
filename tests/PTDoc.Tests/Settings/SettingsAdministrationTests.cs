@@ -446,11 +446,16 @@ public sealed class SettingsAdministrationTests
             new Claim(HttpTenantContextAccessor.ClinicIdClaimType, clinic.Id.ToString()),
             new Claim(ClaimTypes.Role, Roles.Admin),
             new Claim(PTDocClaimTypes.AuthenticationType, authenticationType),
+            new Claim(PTDocClaimTypes.MfaCredentialBinding, MfaCredentialBinding.Create(credential.Id, credential.EncryptedSecret)),
             new Claim("amr", "mfa")
         ], "test"));
         var validator = new LocalJwtSecurityStateValidator(context, TimeProvider.System);
 
         Assert.True(await validator.IsValidAsync(principal));
+
+        var unboundPrincipal = new ClaimsPrincipal(new ClaimsIdentity(
+            principal.Claims.Where(claim => claim.Type != PTDocClaimTypes.MfaCredentialBinding), "test"));
+        Assert.False(await validator.IsValidAsync(unboundPrincipal));
 
         user.MustChangePin = true;
         await context.SaveChangesAsync();
@@ -1298,10 +1303,17 @@ public sealed class SettingsAdministrationTests
         Assert.Empty(await context.UserMfaRecoveryCodes.ToListAsync());
     }
 
-    [Fact]
-    public async Task TotpRecoveryCodeRegeneration_InvalidatesPriorSet()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TotpRecoveryCodeRegeneration_InvalidatesPriorSet(bool concurrentChange)
     {
-        await using var context = CreateContext();
+        var interceptor = new ThrowMfaCredentialConcurrencyInterceptor();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .AddInterceptors(interceptor)
+            .Options;
+        await using var context = new ApplicationDbContext(options);
         var clinic = new Clinic { Name = "MFA Recovery Clinic", Slug = $"mfa-recovery-{Guid.NewGuid():N}" };
         var user = new User
         {
@@ -1324,11 +1336,23 @@ public sealed class SettingsAdministrationTests
             start.Value.EnrollmentChallengeToken,
             ComputeTotp(secret, time.GetUtcNow()));
         var priorRecoveryCode = completion.Value!.RecoveryCodes[0];
+        var priorCodeIds = await context.UserMfaRecoveryCodes.Select(item => item.Id).ToListAsync();
 
         time.Advance(TimeSpan.FromSeconds(30));
+        interceptor.Enabled = concurrentChange;
         var regenerated = await service.RegenerateRecoveryCodesAsync(
             user.Id,
             ComputeTotp(secret, time.GetUtcNow()));
+
+        if (concurrentChange)
+        {
+            Assert.Equal(SettingsOperationStatus.Conflict, regenerated.Status);
+            Assert.Null(regenerated.Value);
+            await context.SaveChangesAsync();
+            Assert.Equal(priorCodeIds.OrderBy(id => id),
+                (await context.UserMfaRecoveryCodes.Select(item => item.Id).ToListAsync()).OrderBy(id => id));
+            return;
+        }
 
         Assert.True(regenerated.Succeeded);
         Assert.Equal(10, regenerated.Value!.RecoveryCodes.Count);
@@ -1795,7 +1819,8 @@ public sealed class SettingsAdministrationTests
                 return (MfaChallengePrincipal?)new MfaChallengePrincipal(
                     user.Id,
                     MfaChallengePurpose.AuthenticationCompletion,
-                    credential.Id);
+                    credential.Id,
+                    MfaCredentialBinding.Create(credential.Id, credential.EncryptedSecret));
             });
         var auth = new AuthService(
             context,
@@ -1846,7 +1871,8 @@ public sealed class SettingsAdministrationTests
                 return (MfaChallengePrincipal?)new MfaChallengePrincipal(
                     user.Id,
                     MfaChallengePurpose.AuthenticationCompletion,
-                    credential.Id);
+                    credential.Id,
+                    MfaCredentialBinding.Create(credential.Id, credential.EncryptedSecret));
             });
         var auth = new AuthService(
             context,
@@ -1934,10 +1960,17 @@ public sealed class SettingsAdministrationTests
         Assert.Null(result.Token);
     }
 
-    [Fact]
-    public async Task ResetMfa_ClearsCredentialStateAndRevokesAllAuthenticationArtifacts()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ResetMfa_ClearsCredentialStateAndRevokesAllAuthenticationArtifacts(bool concurrentChange)
     {
-        await using var context = CreateContext();
+        var interceptor = new ThrowMfaCredentialConcurrencyInterceptor();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .AddInterceptors(interceptor)
+            .Options;
+        await using var context = new ApplicationDbContext(options);
         var clinic = new Clinic { Name = "Complete MFA Reset Clinic", Slug = $"complete-mfa-reset-{Guid.NewGuid():N}" };
         var user = new User
         {
@@ -1999,12 +2032,25 @@ public sealed class SettingsAdministrationTests
             });
         await context.SaveChangesAsync();
         var service = new SecurityPolicyAdministrationService(context, CreateAuditService().Object);
+        interceptor.Enabled = concurrentChange;
 
         var result = await service.ResetMfaAsync(
             clinic.Id,
             user.Id,
             Guid.NewGuid(),
             "complete-mfa-reset");
+
+        if (concurrentChange)
+        {
+            Assert.Equal(SettingsOperationStatus.Conflict, result.Status);
+            await context.SaveChangesAsync();
+            Assert.True((await context.UserMfaCredentials.AsNoTracking().SingleAsync()).IsActive);
+            Assert.False((await context.Sessions.AsNoTracking().SingleAsync(item => item.Id == activeSession.Id)).IsRevoked);
+            Assert.True(await context.Sessions.AnyAsync(item => item.Id == pendingChallenge.Id));
+            Assert.False((await context.StoredRefreshTokens.AsNoTracking().SingleAsync()).IsRevoked);
+            Assert.Single(await context.UserMfaRecoveryCodes.ToListAsync());
+            return;
+        }
 
         Assert.True(result.Succeeded);
         Assert.False(credential.IsActive);
@@ -2079,6 +2125,87 @@ public sealed class SettingsAdministrationTests
         Assert.Equal(credential.Id, (await context.UserMfaCredentials.SingleAsync()).Id);
         Assert.False(staleResult.Succeeded);
         Assert.Equal("invalid_or_expired_challenge", staleResult.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData(MfaEnforcementMode.Off)]
+    [InlineData(MfaEnforcementMode.Enforced)]
+    public async Task MfaAccessBinding_ResetAndReenrollmentPermanentlyRejectOldTokens(MfaEnforcementMode mode)
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "MFA Access Clinic", Slug = $"mfa-access-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = $"mfa-access-{Guid.NewGuid():N}",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Mfa",
+            LastName = "Access",
+            Role = Roles.Admin,
+            ClinicId = clinic.Id,
+            PinChangedAtUtc = DateTime.UtcNow,
+            IsActive = true
+        };
+        context.AddRange(clinic, user);
+        await context.SaveChangesAsync();
+        var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
+        policy.MfaEnforcementMode = mode;
+        policy.MfaEffectiveAtUtc = DateTime.UtcNow.AddMinutes(-1);
+        await context.SaveChangesAsync();
+        var audit = CreateAuthAuditService();
+        var time = new MutableTimeProvider(DateTimeOffset.UtcNow);
+        var mfa = new MfaAuthenticationService(context, new TestSecretProtector(), audit.Object, time);
+        var auth = new AuthService(context, NullLogger<AuthService>.Instance, audit.Object, mfa, time);
+
+        async Task<AuthResult> EnrollAndCompleteAsync()
+        {
+            var enrollment = await mfa.BeginEnrollmentAsync(mfa.CreateChallenge(user.Id, MfaChallengePurpose.Enrollment));
+            Assert.True(enrollment.Succeeded);
+            var completion = await mfa.VerifyEnrollmentAsync(enrollment.Value!.EnrollmentChallengeToken,
+                ComputeTotp(DecodeBase32(enrollment.Value.ManualKey), time.GetUtcNow()));
+            Assert.True(completion.Succeeded);
+            var result = await auth.CompleteMfaAsync(completion.Value!.CompletionToken, sessionMode: AuthSessionMode.IdentityOnly);
+            Assert.NotNull(result);
+            Assert.True(result.MfaSatisfied);
+            Assert.False(string.IsNullOrWhiteSpace(result.MfaCredentialBinding));
+            return result;
+        }
+
+        ClaimsPrincipal PrincipalFor(AuthResult result) => new(new ClaimsIdentity(
+        [
+            new Claim(PTDocClaimTypes.InternalUserId, user.Id.ToString()),
+            new Claim(PTDocClaimTypes.AuthenticationType, "pin_step_up_jwt"),
+            new Claim(ClaimTypes.Role, Roles.Admin),
+            new Claim(HttpTenantContextAccessor.ClinicIdClaimType, clinic.Id.ToString()),
+            new Claim("amr", "mfa"),
+            new Claim(PTDocClaimTypes.MfaCredentialBinding, result.MfaCredentialBinding!)
+        ], "test"));
+
+        var original = await EnrollAndCompleteAsync();
+        var originalCredentialId = (await context.UserMfaCredentials.SingleAsync()).Id;
+        var principal = PrincipalFor(original);
+        var validator = new LocalJwtSecurityStateValidator(context, TimeProvider.System);
+        Assert.True(await validator.IsValidAsync(principal));
+        var security = new SecurityPolicyAdministrationService(context, audit.Object);
+        Assert.True((await security.ResetMfaAsync(clinic.Id, user.Id, Guid.NewGuid(), "reset-access")).Succeeded);
+        Assert.False(await validator.IsValidAsync(principal));
+
+        var replacement = await EnrollAndCompleteAsync();
+        Assert.Equal(originalCredentialId, (await context.UserMfaCredentials.SingleAsync()).Id);
+        Assert.NotEqual(original.MfaCredentialBinding, replacement.MfaCredentialBinding);
+        Assert.False(await validator.IsValidAsync(principal));
+        Assert.True(await validator.IsValidAsync(PrincipalFor(replacement)));
+
+        // Exercise refresh validation independently of reset's normal persisted-token revocation.
+        var store = new DbRefreshTokenStore(context);
+        await store.StoreAsync("stale-generation", new RefreshTokenRecord(user.Id.ToString(), principal.Claims.ToArray(),
+            DateTimeOffset.UtcNow.AddHours(1)), CancellationToken.None);
+        Assert.Null(await store.GetAsync("stale-generation", CancellationToken.None));
+        await store.StoreAsync("current-generation", new RefreshTokenRecord(user.Id.ToString(), PrincipalFor(replacement).Claims.ToArray(),
+            DateTimeOffset.UtcNow.AddHours(1)), CancellationToken.None);
+        var refreshed = await store.GetAsync("current-generation", CancellationToken.None);
+        Assert.NotNull(refreshed);
+        Assert.Contains(refreshed.Claims, claim => claim.Type == PTDocClaimTypes.MfaCredentialBinding
+            && claim.Value == replacement.MfaCredentialBinding);
     }
 
     [Fact]
@@ -2197,12 +2324,13 @@ public sealed class SettingsAdministrationTests
         var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
         policy.MfaEnforcementMode = MfaEnforcementMode.Enforced;
         policy.MfaEffectiveAtUtc = DateTime.UtcNow.AddMinutes(-1);
-        context.UserMfaCredentials.Add(new UserMfaCredential
+        var credential = new UserMfaCredential
         {
             UserId = user.Id,
             EncryptedSecret = "test-secret",
             IsActive = true
-        });
+        };
+        context.UserMfaCredentials.Add(credential);
         await context.SaveChangesAsync();
 
         Assert.Null(await store.GetAsync(preMfaToken, CancellationToken.None));
@@ -2215,6 +2343,7 @@ public sealed class SettingsAdministrationTests
                 [
                     new Claim(ClaimTypes.Role, Roles.PT),
                     new Claim(HttpTenantContextAccessor.ClinicIdClaimType, clinic.Id.ToString()),
+                    new Claim(PTDocClaimTypes.MfaCredentialBinding, MfaCredentialBinding.Create(credential.Id, credential.EncryptedSecret)),
                     new Claim("amr", "mfa")
                 ],
                 DateTimeOffset.UtcNow.AddDays(1)),
@@ -3991,6 +4120,55 @@ public sealed class SettingsAdministrationTests
         Assert.Equal(AppointmentStatus.Scheduled, appointment.Status);
     }
 
+    [Theory]
+    [InlineData(false, "{\"copayAmount\":0}")]
+    [InlineData(true, "{\"copayAmount\":0}")]
+    [InlineData(false, "[]")]
+    [InlineData(true, "null")]
+    [InlineData(false, "42")]
+    [InlineData(true, "\"legacy\"")]
+    public async Task AppointmentCheckIn_IgnoresOtherClinicInsuranceWithoutTenantScope(bool supplyRequiredClinic, string payerInfoJson)
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Insurance Clinic", Slug = $"insurance-{Guid.NewGuid():N}" };
+        var otherClinic = new Clinic { Name = "Other Insurance Clinic", Slug = $"other-insurance-{Guid.NewGuid():N}" };
+        var patient = new Patient
+        {
+            FirstName = "Insurance",
+            LastName = "Patient",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            ClinicId = clinic.Id,
+            PayerInfoJson = payerInfoJson,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        var appointment = new Appointment
+        {
+            PatientId = patient.Id,
+            Patient = patient,
+            ClinicId = clinic.Id,
+            ClinicalId = Guid.NewGuid(),
+            StartTimeUtc = DateTime.UtcNow.AddHours(1),
+            EndTimeUtc = DateTime.UtcNow.AddHours(2),
+            Status = AppointmentStatus.Scheduled,
+            ModifiedByUserId = Guid.NewGuid()
+        };
+        var foreignPolicy = new PatientInsurancePolicy
+        {
+            ClinicId = otherClinic.Id,
+            PatientId = patient.Id,
+            Status = InsurancePolicyStatus.Active,
+            CopayAmount = 50
+        };
+        context.AddRange(clinic, otherClinic, patient, appointment, foreignPolicy);
+        await context.SaveChangesAsync();
+
+        var result = await new AppointmentCheckInWorkflow(context, TimeProvider.System)
+            .CheckInAsync(appointment.Id, supplyRequiredClinic ? clinic.Id : null);
+
+        Assert.Equal(AppointmentCheckInStatus.Succeeded, result.Status);
+        Assert.Equal(AppointmentStatus.CheckedIn, appointment.Status);
+    }
+
     [Fact]
     public async Task AppointmentCheckIn_RepeatedSuccessPreservesExistingTimestamp()
     {
@@ -4450,6 +4628,26 @@ public sealed class SettingsAdministrationTests
         }
 
         return output.ToArray();
+    }
+
+    private sealed class ThrowMfaCredentialConcurrencyInterceptor : SaveChangesInterceptor
+    {
+        public bool Enabled { get; set; }
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (Enabled && eventData.Context?.ChangeTracker.Entries<UserMfaCredential>()
+                    .Any(entry => entry.State == EntityState.Modified) == true)
+            {
+                Enabled = false;
+                throw new DbUpdateConcurrencyException("Simulated concurrent MFA credential update.");
+            }
+
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
     }
 
     private sealed class ThrowAppointmentCheckInConcurrencyInterceptor : SaveChangesInterceptor

@@ -139,8 +139,8 @@ When repo docs conflict with generic framework habits, follow repo docs in this 
 - `BetaAccess__AllowStartupSeed`: enables the Beta-only startup seed path for hosted manual beta validation.
 - `BetaAccess__SeedPin`: shared beta access PIN configured outside the repo for seeded beta accounts.
 - `BetaAccess__SeedLockTimeoutSeconds`: bounds Beta startup seed lock waits before the app reports `SkippedLockContention`.
-- `DataProtection__KeyBlobUri`: deployed API key-ring blob URI; it must use HTTPS and must not contain a SAS query or fragment.
-- `DataProtection__KeyVaultKeyIdentifier`: versionless HTTPS Azure Key Vault key identifier used to wrap the deployed API Data Protection key ring.
+- `DataProtection__KeyBlobUri`: deployed API key-ring blob URI in the form `https://<account>.blob.core.windows.net/<container>/<blob>`; use the default HTTPS port and no embedded credentials, query (including SAS), or fragment.
+- `DataProtection__KeyVaultKeyIdentifier`: versionless key URI in the form `https://<vault>.vault.azure.net/keys/<key-name>` used to wrap the deployed API Data Protection key ring; use the default HTTPS port and no embedded credentials, query, or fragment. Both Data Protection settings are host-allowlisted by `src/PTDoc.Api/Security/DataProtectionConfiguration.cs`.
 - `PTDOC_WEB_BASE_URL`: overrides the Playwright browser QA base URL and defaults to `http://localhost:5145`.
 - `PTDOC_UI_QA_USERNAME` and `PTDOC_UI_QA_PIN`: credentials used by the browser QA suite when a route requires sign-in.
 - `PTDOC_UI_QA_STORAGE_STATE`: Playwright storage-state file used instead of credentials for browser QA; it must represent an Admin/Owner-capable session when running responsive Settings coverage.

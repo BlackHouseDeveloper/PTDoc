@@ -47,6 +47,7 @@ public sealed class AppointmentCheckInWorkflow(
         var normalizedCopay = await context.PatientInsurancePolicies
             .IgnoreQueryFilters()
             .Where(item => item.PatientId == appointment.PatientId
+                && item.ClinicId == appointment.ClinicId
                 && (!requiredClinicId.HasValue || item.ClinicId == requiredClinicId)
                 && !item.IsArchived
                 && item.Status == InsurancePolicyStatus.Active)
@@ -96,7 +97,8 @@ public sealed class AppointmentCheckInWorkflow(
         try
         {
             using var document = JsonDocument.Parse(json);
-            if (!document.RootElement.TryGetProperty("copayAmount", out var value)) return null;
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.TryGetProperty("copayAmount", out var value)) return null;
             return value.ValueKind switch
             {
                 JsonValueKind.Number when value.TryGetDecimal(out var amount) => amount,

@@ -65,6 +65,25 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
 
     // ── 401 / 403 gate tests ─────────────────────────────────────────────────
 
+    [Theory]
+    [InlineData("/auth/token")]
+    [InlineData("/api/v1/auth/pin-login")]
+    public async Task PrimaryPinLogin_RejectsUnsupportedShapeBeforeAuthentication(string route)
+    {
+        var auth = new Mock<IAuthService>();
+        using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddScoped<IAuthService>(_ => auth.Object)));
+        using var client = factory.CreateClient();
+        foreach (var pin in new[] { "12345", "abcdefgh", "1234567890123", "1234567 " })
+        {
+            using var response = await client.PostAsync(route,
+                JsonContent(new { username = "shape-test", password = pin, pin }));
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        }
+        auth.Verify(service => service.AuthenticateAsync(It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>(), It.IsAny<AuthSessionMode>()), Times.Never);
+    }
+
     [Fact]
     public async Task Unauthenticated_Request_Returns_401()
     {
@@ -210,6 +229,46 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     {
         Assert.False(element.TryGetProperty(propertyName, out var value)
             && value.ValueKind != JsonValueKind.Null);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task MfaCompletion_JwtRequiresAndCarriesVerifiedCredentialBinding(bool includeBinding)
+    {
+        const string binding = "test-verified-credential-generation";
+        var auth = new Mock<IAuthService>();
+        auth.Setup(service => service.CompleteMfaAsync(
+                "verified-completion", It.IsAny<string?>(), It.IsAny<string?>(),
+                It.IsAny<CancellationToken>(), AuthSessionMode.IdentityOnly))
+            .ReturnsAsync(new AuthResult
+            {
+                Status = AuthStatus.Success,
+                UserId = Guid.NewGuid(),
+                Username = "mfa-binding-user",
+                Role = Roles.PT,
+                MfaSatisfied = true,
+                MfaCredentialBinding = includeBinding ? binding : null
+            });
+        using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddScoped<IAuthService>(_ => auth.Object)));
+        // The derived host owns a separate database; the parent fixture only migrates its own.
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            await db.Database.MigrateAsync();
+        }
+        using var client = factory.CreateClient();
+
+        using var response = await client.PostAsync("/auth/complete", JsonContent(new { completionToken = "verified-completion" }));
+
+        Assert.Equal(includeBinding ? HttpStatusCode.OK : HttpStatusCode.InternalServerError, response.StatusCode);
+        if (includeBinding)
+        {
+            using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var jwt = new JwtSecurityTokenHandler().ReadJwtToken(payload.RootElement.GetProperty("accessToken").GetString());
+            Assert.Contains(jwt.Claims, claim => claim.Type == PTDocClaimTypes.MfaCredentialBinding && claim.Value == binding);
+        }
     }
 
     [Fact]
@@ -556,6 +615,27 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         Assert.Equal("u***t@example.com", result.DestinationMasked);
         Assert.NotNull(result.SentAt);
         Assert.NotNull(result.ExpiresAt);
+    }
+
+    [Fact]
+    public async Task IntakeDelivery_UnsupportedTemplateReturns422WithFieldError()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var patientId = await CreatePatientAsync(client);
+        var intakeId = await CreateIntakeAsync(client, patientId);
+
+        using var response = await client.PostAsync(
+            $"/api/v1/intake/{intakeId}/delivery/send",
+            JsonContent(new IntakeSendInviteRequest
+            {
+                Channel = IntakeDeliveryChannel.Email,
+                Destination = "patient@example.com",
+                TemplateKey = "unsupported-template"
+            }));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(payload.RootElement.GetProperty("errors").TryGetProperty("templateKey", out _));
     }
 
     [Fact]

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 153 complete review and previously missed findings
+
+- Assigned the Settings write-conflict regression tests to `CoreCi`, matching existing Settings coverage and ensuring the CI owner-category convention and filtered gate include the new tests.
+- Corrected authentication regression fixtures: migrate the derived MFA endpoint test host's isolated database before real refresh-token persistence, and use a supported but incorrect numeric PIN when asserting failed-credential auditing. Production credential-binding and PIN-format checks remain unchanged.
+- Bound local MFA completion, access JWTs, and refresh claims to the exact credential generation so reset/re-enrollment cannot revive old tokens; old unbound MFA credentials require reauthentication. Added issuance, reset/re-enrollment, and refresh regressions without a schema change.
+- Restricted normalized check-in insurance to the appointment clinic, safely handled non-object legacy payer JSON, and returned explicit `422` for intake template validation. Added tenant-scope, JSON-shape, and HTTP-contract coverage.
+- Addressed historical suppressed concurrency findings for scheduling preferences, clinic hours, Auto Check-In first writes, MFA recovery-code regeneration/reset, and kiosk station check-in. Recognized races return conflict or tenant-safe not-found, discard failed staged changes, and retain transactional rollback; unrelated database errors still propagate. Added focused failure-injection and relational rollback regressions.
+- Rejected unsupported primary PIN shapes before BCrypt using the shared legacy/current numeric policy while retaining clinic-minimum and grace enforcement. Added endpoint no-auth-call and policy-boundary tests. Reason: a full review-body audit uncovered actionable findings not represented by the current open thread list.
+
+### Changed - agent guidance captures Data Protection URL validation
+
+- **`AGENTS.md`** — Clarified the Azure Blob Storage and versionless Key Vault URL formats, allowed hosts, default HTTPS port, and excluded URL components enforced by API startup validation. Reason: deployment configuration must satisfy the existing Data Protection endpoint allowlist.
+
 ### Changed - agent guidance captures durable Beta key prerequisites
 
 - **`AGENTS.md`** — Documented the persistent Data Protection blob and versionless Key Vault settings required before `Deploy Beta`, including the managed-identity access and key-retention requirements enforced by the current deployment and security runbooks. Reason: agents must preserve MFA encryption-key continuity and satisfy the pre-deployment gate without inventing hosting commands.

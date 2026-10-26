@@ -204,6 +204,18 @@ The JWT bearer middleware now fires an `OnAuthenticationFailed` event that write
   change atomically clears the force-change state, so its challenge cannot be replayed. MFA
   authentication-completion challenges are bound to the active credential and backed by a
   single-use pending-session claim before a real session or JWT can be issued.
+- Local MFA completion challenges and issued JWTs bind to the exact credential generation
+  (credential ID plus a SHA-256 digest of its encrypted secret). Access-token and refresh-token
+  validation compare that binding with the active credential even when clinic MFA enforcement
+  is off. Reset/re-enrollment cannot revive an older token when the credential row is reused.
+  Deployment requires reauthentication for older MFA JWTs, refresh tokens, and pending completion
+  challenges without this binding; no schema migration is required. Do not log these claims.
+- Primary PIN login rejects unsupported input shapes before BCrypt: only the legacy four-digit
+  shape and current 8–12-digit shape reach credential verification; clinic minimum and migration
+  grace checks still apply after the PIN matches. This is not a new grace period.
+- Recovery-code regeneration and administrator MFA reset return conflict on concurrent credential
+  writes. Failed regeneration does not expose replacement codes. A concurrent kiosk-station write
+  returns tenant-safe not-found and rolls back its relational token claim and check-in transaction.
 - Both primary PIN entry points share a fixed-window, client-IP-partitioned rate limit. Rejections
   return a generic `429` response without echoing usernames, PINs, or account state. The Web login
   proxy forwards only its normalized `HttpContext.Connection.RemoteIpAddress`; hosted API

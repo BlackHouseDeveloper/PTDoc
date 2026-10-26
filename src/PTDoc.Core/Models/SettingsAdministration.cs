@@ -91,6 +91,10 @@ public static class MfaPolicyRules
 
 public static class PinPolicyRules
 {
+    public static bool IsValidLoginShape(string? pin) => pin is not null
+        && (pin.Length == LegacyGrandfatheredLength || pin.Length is >= MinimumLength and <= MaximumLength)
+        && pin.All(char.IsDigit);
+
     public const int MinimumLength = 8;
     public const int MaximumLength = 12;
     public const int LegacyGrandfatheredLength = 4;
