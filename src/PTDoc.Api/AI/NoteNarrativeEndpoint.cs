@@ -23,7 +23,7 @@ public static class NoteNarrativeEndpoint
         HttpContext httpContext, CancellationToken cancellationToken)
     {
         IResult Error(int status, string message, string code) => Results.Json(new
-            { error = message, code, correlationId = httpContext.TraceIdentifier }, statusCode: status);
+        { error = message, code, correlationId = httpContext.TraceIdentifier }, statusCode: status);
         if (!configuration.GetValue<bool>("FeatureFlags:EnableAiGeneration"))
             return Error(403, "AI generation is currently disabled.", "ai_feature_disabled");
         if (request.NoteId == Guid.Empty || request.ExpectedLastModifiedUtc == default || !Enum.IsDefined(request.Purpose))
@@ -91,7 +91,14 @@ public static class NoteNarrativeEndpoint
         if (current is null || current.NoteStatus != NoteStatus.Draft || current.IsFinalized
             || current.LastModifiedUtc != note.LastModifiedUtc || current.ContentJson != note.ContentJson)
             return Error(409, "The note changed during generation. Save and generate again.", "ai_source_changed");
-        return Results.Ok(new NoteNarrativeResult { Success = true, NoteId = note.Id, Purpose = request.Purpose,
-            SourceLastModifiedUtc = note.LastModifiedUtc, SourceSha256 = sourceHash, Sections = sections.AsReadOnly() });
+        return Results.Ok(new NoteNarrativeResult
+        {
+            Success = true,
+            NoteId = note.Id,
+            Purpose = request.Purpose,
+            SourceLastModifiedUtc = note.LastModifiedUtc,
+            SourceSha256 = sourceHash,
+            Sections = sections.AsReadOnly()
+        });
     }
 }

@@ -889,7 +889,9 @@ public sealed class PlanTabTests : TestContext
 
     private static NoteNarrativeResult CreateSuccessfulPlanResult(NoteNarrativeRequest request, string generatedText) => new()
     {
-        NoteId = request.NoteId, Purpose = request.Purpose, SourceLastModifiedUtc = request.ExpectedLastModifiedUtc,
+        NoteId = request.NoteId,
+        Purpose = request.Purpose,
+        SourceLastModifiedUtc = request.ExpectedLastModifiedUtc,
         SourceSha256 = "source-hash",
         Sections = [new(request.Purpose, generatedText, new AiPromptMetadata { TemplateVersion = "section-narrative-v1", Model = "test-model", GeneratedAtUtc = DateTime.UtcNow })],
         Success = true

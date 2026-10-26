@@ -60,12 +60,27 @@ public sealed class NoteNarrativeIntegrationTests
             payload.Plan.PlanOfCareNarrative = "SOURCE-P";
             if (scenario == "null-content") payload.Plan.GeneralInterventions = null!;
             if (scenario == "oversized") payload.Plan.PlanOfCareNarrative = new string('x', 25000);
-            var patient = new Patient { Id = Guid.NewGuid(), FirstName = "Synthetic", LastName = "Narrative",
-                ClinicId = PtDocApiFactory.AuthorizationClinicId, DateOfBirth = new DateTime(1980, 1, 1) };
-            var note = new ClinicalNote { Id = Guid.NewGuid(), PatientId = patient.Id, ClinicId = patient.ClinicId,
-                LastModifiedUtc = DateTime.UtcNow, CreatedUtc = DateTime.UtcNow, DateOfService = DateTime.UtcNow,
-                NoteType = NoteType.Evaluation, NoteStatus = scenario == "signed" ? NoteStatus.Signed : NoteStatus.Draft,
-                SignatureHash = scenario == "signed" ? "synthetic-signature" : null, ContentJson = JsonSerializer.Serialize(payload, JsonOptions) };
+            var patient = new Patient
+            {
+                Id = Guid.NewGuid(),
+                FirstName = "Synthetic",
+                LastName = "Narrative",
+                ClinicId = PtDocApiFactory.AuthorizationClinicId,
+                DateOfBirth = new DateTime(1980, 1, 1)
+            };
+            var note = new ClinicalNote
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patient.Id,
+                ClinicId = patient.ClinicId,
+                LastModifiedUtc = DateTime.UtcNow,
+                CreatedUtc = DateTime.UtcNow,
+                DateOfService = DateTime.UtcNow,
+                NoteType = NoteType.Evaluation,
+                NoteStatus = scenario == "signed" ? NoteStatus.Signed : NoteStatus.Draft,
+                SignatureHash = scenario == "signed" ? "synthetic-signature" : null,
+                ContentJson = JsonSerializer.Serialize(payload, JsonOptions)
+            };
             db.Patients.Add(patient); db.ClinicalNotes.Add(note); await db.SaveChangesAsync();
             var version = note.LastModifiedUtc;
             var original = note.ContentJson;
@@ -95,8 +110,13 @@ public sealed class NoteNarrativeIntegrationTests
                         else changed.ContentJson = "{}";
                         await concurrentDb.SaveChangesAsync();
                     }
-                    return new AiResult { Success = scenario != "provider-failure", GeneratedText = purpose + " draft",
-                        ErrorMessage = "PRIVATE PROVIDER CONTENT", Metadata = new AiPromptMetadata { Model = "mock", TemplateVersion = "test-v1", GeneratedAtUtc = DateTime.UtcNow } };
+                    return new AiResult
+                    {
+                        Success = scenario != "provider-failure",
+                        GeneratedText = purpose + " draft",
+                        ErrorMessage = "PRIVATE PROVIDER CONTENT",
+                        Metadata = new AiPromptMetadata { Model = "mock", TemplateVersion = "test-v1", GeneratedAtUtc = DateTime.UtcNow }
+                    };
                 });
             using var client = scenario == "anonymous" ? factory.CreateUnauthenticatedClient()
                 : factory.CreateClientWithRole(scenario == "patient-role" ? Roles.Patient : Roles.PT);

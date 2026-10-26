@@ -56,6 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
 ### Changed - Plan 28 CI formatting
 
+- Completed the API and test-project formatting phases, preserving all narrative behavior.
+
 - Applied the owning-project initializer formatting required by CI; no runtime behavior changed.
 
 ### Fixed - Plan 28 acceptance persistence

@@ -1803,8 +1803,11 @@ public sealed class NoteWorkspacePageTests : TestContext
             .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((NoteNarrativeRequest request, CancellationToken _) => new NoteNarrativeResult
             {
-                Success = true, NoteId = request.NoteId, Purpose = request.Purpose,
-                SourceLastModifiedUtc = request.ExpectedLastModifiedUtc, SourceSha256 = "synthetic",
+                Success = true,
+                NoteId = request.NoteId,
+                Purpose = request.Purpose,
+                SourceLastModifiedUtc = request.ExpectedLastModifiedUtc,
+                SourceSha256 = "synthetic",
                 Sections = [new(NoteNarrativePurpose.SubjectiveSummary, "AI summary draft", null)]
             });
 
@@ -1901,8 +1904,11 @@ public sealed class NoteWorkspacePageTests : TestContext
             .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((NoteNarrativeRequest request, CancellationToken _) => new NoteNarrativeResult
             {
-                Success = true, NoteId = request.NoteId, Purpose = request.Purpose,
-                SourceLastModifiedUtc = request.ExpectedLastModifiedUtc, SourceSha256 = "synthetic",
+                Success = true,
+                NoteId = request.NoteId,
+                Purpose = request.Purpose,
+                SourceLastModifiedUtc = request.ExpectedLastModifiedUtc,
+                SourceSha256 = "synthetic",
                 Sections = [new(NoteNarrativePurpose.SubjectiveSummary, "AI summary draft", null)]
             });
 
@@ -2180,8 +2186,11 @@ public sealed class NoteWorkspacePageTests : TestContext
             .Setup(service => service.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((NoteNarrativeRequest request, CancellationToken _) => new NoteNarrativeResult
             {
-                Success = true, NoteId = request.NoteId, Purpose = request.Purpose,
-                SourceLastModifiedUtc = request.ExpectedLastModifiedUtc, SourceSha256 = "synthetic",
+                Success = true,
+                NoteId = request.NoteId,
+                Purpose = request.Purpose,
+                SourceLastModifiedUtc = request.ExpectedLastModifiedUtc,
+                SourceSha256 = "synthetic",
                 Sections = [new(NoteNarrativePurpose.SubjectiveSummary, "AI summary draft", null)]
             });
 

@@ -49,8 +49,10 @@ public sealed class NoteNarrativeTests
         var factory = new Mock<IHttpClientFactory>(); factory.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(new HttpClient(handler));
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["FeatureFlags:EnableAiGeneration"] = "true", ["AzureOpenAIEndpoint"] = "https://example.openai.azure.com/",
-            ["AzureOpenAIKey"] = "synthetic-test-key", ["AzureOpenAIDeployment"] = "synthetic-test-deployment"
+            ["FeatureFlags:EnableAiGeneration"] = "true",
+            ["AzureOpenAIEndpoint"] = "https://example.openai.azure.com/",
+            ["AzureOpenAIKey"] = "synthetic-test-key",
+            ["AzureOpenAIDeployment"] = "synthetic-test-deployment"
         }).Build();
         var provider = new OpenAiService(config, NullLogger<OpenAiService>.Instance, factory.Object);
         var blank = await provider.GenerateSectionAsync(NoteNarrativePurpose.ObjectiveSummary, []);
