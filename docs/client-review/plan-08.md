@@ -79,7 +79,7 @@ Existing links and clinical projections can regress. Introduce by note type and 
 | Command/check | Result |
 | --- | --- |
 | dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --filter 'FullyQualifiedName~Standalone_Intake_Invite_Allows_Draft_Load_Update_And_Submit' --verbosity minimal -m:1 -p:BuildInParallel=false | Before fix: expected regression failure, 403 instead of 200 after creating a later intake. |
-| dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~Intake&#124;FullyQualifiedName~AuthorizationCoverageTests' --verbosity minimal -m:1 -p:BuildInParallel=false | PASS before independent-base recheck: 308 passed, 0 failed/skipped on Plan 07 plus this change. |
+| dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~Intake&#124;FullyQualifiedName~AuthorizationCoverageTests' --verbosity minimal -m:1 -p:BuildInParallel=false | PASS on independent main base: 299 passed, 0 failed/skipped; Debug test graph compiled. |
 | dotnet format whitespace src/PTDoc.Api/PTDoc.Api.csproj --no-restore --include src/PTDoc.Api/Intake/IntakeAccessEndpoints.cs src/PTDoc.Api/Intake/IntakeEndpoints.cs --verify-no-changes --verbosity minimal | PASS |
 | dotnet format whitespace tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --include tests/PTDoc.Tests/Integration/EndToEndWorkflowTests.cs --verify-no-changes --verbosity minimal | PASS |
 | python3 /private/tmp/ptdoc-client-implementation/workflow.py check 8 | PASS: requirements, sections, links, sensitive paths and whitespace. |
