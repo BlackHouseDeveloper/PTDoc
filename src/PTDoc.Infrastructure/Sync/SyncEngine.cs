@@ -12,6 +12,7 @@ using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Services;
+using PTDoc.Infrastructure.Notes.Workspace;
 using System.Security.Cryptography;
 using System.Text.Json;
 
@@ -2479,6 +2480,7 @@ public class SyncEngine : ISyncEngine
                     isReEvaluation,
                     dateOfService,
                     contentJson);
+                normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(_context, null, patientId, serverId, normalizedContentJson, cancellationToken);
                 var isDryNeedling = NoteWriteService.IsDryNeedlingContent(
                     noteType,
                     isReEvaluation,
@@ -2532,11 +2534,13 @@ public class SyncEngine : ISyncEngine
                     var updatedContentJson = TryGetString(root, "contentJson")
                         ?? TryGetString(root, "ContentJson")
                         ?? existing.ContentJson;
+                    PTDoc.Application.Notes.Workspace.ProgressActivityTracking.ValidateJsonWrite(existing.ContentJson, updatedContentJson);
                     var normalizedContentJson = NoteWriteService.NormalizeContentJson(
                         existing.NoteType,
                         updatedIsReEvaluation,
                         updatedDateOfService,
                         updatedContentJson);
+                    normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(_context, existing, existing.PatientId, existing.Id, normalizedContentJson, cancellationToken);
                     var isDryNeedling = NoteWriteService.IsDryNeedlingContent(
                         existing.NoteType,
                         updatedIsReEvaluation,

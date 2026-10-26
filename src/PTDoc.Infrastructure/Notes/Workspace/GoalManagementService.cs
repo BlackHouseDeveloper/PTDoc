@@ -64,6 +64,8 @@ public sealed class GoalManagementService(IWorkspaceReferenceCatalogService cata
         ArgumentNullException.ThrowIfNull(activeGoals);
 
         var improvedSignals = new HashSet<string>(payload.ProgressQuestionnaire.ImprovedActivities, StringComparer.OrdinalIgnoreCase);
+        if (payload.ProgressQuestionnaire.Activities is { } activities)
+            improvedSignals.UnionWith(activities.Baseline.Where(a => activities.ImprovedIds.Contains(a.Id)).Select(a => a.Description));
         foreach (var metric in payload.Objective.Metrics.Where(metric => metric.IsWithinNormalLimits))
         {
             improvedSignals.Add(metric.MetricType.ToString());

@@ -1,6 +1,8 @@
 @namespace PTDoc.UI.Components.Notes.Workspace.ProgressNote
 @using PTDoc.UI.Components.Notes.Models
 @using Microsoft.AspNetCore.Components.Forms
+@using PTDoc.Application.Notes.Workspace
+@using PTDoc.Core.Models
 
 <section class="progress-subjective" data-testid="progress-subjective-section" role="tabpanel" aria-label="Progress Note Subjective section">
     <div class="progress-subjective__stack">
@@ -17,6 +19,12 @@
                     <label class="progress-subjective__choice"><InputRadio Value="@("Worse significantly")" disabled="@IsReadOnly" />Worse significantly</label>
                 </InputRadioGroup>
             </div>
+
+            <label class="progress-subjective__field" for="progress-percent-improved">
+                <span>Percent improved since the initial evaluation (0–100)</span>
+                <input id="progress-percent-improved" type="number" min="0" max="100" step="0.1"
+                       @bind="_percentImproved" @bind:after="NotifyChanged" disabled="@IsReadOnly" />
+            </label>
 
             <div class="progress-subjective__question-block">
                 <label class="progress-subjective__question">2. Are you making progress toward your therapy goals?</label>
@@ -42,7 +50,7 @@
                        disabled="@IsReadOnly"
                        @bind="_vm.CurrentPainScore"
                        @bind:event="oninput"
-                       @bind:after="NotifyChanged" />
+                       @bind:after="NotifyPainChanged" />
                 <div class="progress-subjective__range-legend">
                     <span>No Pain (0)</span>
                     <strong>@_vm.CurrentPainScore</strong>
@@ -52,11 +60,11 @@
                 <div class="progress-subjective__two-col">
                     <label class="progress-subjective__field">
                         <span>Best</span>
-                        <input type="number" min="0" max="10" @bind="_vm.BestPainScore" @bind:after="NotifyChanged" disabled="@IsReadOnly" />
+                        <input type="number" min="0" max="10" @bind="_vm.BestPainScore" @bind:after="NotifyPainChanged" disabled="@IsReadOnly" />
                     </label>
                     <label class="progress-subjective__field">
                         <span>Worst</span>
-                        <input type="number" min="0" max="10" @bind="_vm.WorstPainScore" @bind:after="NotifyChanged" disabled="@IsReadOnly" />
+                        <input type="number" min="0" max="10" @bind="_vm.WorstPainScore" @bind:after="NotifyPainChanged" disabled="@IsReadOnly" />
                     </label>
                 </div>
             </div>
@@ -93,57 +101,18 @@
                 </InputRadioGroup>
             </div>
 
-            <div class="progress-subjective__question-block">
-                <label class="progress-subjective__question">7. Which of these have improved since your last visit? (Check all that apply)</label>
-                <div class="progress-subjective__check-grid">
-                    @foreach (var option in _improvedOptions)
-                    {
-                        <label class="progress-subjective__check-item">
-                            <input type="checkbox" checked="@_improvedAreas.Contains(option)" disabled="@IsReadOnly" @onchange="e => ToggleSetItem(_improvedAreas, option, e)" />
-                            <span>@option</span>
-                        </label>
-                    }
+            <ProgressActivityEditor Value="@_activities" ValueChanged="HandleActivitiesChanged"
+                                    BodyParts="@ActivityBodyParts" IsReadOnly="@IsReadOnly" />
+            @if (_improvedAreas.Count + _sameActivities.Count + _worseActivities.Count + _newDifficultyActivities.Count > 0)
+            {
+                <div data-testid="progress-legacy-activities">
+                    <h4>Previously recorded activity answers</h4>
+                    <p>These historical labels remain as recorded.</p>
+                    <p>Improved: @string.Join(", ", _improvedAreas)</p><p>Same: @string.Join(", ", _sameActivities)</p>
+                    <p>Worse: @string.Join(", ", _worseActivities)</p><p>Newly difficult: @string.Join(", ", _newDifficultyActivities)</p>
                 </div>
-            </div>
+            }
 
-            <div class="progress-subjective__question-block">
-                <label class="progress-subjective__question">Which activities have stayed the same?</label>
-                <div class="progress-subjective__check-grid">
-                    @foreach (var option in _activityStateOptions)
-                    {
-                        <label class="progress-subjective__check-item">
-                            <input type="checkbox" checked="@_sameActivities.Contains(option)" disabled="@IsReadOnly" @onchange="e => ToggleSetItem(_sameActivities, option, e)" />
-                            <span>@option</span>
-                        </label>
-                    }
-                </div>
-            </div>
-
-            <div class="progress-subjective__question-block">
-                <label class="progress-subjective__question">Which activities have gotten worse?</label>
-                <div class="progress-subjective__check-grid">
-                    @foreach (var option in _activityStateOptions)
-                    {
-                        <label class="progress-subjective__check-item">
-                            <input type="checkbox" checked="@_worseActivities.Contains(option)" disabled="@IsReadOnly" @onchange="e => ToggleSetItem(_worseActivities, option, e)" />
-                            <span>@option</span>
-                        </label>
-                    }
-                </div>
-            </div>
-
-            <div class="progress-subjective__question-block">
-                <label class="progress-subjective__question">Which activities are newly difficult?</label>
-                <div class="progress-subjective__check-grid">
-                    @foreach (var option in _activityStateOptions)
-                    {
-                        <label class="progress-subjective__check-item">
-                            <input type="checkbox" checked="@_newDifficultyActivities.Contains(option)" disabled="@IsReadOnly" @onchange="e => ToggleSetItem(_newDifficultyActivities, option, e)" />
-                            <span>@option</span>
-                        </label>
-                    }
-                </div>
-            </div>
         </article>
 
         <article class="progress-subjective__card progress-subjective__card--impact" aria-labelledby="progress-impact-title">
@@ -260,18 +229,6 @@
     private readonly HashSet<string> _newDifficultyActivities = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _impactAreas = new(StringComparer.OrdinalIgnoreCase);
 
-    private static readonly string[] _improvedOptions =
-    [
-        "Walking",
-        "Stairs",
-        "Transfers (e.g., sit-to-stand)",
-        "Reaching",
-        "Lifting",
-        "Balance",
-        "Endurance",
-        "None"
-    ];
-
     private static readonly string[] _impactOptions =
     [
         "Work",
@@ -283,19 +240,12 @@
         "Not applicable"
     ];
 
-    private static readonly string[] _activityStateOptions =
-    [
-        "Walking",
-        "Stairs",
-        "Transfers (e.g., sit-to-stand)",
-        "Reaching",
-        "Lifting",
-        "Balance",
-        "Endurance",
-        "Self-care",
-        "Work tasks",
-        "Household chores"
-    ];
+    private static BodyPart ParseRegion(string? value) => Enum.TryParse<BodyPart>(value, out var region) ? region : BodyPart.Other;
+    private decimal? _percentImproved;
+    private ProgressActivityTrackingV1 _activities = new();
+    private IReadOnlyList<BodyPart> ActivityBodyParts => _vm.StructuredFunctionalLimitations.Select(f => ParseRegion(f.BodyPart))
+        .Append(Enum.TryParse<BodyPart>(_vm.SelectedBodyPart, out var body) ? body : BodyPart.Other).Distinct().ToArray();
+    private Task HandleActivitiesChanged(ProgressActivityTrackingV1 value) { _activities = value; return NotifyChanged(); }
 
     protected override void OnParametersSet()
     {
@@ -326,9 +276,12 @@
         _ = NotifyChanged();
     }
 
+    private Task NotifyPainChanged() { _vm.IsPainScoreDocumented = true; return NotifyChanged(); }
+
     private async Task NotifyChanged()
     {
-        _vm.IsPainScoreDocumented = true;
+        _progress.PercentImproved = _percentImproved;
+        _progress.Activities = ProgressActivityTracking.Clone(_activities);
         _progress.OverallCondition = _overallCondition;
         _progress.GoalProgress = _goalProgress;
         _progress.PainChange = _painChange;
@@ -352,6 +305,12 @@
 
     private void LoadProgressState()
     {
+        _percentImproved = _progress.PercentImproved;
+        _activities = _progress.Activities is not null ? ProgressActivityTracking.Clone(_progress.Activities) : new()
+        {
+            Baseline = _vm.StructuredFunctionalLimitations.Where(f => !string.IsNullOrWhiteSpace(f.Description))
+                .Select(f => ProgressActivityTracking.RecordedActivity(ParseRegion(f.BodyPart), f.Description, f.Category)).ToList()
+        };
         _overallCondition = _progress.OverallCondition;
         _goalProgress = _progress.GoalProgress;
         _painChange = _progress.PainChange;

@@ -331,6 +331,8 @@ public sealed class NoteWorkspacePayloadMapper
             },
             ProgressSubjective = new ProgressSubjectiveVm
             {
+                PercentImproved = progressQuestionnaire.PercentImproved,
+                Activities = progressQuestionnaire.Activities is null ? null : ProgressActivityTracking.Clone(progressQuestionnaire.Activities),
                 OverallCondition = progressQuestionnaire.OverallCondition,
                 GoalProgress = progressQuestionnaire.GoalProgress,
                 PainChange = progressQuestionnaire.PainChange,
@@ -563,6 +565,8 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.DailyTreatment.ResponseToTreatment = dailyTreatment.ResponseToTreatment?.Trim() ?? string.Empty;
 
         var progressSubjective = payload.ProgressSubjective ?? new ProgressSubjectiveVm();
+        preservedPayload.ProgressQuestionnaire.PercentImproved = progressSubjective.PercentImproved;
+        preservedPayload.ProgressQuestionnaire.Activities = progressSubjective.Activities is null ? null : ProgressActivityTracking.Clone(progressSubjective.Activities);
         preservedPayload.ProgressQuestionnaire.OverallCondition = progressSubjective.OverallCondition?.Trim() ?? string.Empty;
         preservedPayload.ProgressQuestionnaire.GoalProgress = progressSubjective.GoalProgress?.Trim() ?? string.Empty;
         preservedPayload.ProgressQuestionnaire.CurrentPainLevel = payload.Subjective.CurrentPainScore;

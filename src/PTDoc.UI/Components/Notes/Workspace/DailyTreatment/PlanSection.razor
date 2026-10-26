@@ -9,6 +9,19 @@
 
 <section class="daily-plan @(IsDarkMode ? "daily-plan--dark" : string.Empty)" data-testid="daily-plan-section">
     <div class="daily-grid">
+        @if (ShowProgressFrequency)
+        {
+            <div class="daily-col-12" data-testid="progress-plan-frequency">
+                <FormSection Title="Progress plan frequency">
+                    <label for="progress-plan-frequency">Planned visits per week</label>
+                    <select id="progress-plan-frequency" value="@_vm.TreatmentFrequency" disabled="@IsReadOnly"
+                            @onchange="e => UpdateProgressFrequency(e.Value?.ToString())">
+                        <option value="">Select frequency</option>
+                        @foreach (var frequency in ProgressFrequencyOptions) { <option value="@frequency">@frequency</option> }
+                    </select>
+                </FormSection>
+            </div>
+        }
         <div class="daily-col-12">
             <FormSection Title="Plan for next visit">
                 <EditableTextArea Label="Plan for next visit *"
@@ -70,6 +83,7 @@
     [Parameter, EditorRequired] public EventCallback<PlanVm> VmChanged { get; set; }
     [Parameter] public EventCallback<DailyTreatmentVm> DailyTreatmentChanged { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public bool ShowProgressFrequency { get; set; }
     [Parameter] public bool IsDarkMode { get; set; }
     [Parameter] public Guid NoteId { get; set; }
     [Parameter] public string? DiagnosisSummary { get; set; }
@@ -85,6 +99,15 @@
     {
         _vm = Vm;
         _dailyTreatment = DailyTreatment;
+    }
+
+    private IEnumerable<string> ProgressFrequencyOptions => Enumerable.Range(1, 7).Select(n => $"{n}x/week")
+        .Concat(new[] { _vm.TreatmentFrequency }).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!).Distinct();
+    private Task UpdateProgressFrequency(string? value)
+    {
+        if (IsReadOnly || !ShowProgressFrequency) return Task.CompletedTask;
+        _vm.TreatmentFrequency = value;
+        return NotifyChangedAsync();
     }
 
     private Task NotifyChangedAsync() => VmChanged.InvokeAsync(_vm);
