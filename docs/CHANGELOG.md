@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 153 bearer recovery and mixed authentication boundaries
+
+- Bound newly issued local access and refresh tokens to the current salted PIN-hash generation. Resetting a PIN or completing a forced change permanently rejects prior tokens, including MFA-authenticated tokens; unbound older tokens require reauthentication. No schema change is required.
+- Recognized both raw and inbound-mapped MFA authentication-method claims during local bearer validation. Added signed-token tests through the real `LegacyJwt` handler with MFA Off/Enforced, PIN reset/forced-change recovery, missing PIN bindings, and MFA reset/re-enrollment.
+- Restricted Entra claim enrichment to identity types selected by the API Entra bearer and Web OIDC handlers. Added mixed-mode local-principal/tenant tests and genuine-Entra transformation coverage while retaining external tenant-mismatch rejection. Reason: enabling Entra must not reclassify local sessions or JWTs as externally provisioned identities.
+
 ### Fixed - PR 153 complete review and previously missed findings
 
 - Applied repository formatting to Settings write-conflict test object initializers to satisfy the Core CI format gate; test behavior is unchanged.

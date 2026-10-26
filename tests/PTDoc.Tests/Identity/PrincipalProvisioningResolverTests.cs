@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
@@ -13,6 +14,56 @@ namespace PTDoc.Tests.Identity;
 [Trait("Category", "CoreCi")]
 public class PrincipalProvisioningResolverTests
 {
+    [Theory]
+    [InlineData("SessionToken")]
+    [InlineData("Cookies")]
+    [InlineData("AuthenticationTypes.Federation")]
+    public async Task EntraTransformation_MixedModePreservesLocalPrincipalAndTenant(string identityType)
+    {
+        using var services = CreateServices();
+        using var scope = services.CreateScope();
+        var clinicId = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim(PTDocClaimTypes.InternalUserId, userId.ToString()),
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+            new Claim(ClaimTypes.Role, Roles.Admin),
+            new Claim(HttpTenantContextAccessor.ClinicIdClaimType, clinicId.ToString()),
+            new Claim(PTDocClaimTypes.AuthenticationType, "session_token")
+        ], identityType));
+        var transformation = new EntraExternalIdClaimsTransformation(
+            Options.Create(new EntraExternalIdOptions { Enabled = true }));
+
+        var transformed = await transformation.TransformAsync(principal);
+        Assert.Same(principal, transformed);
+        Assert.False(transformed.HasClaim(claim => claim.Type == PTDocClaimTypes.ExternalProvider));
+        scope.ServiceProvider.GetRequiredService<IHttpContextAccessor>().HttpContext = new DefaultHttpContext
+        {
+            User = transformed
+        };
+        var resolver = scope.ServiceProvider.GetRequiredService<PrincipalRecordResolver>();
+        Assert.Equal(userId, resolver.TryResolveInternalUserId());
+        Assert.Equal(clinicId, scope.ServiceProvider.GetRequiredService<ITenantContextAccessor>().GetCurrentClinicId());
+    }
+
+    [Theory]
+    [InlineData(PTDocClaimTypes.EntraJwtIdentityType)]
+    [InlineData(PTDocClaimTypes.EntraOidcIdentityType)]
+    public async Task EntraTransformation_EnrichesOnlyServerSelectedExternalIdentities(string identityType)
+    {
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim("sub", "external-test-subject")], identityType));
+        var transformation = new EntraExternalIdClaimsTransformation(
+            Options.Create(new EntraExternalIdOptions { Enabled = true }));
+
+        var transformed = await transformation.TransformAsync(principal);
+
+        Assert.Equal(EntraExternalIdOptions.DefaultProviderKey, transformed.FindFirst(PTDocClaimTypes.ExternalProvider)?.Value);
+        Assert.Equal("external-test-subject", transformed.FindFirst(PTDocClaimTypes.ExternalSubject)?.Value);
+        Assert.Equal("entra_jwt", transformed.FindFirst(PTDocClaimTypes.AuthenticationType)?.Value);
+    }
+
     [Fact]
     public void Resolver_UsesExternalMapping_NotEmail_ForPatientResolution()
     {

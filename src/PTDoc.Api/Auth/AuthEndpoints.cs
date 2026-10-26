@@ -160,6 +160,7 @@ public static class AuthEndpoints
     {
         if (result.Status != AuthStatus.Success || result.UserId is null ||
             string.IsNullOrWhiteSpace(result.Username) || string.IsNullOrWhiteSpace(result.Role)
+            || string.IsNullOrWhiteSpace(result.PinCredentialBinding)
             || (result.MfaSatisfied && string.IsNullOrWhiteSpace(result.MfaCredentialBinding)))
         {
             return Results.Problem(
@@ -173,7 +174,8 @@ public static class AuthEndpoints
             new(ClaimTypes.NameIdentifier, result.UserId.Value.ToString()),
             new(ClaimTypes.Name, result.Username),
             new(ClaimTypes.Role, result.Role),
-            new(PTDocClaimTypes.AuthenticationType, "pin_step_up_jwt")
+            new(PTDocClaimTypes.AuthenticationType, "pin_step_up_jwt"),
+            new(PTDocClaimTypes.PinCredentialBinding, result.PinCredentialBinding)
         };
         if (result.ClinicId is { } clinicId)
         {

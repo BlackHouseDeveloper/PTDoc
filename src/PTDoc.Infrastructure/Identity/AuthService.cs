@@ -646,7 +646,7 @@ public class AuthService : IAuthService
         };
 
     private static string CreatePinCredentialBinding(string pinHash) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(pinHash)));
+        PinCredentialBinding.Create(pinHash);
 
     private async Task<AuthResult> CompleteAuthenticationAsync(
         User user,
@@ -699,7 +699,8 @@ public class AuthService : IAuthService
             Role = user.Role,
             ClinicId = user.ClinicId,
             MfaSatisfied = mfaSatisfied,
-            MfaCredentialBinding = mfaCredentialBinding
+            MfaCredentialBinding = mfaCredentialBinding,
+            PinCredentialBinding = PinCredentialBinding.Create(user.PinHash)
         };
     }
 

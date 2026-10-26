@@ -170,6 +170,7 @@ if (entraExternalIdOptions.Enabled)
         }
 
         options.TokenValidationParameters.NameClaimType = ClaimTypes.Name;
+        options.TokenValidationParameters.AuthenticationType = PTDocClaimTypes.EntraOidcIdentityType;
         options.TokenValidationParameters.RoleClaimType = ClaimTypes.Role;
 
         options.Events = new OpenIdConnectEvents

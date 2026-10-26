@@ -651,6 +651,7 @@ builder.Services.AddAuthentication(options =>
     options.MapInboundClaims = false;
     options.TokenValidationParameters = new TokenValidationParameters
     {
+        AuthenticationType = PTDocClaimTypes.EntraJwtIdentityType,
         ValidateIssuer = true,
         ValidateAudience = true,
         ValidateLifetime = true,

@@ -125,6 +125,9 @@ public class AuthResult
 
     /// <summary>Opaque binding to the credential generation verified by this authentication.</summary>
     public string? MfaCredentialBinding { get; init; }
+
+    /// <summary>Opaque binding to the PIN credential generation used for successful local authentication.</summary>
+    public string? PinCredentialBinding { get; init; }
 }
 
 /// <summary>

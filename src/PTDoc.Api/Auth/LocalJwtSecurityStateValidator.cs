@@ -39,6 +39,12 @@ internal sealed class LocalJwtSecurityStateValidator(
             return false;
         }
 
+        var pinBindings = principal.FindAll(PTDocClaimTypes.PinCredentialBinding).ToArray();
+        if (pinBindings.Length != 1 || pinBindings[0].Value != PinCredentialBinding.Create(user.PinHash))
+        {
+            return false;
+        }
+
         var roleClaims = principal.FindAll(ClaimTypes.Role)
             .Where(claim => !string.IsNullOrWhiteSpace(claim.Value))
             .Select(claim => claim.Value)
@@ -76,8 +82,9 @@ internal sealed class LocalJwtSecurityStateValidator(
             return false;
         }
 
-        var tokenHasMfaAssurance = principal.FindAll("amr").Any(claim =>
-            string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase));
+        var tokenHasMfaAssurance = principal.Claims.Any(claim =>
+            (claim.Type == "amr" || claim.Type == PTDocClaimTypes.MappedAuthenticationMethodsReference)
+            && string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase));
         var policy = user.ClinicId.HasValue
             ? await context.ClinicSecurityPolicies
                 .IgnoreQueryFilters()

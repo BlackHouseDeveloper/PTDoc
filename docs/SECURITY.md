@@ -213,6 +213,17 @@ The JWT bearer middleware now fires an `OnAuthenticationFailed` event that write
 - Primary PIN login rejects unsupported input shapes before BCrypt: only the legacy four-digit
   shape and current 8–12-digit shape reach credential verification; clinic minimum and migration
   grace checks still apply after the PIN matches. This is not a new grace period.
+- Local access and refresh tokens also carry an opaque SHA-256 binding to the salted PIN hash.
+  Validation requires exactly one matching binding. PIN reset or completed forced change rotates
+  that hash and permanently invalidates old tokens even if the PIN text is reused or MFA remains
+  active. Deploying this change requires reauthentication for all older unbound local tokens;
+  there is no schema migration. Never log credential-binding claims.
+- Local bearer validation accepts both raw `amr` and its standard inbound-mapped authentication-
+  methods claim. A token asserting MFA must match the current MFA generation even with enforcement
+  off. Entra enrichment runs only on server-selected `PTDoc.EntraJwt` / `PTDoc.EntraOidc` identity
+  types; enabling Entra does not add external-provider claims to local sessions, cookies or JWTs.
+  Reauthenticate existing Entra browser sessions at deployment so cookies carry the new identity
+  type. External tenant claims still must match the persisted provisioning mapping.
 - Recovery-code regeneration and administrator MFA reset return conflict on concurrent credential
   writes. Failed regeneration does not expose replacement codes. A concurrent kiosk-station write
   returns tenant-safe not-found and rolls back its relational token claim and check-in transaction.

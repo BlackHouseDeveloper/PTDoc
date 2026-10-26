@@ -21,7 +21,10 @@ public sealed class EntraExternalIdClaimsTransformation : IClaimsTransformation
 
     public Task<ClaimsPrincipal> TransformAsync(ClaimsPrincipal principal)
     {
-        if (!_options.Enabled || principal.Identity is not ClaimsIdentity identity)
+        if (!_options.Enabled || principal.Identity is not ClaimsIdentity identity
+            || !identity.IsAuthenticated
+            || (identity.AuthenticationType != PTDocClaimTypes.EntraJwtIdentityType
+                && identity.AuthenticationType != PTDocClaimTypes.EntraOidcIdentityType))
         {
             return Task.FromResult(principal);
         }

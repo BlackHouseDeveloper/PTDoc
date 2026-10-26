@@ -248,6 +248,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
                 Username = "mfa-binding-user",
                 Role = Roles.PT,
                 MfaSatisfied = true,
+                PinCredentialBinding = "verified-pin-generation",
                 MfaCredentialBinding = includeBinding ? binding : null
             });
         using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
@@ -268,6 +269,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             var jwt = new JwtSecurityTokenHandler().ReadJwtToken(payload.RootElement.GetProperty("accessToken").GetString());
             Assert.Contains(jwt.Claims, claim => claim.Type == PTDocClaimTypes.MfaCredentialBinding && claim.Value == binding);
+            Assert.Contains(jwt.Claims, claim => claim.Type == PTDocClaimTypes.PinCredentialBinding && claim.Value == "verified-pin-generation");
         }
     }
 

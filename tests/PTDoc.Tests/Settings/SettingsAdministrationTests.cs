@@ -447,6 +447,7 @@ public sealed class SettingsAdministrationTests
             new Claim(ClaimTypes.Role, Roles.Admin),
             new Claim(PTDocClaimTypes.AuthenticationType, authenticationType),
             new Claim(PTDocClaimTypes.MfaCredentialBinding, MfaCredentialBinding.Create(credential.Id, credential.EncryptedSecret)),
+            new Claim(PTDocClaimTypes.PinCredentialBinding, PinCredentialBinding.Create(user.PinHash)),
             new Claim("amr", "mfa")
         ], "test"));
         var validator = new LocalJwtSecurityStateValidator(context, TimeProvider.System);
@@ -2177,7 +2178,8 @@ public sealed class SettingsAdministrationTests
             new Claim(ClaimTypes.Role, Roles.Admin),
             new Claim(HttpTenantContextAccessor.ClinicIdClaimType, clinic.Id.ToString()),
             new Claim("amr", "mfa"),
-            new Claim(PTDocClaimTypes.MfaCredentialBinding, result.MfaCredentialBinding!)
+            new Claim(PTDocClaimTypes.MfaCredentialBinding, result.MfaCredentialBinding!),
+            new Claim(PTDocClaimTypes.PinCredentialBinding, result.PinCredentialBinding!)
         ], "test"));
 
         var original = await EnrollAndCompleteAsync();
@@ -2287,8 +2289,13 @@ public sealed class SettingsAdministrationTests
         const string rawToken = "existing-refresh-token";
         await store.StoreAsync(
             rawToken,
-            new RefreshTokenRecord(user.Id.ToString(), [], DateTimeOffset.UtcNow.AddDays(1)),
+            new RefreshTokenRecord(user.Id.ToString(),
+            [
+                new Claim(ClaimTypes.Role, user.Role),
+                new Claim(PTDocClaimTypes.PinCredentialBinding, PinCredentialBinding.Create(user.PinHash))
+            ], DateTimeOffset.UtcNow.AddDays(1)),
             CancellationToken.None);
+        Assert.NotNull(await store.GetAsync(rawToken, CancellationToken.None));
         user.MustChangePin = true;
         await context.SaveChangesAsync();
 
@@ -2319,8 +2326,14 @@ public sealed class SettingsAdministrationTests
         const string preMfaToken = "pre-mfa-refresh-token";
         await store.StoreAsync(
             preMfaToken,
-            new RefreshTokenRecord(user.Id.ToString(), [], DateTimeOffset.UtcNow.AddDays(1)),
+            new RefreshTokenRecord(user.Id.ToString(),
+            [
+                new Claim(ClaimTypes.Role, user.Role),
+                new Claim(HttpTenantContextAccessor.ClinicIdClaimType, clinic.Id.ToString()),
+                new Claim(PTDocClaimTypes.PinCredentialBinding, PinCredentialBinding.Create(user.PinHash))
+            ], DateTimeOffset.UtcNow.AddDays(1)),
             CancellationToken.None);
+        Assert.NotNull(await store.GetAsync(preMfaToken, CancellationToken.None));
         var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == clinic.Id);
         policy.MfaEnforcementMode = MfaEnforcementMode.Enforced;
         policy.MfaEffectiveAtUtc = DateTime.UtcNow.AddMinutes(-1);
@@ -2344,6 +2357,7 @@ public sealed class SettingsAdministrationTests
                     new Claim(ClaimTypes.Role, Roles.PT),
                     new Claim(HttpTenantContextAccessor.ClinicIdClaimType, clinic.Id.ToString()),
                     new Claim(PTDocClaimTypes.MfaCredentialBinding, MfaCredentialBinding.Create(credential.Id, credential.EncryptedSecret)),
+                    new Claim(PTDocClaimTypes.PinCredentialBinding, PinCredentialBinding.Create(user.PinHash)),
                     new Claim("amr", "mfa")
                 ],
                 DateTimeOffset.UtcNow.AddDays(1)),
@@ -2390,7 +2404,8 @@ public sealed class SettingsAdministrationTests
                 user.Id.ToString(),
                 [
                     new Claim(ClaimTypes.Role, Roles.PT),
-                    new Claim(HttpTenantContextAccessor.ClinicIdClaimType, originalClinic.Id.ToString())
+                    new Claim(HttpTenantContextAccessor.ClinicIdClaimType, originalClinic.Id.ToString()),
+                    new Claim(PTDocClaimTypes.PinCredentialBinding, PinCredentialBinding.Create(user.PinHash))
                 ],
                 DateTimeOffset.UtcNow.AddDays(1)),
             CancellationToken.None);

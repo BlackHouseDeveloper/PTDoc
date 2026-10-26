@@ -96,6 +96,11 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
         }
 
         var claims = DeserializeClaims(stored.ClaimsJson);
+        var pinBindings = claims.Where(claim => claim.Type == PTDocClaimTypes.PinCredentialBinding).ToArray();
+        if (pinBindings.Length != 1 || pinBindings[0].Value != PinCredentialBinding.Create(user.PinHash))
+        {
+            return null;
+        }
         if (!ClaimsMatchCurrentAuthorizationState(claims, user))
         {
             return null;
@@ -187,6 +192,7 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
         PTDocClaimTypes.ExternalSubject,
         PTDocClaimTypes.AuthenticationType,
         PTDocClaimTypes.MfaCredentialBinding,
+        PTDocClaimTypes.PinCredentialBinding,
         ClaimTypes.NameIdentifier,
         ClaimTypes.Name,
         ClaimTypes.Role,
