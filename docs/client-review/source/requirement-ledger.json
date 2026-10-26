@@ -1,0 +1,2957 @@
+[
+  {
+    "id": "R001",
+    "classification": "Technical Work",
+    "requirement": "Multi-clinic support and persistence need a sound hierarchy",
+    "source": "03:27–04:38; 02:45:29; P0132,P0270–0287,P2417–2437",
+    "pr": "05",
+    "disposition": "Needs Clarification",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "03:27–04:38",
+      "02:45:29"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Organization/clinic membership and local clinician administration; E05",
+    "candidate_work_item": "Decide organization and clinic ownership before migrating tenancy",
+    "decision_status": "Needs Clarification",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Client hierarchy and role decision; coordinate #153/#154.",
+    "verification": "Conflicts With Current Implementation",
+    "conflicts": [
+      "C05"
+    ]
+  },
+  {
+    "id": "R002",
+    "classification": "Confirmed Requirement",
+    "requirement": "Remove the extra Settings scrollbar",
+    "source": "06:04; P0018,P0069,P0300–0308",
+    "pr": "33",
+    "disposition": "Verification Required",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "06:04"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Settings page and shared shell scroll containers; E33",
+    "candidate_work_item": "Verify and remove redundant Settings scrolling",
+    "decision_status": "Verification Required",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Integrated #153/#154 UI; supported viewport matrix.",
+    "verification": "Unable to Verify",
+    "conflicts": [
+      "C25"
+    ]
+  },
+  {
+    "id": "R003",
+    "classification": "Reported Defect",
+    "requirement": "Local/beta screens and button behavior differ",
+    "source": "07:23; 10:59; P0135,P0138,P0314–0362",
+    "pr": "01",
+    "disposition": "Verification Required",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "07:23",
+      "10:59"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Web/API authentication; E01",
+    "candidate_work_item": "Verify and repair active-use and multi-tab sessions",
+    "decision_status": "Verification Required",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Coordinate with existing GitHub #153/#154; controlled Web/API build and synthetic accounts.",
+    "verification": "Unable to Verify",
+    "conflicts": [
+      "C07"
+    ]
+  },
+  {
+    "id": "R004",
+    "classification": "Reported Defect",
+    "requirement": "Admin Select Role to Configure is unusable",
+    "source": "08:47; P0070,P0136,P0331",
+    "pr": "04",
+    "disposition": "Verification Required",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "08:47"
+    ],
+    "source_sections": [
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "Admin Black House Developers"
+    ],
+    "product_area": "Settings Roles and Scheduling; E04",
+    "candidate_work_item": "Validate role configuration and visit types against the existing Settings stack",
+    "decision_status": "Verification Required",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing GitHub #153 (services) and #154 (connected UI); approved role matrix.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C06"
+    ]
+  },
+  {
+    "id": "R005",
+    "classification": "Reported Defect",
+    "requirement": "Expired sessions leave apparently active pages without data",
+    "source": "12:00; P0357–0366",
+    "pr": "01",
+    "disposition": "Verification Required",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "12:00"
+    ],
+    "source_sections": [
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Web/API authentication; E01",
+    "candidate_work_item": "Verify and repair active-use and multi-tab sessions",
+    "decision_status": "Verification Required",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Coordinate with existing GitHub #153/#154; controlled Web/API build and synthetic accounts.",
+    "verification": "Unable to Verify",
+    "conflicts": [
+      "C07"
+    ]
+  },
+  {
+    "id": "R006",
+    "classification": "Reported Defect",
+    "requirement": "Save-error banners block note/evaluation navigation and require relogin",
+    "source": "12:59; 01:56:16; 02:01:46; P0139,P0183,P0375,P1732–1747,P1822–1825",
+    "pr": "02",
+    "disposition": "Verification Required",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "12:59",
+      "01:56:16",
+      "02:01:46"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Note workspace and autosave recovery; E02",
+    "candidate_work_item": "Recover from note-save errors without trapping navigation",
+    "decision_status": "Verification Required",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 01 diagnosis; a safe draft plus failure/conflict fixtures.",
+    "verification": "Unable to Verify",
+    "conflicts": [
+      "C07"
+    ]
+  },
+  {
+    "id": "R007",
+    "classification": "Reported Defect",
+    "requirement": "Patient timeline date/time appears incorrect",
+    "source": "13:53–15:01; P0139,P0384–0399",
+    "pr": "03",
+    "disposition": "Verification Required",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "13:53–15:01"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Patient timeline; E03",
+    "candidate_work_item": "Correct patient timeline timestamps using the agreed display time zone",
+    "decision_status": "Verification Required",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Synthetic note/intake/appointment timestamps; clinic time-zone decision.",
+    "verification": "Unable to Verify",
+    "conflicts": [
+      "C08"
+    ]
+  },
+  {
+    "id": "R008",
+    "classification": "Confirmed Requirement",
+    "requirement": "Start New Note should scroll/focus the note-type choices",
+    "source": "23:31; P0486; screenshot P0146",
+    "pr": "12",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "23:31"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "Admin Black House Developers"
+    ],
+    "product_area": "PatientProfile and demographics editor; E12",
+    "candidate_work_item": "Complete patient chart editing and patient-entry actions",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing patient update API; PR 07 for intake propagation.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C24"
+    ]
+  },
+  {
+    "id": "R009",
+    "classification": "Confirmed Requirement",
+    "requirement": "Keep intake review progress labels in one row",
+    "source": "19:06; P0071,P0142,P0430; screenshot P0143",
+    "pr": "09",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "19:06"
+    ],
+    "source_sections": [
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "Admin Black House Developers"
+    ],
+    "product_area": "Intake progress, review and body-map controls; E08,E09",
+    "candidate_work_item": "Make intake navigation, review editing and body-map controls clearer",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Coordinate dynamic steps with PR 08.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R010",
+    "classification": "Confirmed Requirement",
+    "requirement": "Restrict full history/pain intake; later retain full evaluation/re-evaluation flow",
+    "source": "20:15; 02:04:17–02:05:31; P0019,P0050,P0072,P0109–0110,P0441–0445,P1851–1869",
+    "pr": "08",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "20:15",
+      "02:04:17–02:05:31"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Intake orchestration and note routing; E07,E08",
+    "candidate_work_item": "Make intake content and repeat encounters follow the destination note type",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 07 seed rules; PR 20/30/31 define corresponding questionnaires; PR 24 provides outcome forms.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R011",
+    "classification": "Confirmed Requirement",
+    "requirement": "Patients answer outcome questionnaires and the system calculates scores",
+    "source": "21:15–28:43; P0020,P0145,P0453,P0495–0499,P0569–0571",
+    "pr": "24",
+    "disposition": "External Dependency",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "21:15–28:43"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "OutcomeMeasuresStep and outcome response APIs; E23",
+    "candidate_work_item": "Deliver approved patient questionnaires with automatic scoring",
+    "decision_status": "External Dependency",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 23 contract; first approved patient instrument cohort; assignment decision.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C15"
+    ]
+  },
+  {
+    "id": "R012",
+    "classification": "External Dependency",
+    "requirement": "Client supplies outcome-measure PDFs/information (16 PDFs now received; approval tracked in R095)",
+    "source": "26:15–27:23; 02:53:55; 03:00:35; P0073,P0125,P0525–0555,P2573,P2679–2682; supplied S04/S05",
+    "pr": "23",
+    "disposition": "Process Action",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "26:15–27:23",
+      "02:53:55",
+      "03:00:35"
+    ],
+    "source_sections": [
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Outcome registry/reference data and supplied assets; E23",
+    "candidate_work_item": "Establish versioned outcome definitions and validate supplied source assets",
+    "decision_status": "Process Action",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Clinical owner approval of per-instrument version/scoring; materials M01–M17.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C15"
+    ]
+  },
+  {
+    "id": "R013",
+    "classification": "Confirmed Requirement",
+    "requirement": "Simplify/remove confusing patient intake instructions",
+    "source": "29:49; P0021,P0074,P0147,P0579–0593",
+    "pr": "09",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "29:49"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Intake progress, review and body-map controls; E08,E09",
+    "candidate_work_item": "Make intake navigation, review editing and body-map controls clearer",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Coordinate dynamic steps with PR 08.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R014",
+    "classification": "Confirmed Requirement",
+    "requirement": "Rename comorbidities to past medical history",
+    "source": "30:46–34:52; P0022,P0075,P0598–0600,P0647",
+    "pr": "10",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "30:46–34:52"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "MedicalHistoryCard and FunctionalLimitationsCard; E10",
+    "candidate_work_item": "Clarify medical history, medications and functional limitations",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 08 intake type visibility; existing reference catalog ownership.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R015",
+    "classification": "Confirmed Requirement",
+    "requirement": "Make medication and medical-history multi-selection explicit",
+    "source": "31:49–34:52; P0022,P0075,P0620,P0628,P0633,P0645–0647",
+    "pr": "10",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "31:49–34:52"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "MedicalHistoryCard and FunctionalLimitationsCard; E10",
+    "candidate_work_item": "Clarify medical history, medications and functional limitations",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 08 intake type visibility; existing reference catalog ownership.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R016",
+    "classification": "Confirmed Requirement",
+    "requirement": "Allow Other/free entry for missing medical-history options; medication Other is also in aligned wording",
+    "source": "33:27–34:52; P0022,P0075,P0633,P0647–0651",
+    "pr": "10",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "33:27–34:52"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "MedicalHistoryCard and FunctionalLimitationsCard; E10",
+    "candidate_work_item": "Clarify medical history, medications and functional limitations",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 08 intake type visibility; existing reference catalog ownership.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R017",
+    "classification": "Needs Clarification",
+    "requirement": "Choose sex/gender terminology and data use",
+    "source": "35:59–39:33; P0013,P0150,P0663,P0697,P0715,P0735–0744",
+    "pr": "34",
+    "disposition": "Needs Clarification",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "35:59–39:33"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Patient demographics and intake identity fields; E34",
+    "candidate_work_item": "Decide sex and gender terminology, storage and clinical use",
+    "decision_status": "Needs Clarification",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Client/clinical decision and existing data inventory.",
+    "verification": "Unable to Verify",
+    "conflicts": [
+      "C02"
+    ]
+  },
+  {
+    "id": "R018",
+    "classification": "Confirmed Requirement",
+    "requirement": "Make front/back body-map switching visibly actionable",
+    "source": "30:46–31:49; P0076,P0608,P0613–0615",
+    "pr": "09",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "30:46–31:49"
+    ],
+    "source_sections": [
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Intake progress, review and body-map controls; E08,E09",
+    "candidate_work_item": "Make intake navigation, review editing and body-map controls clearer",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Coordinate dynamic steps with PR 08.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R019",
+    "classification": "Confirmed Requirement",
+    "requirement": "Review Edit should navigate and focus the exact component",
+    "source": "40:23–41:25; P0023,P0077,P0151,P0756–0771",
+    "pr": "09",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "40:23–41:25"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Intake progress, review and body-map controls; E08,E09",
+    "candidate_work_item": "Make intake navigation, review editing and body-map controls clearer",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Coordinate dynamic steps with PR 08.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R020",
+    "classification": "Confirmed Requirement",
+    "requirement": "Prefill known demographics/insurance into created and sent intakes",
+    "source": "43:01; P0024,P0078,P0152,P0784–0791",
+    "pr": "07",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "43:01"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Patient creation, appointment patient entry, intake seeding; E07,E12,E15",
+    "candidate_work_item": "Prefill intake and preserve patient and policy data across entry flows",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing clinic-scoped patient/policy contracts; PR 15 affects only authorization-field placement.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C22"
+    ]
+  },
+  {
+    "id": "R021",
+    "classification": "Confirmed Requirement",
+    "requirement": "Group PHI release consent with authorized contacts/additional details",
+    "source": "44:01–45:03; P0025,P0079,P0153,P0800–0822",
+    "pr": "11",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "44:01–45:03"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "ReviewStep and canonical consent packet; E11",
+    "candidate_work_item": "Group PHI release information and remove intake revocation controls",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing consent packet schema and approved text.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C10"
+    ]
+  },
+  {
+    "id": "R022",
+    "classification": "Confirmed Requirement",
+    "requirement": "Expand functional limitation groups initially",
+    "source": "45:03–46:16; P0026,P0080,P0154,P0831–0842",
+    "pr": "10",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "45:03–46:16"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "MedicalHistoryCard and FunctionalLimitationsCard; E10",
+    "candidate_work_item": "Clarify medical history, medications and functional limitations",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 08 intake type visibility; existing reference catalog ownership.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R023",
+    "classification": "Confirmed Requirement",
+    "requirement": "Replace provider approval/rejection with edit/delete",
+    "source": "47:11–48:08; P0027,P0081,P0155,P0859–0872",
+    "pr": "13",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "47:11–48:08"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "ProviderDirectorySettingsPanel, ProviderDirectoryService, CareTeamCard; E13",
+    "candidate_work_item": "Edit provider-directory entries and carry fax details into care teams",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing provider update and approval policy; coordinate Settings stack.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C11"
+    ]
+  },
+  {
+    "id": "R024",
+    "classification": "Confirmed Requirement",
+    "requirement": "Make all existing basic patient fields editable, including address/phone/emergency contact",
+    "source": "48:08–49:49; P0028,P0082–0083,P0157,P0873–0891",
+    "pr": "12",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "48:08–49:49"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "PatientProfile and demographics editor; E12",
+    "candidate_work_item": "Complete patient chart editing and patient-entry actions",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing patient update API; PR 07 for intake propagation.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R025",
+    "classification": "Confirmed Requirement",
+    "requirement": "Fax Center patient lookup should offer current-clinic patient choices",
+    "source": "51:13; P0084,P0159,P0907",
+    "pr": "17",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "51:13"
+    ],
+    "source_sections": [
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "Admin Black House Developers"
+    ],
+    "product_area": "SoapReviewPage, FaxCenter and existing fax integration; E17",
+    "candidate_work_item": "Fax signed notes from review and improve clinic patient selection",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing HumbleFax configuration and signed-note export; sandbox credentials for release verification.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R026",
+    "classification": "Confirmed Requirement",
+    "requirement": "Add care-team fax and carry selected provider details into intake",
+    "source": "52:23–53:28; P0029,P0085,P0915–0919,P0930–0934",
+    "pr": "13",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "52:23–53:28"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "ProviderDirectorySettingsPanel, ProviderDirectoryService, CareTeamCard; E13",
+    "candidate_work_item": "Edit provider-directory entries and carry fax details into care teams",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing provider update and approval policy; coordinate Settings stack.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C11"
+    ]
+  },
+  {
+    "id": "R027",
+    "classification": "Context Only",
+    "requirement": "Care-team email was proposed then explicitly declined",
+    "source": "52:23; P0029 versus P0920–0921",
+    "pr": "—",
+    "disposition": "Context Only",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "52:23"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Context/process",
+    "candidate_work_item": null,
+    "decision_status": "Context Only",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "None for software implementation",
+    "verification": "Not applicable: no product implementation claim",
+    "conflicts": []
+  },
+  {
+    "id": "R028",
+    "classification": "Confirmed Requirement",
+    "requirement": "Expose Add Patient on the patient page",
+    "source": "52:23; P0086,P0922–0924",
+    "pr": "12",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "52:23"
+    ],
+    "source_sections": [
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "PatientProfile and demographics editor; E12",
+    "candidate_work_item": "Complete patient chart editing and patient-entry actions",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing patient update API; PR 07 for intake propagation.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C24"
+    ]
+  },
+  {
+    "id": "R029",
+    "classification": "Confirmed Requirement",
+    "requirement": "Remove authorization number from initial Add Patient",
+    "source": "54:37; P0030,P0087,P0950–0953",
+    "pr": "15",
+    "disposition": "Needs Clarification",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "54:37"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "AddPatientModal and policy editor; E15",
+    "candidate_work_item": "Resolve authorization-field placement in patient and policy entry",
+    "decision_status": "Needs Clarification",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Client decision C01; PR 14 policy consolidation.",
+    "verification": "Unable to Verify",
+    "conflicts": [
+      "C01"
+    ]
+  },
+  {
+    "id": "R030",
+    "classification": "Needs Clarification",
+    "requirement": "Resolve removal versus later addition of Authorization Required in Add Patient/policy",
+    "source": "54:37 versus 01:26:25–01:28:13; P0030,P0039,P0087,P0095,P0946–0953,P1323–1332",
+    "pr": "15",
+    "disposition": "Needs Clarification",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "54:37",
+      "01:26:25–01:28:13"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "AddPatientModal and policy editor; E15",
+    "candidate_work_item": "Resolve authorization-field placement in patient and policy entry",
+    "decision_status": "Needs Clarification",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Client decision C01; PR 14 policy consolidation.",
+    "verification": "Unable to Verify",
+    "conflicts": [
+      "C01"
+    ]
+  },
+  {
+    "id": "R031",
+    "classification": "Confirmed Requirement",
+    "requirement": "Carry applicable Add Patient/Add Appointment data into profile and primary/secondary policies",
+    "source": "54:37; 01:26:25; P0086,P0953,P1319–1322",
+    "pr": "07",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "54:37",
+      "01:26:25"
+    ],
+    "source_sections": [
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Patient creation, appointment patient entry, intake seeding; E07,E12,E15",
+    "candidate_work_item": "Prefill intake and preserve patient and policy data across entry flows",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing clinic-scoped patient/policy contracts; PR 15 affects only authorization-field placement.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C22"
+    ]
+  },
+  {
+    "id": "R032",
+    "classification": "Requested Enhancement",
+    "requirement": "Admin Today shows clinician columns; Week can select a clinician",
+    "source": "55:44–01:04:20; P0014,P0162,P0971–0995,P1027,P1088–1089",
+    "pr": "16",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "55:44–01:04:20"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Appointments, ClinicianScheduler and appointment API; E16",
+    "candidate_work_item": "Create appointments from empty clinician slots and enforce schedulable roles",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing clinic schedules and visit types; coordinate PR 04.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C03"
+    ]
+  },
+  {
+    "id": "R033",
+    "classification": "Confirmed Requirement",
+    "requirement": "Click empty appointment slot to prefill date/time/clinician",
+    "source": "59:24–01:00:20; P0031,P0088,P0164,P1027–1036",
+    "pr": "16",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "59:24–01:00:20"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Appointments, ClinicianScheduler and appointment API; E16",
+    "candidate_work_item": "Create appointments from empty clinician slots and enforce schedulable roles",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing clinic schedules and visit types; coordinate PR 04.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C03"
+    ]
+  },
+  {
+    "id": "R034",
+    "classification": "Confirmed Requirement",
+    "requirement": "Restrict schedulable choices to PT and PTA",
+    "source": "01:00:20; P0032,P0089,P1044–1047",
+    "pr": "16",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:00:20"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Appointments, ClinicianScheduler and appointment API; E16",
+    "candidate_work_item": "Create appointments from empty clinician slots and enforce schedulable roles",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing clinic schedules and visit types; coordinate PR 04.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C03"
+    ]
+  },
+  {
+    "id": "R035",
+    "classification": "Confirmed Requirement",
+    "requirement": "Show clinician/hour slots without existing bookings",
+    "source": "01:01:48–01:02:32; P0033,P0090,P0166,P1060–1073",
+    "pr": "16",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:01:48–01:02:32"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Appointments, ClinicianScheduler and appointment API; E16",
+    "candidate_work_item": "Create appointments from empty clinician slots and enforce schedulable roles",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing clinic schedules and visit types; coordinate PR 04.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C03"
+    ]
+  },
+  {
+    "id": "R036",
+    "classification": "Context Only",
+    "requirement": "Horizontal scroll across multiple clinician columns accepted",
+    "source": "01:04:20; P0167,P1088–1089",
+    "pr": "—",
+    "disposition": "Context Only",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:04:20"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Context/process",
+    "candidate_work_item": null,
+    "decision_status": "Context Only",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "None for software implementation",
+    "verification": "Not applicable: no product implementation claim",
+    "conflicts": []
+  },
+  {
+    "id": "R037",
+    "classification": "Confirmed Requirement",
+    "requirement": "Configure additional visit types in Settings",
+    "source": "01:04:20; P0168,P1089–1097; GitHub #153/#154",
+    "pr": "04",
+    "disposition": "Verification Required",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:04:20"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Settings Roles and Scheduling; E04",
+    "candidate_work_item": "Validate role configuration and visit types against the existing Settings stack",
+    "decision_status": "Verification Required",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing GitHub #153 (services) and #154 (connected UI); approved role matrix.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C06"
+    ]
+  },
+  {
+    "id": "R038",
+    "classification": "Confirmed Requirement",
+    "requirement": "Fax a signed note from review using fax-center-equivalent composition",
+    "source": "01:05:40–01:07:44; P0034–0035,P0091,P0169,P1108–1144",
+    "pr": "17",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:05:40–01:07:44"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "SoapReviewPage, FaxCenter and existing fax integration; E17",
+    "candidate_work_item": "Fax signed notes from review and improve clinic patient selection",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing HumbleFax configuration and signed-note export; sandbox credentials for release verification.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R039",
+    "classification": "Possible Future Idea",
+    "requirement": "Possibly select multiple notes for one fax",
+    "source": "01:07:44–01:08:58; P1143–1151",
+    "pr": "—",
+    "disposition": "Possible Future Idea",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:07:44–01:08:58"
+    ],
+    "source_sections": [
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Context/process",
+    "candidate_work_item": null,
+    "decision_status": "Possible Future Idea",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "None for software implementation",
+    "verification": "Not applicable: no product implementation claim",
+    "conflicts": []
+  },
+  {
+    "id": "R040",
+    "classification": "Context Only",
+    "requirement": "Patient portal schedule suffices; schedule faxing unnecessary",
+    "source": "01:08:58; P0170,P1151–1154",
+    "pr": "—",
+    "disposition": "Context Only",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:08:58"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Context/process",
+    "candidate_work_item": null,
+    "decision_status": "Context Only",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "None for software implementation",
+    "verification": "Not applicable: no product implementation claim",
+    "conflicts": []
+  },
+  {
+    "id": "R041",
+    "classification": "Needs Clarification",
+    "requirement": "Support PTA/PT shared treatment completion and sign-off responsibilities",
+    "source": "01:08:58–01:11:16; P0171,P1155–1182",
+    "pr": "18",
+    "disposition": "Needs Clarification",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:08:58–01:11:16"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Note handoff, PT/PTA roles and notifications; E18",
+    "candidate_work_item": "Define clinician handoff and shared-treatment sign-off",
+    "decision_status": "Needs Clarification",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Approved PT/PTA sign-off matrix; existing note lifecycle and notification services.",
+    "verification": "Unable to Verify",
+    "conflicts": [
+      "C12"
+    ]
+  },
+  {
+    "id": "R042",
+    "classification": "Confirmed Requirement",
+    "requirement": "Add Send to between PT/PTA and a notification for each forwarded note",
+    "source": "01:12:54–01:14:26; P0036,P0092,P0172,P1191–1203",
+    "pr": "18",
+    "disposition": "Needs Clarification",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:12:54–01:14:26"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Note handoff, PT/PTA roles and notifications; E18",
+    "candidate_work_item": "Define clinician handoff and shared-treatment sign-off",
+    "decision_status": "Needs Clarification",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Approved PT/PTA sign-off matrix; existing note lifecycle and notification services.",
+    "verification": "Unable to Verify",
+    "conflicts": [
+      "C12"
+    ]
+  },
+  {
+    "id": "R043",
+    "classification": "Confirmed Requirement",
+    "requirement": "Clinician-authored patient Notifications tab with persistent note-header alerts",
+    "source": "01:16:05–01:21:20; P0037,P0093,P0173,P1212–1262",
+    "pr": "19",
+    "disposition": "Needs Clarification",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:16:05–01:21:20"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Patient chart Notifications tab and shared note header; E19",
+    "candidate_work_item": "Add clinician-authored patient alerts to chart and note headers",
+    "decision_status": "Needs Clarification",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing patient permissions and shared header; lifecycle acceptance by clinical owner.",
+    "verification": "Unable to Verify",
+    "conflicts": [
+      "C13"
+    ]
+  },
+  {
+    "id": "R044",
+    "classification": "Confirmed Requirement",
+    "requirement": "Remove duplicate Insurance & Authorization entry below chart tabs",
+    "source": "01:19:58; P0094,P1254",
+    "pr": "14",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:19:58"
+    ],
+    "source_sections": [
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "Admin Black House Developers"
+    ],
+    "product_area": "PatientInfo panels and chart links; E14",
+    "candidate_work_item": "Consolidate insurance policy and authorization editing",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing policy/authorization version contracts; PR 15 decides Authorization Required placement.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R045",
+    "classification": "Confirmed Requirement",
+    "requirement": "Move visit limit/calendar or plan year into policy entry and remove duplicate adjuster fields",
+    "source": "01:24:19–01:25:21; P0038,P0095,P0174,P1288–1311",
+    "pr": "14",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:24:19–01:25:21"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "PatientInfo panels and chart links; E14",
+    "candidate_work_item": "Consolidate insurance policy and authorization editing",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing policy/authorization version contracts; PR 15 decides Authorization Required placement.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C23"
+    ]
+  },
+  {
+    "id": "R046",
+    "classification": "Confirmed Requirement",
+    "requirement": "Combine authorization/PCP/referral settings, details and editable history; save once",
+    "source": "01:28:13–01:33:47; P0040,P0096,P0175,P1332–1399",
+    "pr": "14",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:28:13–01:33:47"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "PatientInfo panels and chart links; E14",
+    "candidate_work_item": "Consolidate insurance policy and authorization editing",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing policy/authorization version contracts; PR 15 decides Authorization Required placement.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C23"
+    ]
+  },
+  {
+    "id": "R047",
+    "classification": "Confirmed Requirement",
+    "requirement": "Remove intake consent-revocation controls",
+    "source": "01:33:47; P0041,P0097,P0176,P1400–1404",
+    "pr": "11",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:33:47"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "ReviewStep and canonical consent packet; E11",
+    "candidate_work_item": "Group PHI release information and remove intake revocation controls",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing consent packet schema and approved text.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C10"
+    ]
+  },
+  {
+    "id": "R048",
+    "classification": "Confirmed Requirement",
+    "requirement": "Prevent inactivity timeout during active app use",
+    "source": "01:35:34; P0042,P0098,P0177,P1413–1414",
+    "pr": "01",
+    "disposition": "Verification Required",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:35:34"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Web/API authentication; E01",
+    "candidate_work_item": "Verify and repair active-use and multi-tab sessions",
+    "decision_status": "Verification Required",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Coordinate with existing GitHub #153/#154; controlled Web/API build and synthetic accounts.",
+    "verification": "Unable to Verify",
+    "conflicts": [
+      "C07"
+    ]
+  },
+  {
+    "id": "R049",
+    "classification": "Confirmed Requirement",
+    "requirement": "Use appropriate multi-select/dropdowns in daily subjective, retaining free-text additional information",
+    "source": "01:36:54–01:40:56; P0043,P0099,P0178,P1429,P1468–1476",
+    "pr": "20",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:36:54–01:40:56"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Daily SubjectiveSection and objective composition; E20",
+    "candidate_work_item": "Implement the agreed daily subjective and objective scope",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 08 shares questionnaire definition; existing progress question labels provide mapping.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R050",
+    "classification": "Confirmed Requirement",
+    "requirement": "Replace daily chief-complaint carry-forward with top-of-form pain details/body-region data",
+    "source": "01:38:09–01:39:15; P0099–0100,P1452–1475",
+    "pr": "20",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:38:09–01:39:15"
+    ],
+    "source_sections": [
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Daily SubjectiveSection and objective composition; E20",
+    "candidate_work_item": "Implement the agreed daily subjective and objective scope",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 08 shares questionnaire definition; existing progress question labels provide mapping.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R051",
+    "classification": "Confirmed Requirement",
+    "requirement": "Daily question set keeps 1,3,4,5,6,7,10; removes 2,8,9,11,12,13",
+    "source": "01:45:45–01:48:15; P0044,P0101,P0179,P1572–1621",
+    "pr": "20",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:45:45–01:48:15"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Daily SubjectiveSection and objective composition; E20",
+    "candidate_work_item": "Implement the agreed daily subjective and objective scope",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 08 shares questionnaire definition; existing progress question labels provide mapping.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C09"
+    ]
+  },
+  {
+    "id": "R052",
+    "classification": "Needs Clarification",
+    "requirement": "Earlier instruction to remove progress question 8 may be a note-type mix-up",
+    "source": "01:41:51–01:43:35; P1503–1547",
+    "pr": "30",
+    "disposition": "Needs Clarification",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:41:51–01:43:35"
+    ],
+    "source_sections": [
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "ProgressSubjectiveSection and plan composition; E30",
+    "candidate_work_item": "Complete progress activity tracking, improvement and plan frequency",
+    "decision_status": "Needs Clarification",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Recorded limitation catalog; PR 08 aligned intake; PR 32 handles AI Suggest.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C09"
+    ]
+  },
+  {
+    "id": "R053",
+    "classification": "Confirmed Requirement",
+    "requirement": "ROM shows selected-region movements and permits switching/additional regions",
+    "source": "01:49:45–01:51:29; P0045,P0102,P0180,P1636–1666",
+    "pr": "21",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:49:45–01:51:29"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "ObjectiveTab and ObjectiveMetric/workspace contracts; E21",
+    "candidate_work_item": "Represent ROM by movement, side and active/passive measurement",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Approved region/movement catalog and existing metric persistence; coordinate PR 22.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C14"
+    ]
+  },
+  {
+    "id": "R054",
+    "classification": "Confirmed Requirement",
+    "requirement": "Show normal value before current value",
+    "source": "01:51:29; P0103,P1668–1669",
+    "pr": "21",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:51:29"
+    ],
+    "source_sections": [
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "ObjectiveTab and ObjectiveMetric/workspace contracts; E21",
+    "candidate_work_item": "Represent ROM by movement, side and active/passive measurement",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Approved region/movement catalog and existing metric persistence; coordinate PR 22.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C14"
+    ]
+  },
+  {
+    "id": "R055",
+    "classification": "Confirmed Requirement",
+    "requirement": "Support left/right comparisons for paired regions, without artificial spine sides",
+    "source": "01:51:29–01:54:55; P0046,P0104,P1670–1687,P1720",
+    "pr": "21",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:51:29–01:54:55"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "ObjectiveTab and ObjectiveMetric/workspace contracts; E21",
+    "candidate_work_item": "Represent ROM by movement, side and active/passive measurement",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Approved region/movement catalog and existing metric persistence; coordinate PR 22.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C14"
+    ]
+  },
+  {
+    "id": "R056",
+    "classification": "Confirmed Requirement",
+    "requirement": "Separate MMT and joint mobility, including their grading",
+    "source": "01:53:46; 02:14:24; P0047,P0105,P0181,P1694–1699,P1996",
+    "pr": "22",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:53:46",
+      "02:14:24"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "ObjectiveTab, movement catalog and objective contracts; E21,E22",
+    "candidate_work_item": "Separate MMT from joint mobility and reuse ROM movement selections",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 21 shared movement identifiers; approved MMT/joint grading definitions.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C14"
+    ]
+  },
+  {
+    "id": "R057",
+    "classification": "Confirmed Requirement",
+    "requirement": "ROM has active/passive current, normal and prior values for each applicable side",
+    "source": "01:53:46–01:54:55; P0048,P0106,P1702–1717",
+    "pr": "21",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:53:46–01:54:55"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "ObjectiveTab and ObjectiveMetric/workspace contracts; E21",
+    "candidate_work_item": "Represent ROM by movement, side and active/passive measurement",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Approved region/movement catalog and existing metric persistence; coordinate PR 22.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C14"
+    ]
+  },
+  {
+    "id": "R058",
+    "classification": "Confirmed Requirement",
+    "requirement": "Remove new functional outcome entry from daily objective",
+    "source": "01:54:55; P0049,P0107,P0182,P1720–1723",
+    "pr": "20",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:54:55"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Daily SubjectiveSection and objective composition; E20",
+    "candidate_work_item": "Implement the agreed daily subjective and objective scope",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 08 shares questionnaire definition; existing progress question labels provide mapping.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R059",
+    "classification": "Reported Defect",
+    "requirement": "Evaluation subjective reportedly repeats frequency questions",
+    "source": "01:57:11–01:58:17; P0184,P1755–1767",
+    "pr": "27",
+    "disposition": "Verification Required",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:57:11–01:58:17"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Evaluation subjective/assessment layout; E27",
+    "candidate_work_item": "Place evaluation assessment narrative after contributing inputs",
+    "decision_status": "Verification Required",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing note schema and clinician workflow; separate evidence for reported duplicate/stale fields.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C16"
+    ]
+  },
+  {
+    "id": "R060",
+    "classification": "Context Only",
+    "requirement": "Employment/imaging information initially thought missing was found or left uncertain",
+    "source": "01:59:22–02:02:58; P1793–1797,P1834–1841",
+    "pr": "—",
+    "disposition": "Context Only",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:59:22–02:02:58"
+    ],
+    "source_sections": [
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Context/process",
+    "candidate_work_item": null,
+    "decision_status": "Context Only",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "None for software implementation",
+    "verification": "Not applicable: no product implementation claim",
+    "conflicts": [
+      "C19"
+    ]
+  },
+  {
+    "id": "R061",
+    "classification": "Confirmed Requirement",
+    "requirement": "New tab inherits browser sign-in without removing anti-piggyback/session protection",
+    "source": "02:00:24; P0108,P0185,P1805–1809",
+    "pr": "01",
+    "disposition": "Verification Required",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:00:24"
+    ],
+    "source_sections": [
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Web/API authentication; E01",
+    "candidate_work_item": "Verify and repair active-use and multi-tab sessions",
+    "decision_status": "Verification Required",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Coordinate with existing GitHub #153/#154; controlled Web/API build and synthetic accounts.",
+    "verification": "Unable to Verify",
+    "conflicts": [
+      "C07"
+    ]
+  },
+  {
+    "id": "R062",
+    "classification": "Reported Defect",
+    "requirement": "Older intake/limitations controls appeared missing then reappeared",
+    "source": "02:06:42–02:10:47; P0188,P1882–1946",
+    "pr": "08",
+    "disposition": "Verification Required",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:06:42–02:10:47"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Intake orchestration and note routing; E07,E08",
+    "candidate_work_item": "Make intake content and repeat encounters follow the destination note type",
+    "decision_status": "Verification Required",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 07 seed rules; PR 20/30/31 define corresponding questionnaires; PR 24 provides outcome forms.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C19"
+    ]
+  },
+  {
+    "id": "R063",
+    "classification": "Confirmed Requirement",
+    "requirement": "Use Difficulty with instead of Unable in app-authored functional limitations",
+    "source": "02:09:50; P0051,P0111,P1919–1927",
+    "pr": "10",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:09:50"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "MedicalHistoryCard and FunctionalLimitationsCard; E10",
+    "candidate_work_item": "Clarify medical history, medications and functional limitations",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 08 intake type visibility; existing reference catalog ownership.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R064",
+    "classification": "Confirmed Requirement",
+    "requirement": "Capture personal goal after limitations and carry into clinician-reviewed SMART-goal work",
+    "source": "02:11:59–02:13:24; P0052,P0112,P0190,P1954–1975",
+    "pr": "26",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:11:59–02:13:24"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Functional limitations intake and AssessmentWorkspaceSection; E10,E26",
+    "candidate_work_item": "Capture patient personal goals and use them in SMART-goal drafting",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 07/08 projection conventions; existing clinician-reviewed AI goal workflow.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C24"
+    ]
+  },
+  {
+    "id": "R065",
+    "classification": "Confirmed Requirement",
+    "requirement": "Reuse ROM-selected movements as MMT selections, not ROM numeric values",
+    "source": "02:14:24; P0053,P0113,P0191,P1989–1996",
+    "pr": "22",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:14:24"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "ObjectiveTab, movement catalog and objective contracts; E21,E22",
+    "candidate_work_item": "Separate MMT from joint mobility and reuse ROM movement selections",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 21 shared movement identifiers; approved MMT/joint grading definitions.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C14"
+    ]
+  },
+  {
+    "id": "R066",
+    "classification": "Confirmed Requirement",
+    "requirement": "Carry calculated intake outcomes into evaluation/progress/discharge as read-only results",
+    "source": "02:15:27–02:16:49; P0054,P0114,P0192,P2004–2020",
+    "pr": "25",
+    "disposition": "External Dependency",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:15:27–02:16:49"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Intake projections, outcome results and note objective sections; E23",
+    "candidate_work_item": "Carry computed outcomes into clinical notes with provenance",
+    "decision_status": "External Dependency",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 24 computed patient results; PR 36 clinician results; note-type routing in PR 08.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C15"
+    ]
+  },
+  {
+    "id": "R067",
+    "classification": "Confirmed Requirement",
+    "requirement": "Retain clinician entry for administered measures such as Berg/Tinetti",
+    "source": "02:15:27; P0054,P0192,P2008–2015",
+    "pr": "36",
+    "disposition": "External Dependency",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:15:27"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Clinician objective outcome entry; E23 and M14–M17",
+    "candidate_work_item": "Support approved clinician-administered outcome measures",
+    "decision_status": "External Dependency",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 23 versioned contracts; approved Berg/Tinetti/5xSTS/TUG protocol and trial rules.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C15"
+    ]
+  },
+  {
+    "id": "R068",
+    "classification": "Needs Clarification",
+    "requirement": "Assessment allegedly shows previous rather than current data; client could not identify field",
+    "source": "02:16:49–02:18:08; P2021–2028",
+    "pr": "27",
+    "disposition": "Needs Clarification",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:16:49–02:18:08"
+    ],
+    "source_sections": [
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Evaluation subjective/assessment layout; E27",
+    "candidate_work_item": "Place evaluation assessment narrative after contributing inputs",
+    "decision_status": "Needs Clarification",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing note schema and clinician workflow; separate evidence for reported duplicate/stale fields.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C16"
+    ]
+  },
+  {
+    "id": "R069",
+    "classification": "Confirmed Requirement",
+    "requirement": "Place clinical assessment narrative after its contributing evaluation inputs",
+    "source": "02:18:08–02:19:35; P0055,P0115,P0193,P2030–2042",
+    "pr": "27",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:18:08–02:19:35"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Evaluation subjective/assessment layout; E27",
+    "candidate_work_item": "Place evaluation assessment narrative after contributing inputs",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing note schema and clinician workflow; separate evidence for reported duplicate/stale fields.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R070",
+    "classification": "Reported Defect",
+    "requirement": "AI goal suggestions regress in quality relative to initial goals",
+    "source": "02:19:35; P0194,P2042–2048",
+    "pr": "29",
+    "disposition": "Verification Required",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:19:35"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Goal suggestion state and generation workflow; E29",
+    "candidate_work_item": "Reproduce and repair goal-generation loss and candidate exhaustion",
+    "decision_status": "Verification Required",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Synthetic reproduction of eight accepted goals; PR 28 context conventions.",
+    "verification": "Unable to Verify",
+    "conflicts": [
+      "C17"
+    ]
+  },
+  {
+    "id": "R071",
+    "classification": "Reported Defect",
+    "requirement": "AI goals disappear during demonstration and yield no new candidates after eight accepted",
+    "source": "02:20:46–02:21:55; P0194,P2059–2083",
+    "pr": "29",
+    "disposition": "Verification Required",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:20:46–02:21:55"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Goal suggestion state and generation workflow; E29",
+    "candidate_work_item": "Reproduce and repair goal-generation loss and candidate exhaustion",
+    "decision_status": "Verification Required",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Synthetic reproduction of eight accepted goals; PR 28 context conventions.",
+    "verification": "Unable to Verify",
+    "conflicts": [
+      "C17"
+    ]
+  },
+  {
+    "id": "R072",
+    "classification": "Context Only",
+    "requirement": "Short/long-term goal distinction concern withdrawn after seeing weeks",
+    "source": "02:20:46; P2069–2073",
+    "pr": "—",
+    "disposition": "Context Only",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:20:46"
+    ],
+    "source_sections": [
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Context/process",
+    "candidate_work_item": null,
+    "decision_status": "Context Only",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "None for software implementation",
+    "verification": "Not applicable: no product implementation claim",
+    "conflicts": []
+  },
+  {
+    "id": "R073",
+    "classification": "Confirmed Requirement",
+    "requirement": "Generate distinct S/O/A/P summary paragraphs from corresponding note sections",
+    "source": "02:21:55–02:25:38; 02:30:51; 02:35:35; P0056,P0116,P0195,P2095–2131,P2228–2232,P2299",
+    "pr": "28",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:21:55–02:25:38",
+      "02:30:51",
+      "02:35:35"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "PlanTab, ClinicalGenerationService and AI contracts; E28",
+    "candidate_work_item": "Generate distinct SOAP summaries from their corresponding sections",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Existing AI feature flags/provider configuration; clinician-approved synthetic examples.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C17"
+    ]
+  },
+  {
+    "id": "R074",
+    "classification": "Confirmed Requirement",
+    "requirement": "Keep intake questionnaires aligned with destination note subjective questions",
+    "source": "17:57; 02:25:38; P0421–0423,P2132–2133",
+    "pr": "08",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "17:57",
+      "02:25:38"
+    ],
+    "source_sections": [
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Intake orchestration and note routing; E07,E08",
+    "candidate_work_item": "Make intake content and repeat encounters follow the destination note type",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 07 seed rules; PR 20/30/31 define corresponding questionnaires; PR 24 provides outcome forms.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R075",
+    "classification": "Context Only",
+    "requirement": "Progress additional-information field was already visible in meeting",
+    "source": "02:25:38; P2134–2137",
+    "pr": "—",
+    "disposition": "Context Only",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:25:38"
+    ],
+    "source_sections": [
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Context/process",
+    "candidate_work_item": null,
+    "decision_status": "Context Only",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "None for software implementation",
+    "verification": "Not applicable: no product implementation claim",
+    "conflicts": []
+  },
+  {
+    "id": "R076",
+    "classification": "Confirmed Requirement",
+    "requirement": "Progress improved/same/worse choices come from recorded intake/evaluation activities",
+    "source": "02:26:38–02:27:51; P0057,P0117,P0196,P2148–2166",
+    "pr": "30",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:26:38–02:27:51"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "ProgressSubjectiveSection and plan composition; E30",
+    "candidate_work_item": "Complete progress activity tracking, improvement and plan frequency",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Recorded limitation catalog; PR 08 aligned intake; PR 32 handles AI Suggest.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R077",
+    "classification": "Confirmed Requirement",
+    "requirement": "Newly difficult activities use full relevant catalog and persist for later visits",
+    "source": "02:28:44–02:29:44; P0118–0119,P2175–2199",
+    "pr": "30",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:28:44–02:29:44"
+    ],
+    "source_sections": [
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "ProgressSubjectiveSection and plan composition; E30",
+    "candidate_work_item": "Complete progress activity tracking, improvement and plan frequency",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Recorded limitation catalog; PR 08 aligned intake; PR 32 handles AI Suggest.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R078",
+    "classification": "Confirmed Requirement",
+    "requirement": "Progress plan of care permits frequency adjustment; do not add it to daily",
+    "source": "02:29:44–02:30:51; P0058,P0120,P0197,P2202–2221",
+    "pr": "30",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:29:44–02:30:51"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "ProgressSubjectiveSection and plan composition; E30",
+    "candidate_work_item": "Complete progress activity tracking, improvement and plan frequency",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Recorded limitation catalog; PR 08 aligned intake; PR 32 handles AI Suggest.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R079",
+    "classification": "Confirmed Requirement",
+    "requirement": "Add AI Suggest to progress Plan for Next Visit",
+    "source": "02:30:51; P0121,P2222–2227",
+    "pr": "32",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:30:51"
+    ],
+    "source_sections": [
+      "Assigned next steps",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Progress next-visit plan and discharge generation handlers; E31,E32",
+    "candidate_work_item": "Make progress and discharge AI actions produce reviewable suggestions",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 28 section-specific AI contract; PR 31 approved structured fields for full discharge context.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C17"
+    ]
+  },
+  {
+    "id": "R080",
+    "classification": "Confirmed Requirement",
+    "requirement": "Add percent-improved field to progress subjective",
+    "source": "02:32:09; P0059,P0122,P0198,P2245–2250",
+    "pr": "30",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:32:09"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "ProgressSubjectiveSection and plan composition; E30",
+    "candidate_work_item": "Complete progress activity tracking, improvement and plan frequency",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Recorded limitation catalog; PR 08 aligned intake; PR 32 handles AI Suggest.",
+    "verification": "Partially Implemented",
+    "conflicts": []
+  },
+  {
+    "id": "R081",
+    "classification": "Confirmed Requirement",
+    "requirement": "Discharge recommendations use multi-select/dropdown inputs",
+    "source": "02:30:51–02:32:09; P0060,P0123,P0198,P2234–2243",
+    "pr": "31",
+    "disposition": "External Dependency",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:30:51–02:32:09"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "DischargeSubjectiveSection, DischargePlanSection and discharge intake; E31",
+    "candidate_work_item": "Implement the approved discharge questionnaire and recommendation choices",
+    "decision_status": "External Dependency",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Exact referenced discharge document/revision; approved recommendation options; PR 08.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C18"
+    ]
+  },
+  {
+    "id": "R082",
+    "classification": "Confirmed Requirement",
+    "requirement": "Discharge subjective follows referenced document: goals, pain, remaining difficulty, improvement; reason is clinician input",
+    "source": "02:33:32–02:34:30; P0061,P0124,P0198,P2275–2287",
+    "pr": "31",
+    "disposition": "External Dependency",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:33:32–02:34:30"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "DischargeSubjectiveSection, DischargePlanSection and discharge intake; E31",
+    "candidate_work_item": "Implement the approved discharge questionnaire and recommendation choices",
+    "decision_status": "External Dependency",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Exact referenced discharge document/revision; approved recommendation options; PR 08.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C18"
+    ]
+  },
+  {
+    "id": "R083",
+    "classification": "Reported Defect",
+    "requirement": "Discharge recommendation/follow-up generation and summary button need functioning behavior",
+    "source": "02:35:35; P0199,P2295–2304",
+    "pr": "32",
+    "disposition": "Ready for Development",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:35:35"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Progress next-visit plan and discharge generation handlers; E31,E32",
+    "candidate_work_item": "Make progress and discharge AI actions produce reviewable suggestions",
+    "decision_status": "Ready for Development",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 28 section-specific AI contract; PR 31 approved structured fields for full discharge context.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C17"
+    ]
+  },
+  {
+    "id": "R084",
+    "classification": "Proposed Feature",
+    "requirement": "Individual paid subscribers should get immediate access, EMR-only, without adding staff",
+    "source": "02:37:14–02:43:22; P0015,P0200,P2315–2396",
+    "pr": "06",
+    "disposition": "Needs Clarification",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:37:14–02:43:22"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Registration/subscription lifecycle; E06",
+    "candidate_work_item": "Decide individual subscription and organization onboarding rules",
+    "decision_status": "Needs Clarification",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 05 decisions; subscription provider, entitlement and payment-failure rules.",
+    "verification": "Conflicts With Current Implementation",
+    "conflicts": [
+      "C04"
+    ]
+  },
+  {
+    "id": "R085",
+    "classification": "Proposed Feature",
+    "requirement": "Organization customers use demo/onboarding, then local owners add clinicians without platform-owner approval",
+    "source": "02:41:02–02:45:29; P0200,P2368–2429",
+    "pr": "05",
+    "disposition": "Needs Clarification",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:41:02–02:45:29"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Organization/clinic membership and local clinician administration; E05",
+    "candidate_work_item": "Decide organization and clinic ownership before migrating tenancy",
+    "decision_status": "Needs Clarification",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Client hierarchy and role decision; coordinate #153/#154.",
+    "verification": "Conflicts With Current Implementation",
+    "conflicts": [
+      "C05"
+    ]
+  },
+  {
+    "id": "R086",
+    "classification": "External Dependency",
+    "requirement": "Client explores and confirms organization/signup alternatives",
+    "source": "02:46:34; 02:52:58; P0202,P2443–2448,P2565",
+    "pr": "06",
+    "disposition": "Process Action",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:46:34",
+      "02:52:58"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Registration/subscription lifecycle; E06",
+    "candidate_work_item": "Decide individual subscription and organization onboarding rules",
+    "decision_status": "Process Action",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 05 decisions; subscription provider, entitlement and payment-failure rules.",
+    "verification": "Conflicts With Current Implementation",
+    "conflicts": [
+      "C04"
+    ]
+  },
+  {
+    "id": "R087",
+    "classification": "Context Only",
+    "requirement": "Third-party EMR permits over-authorization scheduling and blocks signing",
+    "source": "02:54:47; P0204,P2595",
+    "pr": "—",
+    "disposition": "Context Only",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:54:47"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin"
+    ],
+    "product_area": "Context/process",
+    "candidate_work_item": null,
+    "decision_status": "Context Only",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "None for software implementation",
+    "verification": "Not applicable: no product implementation claim",
+    "conflicts": []
+  },
+  {
+    "id": "R088",
+    "classification": "Context Only",
+    "requirement": "Third-party billing AI duplicates copay tasks and delays balances",
+    "source": "02:54:47–02:56:56; P0204–0205,P2597–2621",
+    "pr": "—",
+    "disposition": "Context Only",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:54:47–02:56:56"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Context/process",
+    "candidate_work_item": null,
+    "decision_status": "Context Only",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "None for software implementation",
+    "verification": "Not applicable: no product implementation claim",
+    "conflicts": []
+  },
+  {
+    "id": "R089",
+    "classification": "Possible Future Idea",
+    "requirement": "PTDoc safeguard at zero authorized visits could default to progress documentation",
+    "source": "02:57:56; P0206,P2623–2633",
+    "pr": "35",
+    "disposition": "Needs Clarification",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:57:56"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Authorization utilization and note creation; E35",
+    "candidate_work_item": "Decide the zero-authorization-visit documentation safeguard",
+    "decision_status": "Needs Clarification",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Clinical/operations policy; existing visit accounting and concurrency rules.",
+    "verification": "Unable to Verify",
+    "conflicts": [
+      "C21"
+    ]
+  },
+  {
+    "id": "R090",
+    "classification": "Confirmed Requirement",
+    "requirement": "Developer messages client after each app update",
+    "source": "03:00:35; P0062,P0126,P0208,P2683–2699",
+    "pr": "—",
+    "disposition": "Process Action",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "03:00:35"
+    ],
+    "source_sections": [
+      "Aligned",
+      "Assigned next steps",
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Context/process",
+    "candidate_work_item": null,
+    "decision_status": "Process Action",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "None for software implementation",
+    "verification": "Not applicable: no product implementation claim",
+    "conflicts": []
+  },
+  {
+    "id": "R091",
+    "classification": "External Dependency",
+    "requirement": "Client captures screenshot/context if note-navigation error recurs",
+    "source": "21:15–22:28; P0458–0471",
+    "pr": "02",
+    "disposition": "Process Action",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "21:15–22:28"
+    ],
+    "source_sections": [
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "Note workspace and autosave recovery; E02",
+    "candidate_work_item": "Recover from note-save errors without trapping navigation",
+    "decision_status": "Process Action",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "PR 01 diagnosis; a safe draft plus failure/conflict fixtures.",
+    "verification": "Unable to Verify",
+    "conflicts": [
+      "C07"
+    ]
+  },
+  {
+    "id": "R092",
+    "classification": "Out of Scope",
+    "requirement": "Fatigue, travel/work stories, personal conversation, AI ethics anecdotes, hiring story",
+    "source": "01:29–03:27; 02:47:36–02:53:55; 02:58:56–03:00:35; P0131,P0207 and transcript",
+    "pr": "—",
+    "disposition": "Out of Scope",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:29–03:27",
+      "02:47:36–02:53:55",
+      "02:58:56–03:00:35"
+    ],
+    "source_sections": [
+      "Detailed notes/screenshots",
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "Attribution not explicit in this locator"
+    ],
+    "product_area": "Context/process",
+    "candidate_work_item": null,
+    "decision_status": "Out of Scope",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "None for software implementation",
+    "verification": "Not applicable: no product implementation claim",
+    "conflicts": []
+  },
+  {
+    "id": "R093",
+    "classification": "Needs Clarification",
+    "requirement": "Brief visual comments about white bars/selected-body illumination/pain-severity position lack a clear requested change",
+    "source": "01:26:25; P1323",
+    "pr": "09",
+    "disposition": "Needs Clarification",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "01:26:25"
+    ],
+    "source_sections": [
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin"
+    ],
+    "product_area": "Intake progress, review and body-map controls; E08,E09",
+    "candidate_work_item": "Make intake navigation, review editing and body-map controls clearer",
+    "decision_status": "Needs Clarification",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Coordinate dynamic steps with PR 08.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C20"
+    ]
+  },
+  {
+    "id": "R094",
+    "classification": "External Dependency",
+    "requirement": "Obtain exact discharge workflow revision referenced during meeting",
+    "source": "02:33:32–02:34:30; P2269–2287",
+    "pr": "31",
+    "disposition": "External Dependency",
+    "source_documents": [
+      "S02"
+    ],
+    "timestamps": [
+      "02:33:32–02:34:30"
+    ],
+    "source_sections": [
+      "Timestamped transcript"
+    ],
+    "speakers": [
+      "January Austin",
+      "Admin Black House Developers"
+    ],
+    "product_area": "DischargeSubjectiveSection, DischargePlanSection and discharge intake; E31",
+    "candidate_work_item": "Implement the approved discharge questionnaire and recommendation choices",
+    "decision_status": "External Dependency",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Exact referenced discharge document/revision; approved recommendation options; PR 08.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C18"
+    ]
+  },
+  {
+    "id": "R095",
+    "classification": "Needs Clarification",
+    "requirement": "Approve instrument versions, assignment, missing-answer rules and anomalous supplied content",
+    "source": "Supplied PDF set; see material inventory M01–M17; R011/R012",
+    "pr": "23",
+    "disposition": "Needs Clarification",
+    "source_documents": [
+      "S04",
+      "S05"
+    ],
+    "timestamps": [],
+    "source_sections": [
+      "Supplied PDF inspection"
+    ],
+    "speakers": [
+      "Attribution not explicit in this locator"
+    ],
+    "product_area": "Outcome registry/reference data and supplied assets; E23",
+    "candidate_work_item": "Establish versioned outcome definitions and validate supplied source assets",
+    "decision_status": "Needs Clarification",
+    "related_or_duplicate_statements": "Repeated section/paragraph references are consolidated into this primary intent.",
+    "external_dependencies": "Clinical owner approval of per-instrument version/scoring; materials M01–M17.",
+    "verification": "Partially Implemented",
+    "conflicts": [
+      "C15"
+    ]
+  }
+]
