@@ -99,13 +99,13 @@ public sealed class SettingsAdministrationApiClient(HttpClient httpClient) :
     public Task<SettingsOperationResult<bool>> RevokeStationAsync(Guid clinicId, Guid stationId, long expectedVersion, Guid actorUserId, string correlationId, CancellationToken cancellationToken = default) =>
         SendAsync<bool>(HttpMethod.Delete, $"/api/v1/admin/kiosk/stations/{stationId}?expectedVersion={expectedVersion}", body: null, cancellationToken);
 
-    public Task<SettingsOperationResult<KioskEnrollmentResult>> EnrollAsync(string enrollmentCode, CancellationToken cancellationToken = default) =>
+    public Task<SettingsOperationResult<KioskEnrollmentResult>> EnrollAsync(string? enrollmentCode, CancellationToken cancellationToken = default) =>
         SendAsync<KioskEnrollmentResult>(HttpMethod.Post, "/api/v1/kiosk/enroll", new { enrollmentCode }, cancellationToken);
 
     public Task<SettingsOperationResult<KioskCheckInTokenDto>> CreateCheckInTokenAsync(Guid clinicId, Guid appointmentId, Guid actorUserId, string correlationId, CancellationToken cancellationToken = default) =>
         SendAsync<KioskCheckInTokenDto>(HttpMethod.Post, $"/api/v1/admin/kiosk/stations/appointments/{appointmentId}/token", body: null, cancellationToken);
 
-    public Task<SettingsOperationResult<KioskCheckInResult>> CheckInAsync(string deviceCredential, string appointmentToken, CancellationToken cancellationToken = default) =>
+    public Task<SettingsOperationResult<KioskCheckInResult>> CheckInAsync(string? deviceCredential, string? appointmentToken, CancellationToken cancellationToken = default) =>
         SendAsync<KioskCheckInResult>(HttpMethod.Post, "/api/v1/kiosk/check-in", new { deviceCredential, appointmentToken }, cancellationToken);
 
     private async Task<T> GetRequiredAsync<T>(string uri, CancellationToken cancellationToken)

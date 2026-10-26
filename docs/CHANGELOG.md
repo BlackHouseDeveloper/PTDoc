@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 154 CI contract alignment
+
+- **`RolesPermissionsSettings.razor`** — Send the loaded versions for every supported, unlocked target permission when cloning roles, matching the server's optimistic-concurrency contract. Ignore clone attempts while busy or before the target role has loaded. Added component regressions for exact target versions, locked/unsupported exclusions, conflict preservation, and updated versions after success. Reason: the missing request argument blocked all build-dependent CI workflows.
+- **`SettingsAdministrationApiClient.cs`** — Match the nullable kiosk enrollment and check-in parameters declared by `IKioskCheckInService`, removing three compiler warnings without changing server validation.
+
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 
 - Selected external MFA enforcement from the server-authenticated Entra identity type instead of an issuer-supplied PTDoc marker. Entra normalization replaces duplicate/conflicting application-owned authentication, provider, and subject claims; focused tests cover JWT/OIDC identities, missing/conflicting markers, and repeated transformations.

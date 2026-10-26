@@ -523,10 +523,16 @@
 
     private async Task ClonePermissions()
     {
-        if (_roleService is null || !_canMutate || string.IsNullOrWhiteSpace(_cloneSourceRole) || SelectedRoleIsReadOnly)
+        if (_isBusy || _roleService is null || !_canMutate || string.IsNullOrWhiteSpace(_cloneSourceRole) || SelectedRoleIsReadOnly ||
+            !_rolePermissionSets.TryGetValue(_selectedRole, out var targetRole))
         {
             return;
         }
+
+        var targetPermissions = targetRole.Permissions
+            .Where(permission => permission.IsSupported && permission.LockedMinimum == PermissionLevel.None)
+            .Select(permission => new PermissionVersionExpectation(permission.CapabilityKey, permission.Version))
+            .ToArray();
 
         _isBusy = true;
         try
@@ -534,7 +540,7 @@
             var result = await _roleService.CloneAsync(
                 Guid.Empty,
                 _selectedRole,
-                new CloneRolePermissionsRequest(_cloneSourceRole),
+                new CloneRolePermissionsRequest(_cloneSourceRole, targetPermissions),
                 Guid.Empty,
                 string.Empty);
             if (!result.Succeeded || result.Value is null)
