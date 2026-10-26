@@ -68,7 +68,7 @@ public sealed class InsurancePolicyService(
             throw new ArgumentException("Each authorization can be edited only once per save.");
         foreach (var edit in request.Authorizations)
         {
-            ValidateAuthorization(edit.Values);
+            ValidateCoverageFields(edit.Values);
             ValidateAnnotations(edit.Values);
         }
 
@@ -134,7 +134,8 @@ public sealed class InsurancePolicyService(
             throw new ArgumentException(string.Join(" ", errors.Select(error => error.ErrorMessage)));
     }
 
-    private static void ValidateAuthorization(UpsertInsuranceAuthorizationRequest request)
+    // Validates payer-approval data; endpoint authorization policies enforce access independently.
+    private static void ValidateCoverageFields(UpsertInsuranceAuthorizationRequest request)
     {
         if (!Enum.IsDefined(request.AuthorizationType)
             || !Enum.IsDefined(request.Status)
@@ -189,7 +190,7 @@ public sealed class InsurancePolicyService(
 
     public async Task<InsuranceAuthorizationDto> UpsertAuthorizationAsync(Guid patientId, Guid policyId, Guid? authorizationId, UpsertInsuranceAuthorizationRequest request, CancellationToken cancellationToken)
     {
-        ValidateAuthorization(request);
+        ValidateCoverageFields(request);
         var policy = await db.PatientInsurancePolicies.FirstOrDefaultAsync(p => p.Id == policyId && p.PatientId == patientId && !p.IsArchived, cancellationToken) ?? throw new KeyNotFoundException("Insurance policy not found.");
         var authorization = authorizationId.HasValue
             ? await db.PatientInsuranceAuthorizations.FirstOrDefaultAsync(a => a.Id == authorizationId.Value && a.PatientInsurancePolicyId == policyId && a.PatientId == patientId, cancellationToken) ?? throw new KeyNotFoundException("Insurance authorization not found.")

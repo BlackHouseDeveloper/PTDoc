@@ -6,7 +6,7 @@
 - Original plan status: Ready for Development
 - Branch: `codex/plan-14-insurance-editor`
 - Base: `codex/plan-12-patient-chart`
-- Expected GitHub number: #168; actual: assigned by GitHub at publication
+- Expected GitHub number: #168; actual: [#169](https://github.com/BlackHouseDeveloper/PTDoc/pull/169)
 - [Authoritative plan brief](https://github.com/BlackHouseDeveloper/PTDoc/blob/codex/plan-01-session-verification/docs/client-review/source/implementation-plan.md#pr-14)
 - Inspected main: `6276027251609df64ffbbfa883f66e2d83dd57e4` (2026-10-26); this supersedes the source plan’s earlier repository snapshot.
 
@@ -16,7 +16,7 @@ Implemented R044–R046. The chart exposes one insurance entry. Policy limits an
 
 The normalized editor omits untouched children and preserves their versions/utilization. Saved legacy details remain in a collapsed compatibility section with one legacy save, extension JSON preservation, stable history-row correction, and an explicit conflict/discard flow. New patients do not see a second empty editor. Unknown historical row identity is rejected rather than guessed. Normalized saves invalidate stale patient-level payer editors through Plan 12's version token.
 
-All providers receive only nullable TotalVisitLimit / VisitLimitType columns. SQL Server/Postgres snapshots previously re-registered already generated integration metadata; scaffolding now materializes that existing metadata without recreating its existing indexes. New migration target models retain the Plan 12 patient concurrency token. SQLite downgrade uses native DROP COLUMN as supported by the tested bundled provider.
+All providers receive only nullable TotalVisitLimit / VisitLimitType columns. SQL Server/Postgres snapshots previously re-registered already generated integration metadata; scaffolding now materializes that existing metadata without recreating its existing indexes. New migration target models retain the Plan 12 patient concurrency token. SQLite downgrade uses native DROP COLUMN as supported by the tested bundled provider. CodeQL alert 18 (cs/user-controlled-bypass) classified the helper named ValidateAuthorization as an access check. Inspection confirms the helper validates insurance payer fields only, while the write endpoint independently requires AuthorizationPolicies.InsurancePolicyWrite and patient lookup uses tenant-filtered data. Renamed it ValidateCoverageFields to state its actual role; no permission logic, validation rule or clinical behavior changed. The finding was not manually dismissed.
 
 ## Dependencies, blockers and owners
 
@@ -81,6 +81,7 @@ Consolidation may accidentally combine separate clinical/business meanings. Comp
 | dotnet format whitespace <changed-project.csproj> --no-restore --verify-no-changes --include <changed C# files> | PASS changed Core/Application/Infrastructure/API/UI/Tests C# files; final test whitespace corrected and rechecked. |
 | Playwright CLI synthetic local Web/API, browser one-save/reload, historical correction, real concurrent child and patient 409, explicit discard; document widths 390/768/1440 | PASS: retained inputs, no partial persistence, untouched record identity/utilization/version preserved; one chart insurance entry. Initial browser harness timing/selector assertions were corrected after fresh snapshots. |
 | python3 workflow.py check 14; git diff --check; incremental diff against codex/plan-12-patient-chart | PASS requirements/sections/local links/whitespace; incremental scope excludes the Plan 12 foundation. |
+| dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~Insurance&#124;FullyQualifiedName~PatientInfoRouteTests&#124;FullyQualifiedName~PatientClinicalInfoCard&#124;FullyQualifiedName~PatientDemographics&#124;FullyQualifiedName~AuthorizationCoverageTests' --verbosity minimal -m:1 | PASS 91 after the payer-field validator clarification; CodeQL rescan follows publication. |
 
 ## Remaining acceptance work
 
