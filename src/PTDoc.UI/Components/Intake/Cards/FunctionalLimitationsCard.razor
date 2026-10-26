@@ -40,33 +40,26 @@
         <div class="intake-card__section-heading">
             <div>
                 <h3 id="functional-activities-title">Functional Activities Limited</h3>
-                <p>Choose every activity that is limited. Options are based on the selected body region.</p>
+                <p>Choose every activity that is limited. Options are based on your selected body regions.</p>
             </div>
-            @if (SelectedBodyPart != BodyPart.Other)
-            {
-                <span class="intake-card__context-badge">@FormatBodyPart(SelectedBodyPart)</span>
-            }
         </div>
 
-        @if (SelectedBodyPart == BodyPart.Other)
+        @if (SelectedBodyParts.Count == 0)
         {
-            <p class="intake-card__helper">Select an affected area above to load clinically relevant activities.</p>
+            <p class="intake-card__helper">Select an affected area above to see related activities.</p>
         }
-        else if (FunctionalLimitationCategories.Count == 0)
+        @foreach (var bodyPart in SelectedBodyParts)
         {
-            <p class="intake-card__helper">No structured activity catalog is available for this body region yet. Use the details field below.</p>
-        }
-        else
-        {
+            <h4>@FormatBodyPart(bodyPart)</h4>
             <div class="intake-card__accordion-list">
-                @foreach (var category in FunctionalLimitationCategories)
+                @foreach (var category in IntakeReferenceData.GetFunctionalLimitationCategories(bodyPart))
                 {
-                    <details class="intake-card__accordion">
+                    <details class="intake-card__accordion" open @key="(bodyPart, category.Name)">
                         <summary>
                             <span>@category.Name</span>
-                            @if (SelectedCount(category) > 0)
+                            @if (SelectedCount(bodyPart, category) > 0)
                             {
-                                <span class="intake-card__selection-count">@SelectedCount(category) selected</span>
+                                <span class="intake-card__selection-count">@SelectedCount(bodyPart, category) selected</span>
                             }
                         </summary>
                         <div class="intake-card__accordion-content">
@@ -74,9 +67,9 @@
                             {
                                 <label class="intake-card__choice intake-card__choice--activity">
                                     <input type="checkbox"
-                                           checked="@IsFunctionalLimitationSelected(category.Name, activity)"
-                                           @onchange="args => ToggleFunctionalLimitationAsync(category.Name, activity, ToBool(args))" />
-                                    <span>@activity</span>
+                                           checked="@IsFunctionalLimitationSelected(bodyPart, category.Name, activity)"
+                                           @onchange="args => ToggleFunctionalLimitationAsync(bodyPart, category.Name, activity, ToBool(args))" />
+                                    <span>@FunctionalLimitationDisplayText.Format(activity)</span>
                                 </label>
                             }
                         </div>
@@ -177,51 +170,28 @@
     private IntakeStructuredDataDto StructuredData => State.EnsureStructuredData(IntakeReferenceData.GetCatalog().Version);
     private IntakeSubjectiveDataDto Subjective => StructuredData.Subjective;
 
-    private BodyPart SelectedBodyPart
-    {
-        get
-        {
-            foreach (var region in (State.SelectedBodyRegion ?? string.Empty)
-                         .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            {
-                var mapped = IntakeBodyRegionMapper.Map(region);
-                if (mapped != BodyPart.Other)
-                {
-                    return mapped;
-                }
-            }
+    private IReadOnlyList<BodyPart> SelectedBodyParts => (State.SelectedBodyRegion ?? string.Empty)
+        .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Concat(State.SelectedBodyRegions.Select(region => region.ToString()))
+        .Select(IntakeBodyRegionMapper.Map)
+        .Where(bodyPart => bodyPart != BodyPart.Other)
+        .Distinct()
+        .OrderBy(bodyPart => bodyPart)
+        .ToList();
 
-            foreach (var region in State.SelectedBodyRegions.OrderBy(value => value.ToString(), StringComparer.Ordinal))
-            {
-                var mapped = IntakeBodyRegionMapper.Map(region);
-                if (mapped != BodyPart.Other)
-                {
-                    return mapped;
-                }
-            }
-
-            return BodyPart.Other;
-        }
-    }
-
-    private IReadOnlyList<CatalogCategory> FunctionalLimitationCategories =>
-        SelectedBodyPart == BodyPart.Other
-            ? Array.Empty<CatalogCategory>()
-            : IntakeReferenceData.GetFunctionalLimitationCategories(SelectedBodyPart);
-
-    private bool IsFunctionalLimitationSelected(string category, string activity) =>
+    private bool IsFunctionalLimitationSelected(BodyPart bodyPart, string category, string activity) =>
         StructuredData.FunctionalLimitations.Any(selection =>
-            string.Equals(selection.BodyPart, SelectedBodyPart.ToString(), StringComparison.OrdinalIgnoreCase)
+            string.Equals(selection.BodyPart, bodyPart.ToString(), StringComparison.OrdinalIgnoreCase)
             && string.Equals(selection.Category, category, StringComparison.OrdinalIgnoreCase)
             && string.Equals(selection.Activity, activity, StringComparison.OrdinalIgnoreCase));
 
-    private int SelectedCount(CatalogCategory category) =>
-        category.Items.Count(activity => IsFunctionalLimitationSelected(category.Name, activity));
+    private int SelectedCount(BodyPart bodyPart, CatalogCategory category) =>
+        category.Items.Count(activity => IsFunctionalLimitationSelected(bodyPart, category.Name, activity));
 
-    private async Task ToggleFunctionalLimitationAsync(string category, string activity, bool selected)
+    private async Task ToggleFunctionalLimitationAsync(BodyPart bodyPart, string category, string activity, bool selected)
     {
         StructuredData.FunctionalLimitations.RemoveAll(selection =>
-            string.Equals(selection.BodyPart, SelectedBodyPart.ToString(), StringComparison.OrdinalIgnoreCase)
+            string.Equals(selection.BodyPart, bodyPart.ToString(), StringComparison.OrdinalIgnoreCase)
             && string.Equals(selection.Category, category, StringComparison.OrdinalIgnoreCase)
             && string.Equals(selection.Activity, activity, StringComparison.OrdinalIgnoreCase));
 
@@ -229,8 +199,8 @@
         {
             StructuredData.FunctionalLimitations.Add(new IntakeFunctionalLimitationSelectionDto
             {
-                Id = BuildSelectionId(SelectedBodyPart, category, activity),
-                BodyPart = SelectedBodyPart.ToString(),
+                Id = BuildSelectionId(bodyPart, category, activity),
+                BodyPart = bodyPart.ToString(),
                 Category = category,
                 Activity = activity
             });

@@ -7,17 +7,17 @@
     <div class="intake-card__header">
         <div>
             <h2>Medical History</h2>
-            <p class="intake-card__subtext">Use the validated intake lists instead of typing where structured options are available.</p>
+            <p class="intake-card__subtext">Select all that apply. Add anything missing in the Other fields.</p>
         </div>
         <div class="intake-card__status-group">
             <span class="intake-card__status @(State.HasCurrentMedications ? "intake-card__status--active" : "")">Medications</span>
-            <span class="intake-card__status @(State.HasOtherMedicalConditions ? "intake-card__status--active" : "")">Comorbidities</span>
+            <span class="intake-card__status @(State.HasOtherMedicalConditions ? "intake-card__status--active" : "")">Past Medical History</span>
             <span class="intake-card__status @(State.UsesAssistiveDevices ? "intake-card__status--active" : "")">Assistive Devices</span>
         </div>
     </div>
 
     <section class="intake-card__section">
-        <label class="intake-card__field-label" for="medication-search">Medication Search</label>
+        <label class="intake-card__field-label" for="medication-search">Medications — select all that apply</label>
         <input id="medication-search"
                class="form-control intake-card__search"
                type="search"
@@ -56,10 +56,15 @@
                 </button>
             }
         </div>
+        <label class="intake-card__notes" for="intake-other-medications">Other medications
+            <textarea id="intake-other-medications" class="form-control" maxlength="@IntakeStructuredDataDto.MaxOtherTextLength"
+                      value="@StructuredData.OtherMedications" @oninput="OnOtherMedicationsChangedAsync"
+                      placeholder="List any medications not shown above."></textarea>
+        </label>
     </section>
 
     <section class="intake-card__section">
-        <span class="intake-card__field-label">Comorbidities</span>
+        <span class="intake-card__field-label">Past Medical History — select all that apply</span>
         <div class="intake-card__option-grid">
             <button type="button"
                     class="intake-card__chip @(StructuredData.NoComorbidities ? "intake-card__chip--selected" : "")"
@@ -78,6 +83,11 @@
                 </button>
             }
         </div>
+        <label class="intake-card__notes" for="intake-other-medical-history">Other past medical history
+            <textarea id="intake-other-medical-history" class="form-control" maxlength="@IntakeStructuredDataDto.MaxOtherTextLength"
+                      value="@StructuredData.OtherMedicalHistory" @oninput="OnOtherMedicalHistoryChangedAsync"
+                      placeholder="List any health conditions not shown above."></textarea>
+        </label>
     </section>
 
     <section class="intake-card__section">
@@ -231,7 +241,7 @@
             StructuredData.MedicationIds.Add(medicationId);
         }
 
-        State.HasCurrentMedications = StructuredData.MedicationIds.Count > 0;
+        SyncDerivedState();
         await NotifyStateChangedAsync();
     }
 
@@ -278,6 +288,7 @@
                 if (StructuredData.NoMedications)
                 {
                     StructuredData.MedicationIds.Clear();
+                    StructuredData.OtherMedications = null;
                 }
                 break;
             case SelectionKind.Comorbidity:
@@ -285,6 +296,7 @@
                 if (StructuredData.NoComorbidities)
                 {
                     StructuredData.ComorbidityIds.Clear();
+                    StructuredData.OtherMedicalHistory = null;
                     State.SelectedComorbidities.Clear();
                 }
                 break;
@@ -333,6 +345,28 @@
         await NotifyStateChangedAsync();
     }
 
+    private async Task OnOtherMedicationsChangedAsync(ChangeEventArgs args)
+    {
+        StructuredData.OtherMedications = args.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(StructuredData.OtherMedications))
+        {
+            StructuredData.NoMedications = false;
+        }
+        SyncDerivedState();
+        await NotifyStateChangedAsync();
+    }
+
+    private async Task OnOtherMedicalHistoryChangedAsync(ChangeEventArgs args)
+    {
+        StructuredData.OtherMedicalHistory = args.Value?.ToString();
+        if (!string.IsNullOrWhiteSpace(StructuredData.OtherMedicalHistory))
+        {
+            StructuredData.NoComorbidities = false;
+        }
+        SyncDerivedState();
+        await NotifyStateChangedAsync();
+    }
+
     private async Task NotifyStateChangedAsync()
     {
         State.IsDirty = true;
@@ -352,8 +386,8 @@
 
     private void SyncDerivedState()
     {
-        State.HasCurrentMedications = !StructuredData.NoMedications && StructuredData.MedicationIds.Count > 0;
-        State.HasOtherMedicalConditions = !StructuredData.NoComorbidities && (StructuredData.ComorbidityIds.Count > 0 || State.SelectedComorbidities.Count > 0);
+        State.HasCurrentMedications = !StructuredData.NoMedications && (StructuredData.MedicationIds.Count > 0 || !string.IsNullOrWhiteSpace(StructuredData.OtherMedications));
+        State.HasOtherMedicalConditions = !StructuredData.NoComorbidities && (StructuredData.ComorbidityIds.Count > 0 || State.SelectedComorbidities.Count > 0 || !string.IsNullOrWhiteSpace(StructuredData.OtherMedicalHistory));
         State.UsesAssistiveDevices = !StructuredData.NoAssistiveDevices && (StructuredData.AssistiveDeviceIds.Count > 0 || State.SelectedAssistiveDevices.Count > 0);
     }
 
