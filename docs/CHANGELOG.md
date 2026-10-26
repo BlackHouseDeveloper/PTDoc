@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Client review Plan 11
+
+- Grouped PHI release choice with authorized contacts and removed intake revocation inputs. Historical revocations remain read-only and inactive consents are not shown as affirmative.
+
 ### Fixed - Confirmed intake wording in AI requests
 
 - **`NoteWorkspacePage.razor`** — Apply confirmed functional-limitation wording to both flat and detailed Subjective AI inputs used by assessment and prognosis generation, and to the shared functional-limitations summary fallback. Preserve canonical descriptions for matching, historical and flat-only wording, and measurement details so `difficulty-v1` intake answers do not reach the AI as inability.
@@ -569,6 +573,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed - Client review Plan 10
 
 - Clarified patient intake medical-history and medication selection, added section-bound Other text, and opened functional limitation groups by default while preserving stored selections and instrument wording.
+
 
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 
