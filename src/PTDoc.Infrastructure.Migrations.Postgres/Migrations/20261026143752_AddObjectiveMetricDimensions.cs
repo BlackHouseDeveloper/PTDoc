@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -57,7 +57,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 type: "character varying(100)",
                 maxLength: 100,
                 nullable: true);
+        }
 
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
             migrationBuilder.DropColumn(
                 name: "MotionMode",
                 table: "ObjectiveMetrics");

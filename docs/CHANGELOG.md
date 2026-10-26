@@ -54,6 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - Client review Plan 04
 
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
+### Fixed - Plan 21 provider migration CI
+
+- Keep ROM dimensions after SQL Server/PostgreSQL upgrade and remove them only on downgrade; preserve existing note-template indexes. Added provider-operation regression coverage.
+
 ### Changed - Client review Plan 21
 
 - Fixed rapid ROM edits targeting stale cloned render rows; editor-only row identities preserve distinct historical observations without changing stored clinical dimensions.

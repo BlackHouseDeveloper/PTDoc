@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -57,7 +57,11 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 type: "nvarchar(100)",
                 maxLength: 100,
                 nullable: true);
+        }
 
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
             migrationBuilder.DropColumn(
                 name: "MotionMode",
                 table: "ObjectiveMetrics");
@@ -85,13 +89,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
             migrationBuilder.DropColumn(
                 name: "ReferenceVersion",
                 table: "ObjectiveMetrics");
-
-            migrationBuilder.CreateIndex(
-                name: "UX_NoteTemplates_ClinicId_NoteType_Variant_Active",
-                table: "NoteTemplates",
-                columns: new[] { "ClinicId", "NoteType", "Variant" },
-                unique: true,
-                filter: "[IsArchived] = 0");
         }
     }
 }

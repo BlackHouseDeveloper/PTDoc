@@ -20,7 +20,7 @@ Seven nullable columns are added for each provider; existing Side and Unit now f
 
 The PDF ROM table identifies region/movement, side, mode, reference, previous, current, unit and source; historical missing mode is explicitly labelled. Tests cover dimensions, selection, exact-cell persistence, missing units, unknown legacy data, deletion/reorder, older-client protection, stale writes, offline projection and existing PDF regressions.
 
-Rapid browser edits also verified an editor callback issue: stale cloned row references could drop queued changes. The editor now resolves updates/removals by an editor-only row identity retained through render clones; identical-looking legacy observations remain distinct. This identity is deliberately absent from clinical JSON and typed storage.
+Rapid browser edits also verified an editor callback issue: stale cloned row references could drop queued changes. The editor now resolves updates/removals by an editor-only row identity retained through render clones; identical-looking legacy observations remain distinct. This identity is deliberately absent from clinical JSON and typed storage. CI provider validation identified that SQL Server/PostgreSQL dimension removals had been included in Up instead of an implemented Down. The migration now keeps all seven nullable dimensions after upgrade and removes them only on downgrade, without recreating an unrelated existing NoteTemplates index. Provider-operation regressions cover both assemblies; SQLite behavior is unchanged.
 
 ## Dependencies, blockers and owners
 
@@ -89,6 +89,7 @@ Clinical mislabeling and legacy data duplication are primary risks. Use additive
 | dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~StructuredWorkspaceEditorsTests' --verbosity minimal -m:1 | 10 passed after updating inherited ROM assertions for four cells, fixed region identity and read-only reference values; existing MMT behavior unchanged in this lower layer. |
 | dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~RomObservationEditorTests&#124;FullyQualifiedName~StructuredWorkspaceEditorsTests&#124;FullyQualifiedName~NoteWorkspacePayloadMapperTests&#124;FullyQualifiedName~ObjectiveMetricDimensionsTests' --verbosity minimal -m:1 | 57 passed after the rapid-edit correction; includes duplicate legacy row independence across cloned renders. Counts overlap prior suites. |
 | Task-local Playwright CLI: twelve rapid ROM input changes, save, database verification and reload | All six previous/current pairs retained; keyboard Tab works without the pre-existing incomplete-navigation modal; editor-only row identity is absent from clinical JSON. |
+| dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~ObjectiveMetric&#124;FullyQualifiedName~NoteWorkspaceV2ServiceTests&#124;FullyQualifiedName~NoteWorkspacePageTests&#124;FullyQualifiedName~NoteWriteServiceNormalizationTests&#124;FullyQualifiedName~PdfIntegrationTests' --verbosity minimal | PASS 116, including SQL Server/PostgreSQL migration-operation regressions. Live provider CI rerun follows publication. |
 
 ## Remaining acceptance work
 
