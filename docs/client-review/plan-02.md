@@ -1,23 +1,22 @@
 # Plan PR 02: Recover from note-save errors without trapping navigation
 
-**Partially implemented** — only the changes and checks listed below are claimed.
+**Implemented (bounded scope)** — only the changes and checks listed below are claimed.
 
 - Requirements: R006, R091
 - Original plan status: Verification Required
 - Branch: `codex/plan-02-note-save-recovery`
 - Base: `main`
-- Expected GitHub number: #156; actual: assigned by GitHub at publication
+- Expected GitHub number: #156; actual: [#157](https://github.com/BlackHouseDeveloper/PTDoc/pull/157)
 - [Authoritative plan brief](https://github.com/BlackHouseDeveloper/PTDoc/blob/codex/plan-01-session-verification/docs/client-review/source/implementation-plan.md#pr-02)
 - Inspected main: `6276027251609df64ffbbfa883f66e2d83dd57e4` (2026-10-26); this supersedes the source plan’s earlier repository snapshot.
 
 ## Current evidence and changes
 
-Reproduced on main 6276027 with two synthetic bUnit regressions: both initially failed because failed-save recovery controls were absent. The existing guard prevented navigation and returned after a save error with no discard path. The new controls retain the draft on Stay, require a successful save before retry-navigation, and cancel pending writes before explicit discard. The final focused suite passes 180 tests, including existing API save/concurrency and signed-note enforcement checks. This establishes the specific failed-save navigation defect; it does not identify every cause of the client’s historical three-banner report. No schema or server authorization change.
+Reproduced on main 6276027 with two synthetic bUnit regressions: both initially failed because failed-save recovery controls were absent. The existing guard prevented navigation and returned after a save error with no discard path. The new controls retain the draft on Stay, require a successful save before retry-navigation, and cancel pending writes before explicit discard. The final focused suite passes 180 tests, including existing API save/concurrency and signed-note enforcement checks. This establishes the specific failed-save navigation defect; it does not identify every cause of the client’s historical three-banner report. No schema or server authorization change. Follow-up browser QA reproduced an orphan keyboard trap after rapid incomplete-note Continue/Cancel: registration ownership was set only after a 75ms delay. Registration is now tracked before interop, close/dispose invalidate pending focus, and each component owns a unique handler ID. Five rapid Cancels and a Continue left zero focus/Escape handlers in real Chromium. Synthetic Evaluation and Daily save faults (401/409/500/disconnected transport) retained entered text; keyboard Stay and explicit discard remained usable, conflict Retry was disabled, successful Retry saved both note types, and discard sent no subsequent autosave during an 11-second observation beyond the 10-second fallback interval.
 
 ## Dependencies, blockers and owners
 
-- QA: run browser fault injection for Evaluation and Daily with 401/409/500 and disconnect cases, including keyboard use and reload. This is remaining runtime acceptance, not a permission request.
-- Client/QA: correlate any recurring three-banner error with the deployed source SHA, route and redacted error. The specific reproduced navigation trap is fixed; broader causes remain unverified.
+No unresolved implementation prerequisite for the bounded changes; remaining acceptance work is listed below.
 
 ## Decisions and options
 
@@ -80,10 +79,13 @@ Regression risk is accidental data loss or duplicate writes. Preserve old server
 | dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --filter 'FullyQualifiedName~NoteWorkspacePageTests&#124;FullyQualifiedName~NoteWorkspaceStateTests&#124;FullyQualifiedName~NoteWriteServiceNormalizationTests&#124;FullyQualifiedName~DraftAutosaveServiceTests&#124;FullyQualifiedName~NoteWorkspaceApiServiceTests&#124;FullyQualifiedName~NoteWorkspaceV2ServiceTests&#124;FullyQualifiedName~SoapGammaEnforcementTests' --verbosity minimal -m:1 -p:BuildInParallel=false | PASS: 180 passed, 0 failed, 0 skipped; Debug build succeeded. |
 | dotnet format whitespace tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --include tests/PTDoc.Tests/UI/Pages/NoteWorkspacePageTests.cs tests/PTDoc.Tests/Notes/Workspace/DraftAutosaveServiceTests.cs --verify-no-changes --verbosity minimal | PASS after applying required initializer formatting. |
 | python3 /private/tmp/ptdoc-client-implementation/workflow.py check 2 | PASS: requirement IDs, documentation sections, links, local-path and diff whitespace checks. |
+| dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~IncompleteNoteNavigationModalTests&#124;FullyQualifiedName~NoteWorkspacePageTests&#124;FullyQualifiedName~NoteWorkspaceStateTests&#124;FullyQualifiedName~NoteWriteServiceNormalizationTests&#124;FullyQualifiedName~DraftAutosaveServiceTests&#124;FullyQualifiedName~NoteWorkspaceApiServiceTests&#124;FullyQualifiedName~NoteWorkspaceV2ServiceTests&#124;FullyQualifiedName~SoapGammaEnforcementTests' --verbosity minimal | PASS 185, 0 failed/skipped; five modal race/reopen regressions plus note save/concurrency/permission tests. |
+| Synthetic Chromium Evaluation/Daily 401, 409, 500, disconnected-save matrix; retry, explicit discard and rapid incomplete-dialog closure | PASS retained text, responsive recovery, successful retry for both types, zero later writes after discard, zero orphan handlers after five Cancels and Continue. |
+| dotnet format whitespace tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --include tests/PTDoc.Tests/UI/Notes/IncompleteNoteNavigationModalTests.cs --verify-no-changes --verbosity minimal | PASS. |
 
 ## Remaining acceptance work
 
-Run the real browser Evaluation/Daily failure matrix (401/409/500/disconnect), confirm retained inputs, keyboard access, and no request after explicit discard. Correlate any recurring three-banner failure before claiming the entire historical symptom resolved.
+The reproduced failed-save navigation and modal focus defects are fixed. Correlate any remaining client-reported three-banner symptom with deployed SHA, route and a redacted error before attributing additional causes. Full combined release/browser and MAUI acceptance remain separate. Fault injection used isolated synthetic data and a local proxy; no session policy or signed-note permission was weakened.
 
 ## Publication and merge boundary
 
