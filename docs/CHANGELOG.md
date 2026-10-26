@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Plan 14 payer-data terminology
+
+- Clarify that the private field-copy helper applies coverage values, while the workflow endpoints enforce application access separately. All 93 insurance, migration and permission regressions pass.
+
 ### Fixed - Plan 14 provider migrations
 
 - Keep visit-limit fields after SQL Server/PostgreSQL upgrades and remove them only on downgrade; preserve unrelated note-template indexes. Failing-first provider-operation regressions now pass.
