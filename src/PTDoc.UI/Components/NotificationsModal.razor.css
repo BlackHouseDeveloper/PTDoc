@@ -321,7 +321,7 @@
 
 /* ── Notifications List Area ────────────────────────────────────────────── */
 .notif-list-area {
-    flex: 1 1 0;
+    flex: 1 1 auto;
     overflow-y: auto;
     min-height: 0;
 }

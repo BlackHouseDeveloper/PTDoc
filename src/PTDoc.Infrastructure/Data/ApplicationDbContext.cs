@@ -33,6 +33,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Patient> Patients => Set<Patient>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
     public DbSet<ClinicalNote> ClinicalNotes => Set<ClinicalNote>();
+    public DbSet<NoteHandoff> NoteHandoffs => Set<NoteHandoff>();
     public DbSet<IntakeForm> IntakeForms => Set<IntakeForm>();
     public DbSet<PatientDocument> PatientDocuments => Set<PatientDocument>();
     public DbSet<PatientCommunicationLogEntry> PatientCommunicationLogEntries => Set<PatientCommunicationLogEntry>();
@@ -933,6 +934,18 @@ public class ApplicationDbContext : DbContext
             .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
         modelBuilder.Entity<NoteTemplateVersion>()
             .HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+
+        modelBuilder.Entity<NoteHandoff>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.ClinicalNoteId, e.Sequence }).IsUnique();
+            entity.HasIndex(e => e.ClinicId);
+            entity.HasOne<ClinicalNote>().WithMany().HasForeignKey(e => e.ClinicalNoteId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Clinic>().WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<User>().WithMany().HasForeignKey(e => e.SenderUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<User>().WithMany().HasForeignKey(e => e.RecipientUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasQueryFilter(e => CurrentClinicId == null || e.ClinicId == CurrentClinicId);
+        });
 
         // Configure UserNotification
         modelBuilder.Entity<UserNotification>(entity =>

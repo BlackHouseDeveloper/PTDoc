@@ -51,6 +51,7 @@ builder.Services.AddScoped<IIntakeDeliveryService, IntakeDeliveryApiService>();
 builder.Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
 builder.Services.AddSingleton<IIntakeBodyPartMapper, IntakeBodyPartMapper>();
 builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();
+builder.Services.AddScoped<INoteHandoffService, NoteHandoffApiService>();
 builder.Services.AddScoped<INoteDraftLocalPersistenceService, NoopNoteDraftLocalPersistenceService>();
 builder.Services.AddTransient<DraftAutosaveService>();
 builder.Services.AddScoped<IAppointmentService, AppointmentApiService>();

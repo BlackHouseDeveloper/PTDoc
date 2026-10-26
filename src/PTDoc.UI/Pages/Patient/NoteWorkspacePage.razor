@@ -303,6 +303,15 @@ else
         </AuthorizeView>
 
         <PatientContextHeader PatientName="@DisplayPatientName" PatientDob="@_note.PatientDob" />
+        @if (_note.NoteId is { } handoffNoteId)
+        {
+            <AuthorizeView Policy="@AuthorizationPolicies.NoteWrite">
+                <Authorized>
+                    <NoteHandoffDialog @key="handoffNoteId" NoteId="@handoffNoteId"
+                                       BeforeOpen="@(() => EnsureDraftPersistedAsync())" />
+                </Authorized>
+            </AuthorizeView>
+        }
 
         @if (IsDryNeedlingNote)
         {
