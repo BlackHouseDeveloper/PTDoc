@@ -309,7 +309,6 @@ public sealed class DashboardWidgetNavigationTests : TestContext
         root.Find("#phone").Change("555-0199");
         root.Find("#dob").Change("1991-05-06");
         root.Find("#referringPhysician").Change(" ");
-        root.Find("#authorizationNumber").Change(" ");
         root.FindAll("button")
             .Single(button => button.TextContent.Contains("Add Patient and Send Intake", StringComparison.Ordinal))
             .Click();

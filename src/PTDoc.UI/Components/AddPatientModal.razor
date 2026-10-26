@@ -174,8 +174,8 @@
 
                 <section class="form-section" aria-labelledby="patient-referral-section-title">
                     <div class="form-section-header">
-                        <h3 id="patient-referral-section-title">Referral &amp; Authorization</h3>
-                        <p>Optional PCP, referring physician, and authorization details for the chart.</p>
+                        <h3 id="patient-referral-section-title">Referrals</h3>
+                        <p>Optional PCP and referring physician details for the chart.</p>
                     </div>
 
                     <div class="form-row">
@@ -214,26 +214,8 @@
                                 <p id="@GetFieldErrorId(nameof(PhysicianNpi))" class="field-error" role="alert">@physicianNpiError</p>
                             }
                         </div>
-                        <div class="form-field">
-                            <label for="authorizationRequired" class="form-label">Authorization Required?</label>
-                            <select id="authorizationRequired"
-                                    class="form-input"
-                                    @bind="AuthorizationRequired">
-                                <option value="">Unknown</option>
-                                <option value="Yes">Yes</option>
-                                <option value="No">No</option>
-                            </select>
-                        </div>
                     </div>
 
-                    <div class="form-field">
-                        <label for="authorizationNumber" class="form-label">Authorization Number</label>
-                        <input id="authorizationNumber"
-                               type="text"
-                               class="form-input"
-                               placeholder="Authorization number"
-                               @bind="AuthorizationNumber" />
-                    </div>
                 </section>
 
                 @if (!string.IsNullOrWhiteSpace(SubmitError))
@@ -309,8 +291,6 @@
     private string PrimaryCareProvider { get; set; } = string.Empty;
     private string ReferringPhysician { get; set; } = string.Empty;
     private string PhysicianNpi { get; set; } = string.Empty;
-    private string AuthorizationRequired { get; set; } = string.Empty;
-    private string AuthorizationNumber { get; set; } = string.Empty;
     private string? SubmitError { get; set; }
     private bool IsSubmitting { get; set; }
     private PatientSubmitIntent? ActiveSubmitIntent { get; set; }
@@ -418,8 +398,6 @@
         PrimaryCareProvider = string.Empty;
         ReferringPhysician = string.Empty;
         PhysicianNpi = string.Empty;
-        AuthorizationRequired = string.Empty;
-        AuthorizationNumber = string.Empty;
         SubmitError = null;
         ValidationErrors.Clear();
     }
@@ -467,8 +445,6 @@
             PrimaryCareProvider = PrimaryCareProvider.Trim(),
             ReferringPhysician = ReferringPhysician.Trim(),
             PhysicianNpi = PhysicianNpi.Trim(),
-            AuthorizationRequired = AuthorizationRequired.Trim(),
-            AuthorizationNumber = AuthorizationNumber.Trim(),
             PayerInfoJson = BuildPayerInfoJson(),
             SubmitIntent = submitIntent
         };
@@ -556,16 +532,13 @@
             HasValue(SecondaryMemberId) ||
             HasValue(PrimaryCareProvider) ||
             HasValue(ReferringPhysician) ||
-            HasValue(PhysicianNpi) ||
-            HasValue(AuthorizationRequired) ||
-            HasValue(AuthorizationNumber);
+            HasValue(PhysicianNpi);
 
         if (!hasPayerInfo)
         {
             return "{}";
         }
 
-        var normalizedAuthorizationRequired = TrimOrNull(AuthorizationRequired);
         var payload = new
         {
             InsuranceCompanyName = TrimOrNull(PrimaryInsuranceCompany),
@@ -576,10 +549,7 @@
             SecondaryMemberIdPolicyNumber = TrimOrNull(SecondaryMemberId),
             PrimaryCareProviderName = TrimOrNull(PrimaryCareProvider),
             ReferringPhysicianName = TrimOrNull(ReferringPhysician),
-            PhysicianNpiNumber = TrimOrNull(PhysicianNpi),
-            AuthorizationRequired = normalizedAuthorizationRequired,
-            AuthorizationStatus = normalizedAuthorizationRequired == "Yes" ? "pending" : null,
-            AuthorizationNumber = TrimOrNull(AuthorizationNumber)
+            PhysicianNpiNumber = TrimOrNull(PhysicianNpi)
         };
 
         return JsonSerializer.Serialize(payload, PayerJsonOptions);
