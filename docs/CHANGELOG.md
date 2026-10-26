@@ -57,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planning - Client review Plan 01
 ### Fixed - Client review Plan 01
 
+- Return an explicit authentication denial for cross-site renewal requests, retaining the no-renewal/no-API-call guard and matching other session denials.
+
 - Repaired the reproduced active Web-session renewal gap with trusted-input renewal, current API session/identity validation, protected idle/absolute expiry, changed-user protection and explicit recovery notices. Added controlled-clock and browser-event regressions; updated the 36-PR tracker with actual branches, stacks, verification and merge checkpoints. Archived source Markdown hard breaks were normalized without changing requirements.
 
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation

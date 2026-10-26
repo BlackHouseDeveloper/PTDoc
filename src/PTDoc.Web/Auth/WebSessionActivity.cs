@@ -55,7 +55,7 @@ internal static class WebSessionActivity
         var sessionId = principal.FindFirst(SessionIdClaim)?.Value;
         if (string.IsNullOrEmpty(sessionId) || context.Request.Headers[SessionHeader] != sessionId)
             return Results.Conflict(new { reason = "SessionChanged" });
-        if (context.Request.Headers["Sec-Fetch-Site"] == "cross-site") return Results.StatusCode(403);
+        if (context.Request.Headers["Sec-Fetch-Site"] == "cross-site") return Results.Unauthorized();
         var now = clock.GetUtcNow();
         if (!TryGetDeadline(principal, out var deadline) || deadline <= now) return Results.Unauthorized();
         var token = principal.FindFirst(PTDocClaimTypes.ApiAccessToken)?.Value;

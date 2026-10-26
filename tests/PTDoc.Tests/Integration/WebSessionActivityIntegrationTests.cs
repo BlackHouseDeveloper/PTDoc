@@ -169,7 +169,7 @@ public sealed class WebSessionActivityIntegrationTests
         var cookie = host.IssueCookie();
         host.Clock.Advance(TimeSpan.FromMinutes(8));
         using var response = await host.Activity(cookie, crossSite: true);
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.Equal(0, host.ApiCalls);
         Assert.False(response.Headers.Contains("Set-Cookie"));
     }
