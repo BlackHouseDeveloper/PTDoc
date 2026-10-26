@@ -1577,6 +1577,10 @@ public sealed class NoteWorkspacePageTests : TestContext
 
         cut.WaitForAssertion(() => Assert.Equal("Progress Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
 
+        noteWorkspaceService.Verify(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Once);
+        // The activity editor also loads a catalog; verify the Objective step independently.
+        noteWorkspaceService.Invocations.Clear();
+
         cut.Find("[data-testid='footer-next']").Click();
 
         cut.WaitForAssertion(() =>
@@ -1587,7 +1591,7 @@ public sealed class NoteWorkspacePageTests : TestContext
             Assert.DoesNotContain("Select a body part to load source-backed ROM options.", cut.Markup, StringComparison.Ordinal);
         });
 
-        noteWorkspaceService.Verify(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Once);
+        noteWorkspaceService.Verify(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Never);
         noteWorkspaceService.Verify(service => service.GetBodyRegionCatalogAsync(BodyPart.Knee, It.IsAny<CancellationToken>()), Times.Once);
     }
 
