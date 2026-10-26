@@ -49,9 +49,11 @@ public sealed class IntakeWizardState
 
     public string? PrimaryDoctorName { get; set; }
     public string? PrimaryDoctorPhone { get; set; }
+    public string? PrimaryDoctorFax { get; set; }
     public string? ReferringDoctorName { get; set; }
     public string? ReferringDoctorNpi { get; set; }
     public string? ReferringDoctorPhone { get; set; }
+    public string? ReferringDoctorFax { get; set; }
 
     public string? InsuranceCompanyName { get; set; }
     public string? MemberOrPolicyNumber { get; set; }

@@ -66,6 +66,7 @@ public sealed class UpdateProviderCandidateRequest : SubmitProviderCandidateRequ
 
 public sealed class ProviderDecisionRequest
 {
+    public DateTime? ExpectedLastModifiedUtc { get; set; }
     [MaxLength(500)] public string? Reason { get; set; }
     public Guid? MergeIntoProviderId { get; set; }
     public bool ConfirmDuplicate { get; set; }
@@ -102,6 +103,7 @@ public interface IProviderDirectoryService
     Task<ProviderDirectoryEntryDto?> GetAsync(Guid providerId, CancellationToken cancellationToken);
     Task<ProviderDirectoryEntryDto> SubmitAsync(SubmitProviderCandidateRequest request, CancellationToken cancellationToken);
     Task<ProviderDirectoryEntryDto> UpdateAsync(Guid providerId, UpdateProviderCandidateRequest request, CancellationToken cancellationToken);
+    Task<ProviderDirectoryEntryDto> UpdateForAdministrationAsync(Guid providerId, UpdateProviderCandidateRequest request, CancellationToken cancellationToken);
     Task<ProviderDirectoryEntryDto> ApproveAsync(Guid providerId, ProviderDecisionRequest request, CancellationToken cancellationToken);
     Task<ProviderDirectoryEntryDto> RejectAsync(Guid providerId, ProviderDecisionRequest request, CancellationToken cancellationToken);
     Task ArchiveAsync(Guid providerId, ProviderDecisionRequest request, CancellationToken cancellationToken);

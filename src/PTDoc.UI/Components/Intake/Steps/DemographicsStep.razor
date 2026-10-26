@@ -33,14 +33,18 @@
     <CareTeamCard
         PrimaryDoctorName="@State.PrimaryDoctorName"
         PrimaryDoctorPhone="@State.PrimaryDoctorPhone"
+        PrimaryDoctorFax="@State.PrimaryDoctorFax"
         ReferringDoctorName="@State.ReferringDoctorName"
         ReferringDoctorNpi="@State.ReferringDoctorNpi"
         ReferringDoctorPhone="@State.ReferringDoctorPhone"
+        ReferringDoctorFax="@State.ReferringDoctorFax"
         PrimaryDoctorNameChanged="OnPrimaryDoctorNameChanged"
         PrimaryDoctorPhoneChanged="OnPrimaryDoctorPhoneChanged"
+        PrimaryDoctorFaxChanged="OnPrimaryDoctorFaxChanged"
         ReferringDoctorNameChanged="OnReferringDoctorNameChanged"
         ReferringDoctorNpiChanged="OnReferringDoctorNpiChanged"
-        ReferringDoctorPhoneChanged="OnReferringDoctorPhoneChanged" />
+        ReferringDoctorPhoneChanged="OnReferringDoctorPhoneChanged"
+        ReferringDoctorFaxChanged="OnReferringDoctorFaxChanged" />
 
     <InsurancePayerCard
         InsuranceCompanyName="@State.InsuranceCompanyName"
@@ -170,9 +174,11 @@
 
     private Task OnPrimaryDoctorNameChanged(string? value) => UpdateStateAsync(() => State.PrimaryDoctorName = value);
     private Task OnPrimaryDoctorPhoneChanged(string? value) => UpdateStateAsync(() => State.PrimaryDoctorPhone = value);
+    private Task OnPrimaryDoctorFaxChanged(string? value) => UpdateStateAsync(() => State.PrimaryDoctorFax = value);
     private Task OnReferringDoctorNameChanged(string? value) => UpdateStateAsync(() => State.ReferringDoctorName = value);
     private Task OnReferringDoctorNpiChanged(string? value) => UpdateStateAsync(() => State.ReferringDoctorNpi = value);
     private Task OnReferringDoctorPhoneChanged(string? value) => UpdateStateAsync(() => State.ReferringDoctorPhone = value);
+    private Task OnReferringDoctorFaxChanged(string? value) => UpdateStateAsync(() => State.ReferringDoctorFax = value);
 
     private Task OnInsuranceCompanyNameChanged(string? value) => UpdateStateAsync(() => State.InsuranceCompanyName = value);
     private Task OnMemberOrPolicyNumberChanged(string? value) => UpdateStateAsync(() => State.MemberOrPolicyNumber = value);

@@ -35,16 +35,16 @@ public static class IntakeDomainProjection
 
     public static async Task UpsertAsync(ApplicationDbContext db, Patient patient, IntakeResponseDraft draft, Guid userId, CancellationToken ct)
     {
-        await UpsertProviderAsync(db, patient, draft.PrimaryDoctorName, draft.PrimaryDoctorPhone, null, PatientProviderRole.PrimaryCare, userId, ct);
-        await UpsertProviderAsync(db, patient, draft.ReferringDoctorName, draft.ReferringDoctorPhone, draft.ReferringDoctorNpi, PatientProviderRole.Referring, userId, ct);
+        await UpsertProviderAsync(db, patient, draft.PrimaryDoctorName, draft.PrimaryDoctorPhone, draft.PrimaryDoctorFax, null, PatientProviderRole.PrimaryCare, userId, ct);
+        await UpsertProviderAsync(db, patient, draft.ReferringDoctorName, draft.ReferringDoctorPhone, draft.ReferringDoctorFax, draft.ReferringDoctorNpi, PatientProviderRole.Referring, userId, ct);
         await UpsertPolicyAsync(db, patient, InsuranceCoveragePriority.Primary, draft.InsuranceCompanyName, draft.MemberOrPolicyNumber, draft.GroupNumber, draft.PayerType, draft.AdjusterName, draft.AdjusterPhone, draft.AdjusterEmail, draft.AdjusterFax, userId, ct);
         await UpsertPolicyAsync(db, patient, InsuranceCoveragePriority.Secondary, draft.SecondaryInsuranceCompanyName, draft.SecondaryMemberOrPolicyNumber, draft.SecondaryGroupNumber, null, null, null, null, null, userId, ct);
         await UpsertAuthorizationAsync(db, patient, draft, userId, ct);
     }
 
-    private static async Task UpsertProviderAsync(ApplicationDbContext db, Patient patient, string? displayName, string? phone, string? npi, PatientProviderRole role, Guid userId, CancellationToken ct)
+    private static async Task UpsertProviderAsync(ApplicationDbContext db, Patient patient, string? displayName, string? phone, string? fax, string? npi, PatientProviderRole role, Guid userId, CancellationToken ct)
     {
-        displayName = Trim(displayName); phone = Trim(phone); npi = Trim(npi);
+        displayName = Trim(displayName); phone = Trim(phone); fax = Trim(fax); npi = Trim(npi);
         if (displayName is null) return;
         var existingRelationship = db.PatientProviderRelationships.Local.FirstOrDefault(r => r.PatientId == patient.Id && r.Role == role && !r.IsArchived)
             ?? await db.PatientProviderRelationships.Include(r => r.Provider).FirstOrDefaultAsync(r => r.PatientId == patient.Id && r.Role == role && !r.IsArchived, ct);
@@ -71,7 +71,7 @@ public static class IntakeDomainProjection
                     .ToListAsync(ct);
                 provider = patientProviders.FirstOrDefault(entry => MatchesProvider(entry, first, last, phone, npi));
             }
-            if (provider is null) { provider = new() { ClinicId = patient.ClinicId, FirstName = first, LastName = last, Npi = npi, Phone = phone, Status = ProviderDirectoryStatus.Pending, SubmissionSource = ProviderSubmissionSource.PatientIntake, SubmittedAtUtc = DateTime.UtcNow, LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = userId, SyncState = SyncState.Pending }; db.ProviderDirectoryEntries.Add(provider); }
+            if (provider is null) { provider = new() { ClinicId = patient.ClinicId, FirstName = first, LastName = last, Npi = npi, Phone = phone, Fax = fax, Status = ProviderDirectoryStatus.Pending, SubmissionSource = ProviderSubmissionSource.PatientIntake, SubmittedAtUtc = DateTime.UtcNow, LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = userId, SyncState = SyncState.Pending }; db.ProviderDirectoryEntries.Add(provider); }
             else if (provider.Status == ProviderDirectoryStatus.Pending && string.IsNullOrWhiteSpace(provider.Npi) && npi is not null) provider.Npi = npi;
         }
         db.PatientProviderRelationships.Add(new() { PatientId = patient.Id, ProviderDirectoryEntryId = provider.Id, ClinicId = patient.ClinicId, Role = role, IsPrimary = true, LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = userId, SyncState = SyncState.Pending });

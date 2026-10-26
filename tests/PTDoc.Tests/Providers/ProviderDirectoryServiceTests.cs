@@ -177,5 +177,82 @@ public sealed class ProviderDirectoryServiceTests : IDisposable
         Assert.Equal(ProviderDirectoryStatus.Archived, merged.Status);
     }
 
+    [Fact]
+    public async Task AdministrationEdit_PersistsActiveFax_WhileCandidateRouteCannotEditActive()
+    {
+        var provider = await service.SubmitAsync(new() { FirstName = "Active", LastName = "Provider", Fax = "2025550100" }, default);
+        provider = await service.ApproveAsync(provider.Id, new(), default);
+        var edit = new UpdateProviderCandidateRequest
+        {
+            FirstName = "Updated",
+            LastName = provider.LastName,
+            Fax = "+1 (202) 555-0199",
+            ExpectedLastModifiedUtc = provider.LastModifiedUtc
+        };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAsync(provider.Id, edit, default));
+        var updated = await service.UpdateForAdministrationAsync(provider.Id, edit, default);
+        db.ChangeTracker.Clear();
+        var reloaded = await service.GetAsync(provider.Id, default);
+        Assert.Equal("Updated", reloaded!.FirstName);
+        Assert.Equal("+1 (202) 555-0199", reloaded.Fax);
+        Assert.Equal(ProviderDirectoryStatus.Active, reloaded.Status);
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => service.UpdateForAdministrationAsync(provider.Id, edit, default));
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => service.ArchiveAsync(provider.Id,
+            new() { ExpectedLastModifiedUtc = provider.LastModifiedUtc }, default));
+        Assert.NotEqual(provider.LastModifiedUtc, updated.LastModifiedUtc);
+    }
+
+    [Fact]
+    public async Task RemovedProvider_IsNotSelectable_ButPatientRelationshipAndSavedIntakeRemain()
+    {
+        var patient = new Patient { ClinicId = clinic, FirstName = "Synthetic", LastName = "History", DateOfBirth = new(1990, 1, 1) };
+        db.Patients.Add(patient);
+        var snapshot = """{"primaryDoctorName":"Original Provider","primaryDoctorFax":"2025550100"}""";
+        var intake = new IntakeForm { PatientId = patient.Id, ClinicId = clinic, ResponseJson = snapshot, IsLocked = true, SubmittedAt = DateTime.UtcNow };
+        db.IntakeForms.Add(intake);
+        await db.SaveChangesAsync();
+        var provider = await service.SubmitAsync(new()
+        {
+            FirstName = "Original",
+            LastName = "Provider",
+            Fax = "2025550100",
+            PatientId = patient.Id,
+            PatientRole = PatientProviderRole.PrimaryCare
+        }, default);
+        provider = await service.ApproveAsync(provider.Id, new(), default);
+        await service.ArchiveAsync(provider.Id, new() { ExpectedLastModifiedUtc = provider.LastModifiedUtc }, default);
+        db.ChangeTracker.Clear();
+        Assert.Empty(await service.SearchAsync("Original", null, 25, default));
+        Assert.Null(await service.GetAsync(provider.Id, default));
+        var history = Assert.Single(await service.ListPatientRelationshipsAsync(patient.Id, default));
+        Assert.Equal("2025550100", history.Provider.Fax);
+        Assert.Equal(ProviderDirectoryStatus.Archived, history.Provider.Status);
+        Assert.Equal(snapshot, (await db.IntakeForms.SingleAsync()).ResponseJson);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => service.UpsertPatientRelationshipAsync(patient.Id, null,
+            new() { ProviderId = provider.Id, Role = PatientProviderRole.Referring }, default));
+    }
+
+    [Theory]
+    [InlineData("fax@example.test")]
+    [InlineData("123")]
+    [InlineData("1234567890123456")]
+    public async Task InvalidFax_IsRejectedBeforePersistence(string fax)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => service.SubmitAsync(new() { FirstName = "Fax", LastName = "Test", Fax = fax }, default));
+        Assert.Empty(await db.ProviderDirectoryEntries.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ForeignClinicProvider_CannotBeUpdatedOrArchived()
+    {
+        var foreign = new ProviderDirectoryEntry { ClinicId = Guid.NewGuid(), FirstName = "Foreign", LastName = "Provider", Status = ProviderDirectoryStatus.Active };
+        db.ProviderDirectoryEntries.Add(foreign);
+        await db.SaveChangesAsync();
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => service.UpdateForAdministrationAsync(foreign.Id,
+            new() { FirstName = "Changed", LastName = "Provider", ExpectedLastModifiedUtc = foreign.LastModifiedUtc }, default));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => service.ArchiveAsync(foreign.Id, new(), default));
+        Assert.Equal("Foreign", (await db.ProviderDirectoryEntries.IgnoreQueryFilters().SingleAsync()).FirstName);
+    }
+
     public void Dispose() => db.Dispose();
 }

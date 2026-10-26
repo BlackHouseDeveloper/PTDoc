@@ -321,6 +321,7 @@ public class AuthorizationCoverageTests
         new("PUT", "/api/v1/providers/patients/{patientId:guid}/{relationshipId:guid}", AuthorizationPolicies.ProviderDirectorySubmit),
         new("DELETE", "/api/v1/providers/patients/{patientId:guid}/{relationshipId:guid}", AuthorizationPolicies.ProviderDirectorySubmit),
         new("GET", "/api/v1/admin/providers/", AuthorizationPolicies.ProviderDirectoryAdmin),
+        new("PUT", "/api/v1/admin/providers/{providerId:guid}", AuthorizationPolicies.ProviderDirectoryAdmin),
         new("POST", "/api/v1/admin/providers/{providerId:guid}/approve", AuthorizationPolicies.ProviderDirectoryAdmin),
         new("POST", "/api/v1/admin/providers/{providerId:guid}/reject", AuthorizationPolicies.ProviderDirectoryAdmin),
         new("POST", "/api/v1/admin/providers/{providerId:guid}/archive", AuthorizationPolicies.ProviderDirectoryAdmin),

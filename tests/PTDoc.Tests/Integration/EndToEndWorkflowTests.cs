@@ -63,6 +63,20 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         _factory = factory;
     }
 
+    [Theory]
+    [InlineData(Roles.PT)]
+    [InlineData(Roles.PTA)]
+    [InlineData(Roles.Patient)]
+    public async Task ProviderAdministrationEditAndArchive_RejectUnauthorizedDirectRequests(string role)
+    {
+        using var client = _factory.CreateClientWithRole(role);
+        var id = Guid.NewGuid();
+        using var edit = await client.PutAsync($"/api/v1/admin/providers/{id}", JsonContent(new { firstName = "Synthetic", lastName = "Provider" }));
+        using var archive = await client.PostAsync($"/api/v1/admin/providers/{id}/archive", JsonContent(new { }));
+        Assert.Equal(HttpStatusCode.Forbidden, edit.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, archive.StatusCode);
+    }
+
     // ── 401 / 403 gate tests ─────────────────────────────────────────────────
 
     [Theory]

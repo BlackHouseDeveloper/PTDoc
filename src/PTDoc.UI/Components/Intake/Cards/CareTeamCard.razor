@@ -39,6 +39,10 @@
             <input id="intake-primary-doctor-phone" class="form-control" type="tel" value="@PrimaryDoctorPhone" @oninput="(args) => PrimaryDoctorPhoneChanged.InvokeAsync(args.Value?.ToString())" placeholder="(555) 123-4567" />
         </label>
 
+        <label for="intake-primary-doctor-fax">Primary Doctor Fax
+            <input id="intake-primary-doctor-fax" class="form-control" type="tel" maxlength="30" value="@PrimaryDoctorFax" @oninput="(args) => PrimaryDoctorFaxChanged.InvokeAsync(args.Value?.ToString())" placeholder="(555) 123-4567" />
+        </label>
+
         <label class="intake-card__same-provider">
             <input type="checkbox"
                    class="form-check-input"
@@ -58,21 +62,29 @@
         <label for="intake-referring-doctor-phone">Referring Doctor Phone
             <input id="intake-referring-doctor-phone" class="form-control" type="tel" value="@ReferringDoctorPhone" disabled="@IsSamePhysician" @oninput="(args) => ReferringDoctorPhoneChanged.InvokeAsync(args.Value?.ToString())" placeholder="(555) 123-4567" />
         </label>
+
+        <label for="intake-referring-doctor-fax">Referring Doctor Fax
+            <input id="intake-referring-doctor-fax" class="form-control" type="tel" maxlength="30" value="@ReferringDoctorFax" disabled="@IsSamePhysician" @oninput="(args) => ReferringDoctorFaxChanged.InvokeAsync(args.Value?.ToString())" placeholder="(555) 123-4567" />
+        </label>
     </div>
 </section>
 
 @code {
     [Parameter] public string? PrimaryDoctorName { get; set; }
     [Parameter] public string? PrimaryDoctorPhone { get; set; }
+    [Parameter] public string? PrimaryDoctorFax { get; set; }
     [Parameter] public string? ReferringDoctorName { get; set; }
     [Parameter] public string? ReferringDoctorNpi { get; set; }
     [Parameter] public string? ReferringDoctorPhone { get; set; }
+    [Parameter] public string? ReferringDoctorFax { get; set; }
 
     [Parameter] public EventCallback<string?> PrimaryDoctorNameChanged { get; set; }
     [Parameter] public EventCallback<string?> PrimaryDoctorPhoneChanged { get; set; }
+    [Parameter] public EventCallback<string?> PrimaryDoctorFaxChanged { get; set; }
     [Parameter] public EventCallback<string?> ReferringDoctorNameChanged { get; set; }
     [Parameter] public EventCallback<string?> ReferringDoctorNpiChanged { get; set; }
     [Parameter] public EventCallback<string?> ReferringDoctorPhoneChanged { get; set; }
+    [Parameter] public EventCallback<string?> ReferringDoctorFaxChanged { get; set; }
 
     private string DirectoryQuery { get; set; } = string.Empty;
     private List<ProviderDirectoryEntryDto> DirectoryMatches { get; set; } = [];
@@ -83,6 +95,7 @@
         !string.IsNullOrWhiteSpace(PrimaryDoctorName)
         && string.Equals(PrimaryDoctorName?.Trim(), ReferringDoctorName?.Trim(), StringComparison.OrdinalIgnoreCase)
         && string.Equals(PrimaryDoctorPhone?.Trim(), ReferringDoctorPhone?.Trim(), StringComparison.OrdinalIgnoreCase)
+        && string.Equals(PrimaryDoctorFax?.Trim(), ReferringDoctorFax?.Trim(), StringComparison.OrdinalIgnoreCase)
         && string.IsNullOrWhiteSpace(ReferringDoctorNpi);
 
     private async Task OnSamePhysicianChangedAsync(ChangeEventArgs args)
@@ -94,6 +107,7 @@
 
         await ReferringDoctorNameChanged.InvokeAsync(PrimaryDoctorName);
         await ReferringDoctorPhoneChanged.InvokeAsync(PrimaryDoctorPhone);
+        await ReferringDoctorFaxChanged.InvokeAsync(PrimaryDoctorFax);
         await ReferringDoctorNpiChanged.InvokeAsync(null);
     }
 
@@ -132,11 +146,13 @@
             await ReferringDoctorNameChanged.InvokeAsync(providerName);
             await ReferringDoctorNpiChanged.InvokeAsync(provider.Npi);
             await ReferringDoctorPhoneChanged.InvokeAsync(provider.Phone);
+            await ReferringDoctorFaxChanged.InvokeAsync(provider.Fax);
         }
         else
         {
             await PrimaryDoctorNameChanged.InvokeAsync(providerName);
             await PrimaryDoctorPhoneChanged.InvokeAsync(provider.Phone);
+            await PrimaryDoctorFaxChanged.InvokeAsync(provider.Fax);
         }
 
         DirectoryMatches = [];
