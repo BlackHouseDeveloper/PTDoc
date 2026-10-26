@@ -130,16 +130,23 @@ Set `Integrations__Fax__RateLimitInstanceBudget` to at least the maximum number 
 
 ### Outbound fax
 
-1. Open Fax Center directly or the patient-scoped Fax History action.
-2. Select a patient and an existing PDF chart document, enter one to three recipients, review cover content, and queue.
-3. PTDoc commits the transmission and outbox work together and immediately displays `Queued`.
-4. The worker streams the document to Humble. Provider acceptance, recipient status, failure, and final delivery are normalized into the PTDoc history.
-5. Unknown submission outcomes enter `NeedsReconciliation` and are never blindly submitted again. An operator must verify provider history before initiating a new send.
-6. Resend creates a linked transmission for unsuccessful recipients only.
+1. Open Fax Center directly, from patient Fax History, or choose **Fax signed note** on a signed note’s Review screen. The review link carries patient ID, note ID and the reviewed UTC note version; an unavailable or changed version is not preselected.
+2. Search current-clinic patients by name, MRN or email, then use Previous/Next patients for bounded pages. Select an existing PDF or signed note. Enter one to three recipients and optional cover content.
+3. Choose **Review fax**, verify patient, document and every destination, then explicitly **Confirm and queue fax**. Review alone does not enqueue anything.
+4. PTDoc commits the transmission and outbox work together. Queued does not mean delivered; inspect outbox status for provider acceptance and final delivery.
+5. A lost HTTP response can be retried with **Retry same fax request**. The composer retains its request ID even when edited after a failed attempt. Reusing an ID with changed content is rejected if the previous request was already committed. Check the outbox before starting another composition or reloading the page.
+6. Unknown provider outcomes display **Delivery outcome unknown — review required** and never resend blindly. An operator must verify provider history before initiating a new send.
+7. **Resend failed** creates one linked child for unsuccessful recipients only. Repeated/concurrent resend requests return that child. If it subsequently fails, retry from the child’s row, preserving the chain and excluding recipients already delivered.
 
-Only signed notes may be used through the clinical-note fax API. Draft notes are rejected server-side.
+Only signed notes may be used through the clinical-note fax API. Draft, inaccessible, wrong-patient and stale-version selections are rejected server-side. PDFs are rendered by the existing canonical signed-note renderer, stored privately, scanned and snapshotted with their document hash before enqueueing.
 
-The deprecated `POST /api/v1/integrations/fax/send` shape remains available for existing callers, but it now writes the same durable transmission/outbox records, applies patient-clinic validation and document scanning, and returns the PTDoc transmission ID. It no longer sends directly to Humble from the request thread.
+For `POST /api/v1/integrations/fax/transmissions`, new clients send `RequestId` (a fresh nonempty GUID per composition) and, for notes, `ExpectedNoteLastModifiedUtc`. Keep the identical payload and ID on transport retries. The existing transmission primary key arbitrates concurrent requests; its correlation field stores a versioned request fingerprint. A different requester or payload cannot reuse a committed ID. This is additive and requires no schema change. Legacy clients that omit `RequestId` remain compatible but do not gain request-level deduplication; update them before relying on automatic HTTP retries.
+
+`GET /api/v1/patients` also accepts `skip` while preserving its existing array response and `take` bounds. Ordering is last name, first name, then patient ID. Selectors request one lookahead item to enable the next page; they do not load the whole clinic.
+
+The deprecated `POST /api/v1/integrations/fax/send` shape remains available for existing callers and writes the same durable transmission/outbox records with patient-clinic validation and document scanning. It returns the PTDoc transmission ID and does not send directly to Humble from the request thread.
+
+Provider sandbox delivery, recipient status callbacks and vendor acceptance of the correlation format remain release acceptance work. Use approved synthetic destinations and separate authorization for external sends. Local Plan 17 browser checks kept fax features and workers disabled.
 
 ### Inbound fax
 

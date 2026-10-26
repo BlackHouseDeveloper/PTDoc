@@ -240,18 +240,15 @@ public sealed class IntegrationOperationsService : IIntegrationOperationsService
         var clinicId = RequireClinic();
         var connection = await GetConnectionAsync(clinicId, IntegrationProviders.HumbleFax, true, cancellationToken);
         ValidateFaxRequest(request);
-        var resolved = await ResolveFaxDocumentAsync(request, clinicId, cancellationToken);
-        try
+        var fingerprint = "v1:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(request, JsonOptions))));
+        if (request.RequestId.HasValue)
         {
-            await ScanStoredDocumentAsync(resolved.Document, cancellationToken);
-        }
-        catch
-        {
-            if (resolved.DeleteOnFailure)
+            var existing = await FindFaxRequestAsync(request.RequestId.Value, clinicId, cancellationToken);
+            if (existing is not null)
             {
-                await _documentStore.DeleteAsync(resolved.Document.StorageKey, cancellationToken);
+                ValidateFaxRetry(existing, fingerprint, requestedByUserId);
+                return ToFaxResponse(existing);
             }
-            throw;
         }
         var normalizedRecipients = request.Recipients
             .Select(recipient => new FaxRecipientRequest
@@ -267,8 +264,24 @@ public sealed class IntegrationOperationsService : IIntegrationOperationsService
             throw new InvalidOperationException("Duplicate fax recipients are not allowed.");
         }
 
+        var resolved = await ResolveFaxDocumentAsync(request, clinicId, cancellationToken);
+        try
+        {
+            await ScanStoredDocumentAsync(resolved.Document, cancellationToken);
+        }
+        catch
+        {
+            if (resolved.DeleteOnFailure)
+            {
+                await _documentStore.DeleteAsync(resolved.Document.StorageKey, cancellationToken);
+            }
+            throw;
+        }
+
         var transmission = new FaxTransmission
         {
+            Id = request.RequestId ?? Guid.NewGuid(),
+            ClientCorrelationId = request.RequestId.HasValue ? fingerprint : Guid.NewGuid().ToString("N"),
             ClinicId = clinicId,
             IntegrationConnectionId = connection.Id,
             PatientId = resolved.PatientId,
@@ -311,7 +324,24 @@ public sealed class IntegrationOperationsService : IIntegrationOperationsService
             });
         }
         Enqueue(connection, IntegrationJobTypes.FaxSubmit, "FaxTransmission", transmission.Id, $"fax-submit:{transmission.Id:N}");
-        await _db.SaveChangesAsync(cancellationToken);
+        var addedEntries = _db.ChangeTracker.Entries().Where(entry => entry.State == EntityState.Added).ToArray();
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException) when (request.RequestId.HasValue)
+        {
+            // The primary key also arbitrates concurrent retries across API instances.
+            var existing = await FindFaxRequestAsync(request.RequestId.Value, clinicId, cancellationToken);
+            if (resolved.DeleteOnFailure)
+            {
+                await _documentStore.DeleteAsync(resolved.Document.StorageKey, cancellationToken);
+            }
+            if (existing is null) throw;
+            foreach (var entry in addedEntries) entry.State = EntityState.Detached;
+            ValidateFaxRetry(existing, fingerprint, requestedByUserId);
+            return ToFaxResponse(existing);
+        }
         await AuditAsync("FaxQueued", transmission.Id, true, new()
         {
             ["PatientId"] = transmission.PatientId?.ToString() ?? string.Empty,
@@ -319,6 +349,16 @@ public sealed class IntegrationOperationsService : IIntegrationOperationsService
             ["DocumentType"] = transmission.DocumentType
         }, cancellationToken);
         return ToFaxResponse(transmission);
+    }
+
+    private Task<FaxTransmission?> FindFaxRequestAsync(Guid requestId, Guid clinicId, CancellationToken cancellationToken) =>
+        _db.FaxTransmissions.AsNoTracking().Include(item => item.Recipients).Include(item => item.StatusEvents)
+            .FirstOrDefaultAsync(item => item.Id == requestId && item.ClinicId == clinicId, cancellationToken);
+
+    private static void ValidateFaxRetry(FaxTransmission existing, string fingerprint, Guid requestedByUserId)
+    {
+        if (existing.ClientCorrelationId != fingerprint || existing.RequestedByUserId != requestedByUserId)
+            throw new InvalidOperationException("This fax request identifier has already been used. Review the outbox before starting another fax.");
     }
 
     public async Task<IReadOnlyList<FaxTransmissionResponse>> GetFaxTransmissionsAsync(
@@ -366,8 +406,16 @@ public sealed class IntegrationOperationsService : IIntegrationOperationsService
             throw new InvalidOperationException("Only confirmed terminal unsuccessful faxes can be resent. Faxes that need reconciliation require operational review first.");
         }
 
+        // One retry child per terminal transmission. Further failures are retried from
+        // that child, so a lost resend response cannot create parallel dispatches.
+        var existingRetry = await _db.FaxTransmissions.AsNoTracking().Include(item => item.Recipients).Include(item => item.StatusEvents)
+            .Where(item => item.ClinicId == clinicId && item.OriginalTransmissionId == id)
+            .OrderByDescending(item => item.CreatedAtUtc).FirstOrDefaultAsync(cancellationToken);
+        if (existingRetry is not null) return ToFaxResponse(existingRetry);
+        var retryId = new Guid(SHA256.HashData(Encoding.UTF8.GetBytes($"fax-resend-v1:{clinicId:D}:{id:D}")).AsSpan(0, 16));
         var copy = new FaxTransmission
         {
+            Id = retryId,
             ClinicId = original.ClinicId,
             IntegrationConnectionId = original.IntegrationConnectionId,
             PatientId = original.PatientId,
@@ -397,7 +445,15 @@ public sealed class IntegrationOperationsService : IIntegrationOperationsService
         _db.FaxTransmissions.Add(copy);
         var connection = await _db.IntegrationConnections.FirstAsync(item => item.Id == copy.IntegrationConnectionId, cancellationToken);
         Enqueue(connection, IntegrationJobTypes.FaxSubmit, "FaxTransmission", copy.Id, $"fax-submit:{copy.Id:N}");
-        await _db.SaveChangesAsync(cancellationToken);
+        var addedEntries = _db.ChangeTracker.Entries().Where(entry => entry.State == EntityState.Added).ToArray();
+        try { await _db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateException)
+        {
+            var existing = await FindFaxRequestAsync(retryId, clinicId, cancellationToken);
+            if (existing?.OriginalTransmissionId != id) throw;
+            foreach (var entry in addedEntries) entry.State = EntityState.Detached;
+            return ToFaxResponse(existing);
+        }
         await AuditAsync("FaxResent", copy.Id, true, new() { ["OriginalTransmissionId"] = original.Id }, cancellationToken);
         return ToFaxResponse(copy);
     }
@@ -1904,6 +1960,11 @@ public sealed class IntegrationOperationsService : IIntegrationOperationsService
             {
                 throw new InvalidOperationException("Clinical note does not belong to the selected patient.");
             }
+            if (request.ExpectedNoteLastModifiedUtc.HasValue &&
+                note.LastModifiedUtc.Ticks != request.ExpectedNoteLastModifiedUtc.Value.ToUniversalTime().Ticks)
+            {
+                throw new InvalidOperationException("The signed note changed after selection. Review the current signed note before faxing.");
+            }
             var dto = await BuildNoteExportDtoAsync(note, cancellationToken);
             dto.IncludeMedicareCompliance = true;
             dto.IncludeSignatureBlock = true;
@@ -2137,6 +2198,9 @@ public sealed class IntegrationOperationsService : IIntegrationOperationsService
 
     private static void ValidateFaxRequest(CreateFaxTransmissionRequest request)
     {
+        if (request.RequestId == Guid.Empty ||
+            (request.RequestId.HasValue && request.ClinicalNoteId.HasValue && !request.ExpectedNoteLastModifiedUtc.HasValue))
+            throw new InvalidOperationException("A valid request identifier and reviewed signed-note version are required.");
         var sources = (request.PatientDocumentId.HasValue ? 1 : 0) +
                       (request.ClinicalNoteId.HasValue ? 1 : 0) +
                       (!string.IsNullOrWhiteSpace(request.Base64Content) ? 1 : 0);
@@ -2461,17 +2525,24 @@ public sealed class IntegrationOperationsService : IIntegrationOperationsService
         };
     }
 
-    private static FaxStatusEvent NewFaxStatusEvent(
+    private FaxStatusEvent NewFaxStatusEvent(
         FaxTransmissionStatus status,
         string source,
         string? failureCode = null,
-        string? providerStatus = null) => new()
+        string? providerStatus = null)
+    {
+        var statusEvent = new FaxStatusEvent
         {
             Status = status,
             Source = source,
             FailureCode = failureCode,
             ProviderStatus = providerStatus
         };
+        // New events have client-generated keys; explicitly add them so EF does not
+        // infer an update when they join a previously loaded transmission collection.
+        _db.FaxStatusEvents.Add(statusEvent);
+        return statusEvent;
+    }
 
     private static FaxTransmissionStatus MapFaxStatus(string status) => status.Trim().ToLowerInvariant() switch
     {

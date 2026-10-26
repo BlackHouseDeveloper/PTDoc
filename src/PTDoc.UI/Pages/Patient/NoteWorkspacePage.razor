@@ -502,6 +502,7 @@ else
 
                     case SoapSection.Review:
                         <SoapReviewPage Note="@_note"
+                                        FaxUrl="@SignedNoteFaxUrl"
                                         DateOfService="@_dateOfService"
                                         IsReadOnly="@IsWorkspaceReadOnly"
                                         IsRegeneratingSummary="@_isRegeneratingSummary"
@@ -857,6 +858,10 @@ else
     private bool DisableSubmitAction => !CanSubmitCurrentNote || DraftAutosaveService.IsSaving;
     private bool CanExportPdf => IsPtUser || IsPtaUser || IsAdminUser;
     private bool HasPendingClinicalSummary => !string.IsNullOrWhiteSpace(_pendingClinicalSummary);
+    private string? SignedNoteFaxUrl => _note.Status == NoteStatus.Signed && _note.NoteId.HasValue && _patientGuid.HasValue && _lastModifiedUtc.HasValue
+        ? $"/fax-center?patientId={_patientGuid:D}&noteId={_note.NoteId:D}&version={Uri.EscapeDataString(DateTime.SpecifyKind(_lastModifiedUtc.Value, DateTimeKind.Utc).ToString("O", System.Globalization.CultureInfo.InvariantCulture))}"
+        : null;
+
     private bool CanRegenerateReviewSummary => !IsWorkspaceReadOnly && _note.NoteId.HasValue && HasConcreteBodyPart(GetSelectedBodyPart());
     private NoteCompletionState CurrentCompletionState =>
         NoteCompletionEvaluator.Evaluate(_note, _dryNeedling, CurrentSoapSections, CanEditCurrentDraft);

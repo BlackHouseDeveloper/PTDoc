@@ -509,6 +509,13 @@
             <span>Export PDF</span>
         </button>
 
+        @if (Note.Status == NoteStatus.Signed && !string.IsNullOrWhiteSpace(FaxUrl))
+        {
+            <AuthorizeView Policy="@AuthorizationPolicies.FaxSend">
+                <a class="soap-review-page__button soap-review-page__button--outline" href="@FaxUrl">Fax signed note</a>
+            </AuthorizeView>
+        }
+
         @if (!IsReadOnly || CanSubmit)
         {
             <button type="button"
@@ -552,6 +559,7 @@
     [Parameter] public bool IsRegeneratingGoals { get; set; }
     [Parameter] public bool IsSubmitting { get; set; }
     [Parameter] public bool CanSubmit { get; set; } = true;
+    [Parameter] public string? FaxUrl { get; set; }
     [Parameter] public bool CanExportPdf { get; set; } = true;
     [Parameter] public bool CanRegenerateSummary { get; set; } = true;
     [Parameter] public string? RegenerateSummaryDisabledReason { get; set; }

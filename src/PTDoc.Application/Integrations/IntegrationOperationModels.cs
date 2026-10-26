@@ -36,6 +36,10 @@ public sealed class FaxRecipientRequest
 
 public sealed class CreateFaxTransmissionRequest
 {
+    /// <summary>Reuse for an identical submission after a lost response. A different payload cannot reuse this ID.</summary>
+    public Guid? RequestId { get; init; }
+    /// <summary>UTC version reviewed by the sender; required for signed-note requests using RequestId.</summary>
+    public DateTime? ExpectedNoteLastModifiedUtc { get; init; }
     public Guid? PatientId { get; init; }
     public Guid? PatientDocumentId { get; init; }
     public Guid? ClinicalNoteId { get; init; }

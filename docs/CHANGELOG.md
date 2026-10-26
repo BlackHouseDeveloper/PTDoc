@@ -54,6 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - Client review Plan 04
 
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
+### Changed - Client review Plan 17
+
+- Added signed-note review-to-fax context with UTC version checks, paginated clinic patient selection, explicit destination confirmation and durable submission/resend deduplication. Fixed new fax status events being tracked as updates in the worker. Provider sandbox delivery remains an acceptance gate; no external fax was sent.
 
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 
