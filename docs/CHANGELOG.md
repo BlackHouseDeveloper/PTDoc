@@ -56,6 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
 ### Changed - Client review Plan 09
 
+- Retained each card’s existing heading styles across the focusable heading component boundary.
+
 - Added section-specific Review Edit navigation with focus after render, single-row scrollable intake progress, visible front/back selection and concise body-map instructions. Existing answers are retained and no clinical schema changes are required.
 
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation

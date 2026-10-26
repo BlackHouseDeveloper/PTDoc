@@ -8,12 +8,12 @@
     padding: var(--spacing-6);
 }
 
-.intake-card h2,
+.intake-card ::deep h2,
 .intake-card p {
     margin: 0;
 }
 
-.intake-card h2 {
+.intake-card ::deep h2 {
     font-size: var(--text-base);
 }
 
