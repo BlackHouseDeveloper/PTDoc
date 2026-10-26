@@ -539,6 +539,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed - Client review Plan 09
 
+- Retained each card’s existing heading styles across the focusable heading component boundary.
+
 - Added section-specific Review Edit navigation with focus after render, single-row scrollable intake progress, visible front/back selection and concise body-map instructions. Existing answers are retained and no clinical schema changes are required.
 
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation

@@ -6,13 +6,13 @@
 - Original plan status: Ready for Development
 - Branch: `codex/plan-09-intake-navigation`
 - Base: `main`
-- Expected GitHub number: #163; actual: assigned by GitHub at publication
+- Expected GitHub number: #163; actual: [#164](https://github.com/BlackHouseDeveloper/PTDoc/pull/164)
 - [Authoritative plan brief](https://github.com/BlackHouseDeveloper/PTDoc/blob/codex/plan-01-session-verification/docs/client-review/source/implementation-plan.md#pr-09)
 - Inspected main: `6276027251609df64ffbbfa883f66e2d83dd57e4` (2026-10-26); this supersedes the source plan’s earlier repository snapshot.
 
 ## Current evidence and changes
 
-Current main used a step-only Review Edit event and a four-column grid for five labels. New regressions also exposed loss of patient mode during draft hydration and boolean ARIA attributes rendering without textual state. All are corrected in this branch. No intake schema, catalog, submission or server authorization contract changes. This targets main because it does not consume the pending Plan 08 orchestration contracts.
+Current main used a step-only Review Edit event and a four-column grid for five labels. New regressions also exposed loss of patient mode during draft hydration and boolean ARIA attributes rendering without textual state. All are corrected in this branch. No intake schema, catalog, submission or server authorization contract changes. This targets main because it does not consume the pending Plan 08 orchestration contracts. Follow-up review retrieved current thread-aware feedback on #164: one actionable heading-style comment, verified and fixed using scoped ::deep selectors in all five owning cards. No review reply or resolution was sent.
 
 ## Dependencies, blockers and owners
 
@@ -76,6 +76,7 @@ Focus timing and overflow can harm mobile usability. Verify with dynamic steps b
 | dotnet format whitespace src/PTDoc.UI/PTDoc.UI.csproj --no-restore --include src/PTDoc.UI/Components/Intake/Models/IntakeReviewTarget.cs --verify-no-changes --verbosity minimal | PASS |
 | python3 /private/tmp/ptdoc-client-implementation/browser09.py; python3 /private/tmp/ptdoc-client-implementation/body-browser09.py | PASS: 15 real-browser navigation/width cases and Enter/Space orientation with unchanged markings. Temporary task-local Playwright CLI scripts; manual reproduction: load a synthetic editable Review, activate each Edit button at 390/768/1440px, check heading focus and horizontal progress, then switch body sides using Enter/Space. |
 | python3 /private/tmp/ptdoc-client-implementation/workflow.py check 9 | PASS: requirement/section/link/path checks and git diff --check. |
+| python3 /private/tmp/ptdoc-client-implementation/browser09style.py | PASS after CSS follow-up: all five headings focused at 390px, retained 16px font and zero bottom margin; pain heading retained 20px line height. Focused UI suite rerun: 52 passed, 0 failed/skipped. |
 
 ## Remaining acceptance work
 
