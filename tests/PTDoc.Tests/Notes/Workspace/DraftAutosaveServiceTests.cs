@@ -204,6 +204,37 @@ public sealed class DraftAutosaveServiceTests
         Assert.Null(autosave.LastSavedAt);
     }
 
+    [Fact]
+    public async Task DiscardPendingChanges_CancelsActiveSave_AndPreventsFurtherWritesUntilReset()
+    {
+        await using var autosave = new DraftAutosaveService();
+        var started = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        autosave.Configure(async token =>
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                started.SetResult(true);
+                await Task.Delay(Timeout.Infinite, token);
+            }
+            return DraftAutosaveSaveResult.Succeeded();
+        }, () => true);
+        autosave.MarkDirty();
+        var saving = autosave.FlushAsync();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await autosave.DiscardPendingChangesAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => saving);
+        autosave.MarkDirty();
+        Assert.True(await autosave.FlushAsync());
+        Assert.False(autosave.IsDirty);
+        Assert.False(autosave.IsSaving);
+        Assert.Equal(1, calls);
+        autosave.Reset();
+        autosave.MarkDirty();
+        Assert.True(await autosave.FlushAsync());
+        Assert.Equal(2, calls);
+    }
+
     private static async Task WaitForConditionAsync(Func<bool> condition, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
