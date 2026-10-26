@@ -1259,4 +1259,37 @@ public class DailyNoteServiceTests : IDisposable
         Assert.Single(results);
         Assert.Equal(patient1.Id, results[0].PatientId);
     }
+    [Fact]
+    public async Task VersionedDaily_LegacyReaderIncludesAnswersButLegacyWriterCannotEraseThem()
+    {
+        var patient = await CreatePatientAsync();
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            Subjective = new() { CurrentPainScore = 0, IsPainScoreDocumented = true },
+            DailyTreatment = new() { Questionnaire = new() { OverallCondition = "Improved slightly", AdditionalInformation = "Synthetic current report" } }
+        };
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            ClinicId = patient.ClinicId,
+            NoteType = NoteType.Daily,
+            NoteStatus = NoteStatus.Draft,
+            DateOfService = DateTime.UtcNow.Date,
+            ContentJson = JsonSerializer.Serialize(payload),
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        _db.ClinicalNotes.Add(note); await _db.SaveChangesAsync();
+        var original = note.ContentJson;
+        var read = await _service.GetByIdAsync(note.Id);
+        Assert.NotNull(read);
+        Assert.Equal(0, read.Content.CurrentPainScore);
+        Assert.Contains("Synthetic current report", read.Content.PatientAdditionalComments);
+        var result = await _service.SaveDraftAsync(BuildRequest(patient.Id));
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.Contains("versioned questionnaire"));
+        Assert.Equal(original, (await _db.ClinicalNotes.AsNoTracking().SingleAsync(n => n.Id == note.Id)).ContentJson);
+    }
+
 }

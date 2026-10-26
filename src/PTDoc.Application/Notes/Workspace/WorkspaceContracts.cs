@@ -77,6 +77,7 @@ public sealed class WorkspaceBillingSettingsV2
 
 public sealed class WorkspaceDailyTreatmentV2
 {
+    public DailyQuestionnaireV1? Questionnaire { get; set; }
     public string ChangesSinceLastVisit { get; set; } = string.Empty;
     public string PainLevelChanges { get; set; } = string.Empty;
     public string SubjectiveUpdate { get; set; } = string.Empty;

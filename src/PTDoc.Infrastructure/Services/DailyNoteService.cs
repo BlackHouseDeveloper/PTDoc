@@ -135,6 +135,14 @@ public class DailyNoteService : IDailyNoteService
                 n.SignedUtc == null,
                 ct);
 
+        if (note is not null && TryDeserializeWorkspacePayload(note.ContentJson, out var existingWorkspace)
+            && existingWorkspace?.DailyTreatment?.Questionnaire is not null)
+        {
+            saveResponse.IsValid = false;
+            saveResponse.Errors = ["This Daily note contains a versioned questionnaire. Open the note workspace to edit it without losing answers."];
+            return saveResponse;
+        }
+
         var contentJson = SerializeStoredDailyContent(request.Content, request.DateOfService);
         var cptEntries = (request.Content.CptCodes ?? [])
             .Where(code => !string.IsNullOrWhiteSpace(code.Code))
@@ -816,7 +824,7 @@ public class DailyNoteService : IDailyNoteService
 
     private static DailyNoteContentDto MapWorkspaceDailyContent(NoteWorkspaceV2Payload payload)
     {
-        var currentPain = payload.Subjective.CurrentPainScore > 0
+        var currentPain = payload.Subjective.IsPainScoreDocumented || payload.Subjective.CurrentPainScore > 0
             ? payload.Subjective.CurrentPainScore
             : payload.DryNeedling?.PainBefore;
 
@@ -846,7 +854,7 @@ public class DailyNoteService : IDailyNoteService
             ChangesSinceLastSession = FirstNonEmpty(
                 dailyTreatment.ChangesSinceLastVisit,
                 dailyTreatment.SubjectiveUpdate),
-            PatientAdditionalComments = dailyTreatment.SubjectiveUpdate,
+            PatientAdditionalComments = FirstNonEmpty(DailyQuestionnaireDefinition.Summarize(dailyTreatment.Questionnaire), dailyTreatment.SubjectiveUpdate),
             ResponseToPriorTreatment = dailyTreatment.ResponseToTreatment,
             BarriersToProgress = dailyTreatment.BarriersToProgress,
             BodyParts = payload.Objective.PrimaryBodyPart == BodyPart.Other

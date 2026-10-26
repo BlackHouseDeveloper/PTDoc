@@ -202,14 +202,17 @@
                 }
             </div>
 
+            @if (AllowOutcomeAuthoring || _vm.OutcomeMeasures.Count > 0)
+            {
             <div class="objective-tab__section" data-testid="objective-outcome-measures-section">
                 <OutcomeMeasurePanel PatientId="@ParsedPatientId"
                                      FilterBodyPart="@SelectedBodyPartFilter"
                                      SuggestedMeasures="@_vm.RecommendedOutcomeMeasures"
                                      RecordedEntries="@_vm.OutcomeMeasures"
-                                     IsReadOnly="@IsReadOnly"
+                                     IsReadOnly="@(IsReadOnly || !AllowOutcomeAuthoring)"
                                      OnScoreRecorded="HandleOutcomeScoreRecorded" />
             </div>
+            }
 
             <div class="objective-tab__section" data-testid="objective-special-tests-section">
                 <div class="objective-tab__section-header">
@@ -590,6 +593,7 @@
     [Parameter, EditorRequired] public ObjectiveVm Vm { get; set; } = new();
     [Parameter, EditorRequired] public EventCallback<ObjectiveVm> VmChanged { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public bool AllowOutcomeAuthoring { get; set; } = true;
     [Parameter] public string PatientId { get; set; } = string.Empty;
     [Parameter] public int GoalCount { get; set; }
     [Parameter] public int GoalProgressPercent { get; set; }
@@ -808,7 +812,8 @@
         return VmChanged.InvokeAsync(_vm);
     }
 
-    private Task HandleOutcomeScoreRecorded(OutcomeScoreEntry entry) => SetAndNotify(vm =>
+    private Task HandleOutcomeScoreRecorded(OutcomeScoreEntry entry) => IsReadOnly || !AllowOutcomeAuthoring
+        ? Task.CompletedTask : SetAndNotify(vm =>
         vm.OutcomeMeasures.Add(new OutcomeMeasureEntry
         {
             Name = entry.MeasureType.ToString(),
