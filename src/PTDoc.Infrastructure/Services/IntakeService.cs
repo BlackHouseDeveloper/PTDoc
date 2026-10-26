@@ -50,7 +50,7 @@ public sealed class IntakeService : IIntakeService
     {
         var intake = await _context.IntakeForms
             .AsNoTracking()
-            .Where(f => f.PatientId == patientId && !f.IsLocked)
+            .Where(f => f.PatientId == patientId && f.EncounterNoteId == null && !f.IsLocked)
             .OrderByDescending(f => f.LastModifiedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -64,7 +64,7 @@ public sealed class IntakeService : IIntakeService
     {
         var intake = await _context.IntakeForms
             .AsNoTracking()
-            .Where(f => f.PatientId == patientId)
+            .Where(f => f.PatientId == patientId && f.EncounterNoteId == null)
             .OrderByDescending(f => f.SubmittedAt ?? f.LastModifiedUtc)
             .ThenByDescending(f => f.LastModifiedUtc)
             .ThenByDescending(f => f.Id)
@@ -74,6 +74,56 @@ public sealed class IntakeService : IIntakeService
             return null;
 
         return await WithProfilePrefillAsync(intake, cancellationToken);
+    }
+
+    public async Task<IntakeResponseDraft?> GetForNoteAsync(Guid patientId, Guid noteId, CancellationToken cancellationToken = default)
+    {
+        var intake = await _context.IntakeForms.AsNoTracking()
+            .FirstOrDefaultAsync(form => form.PatientId == patientId && form.EncounterNoteId == noteId && form.ClinicId == _tenantContext.GetCurrentClinicId(), cancellationToken);
+        return intake is null ? null : await WithProfilePrefillAsync(intake, cancellationToken);
+    }
+
+    private async Task<IntakeEnsureDraftResult> EnsureEncounterDraftAsync(Guid patientId, Guid noteId, CancellationToken cancellationToken)
+    {
+        var note = await _context.ClinicalNotes.AsNoTracking()
+            .FirstOrDefaultAsync(note => note.Id == noteId && note.PatientId == patientId && note.ClinicId == _tenantContext.GetCurrentClinicId(), cancellationToken);
+        if (note is null) return IntakeEnsureDraftResult.NotFound("The associated note was not found.");
+        var existing = await _context.IntakeForms.AsNoTracking()
+            .FirstOrDefaultAsync(form => form.EncounterNoteId == noteId && form.PatientId == patientId && form.ClinicId == note.ClinicId, cancellationToken);
+        if (existing is not null) return IntakeEnsureDraftResult.Existing(await WithProfilePrefillAsync(existing, cancellationToken));
+        if (note.NoteType != NoteType.Evaluation || note.NoteStatus != NoteStatus.Draft || note.IsFinalized || note.IsAddendum)
+            return IntakeEnsureDraftResult.Locked("Encounter intake is available for draft evaluations and re-evaluations. Other questionnaires are not yet enabled.");
+
+        // A new encounter starts with profile facts only, never earlier symptom answers or consents.
+        var draft = new IntakeResponseDraft
+        {
+            PatientId = patientId, EncounterNoteId = note.Id,
+            QuestionnaireDefinitionId = IntakeEncounterRules.EvaluationDefinition,
+            EncounterIsReEvaluation = note.IsReEvaluation, IntakeFlowVersion = 2
+        };
+        var profile = await IntakeProfilePrefillReader.ReadAsync(_context, patientId, note.ClinicId, cancellationToken);
+        profile?.ApplyTo(draft);
+        var intake = new IntakeForm
+        {
+            PatientId = patientId, ClinicId = note.ClinicId, EncounterNoteId = note.Id,
+            QuestionnaireDefinitionId = IntakeEncounterRules.EvaluationDefinition,
+            EncounterIsReEvaluation = note.IsReEvaluation, TemplateVersion = "1.0",
+            AccessToken = GenerateAccessTokenPlaceholderHash(), ResponseJson = SerializeDraft(draft),
+            StructuredDataJson = SerializeStructuredData(draft.StructuredData),
+            PainMapData = BuildPainMapJson(draft), Consents = BuildConsentsJson(draft),
+            LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = _identityContext.GetCurrentUserId(),
+            SyncState = SyncState.Pending
+        };
+        _context.IntakeForms.Add(intake);
+        try { await _context.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateException)
+        {
+            _context.Entry(intake).State = EntityState.Detached;
+            var winner = await GetForNoteAsync(patientId, noteId, cancellationToken);
+            if (winner is null) throw;
+            return IntakeEnsureDraftResult.Existing(winner);
+        }
+        return IntakeEnsureDraftResult.Created(DeserializeDraft(intake));
     }
 
     public async Task<IntakeEnsureDraftResult> EnsureDraftAsync(
@@ -90,9 +140,12 @@ public sealed class IntakeService : IIntakeService
             return IntakeEnsureDraftResult.NotFound($"Patient {patientId} not found.");
         }
 
+        if (seedState?.EncounterNoteId is { } noteId)
+            return await EnsureEncounterDraftAsync(patientId, noteId, cancellationToken);
+
         var existingDraft = await _context.IntakeForms
             .AsNoTracking()
-            .Where(form => form.PatientId == patientId && !form.IsLocked)
+            .Where(form => form.PatientId == patientId && form.EncounterNoteId == null && !form.IsLocked)
             .OrderByDescending(form => form.LastModifiedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -103,7 +156,7 @@ public sealed class IntakeService : IIntakeService
 
         var hasLockedIntake = await _context.IntakeForms
             .AsNoTracking()
-            .AnyAsync(form => form.PatientId == patientId && form.IsLocked, cancellationToken);
+            .AnyAsync(form => form.PatientId == patientId && form.EncounterNoteId == null && form.IsLocked, cancellationToken);
 
         if (hasLockedIntake)
         {
@@ -156,8 +209,8 @@ public sealed class IntakeService : IIntakeService
             .Select(patient => new
             {
                 Patient = patient,
-                HasUnlockedDraft = _context.IntakeForms.Any(form => form.PatientId == patient.Id && !form.IsLocked),
-                HasLockedIntake = _context.IntakeForms.Any(form => form.PatientId == patient.Id && form.IsLocked)
+                HasUnlockedDraft = _context.IntakeForms.Any(form => form.PatientId == patient.Id && form.EncounterNoteId == null && !form.IsLocked),
+                HasLockedIntake = _context.IntakeForms.Any(form => form.PatientId == patient.Id && form.EncounterNoteId == null && form.IsLocked)
             })
             .Where(row => row.HasUnlockedDraft || !row.HasLockedIntake);
 
@@ -261,21 +314,32 @@ public sealed class IntakeService : IIntakeService
         if (state.PatientId is null)
             return;
 
+        if (state.EncounterNoteId.HasValue && !state.IntakeId.HasValue)
+            throw new InvalidOperationException("Open the intake associated with this note before saving.");
+
         var canonicalState = _draftCanonicalizer.CreateCanonicalCopy(state);
         var patientId = canonicalState.PatientId ?? state.PatientId.Value;
         var userId = _identityContext.GetCurrentUserId();
 
         var intake = await _context.IntakeForms
-            .Where(f => f.PatientId == patientId && !f.IsLocked)
+            .Where(f => f.PatientId == patientId && !f.IsLocked &&
+                (state.IntakeId.HasValue ? f.Id == state.IntakeId.Value : f.EncounterNoteId == null))
             .OrderByDescending(f => f.LastModifiedUtc)
             .FirstOrDefaultAsync(cancellationToken);
+
+        if (state.IntakeId.HasValue && intake is null)
+            throw new InvalidOperationException("The selected intake is unavailable or locked.");
+        if (intake is not null && await IntakeEncounterRules.ValidateWriteAsync(_context, intake, state.LastModifiedUtc, cancellationToken) is { } problem)
+            throw new InvalidOperationException(problem);
+        if (intake is not null && !IntakeEncounterRules.HasSupportedResponseVersion(intake, SerializeDraft(canonicalState)))
+            throw new InvalidOperationException("The issued questionnaire version must be preserved.");
 
         if (intake is null)
         {
             // Before creating a new draft, check if a locked intake already exists for this patient.
             // A locked intake (created after Eval) must not be silently replaced with a new unlocked draft.
             var hasLockedIntake = await _context.IntakeForms
-                .AnyAsync(f => f.PatientId == patientId && f.IsLocked, cancellationToken);
+                .AnyAsync(f => f.PatientId == patientId && f.EncounterNoteId == null && f.IsLocked, cancellationToken);
 
             if (hasLockedIntake)
                 return;
@@ -300,7 +364,7 @@ public sealed class IntakeService : IIntakeService
         }
         else
         {
-            intake.ResponseJson = SerializeDraft(canonicalState);
+            intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, SerializeDraft(canonicalState));
             intake.StructuredDataJson = SerializeStructuredData(canonicalState.StructuredData);
             intake.PainMapData = BuildPainMapJson(canonicalState);
             intake.Consents = BuildConsentsJson(canonicalState);
@@ -310,6 +374,8 @@ public sealed class IntakeService : IIntakeService
         }
 
         await _context.SaveChangesAsync(cancellationToken);
+        state.IntakeId = intake.Id;
+        state.LastModifiedUtc = intake.LastModifiedUtc;
     }
 
     public async Task SubmitAsync(IntakeResponseDraft state, CancellationToken cancellationToken = default)
@@ -317,17 +383,25 @@ public sealed class IntakeService : IIntakeService
         if (state.PatientId is null)
             return;
 
+        if (state.EncounterNoteId.HasValue && !state.IntakeId.HasValue)
+            throw new InvalidOperationException("Open the intake associated with this note before saving.");
+
         var canonicalState = _draftCanonicalizer.CreateCanonicalCopy(state);
         var patientId = canonicalState.PatientId ?? state.PatientId.Value;
         var userId = _identityContext.GetCurrentUserId();
 
         var intake = await _context.IntakeForms
-            .Where(f => f.PatientId == patientId && !f.IsLocked)
+            .Where(f => f.PatientId == patientId && !f.IsLocked &&
+                (state.IntakeId.HasValue ? f.Id == state.IntakeId.Value : f.EncounterNoteId == null))
             .OrderByDescending(f => f.LastModifiedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (intake is null)
-            return;
+            throw new InvalidOperationException("The selected intake is unavailable or locked.");
+        if (await IntakeEncounterRules.ValidateWriteAsync(_context, intake, state.LastModifiedUtc, cancellationToken) is { } problem)
+            throw new InvalidOperationException(problem);
+        if (!IntakeEncounterRules.HasSupportedResponseVersion(intake, SerializeDraft(canonicalState)))
+            throw new InvalidOperationException("The issued questionnaire version must be preserved.");
 
         var nowUtc = DateTime.UtcNow;
         var submittedAtUtc = intake.SubmittedAt ?? nowUtc;
@@ -341,6 +415,7 @@ public sealed class IntakeService : IIntakeService
             patientId,
             submittedAtUtc,
             nowUtc);
+        intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, intake.ResponseJson);
         intake.StructuredDataJson = SerializeStructuredData(submittedState.StructuredData);
         intake.PainMapData = BuildPainMapJson(submittedState);
         intake.Consents = BuildConsentsJson(canonicalState);
@@ -398,6 +473,8 @@ public sealed class IntakeService : IIntakeService
         }
 
         await _context.SaveChangesAsync(cancellationToken);
+        state.IntakeId = intake.Id;
+        state.LastModifiedUtc = intake.LastModifiedUtc;
     }
 
     public async Task<IntakeResponseDraft> MarkReviewedAsync(Guid intakeId, CancellationToken cancellationToken = default)
@@ -429,7 +506,11 @@ public sealed class IntakeService : IIntakeService
 
     private static void CopyDraftProperties(IntakeResponseDraft source, IntakeResponseDraft target)
     {
+        target.IntakeId = source.IntakeId;
         target.PatientId = source.PatientId;
+        target.EncounterNoteId = source.EncounterNoteId;
+        target.QuestionnaireDefinitionId = source.QuestionnaireDefinitionId;
+        target.EncounterIsReEvaluation = source.EncounterIsReEvaluation;
         target.IntakeFlowVersion = source.IntakeFlowVersion;
         target.PrefilledPrimaryPolicyId = source.PrefilledPrimaryPolicyId;
         target.PrefilledSecondaryPolicyId = source.PrefilledSecondaryPolicyId;
@@ -522,6 +603,9 @@ public sealed class IntakeService : IIntakeService
     {
         var draft = DeserializeDraft(intake.ResponseJson, intake.StructuredDataJson, intake.PatientId);
         draft.IntakeId = intake.Id;
+        draft.EncounterNoteId = intake.EncounterNoteId;
+        draft.QuestionnaireDefinitionId = intake.QuestionnaireDefinitionId;
+        draft.EncounterIsReEvaluation = intake.EncounterIsReEvaluation;
         draft.IsLocked = intake.IsLocked;
         draft.IsSubmitted = intake.SubmittedAt.HasValue;
         draft.SubmittedAt = intake.SubmittedAt;

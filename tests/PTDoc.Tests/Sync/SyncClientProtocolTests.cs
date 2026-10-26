@@ -55,6 +55,28 @@ public class SyncClientProtocolTests
 
     // ── GetClientDeltaAsync – entity allowlist tests ──────────────────────────
 
+    [Theory]
+    [InlineData("Update")]
+    [InlineData("Delete")]
+    public async Task LegacySync_CannotChangeEncounterIntake(string operation)
+    {
+        using var context = CreateInMemoryContext();
+        var noteId = Guid.NewGuid();
+        var form = new IntakeForm { PatientId = Guid.NewGuid(), EncounterNoteId = noteId, QuestionnaireDefinitionId = "evaluation-full-v1", ResponseJson = "{\"saved\":true}", LastModifiedUtc = DateTime.UtcNow.AddMinutes(-1) };
+        context.IntakeForms.Add(form);
+        await context.SaveChangesAsync();
+        var engine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var result = await engine.ReceiveClientPushAsync(new ClientSyncPushRequest
+        {
+            Items = [new ClientSyncPushItem { EntityType = "IntakeForm", ServerId = form.Id, LocalId = 1, OperationId = Guid.NewGuid(), Operation = operation, DataJson = "{\"responseJson\":\"{}\"}", LastModifiedUtc = DateTime.UtcNow }]
+        });
+        Assert.Equal(0, result.AcceptedCount);
+        Assert.Equal("{\"saved\":true}", (await context.IntakeForms.AsNoTracking().SingleAsync()).ResponseJson);
+        var pulled = await engine.GetClientDeltaAsync(DateTime.MinValue, ["IntakeForm"]);
+        using var json = JsonDocument.Parse(Assert.Single(pulled.Items).DataJson);
+        Assert.Equal(noteId, json.RootElement.GetProperty("EncounterNoteId").GetGuid());
+    }
+
     [Fact]
     public async Task GetClientDeltaAsync_ReturnsIntakeForms_ModifiedAfterWatermark()
     {

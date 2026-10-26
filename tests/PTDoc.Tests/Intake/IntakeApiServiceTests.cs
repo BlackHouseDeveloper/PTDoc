@@ -19,6 +19,44 @@ public sealed class IntakeApiServiceTests
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     [Fact]
+    public async Task EncounterSave_RetainsReturnedVersionForNextSaveAndSubmit()
+    {
+        var patientId = Guid.NewGuid();
+        var intakeId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var version = DateTime.UtcNow;
+        var saves = 0;
+        var handler = new StubHttpMessageHandler(async (request, cancellationToken) =>
+        {
+            Assert.Contains(intakeId.ToString(), request.RequestUri!.AbsolutePath, StringComparison.OrdinalIgnoreCase);
+            if (request.Method != HttpMethod.Get)
+            {
+                using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+                Assert.Equal(version, body.RootElement.GetProperty("expectedLastModifiedUtc").GetDateTime());
+                if (request.Method == HttpMethod.Put) { version = version.AddSeconds(1); saves++; }
+            }
+            return StubHttpMessageHandler.JsonResponse(JsonSerializer.Serialize(new IntakeResponse
+            {
+                Id = intakeId,
+                PatientId = patientId,
+                EncounterNoteId = noteId,
+                QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.EvaluationFullV1,
+                LastModifiedUtc = version,
+                ResponseJson = "{\"intakeFlowVersion\":2}",
+                TemplateVersion = "1.0"
+            }, JsonOptions));
+        });
+        var service = CreateService(handler);
+        var draft = new IntakeResponseDraft { IntakeId = intakeId, PatientId = patientId, EncounterNoteId = noteId, LastModifiedUtc = version, IntakeFlowVersion = 2 };
+        await service.SaveDraftAsync(draft);
+        Assert.Equal(version, draft.LastModifiedUtc);
+        await service.SaveDraftAsync(draft);
+        Assert.Equal(version, draft.LastModifiedUtc);
+        await service.SubmitAsync(draft);
+        Assert.Equal(3, saves);
+    }
+
+    [Fact]
     public async Task EnsureDraftAsync_ReturnsLockedResult_WhenApiConflicts()
     {
         var patientId = Guid.NewGuid();

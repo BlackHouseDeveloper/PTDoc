@@ -17,6 +17,7 @@ using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Services;
 
 namespace PTDoc.Api.Intake;
 
@@ -234,7 +235,7 @@ public static class IntakeAccessEndpoints
             .AsNoTracking()
             .Include(form => form.Patient)
             .Where(form => form.PatientId == patientId && !form.IsLocked
-                && (!scope.IntakeId.HasValue || form.Id == scope.IntakeId.Value))
+                && (scope.IntakeId.HasValue ? form.Id == scope.IntakeId.Value : form.EncounterNoteId == null))
             .OrderByDescending(form => form.LastModifiedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -273,7 +274,7 @@ public static class IntakeAccessEndpoints
             .AsNoTracking()
             .Include(form => form.Patient)
             .Where(form => form.PatientId == patientId
-                && (!scope.IntakeId.HasValue || form.Id == scope.IntakeId.Value))
+                && (scope.IntakeId.HasValue ? form.Id == scope.IntakeId.Value : form.EncounterNoteId == null))
             .OrderByDescending(form => form.SubmittedAt ?? form.LastModifiedUtc)
             .ThenByDescending(form => form.LastModifiedUtc)
             .ThenByDescending(form => form.Id)
@@ -324,6 +325,11 @@ public static class IntakeAccessEndpoints
             return Results.Conflict(new { error = "Intake is locked and cannot be modified." });
         }
 
+        if (await IntakeEncounterRules.ValidateWriteAsync(db, intake, request.ExpectedLastModifiedUtc, cancellationToken) is { } encounterProblem)
+            return Results.Conflict(new { error = encounterProblem });
+        if (!IntakeEncounterRules.HasSupportedResponseVersion(intake, request.ResponseJson))
+            return Results.UnprocessableEntity(new { error = "The issued questionnaire version must be preserved." });
+
         if (!IntakeEndpoints.TryResolveStructuredData(
                 request.StructuredData,
                 request.PainMapData,
@@ -348,7 +354,7 @@ public static class IntakeAccessEndpoints
 
         intake.PainMapData = painMapData;
         intake.Consents = normalizedConsents;
-        intake.ResponseJson = string.IsNullOrWhiteSpace(request.ResponseJson) ? "{}" : request.ResponseJson;
+        intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, string.IsNullOrWhiteSpace(request.ResponseJson) ? "{}" : request.ResponseJson);
         if (request.StructuredData is not null)
         {
             intake.StructuredDataJson = structuredDataJson;
@@ -359,7 +365,11 @@ public static class IntakeAccessEndpoints
         intake.ModifiedByUserId = Guid.Empty;
         intake.SyncState = SyncState.Pending;
 
-        await db.SaveChangesAsync(cancellationToken);
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Results.Conflict(new { error = "This intake changed in another session. Reload it before continuing." });
+        }
         await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, cancellationToken);
         return Results.Ok(IntakeEndpoints.ToResponse(intake));
     }
@@ -372,7 +382,8 @@ public static class IntakeAccessEndpoints
         [FromServices] IContactNormalizer contactNormalizer,
         [FromServices] IAuditService auditService,
         [FromServices] ISyncEngine syncEngine,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        [FromBody] SubmitIntakeRequest? request = null)
     {
         var intake = await db.IntakeForms
             .Include(form => form.Patient)
@@ -393,6 +404,9 @@ public static class IntakeAccessEndpoints
         {
             return Results.Conflict(new { error = "Intake is already locked." });
         }
+
+        if (await IntakeEncounterRules.ValidateWriteAsync(db, intake, request?.ExpectedLastModifiedUtc, cancellationToken) is { } encounterProblem)
+            return Results.Conflict(new { error = encounterProblem });
 
         if (!IntakeEndpoints.TryNormalizeConsents(
                 intake.Consents,
@@ -417,9 +431,14 @@ public static class IntakeAccessEndpoints
             intake.PatientId,
             intake.SubmittedAt.Value,
             intake.LastModifiedUtc);
+        intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, intake.ResponseJson);
         IntakeEndpoints.ApplySubmittedIntakePatientFields(intake);
 
-        await db.SaveChangesAsync(cancellationToken);
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Results.Conflict(new { error = "This intake changed in another session. Reload it before continuing." });
+        }
         await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, cancellationToken);
 
         await auditService.LogIntakeEventAsync(
@@ -444,6 +463,11 @@ public static class IntakeAccessEndpoints
         }
 
         if (scope.PatientId.HasValue && scope.PatientId.Value != intake.PatientId)
+        {
+            return Results.Forbid();
+        }
+
+        if (!scope.IntakeId.HasValue && intake.EncounterNoteId.HasValue)
         {
             return Results.Forbid();
         }

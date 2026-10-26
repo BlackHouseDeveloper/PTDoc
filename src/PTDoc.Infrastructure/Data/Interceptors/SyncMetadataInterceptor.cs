@@ -47,6 +47,15 @@ public class SyncMetadataInterceptor : SaveChangesInterceptor
 
         foreach (var entry in entries)
         {
+            // A sync acknowledgement is not a new answer version. Encounter intake
+            // clients use this timestamp for optimistic concurrency across wizard steps.
+            if (entry.State == EntityState.Modified && entry.Entity is IntakeForm { EncounterNoteId: not null }
+                && entry.Properties.Where(property => property.IsModified)
+                    .All(property => property.Metadata.Name == nameof(ISyncTrackedEntity.SyncState)))
+            {
+                continue;
+            }
+
             // Always update LastModifiedUtc and ModifiedByUserId
             entry.Entity.LastModifiedUtc = now;
             entry.Entity.ModifiedByUserId = currentUserId;

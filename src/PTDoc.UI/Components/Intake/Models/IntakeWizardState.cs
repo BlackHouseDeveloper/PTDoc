@@ -12,6 +12,11 @@ public sealed class IntakeWizardState
     public DateTime? ProfilePrefillSourceModifiedUtc { get; set; }
     public Guid? IntakeId { get; set; }
     public Guid? PatientId { get; set; }
+
+    public Guid? EncounterNoteId { get; set; }
+    public string? QuestionnaireDefinitionId { get; set; }
+    public bool EncounterIsReEvaluation { get; set; }
+
     public IntakeStep CurrentStep { get; set; } = IntakeStep.Demographics;
     public bool IsPatientMode { get; set; }
     public IntakeConsentPacket? ConsentPacket { get; set; }

@@ -50,7 +50,7 @@
                             @ref="firstInputRef"
                             required
                             aria-required="true"
-                            disabled="@(_isBusy || AvailablePatients.Count == 0)">
+                            disabled="@(_isBusy || AvailablePatients.Count == 0 || EncounterNoteId.HasValue)">
                             <option value="">Select a patient</option>
                             @foreach (var patient in AvailablePatients)
                             {
@@ -186,6 +186,7 @@
     [Parameter] public EventCallback<IntakeFormData> OnSubmit { get; set; }
     [Parameter] public List<PatientOption> AvailablePatients { get; set; } = new();
     [Parameter] public string? InitialPatientId { get; set; }
+    [Parameter] public Guid? EncounterNoteId { get; set; }
     [Parameter] public string? SuccessMessage { get; set; }
     [Parameter] public string? FailureHeading { get; set; }
 
@@ -324,6 +325,7 @@
                 var ensureResult = await IntakeService.EnsureDraftAsync(patientId, new IntakeResponseDraft
                 {
                     PatientId = patientId,
+                    EncounterNoteId = EncounterNoteId,
                     EmailAddress = string.IsNullOrWhiteSpace(Email) ? null : Email,
                     PhoneNumber = string.IsNullOrWhiteSpace(PhoneNumber) ? null : PhoneNumber,
                     AllowEmailMessages = !string.IsNullOrWhiteSpace(Email),
@@ -531,6 +533,7 @@
         var ensuredDraft = await IntakeService.EnsureDraftAsync(patientId, new IntakeResponseDraft
         {
             PatientId = patientId,
+                    EncounterNoteId = EncounterNoteId,
             EmailAddress = string.IsNullOrWhiteSpace(Email) ? null : Email,
             PhoneNumber = string.IsNullOrWhiteSpace(PhoneNumber) ? null : PhoneNumber,
             AllowEmailMessages = !string.IsNullOrWhiteSpace(Email),
