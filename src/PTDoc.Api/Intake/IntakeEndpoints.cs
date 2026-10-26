@@ -460,7 +460,7 @@ public static class IntakeEndpoints
                 { nameof(request.TemplateVersion), ["TemplateVersion must not exceed 50 characters."] }
             });
 
-        intake.TemplateVersion = templateVersion;
+        // Preserve the issued template version; ordinary answer updates are not a schema migration.
         intake.LastModifiedUtc = DateTime.UtcNow;
         intake.ModifiedByUserId = identityContext.GetCurrentUserId();
         intake.SyncState = SyncState.Pending;

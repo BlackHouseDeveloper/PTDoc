@@ -222,10 +222,20 @@ public static class IntakeAccessEndpoints
         [FromServices] IContactNormalizer contactNormalizer,
         CancellationToken cancellationToken)
     {
+        if (!TryReadAccessScope(httpContext, inviteOptions.Value, out var scope))
+        {
+            return Results.Unauthorized();
+        }
+        if (scope.PatientId.HasValue && scope.PatientId.Value != patientId)
+        {
+            return Results.Forbid();
+        }
+
         var intake = await db.IntakeForms
             .AsNoTracking()
             .Include(form => form.Patient)
-            .Where(form => form.PatientId == patientId && !form.IsLocked)
+            .Where(form => form.PatientId == patientId && !form.IsLocked
+                && (!scope.IntakeId.HasValue || form.Id == scope.IntakeId.Value))
             .OrderByDescending(form => form.LastModifiedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -251,10 +261,20 @@ public static class IntakeAccessEndpoints
         [FromServices] IContactNormalizer contactNormalizer,
         CancellationToken cancellationToken)
     {
+        if (!TryReadAccessScope(httpContext, inviteOptions.Value, out var scope))
+        {
+            return Results.Unauthorized();
+        }
+        if (scope.PatientId.HasValue && scope.PatientId.Value != patientId)
+        {
+            return Results.Forbid();
+        }
+
         var intake = await db.IntakeForms
             .AsNoTracking()
             .Include(form => form.Patient)
-            .Where(form => form.PatientId == patientId)
+            .Where(form => form.PatientId == patientId
+                && (!scope.IntakeId.HasValue || form.Id == scope.IntakeId.Value))
             .OrderByDescending(form => form.SubmittedAt ?? form.LastModifiedUtc)
             .ThenByDescending(form => form.LastModifiedUtc)
             .ThenByDescending(form => form.Id)
@@ -348,7 +368,7 @@ public static class IntakeAccessEndpoints
             intake.StructuredDataJson = structuredDataJson;
         }
 
-        intake.TemplateVersion = string.IsNullOrWhiteSpace(request.TemplateVersion) ? intake.TemplateVersion : request.TemplateVersion;
+        // The issued template version belongs to this intake; answer updates cannot migrate it.
         intake.LastModifiedUtc = DateTime.UtcNow;
         intake.ModifiedByUserId = Guid.Empty;
         intake.SyncState = SyncState.Pending;
