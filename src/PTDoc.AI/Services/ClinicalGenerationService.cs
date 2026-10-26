@@ -333,6 +333,7 @@ public sealed class ClinicalGenerationService : IAiClinicalGenerationService
             {
                 Diagnosis = _promptBuilder.SanitizeInput(request.Diagnosis),
                 FunctionalLimitations = _promptBuilder.SanitizeInput(request.FunctionalLimitations),
+                PatientPersonalGoals = request.PatientPersonalGoals is null ? null : _promptBuilder.SanitizeInput(request.PatientPersonalGoals),
                 PriorLevelOfFunction = request.PriorLevelOfFunction is not null ? _promptBuilder.SanitizeInput(request.PriorLevelOfFunction) : null,
                 ShortTermGoals = request.ShortTermGoals is not null ? _promptBuilder.SanitizeInput(request.ShortTermGoals) : null,
                 LongTermGoals = request.LongTermGoals is not null ? _promptBuilder.SanitizeInput(request.LongTermGoals) : null,

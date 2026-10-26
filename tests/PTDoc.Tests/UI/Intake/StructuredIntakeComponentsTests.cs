@@ -31,6 +31,24 @@ public sealed class StructuredIntakeComponentsTests : TestContext
     }
 
     [Fact]
+    public void PersonalGoal_FollowsLimitationsAndAppearsInReview()
+    {
+        const string goal = "Walk my dog & enjoy the park.";
+        var state = new IntakeWizardState(); var changes = 0;
+        var cut = RenderComponent<FunctionalLimitationsCard>(p => p.Add(c => c.State, state)
+            .Add(c => c.StateChanged, EventCallback.Factory.Create(this, () => changes++)));
+        Assert.True(cut.Markup.IndexOf("intake-functional-limitations", StringComparison.Ordinal) < cut.Markup.IndexOf("intake-personal-goal", StringComparison.Ordinal));
+        var input = cut.Find("#intake-personal-goal");
+        Assert.Equal("2000", input.GetAttribute("maxlength"));
+        Assert.Equal("intake-personal-goal-help", input.GetAttribute("aria-describedby"));
+        input.Input(goal);
+        Assert.Equal(goal, state.StructuredData!.Subjective.PatientPersonalGoals);
+        Assert.True(state.IsDirty); Assert.Equal(1, changes);
+        var review = RenderComponent<ReviewStep>(p => p.Add(c => c.State, state));
+        Assert.Contains(goal, review.Find("[data-testid='review-personal-goal']").TextContent);
+    }
+
+    [Fact]
     public void MedicalHistoryCard_RendersStructuredSelections()
     {
         var state = new IntakeWizardState

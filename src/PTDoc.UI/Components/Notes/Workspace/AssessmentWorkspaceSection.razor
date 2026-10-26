@@ -602,6 +602,7 @@
                 NoteId = NoteId,
                 Diagnosis = BuildDiagnosisSummary(),
                 FunctionalLimitations = BuildFunctionalLimitationsSummary(),
+                PatientPersonalGoals = Vm.PatientPersonalGoals,
                 ShortTermGoals = string.Join("; ", Vm.Goals.Where(goal => goal.IsAccepted || !goal.IsAiSuggested).Select(goal => goal.Description)),
                 LongTermGoals = string.Join("; ", Vm.Goals.Where(goal => goal.IsAccepted || !goal.IsAiSuggested).Select(goal => goal.Description)),
                 IsNoteSigned = IsReadOnly
