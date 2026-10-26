@@ -1,4 +1,9 @@
-<section class="pain-description-card" aria-labelledby="pain-description-title" data-testid="pain-description-card">
-    <h2 id="pain-description-title">Where is your pain?</h2>
-    <p>Tap on the body diagram to select areas where you experience pain or discomfort:</p>
+@using PTDoc.UI.Components.Intake.Models
+<section class="pain-description-card" aria-labelledby="intake-section-PainAreas" data-testid="pain-description-card">
+    <IntakeSectionHeading Section="IntakeReviewTarget.PainAreas" FocusRequested="@FocusRequested">Where is your pain?</IntakeSectionHeading>
+    <p>Select each area that hurts. Use Front View or Back View to see the other side.</p>
 </section>
+
+@code {
+    [Parameter] public bool FocusRequested { get; set; }
+}

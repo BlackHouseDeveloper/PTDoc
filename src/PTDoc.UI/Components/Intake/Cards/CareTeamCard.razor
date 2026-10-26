@@ -1,9 +1,10 @@
+@using PTDoc.UI.Components.Intake.Models
 @using PTDoc.Application.Providers
 @using PTDoc.Core.Models
 @inject IProviderDirectoryService ProviderDirectory
 
 <section class="intake-card">
-    <h2>Care Team</h2>
+    <IntakeSectionHeading Section="IntakeReviewTarget.CareTeam" FocusRequested="@FocusRequested">Care Team</IntakeSectionHeading>
     <p class="intake-card__subtext">List the doctors involved in your care, if known.</p>
 
     <div class="intake-card__form-grid">
@@ -62,6 +63,8 @@
 </section>
 
 @code {
+    [Parameter] public bool FocusRequested { get; set; }
+
     [Parameter] public string? PrimaryDoctorName { get; set; }
     [Parameter] public string? PrimaryDoctorPhone { get; set; }
     [Parameter] public string? ReferringDoctorName { get; set; }

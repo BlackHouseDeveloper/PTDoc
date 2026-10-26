@@ -8,19 +8,19 @@
     <div class="pain-assessment-step2__hero">
         <div>
             <h2>Medical History / Pain Assessment</h2>
-            <p>Confirm the patient’s health history and map the affected regions before moving into detailed pain capture.</p>
+            <p>Show where you hurt and tell us about your health history.</p>
         </div>
     </div>
 
     <section class="pain-assessment-step2__panel">
-        <PainDescriptionCard />
+        <PainDescriptionCard FocusRequested="@(FocusTarget == IntakeReviewTarget.PainAreas)" />
 
         <BodyViewToggle Value="@_view" ValueChanged="OnBodyViewChangedAsync" OnResetRequested="ResetSelectionAsync" />
 
         <BodySvgSelector View="@_view" SelectedRegions="@_selectedRegions" SelectedRegionsChanged="OnSelectedRegionsChangedAsync" />
     </section>
 
-    <MedicalHistoryCard State="@State" StateChanged="HandleMedicalHistoryChangedAsync" />
+    <MedicalHistoryCard FocusRequested="@(FocusTarget == IntakeReviewTarget.MedicalHistory)" State="@State" StateChanged="HandleMedicalHistoryChangedAsync" />
 
     <FunctionalLimitationsCard State="@State" StateChanged="HandleFunctionalLimitationsChangedAsync" />
 
@@ -34,6 +34,8 @@
 </section>
 
 @code {
+    [Parameter] public IntakeReviewTarget? FocusTarget { get; set; }
+
     [Parameter, EditorRequired] public IntakeWizardState State { get; set; } = new();
     [Parameter] public EventCallback OnBack { get; set; }
     [Parameter] public EventCallback OnContinue { get; set; }
