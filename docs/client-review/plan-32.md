@@ -6,13 +6,13 @@
 - Original plan status: Ready for Development
 - Branch: `codex/plan-32-progress-discharge-ai`
 - Base: `codex/plan-28-soap-generation`
-- Expected GitHub number: #186; actual: assigned by GitHub at publication
+- Expected GitHub number: #186; actual: [#189](https://github.com/BlackHouseDeveloper/PTDoc/pull/189)
 - [Authoritative plan brief](https://github.com/BlackHouseDeveloper/PTDoc/blob/codex/plan-01-session-verification/docs/client-review/source/implementation-plan.md#pr-32)
 - Inspected main: `6276027251609df64ffbbfa883f66e2d83dd57e4` (2026-10-26); this supersedes the source plan’s earlier repository snapshot.
 
 ## Current evidence and changes
 
-Discharge Generate Full Note and Generate Summary previously called only change notification; all four Discharge operations now invoke their corresponding server purpose. Progress adds NextVisitPlan and routes its SOAP summary through the same contract; Daily next-visit behavior remains unchanged. Generation is blocked for unsaved/readonly contexts, failures preserve manual text, and edits/version/note changes or disposal cancel and reject late responses. Discharge source context includes existing patient-reported outcome/goal status/improvement separately from clinician reason and follow-up; missing future choice vocabulary is not invented. Real-browser disabled-AI checks preserve all four existing fields; manual typing retains focus and saves successfully.
+Discharge Generate Full Note and Generate Summary previously called only change notification; all four Discharge operations now invoke their corresponding server purpose. Progress adds NextVisitPlan and routes its SOAP summary through the same contract; Daily next-visit behavior remains unchanged. Generation is blocked for unsaved/readonly contexts, failures preserve manual text, and edits/version/note changes or disposal cancel and reject late responses. Discharge source context includes existing patient-reported outcome/goal status/improvement separately from clinician reason and follow-up; missing future choice vocabulary is not invented. Real-browser disabled-AI checks preserve all four existing fields; manual typing retains focus and saves successfully. Rebased onto the verified Plan 28 foundation CI corrections; the complete dependent-branch regression suite passed again (173 tests).
 
 ## Dependencies, blockers and owners
 
@@ -72,9 +72,10 @@ Wrong-section output or stale responses can contaminate notes; keep context chec
 
 | Command/check | Result |
 | --- | --- |
-| dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~PlanNarrativeFieldTests&#124;FullyQualifiedName~DischargeDocumentationComponentsTests&#124;FullyQualifiedName~DailyTreatmentAiReviewTests&#124;FullyQualifiedName~NoteNarrative&#124;FullyQualifiedName~PlanTabTests&#124;FullyQualifiedName~NoteWorkspacePageTests&#124;FullyQualifiedName~NoteWorkspaceV2ServiceTests&#124;FullyQualifiedName~NoteWorkspacePayloadMapperTests&#124;FullyQualifiedName~EditableNarrativeBoxTests' --verbosity minimal | 173 passed, 0 failed, 0 skipped on complete Plan 28→32 branch after the foundation acceptance correction. |
+| dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~PlanNarrativeFieldTests&#124;FullyQualifiedName~DischargeDocumentationComponentsTests&#124;FullyQualifiedName~DailyTreatmentAiReviewTests&#124;FullyQualifiedName~NoteNarrative&#124;FullyQualifiedName~PlanTabTests&#124;FullyQualifiedName~NoteWorkspacePageTests&#124;FullyQualifiedName~NoteWorkspaceV2ServiceTests&#124;FullyQualifiedName~NoteWorkspacePayloadMapperTests&#124;FullyQualifiedName~EditableNarrativeBoxTests' --verbosity minimal | PASS: 173 passed, 0 failed, 0 skipped on the complete rebased Plan 28 → 32 branch, including the foundation CI corrections. |
 | Synthetic browser Discharge four-action disabled-AI check, manual save, keyboard focus and 390/768/1440 widths | PASS: all four manual values retained, typing focus preserved, edited recommendation persisted, no horizontal overflow. |
 | python3 workflow.py check 32; git diff --check; git diff codex/plan-28-soap-generation --stat | PASS traceability, links and whitespace; incremental diff contains only Plan 32 changes. |
+| dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity minimal | PASS: complete test-project CI formatter after initializer whitespace correction; source tokens unchanged. |
 
 ## Remaining acceptance work
 

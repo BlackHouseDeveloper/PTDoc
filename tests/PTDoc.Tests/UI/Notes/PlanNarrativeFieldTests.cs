@@ -24,8 +24,12 @@ public sealed class PlanNarrativeFieldTests : TestContext
     public PlanNarrativeFieldTests() => Services.AddSingleton(_client.Object);
     private NoteNarrativeResult Result(NoteNarrativeRequest r) => new()
     {
-        Success = true, NoteId = r.NoteId, Purpose = r.Purpose, SourceLastModifiedUtc = r.ExpectedLastModifiedUtc,
-        SourceSha256 = "synthetic-source", Sections = [new(r.Purpose, "Reviewed draft", null)]
+        Success = true,
+        NoteId = r.NoteId,
+        Purpose = r.Purpose,
+        SourceLastModifiedUtc = r.ExpectedLastModifiedUtc,
+        SourceSha256 = "synthetic-source",
+        Sections = [new(r.Purpose, "Reviewed draft", null)]
     };
     private IRenderedComponent<PlanNarrativeField> Render(PlanVm vm, NoteNarrativePurpose purpose, Action<PlanVm>? changed = null) =>
         RenderComponent<PlanNarrativeField>(p => p.Add(c => c.Vm, vm).Add(c => c.Purpose, purpose)
@@ -100,7 +104,7 @@ public sealed class PlanNarrativeFieldTests : TestContext
                 "blank" => Task.FromResult(Result(r) with { Sections = [] }),
                 _ => Task.FromResult(new NoteNarrativeResult { Success = false, ErrorMessage = "AI is disabled. Continue editing manually." })
             });
-        var vm = new PlanVm { FollowUpInstructions = "Original" };var cut = Render(vm, NoteNarrativePurpose.NextVisitPlan);
+        var vm = new PlanVm { FollowUpInstructions = "Original" }; var cut = Render(vm, NoteNarrativePurpose.NextVisitPlan);
         cut.Find("button").Click(); Assert.Equal("Original", vm.FollowUpInstructions);
         Assert.Single(cut.FindAll("[role='alert']")); Assert.False(cut.Find("button").HasAttribute("disabled"));
         cut.Find("textarea").Input("Still editable"); Assert.Equal("Still editable", vm.FollowUpInstructions);
@@ -110,8 +114,8 @@ public sealed class PlanNarrativeFieldTests : TestContext
     public void PendingReview_IsInvalidatedWhenNoteChanges()
     {
         _client.Setup(c => c.GenerateAsync(It.IsAny<NoteNarrativeRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync((NoteNarrativeRequest r, CancellationToken _) => Result(r));
-        var vm = new PlanVm { FollowUpInstructions = "Original" };var cut = Render(vm, NoteNarrativePurpose.NextVisitPlan);
-        cut.Find("button").Click();cut.SetParametersAndRender(p => p.Add(c => c.HasUnsavedChanges, true));
+        var vm = new PlanVm { FollowUpInstructions = "Original" }; var cut = Render(vm, NoteNarrativePurpose.NextVisitPlan);
+        cut.Find("button").Click(); cut.SetParametersAndRender(p => p.Add(c => c.HasUnsavedChanges, true));
         Assert.Empty(cut.FindAll("[data-testid='plan-narrative-editor-accept-btn']"));
         Assert.Equal("Original", cut.Find("textarea").GetAttribute("value"));
     }
@@ -119,8 +123,8 @@ public sealed class PlanNarrativeFieldTests : TestContext
     [Fact]
     public void ParentControls_WireAllPurposesAndKeepDailyNextVisitManual()
     {
-        Services.AddSingleton(Mock.Of<IAiClinicalGenerationService>());Services.AddSingleton(Mock.Of<INoteWorkspaceService>());
-        Services.AddSingleton<IToastService, ToastService>();Services.AddLogging();
+        Services.AddSingleton(Mock.Of<IAiClinicalGenerationService>()); Services.AddSingleton(Mock.Of<INoteWorkspaceService>());
+        Services.AddSingleton<IToastService, ToastService>(); Services.AddLogging();
         var discharge = RenderComponent<DischargePlanSection>(p => p.Add(c => c.NoteId, _id).Add(c => c.SourceLastModifiedUtc, _version));
         Assert.Equal(new[] { NoteNarrativePurpose.DischargeRecommendations, NoteNarrativePurpose.DischargeFollowUp, NoteNarrativePurpose.DischargeSummary, NoteNarrativePurpose.SoapSummary }, discharge.FindComponents<PlanNarrativeField>().Select(f => f.Instance.Purpose));
         var progress = RenderComponent<PlanSection>(p => p.Add(c => c.IsProgressNote, true).Add(c => c.NoteId, _id).Add(c => c.SourceLastModifiedUtc, _version));
@@ -133,14 +137,14 @@ public sealed class PlanNarrativeFieldTests : TestContext
     public void DischargeSource_SeparatesPatientReportAndClinicianDecision()
     {
         var p = new NoteWorkspaceV2Payload { NoteType = NoteType.Discharge };
-        p.Discharge.PatientReportedOutcome = "Patient report";p.Discharge.PercentImproved = 0;
-        p.Discharge.GoalsMetStatus = "Patient thinks goals met";p.Discharge.RemainingDifficulty = "Stairs";
-        p.Plan.PrimaryDischargeReason = "Clinician reason";p.Plan.PostDischargeInstructions = "Documented follow-up";
+        p.Discharge.PatientReportedOutcome = "Patient report"; p.Discharge.PercentImproved = 0;
+        p.Discharge.GoalsMetStatus = "Patient thinks goals met"; p.Discharge.RemainingDifficulty = "Stairs";
+        p.Plan.PrimaryDischargeReason = "Clinician reason"; p.Plan.PostDischargeInstructions = "Documented follow-up";
         var subjective = NoteNarrativeContextBuilder.Build(p, NoteNarrativePurpose.SubjectiveSummary);
         Assert.Contains(subjective, s => s.Value == "0" && s.Label.Contains("Patient-reported"));
         Assert.Contains(subjective, s => s.Value == "Patient thinks goals met" && s.Label.Contains("Patient-reported"));
         Assert.DoesNotContain(subjective, s => s.Value == "Clinician reason");
         var plan = NoteNarrativeContextBuilder.Build(p, NoteNarrativePurpose.PlanSummary);
-        Assert.Contains(plan, s => s.Value == "Clinician reason");Assert.Contains(plan, s => s.Value == "Documented follow-up");
+        Assert.Contains(plan, s => s.Value == "Clinician reason"); Assert.Contains(plan, s => s.Value == "Documented follow-up");
     }
 }
