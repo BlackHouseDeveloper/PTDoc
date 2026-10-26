@@ -39,6 +39,11 @@ public sealed class InsurancePolicyApiService(HttpClient httpClient) : IInsuranc
             request,
             ct);
 
+    public Task<InsurancePolicyDto> SaveWorkflowAsync(Guid patientId, Guid? policyId, SaveInsurancePolicyWorkflowRequest request, CancellationToken ct) =>
+        Send<InsurancePolicyDto>(policyId.HasValue ? HttpMethod.Put : HttpMethod.Post,
+            policyId.HasValue ? $"/api/v1/patients/{patientId}/insurance-policies/{policyId}/workflow" : $"/api/v1/patients/{patientId}/insurance-policies/workflow",
+            request, ct);
+
     public async Task ArchivePolicyAsync(Guid patientId, Guid policyId, CancellationToken ct)
     {
         using var response = await httpClient.DeleteAsync($"/api/v1/patients/{patientId}/insurance-policies/{policyId}", ct);

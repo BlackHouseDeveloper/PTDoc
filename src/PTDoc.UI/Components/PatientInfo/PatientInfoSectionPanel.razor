@@ -1,8 +1,9 @@
 @* PatientInfoSectionPanel — reusable card wrapper for each section *@
 
-<div class="pi-section-panel" data-testid="patient-info-section-panel">
+<div class="@(Embedded ? "pi-section-embedded" : "pi-section-panel")" data-testid="patient-info-section-panel">
     <div class="pi-section-panel-header">
-        <h2 class="pi-section-panel-title">@Title</h2>
+        @if (Embedded) { <h3 class="pi-section-panel-title">@Title</h3> }
+        else { <h2 class="pi-section-panel-title">@Title</h2> }
         @if (HeaderActions != null)
         {
             <div class="pi-section-panel-header-actions">
@@ -16,6 +17,7 @@
 </div>
 
 @code {
+    [Parameter] public bool Embedded { get; set; }
     [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
     [Parameter, EditorRequired] public RenderFragment ChildContent { get; set; } = default!;
 

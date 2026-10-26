@@ -63,6 +63,20 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         _factory = factory;
     }
 
+    [Theory]
+    [InlineData(Roles.Patient)]
+    [InlineData(Roles.FrontDesk)]
+    [InlineData(Roles.Billing)]
+    public async Task InsuranceWorkflowSave_DirectUnauthorizedRequestsAreForbidden(string role)
+    {
+        using var client = _factory.CreateClientWithRole(role);
+        var patientId = Guid.NewGuid();
+        using var create = await client.PostAsync($"/api/v1/patients/{patientId}/insurance-policies/workflow", JsonContent(new { policy = new { carrierDisplayName = "Synthetic" } }));
+        using var edit = await client.PutAsync($"/api/v1/patients/{patientId}/insurance-policies/{Guid.NewGuid()}/workflow", JsonContent(new { policy = new { carrierDisplayName = "Synthetic" } }));
+        Assert.Equal(HttpStatusCode.Forbidden, create.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, edit.StatusCode);
+    }
+
     // ── 401 / 403 gate tests ─────────────────────────────────────────────────
 
     [Theory]

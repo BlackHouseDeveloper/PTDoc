@@ -54,6 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - Client review Plan 04
 
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
+### Changed - Client review Plan 14
+
+- Consolidated the patient insurance workflow, keeping policy and authorization/referral records distinct while coordinating one save with version checks. Reused Plan 12 patient concurrency for older payer forms; preserved historical values and unknown JSON.
+
 ### Changed - Client review Plan 12
 
 - Expanded existing patient demographics editing, retained edits on validation/concurrency failure, exposed Add Patient from the chart, and focused note-type choices after Start New Note.

@@ -20,17 +20,19 @@ public static class IntakeDomainProjection
         return UpsertAsync(db, patient, draft, userId, ct);
     }
 
-    public static async Task UpsertPatientRecordAsync(ApplicationDbContext db, Patient patient, string? payerInfoJson, string? referringProviderName, string? referringProviderNpi, Guid userId, CancellationToken ct)
+    public static async Task UpsertPatientRecordAsync(ApplicationDbContext db, Patient patient, string? payerInfoJson, string? referringProviderName, string? referringProviderNpi, Guid userId, CancellationToken ct, string? previousPayerInfoJson = null)
     {
+        var projectionJson = previousPayerInfoJson is null ? payerInfoJson : ChangedPayerFields(previousPayerInfoJson, payerInfoJson);
         IntakeResponseDraft draft;
-        try { draft = JsonSerializer.Deserialize<IntakeResponseDraft>(payerInfoJson ?? "{}", JsonOptions) ?? new(); }
+        try { draft = JsonSerializer.Deserialize<IntakeResponseDraft>(projectionJson ?? "{}", JsonOptions) ?? new(); }
         catch (JsonException) { draft = new(); }
-        HydrateLegacyPayerAliases(draft, payerInfoJson);
+        HydrateLegacyPayerAliases(draft, projectionJson);
         if (!string.IsNullOrWhiteSpace(referringProviderName)) draft.ReferringDoctorName = referringProviderName;
         if (!string.IsNullOrWhiteSpace(referringProviderNpi)) draft.ReferringDoctorNpi = referringProviderNpi;
-        if (string.IsNullOrWhiteSpace(draft.AuthorizationNumber)) draft.AuthorizationNumber = patient.AuthorizationNumber;
+        if (previousPayerInfoJson is null && string.IsNullOrWhiteSpace(draft.AuthorizationNumber)) draft.AuthorizationNumber = patient.AuthorizationNumber;
         await UpsertAsync(db, patient, draft, userId, ct);
-        await UpsertAuthorizationHistoryAsync(db, patient, payerInfoJson, userId, ct);
+        if (previousPayerInfoJson is null) await UpsertAuthorizationHistoryAsync(db, patient, payerInfoJson, userId, ct);
+        else await UpdateAuthorizationHistoryAsync(db, patient, previousPayerInfoJson, payerInfoJson, userId, ct);
     }
 
     public static async Task UpsertAsync(ApplicationDbContext db, Patient patient, IntakeResponseDraft draft, Guid userId, CancellationToken ct)
@@ -144,6 +146,88 @@ public static class IntakeDomainProjection
             }
         }
     }
+
+    private static JsonDocument ReadPreviousPayerObject(string previous)
+    {
+        try
+        {
+            var document = JsonDocument.Parse(previous);
+            if (document.RootElement.ValueKind == JsonValueKind.Object) return document;
+            document.Dispose();
+        }
+        catch (JsonException) { }
+        return JsonDocument.Parse("{}");
+    }
+
+    private static string ChangedPayerFields(string previous, string? current)
+    {
+        using var before = ReadPreviousPayerObject(previous);
+        using var after = JsonDocument.Parse(current ?? "{}");
+        if (before.RootElement.ValueKind != JsonValueKind.Object || after.RootElement.ValueKind != JsonValueKind.Object)
+            throw new ArgumentException("Payer details must be a JSON object.");
+        var previousFields = before.RootElement.EnumerateObject()
+            .GroupBy(property => property.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Last().Value, StringComparer.OrdinalIgnoreCase);
+        var changed = after.RootElement.EnumerateObject()
+            .Where(property => !string.Equals(property.Name, "authorizationReferralHistory", StringComparison.OrdinalIgnoreCase)
+                && (!previousFields.TryGetValue(property.Name, out var old) || old.GetRawText() != property.Value.GetRawText()))
+            .ToDictionary(property => property.Name, property => property.Value);
+        return JsonSerializer.Serialize(changed);
+    }
+
+    private static async Task UpdateAuthorizationHistoryAsync(ApplicationDbContext db, Patient patient, string previous, string? current, Guid userId, CancellationToken ct)
+    {
+        using var before = ReadPreviousPayerObject(previous);
+        using var after = JsonDocument.Parse(current ?? "{}");
+        if (!after.RootElement.TryGetProperty("authorizationReferralHistory", out var history) || history.ValueKind != JsonValueKind.Array) return;
+        var oldRows = before.RootElement.TryGetProperty("authorizationReferralHistory", out var oldHistory) && oldHistory.ValueKind == JsonValueKind.Array
+            ? oldHistory.EnumerateArray().Where(value => value.ValueKind == JsonValueKind.Object).ToList() : [];
+        var policy = db.PatientInsurancePolicies.Local.FirstOrDefault(value => value.PatientId == patient.Id && value.CoveragePriority == InsuranceCoveragePriority.Primary && !value.IsArchived)
+            ?? await db.PatientInsurancePolicies.FirstOrDefaultAsync(value => value.PatientId == patient.Id && value.CoveragePriority == InsuranceCoveragePriority.Primary && !value.IsArchived, ct);
+        if (policy is null) return;
+        foreach (var item in history.EnumerateArray().Where(value => value.ValueKind == JsonValueKind.Object))
+        {
+            var key = GetJson(item, "entryId");
+            var old = oldRows.FirstOrDefault(value => key is not null && GetJson(value, "entryId") == key);
+            if (old.ValueKind == JsonValueKind.Undefined)
+            {
+                old = oldRows.FirstOrDefault(value => SameHistoryValues(value, item));
+                if (old.ValueKind == JsonValueKind.Undefined && oldRows.Any(value => GetJson(value, "entryId") is null))
+                    throw new InvalidOperationException("This older history entry has no stable identifier. Use the policy editor to correct its authorization or referral without duplicating history.");
+            }
+            if (old.ValueKind != JsonValueKind.Undefined && SameHistoryValues(old, item)) continue;
+            var lookup = old.ValueKind == JsonValueKind.Undefined ? item : old;
+            var type = GetJson(lookup, "recordType")?.Contains("referral", StringComparison.OrdinalIgnoreCase) == true ? InsuranceAuthorizationType.Referral : InsuranceAuthorizationType.Authorization;
+            var reference = GetJson(lookup, "referenceNumber");
+            var start = ParseDate(GetJson(lookup, "startDate"));
+            var end = ParseDate(GetJson(lookup, "endDate"));
+            var matches = await db.PatientInsuranceAuthorizations.Where(value => value.PatientId == patient.Id && value.PatientInsurancePolicyId == policy.Id
+                && !value.IsArchived && value.AuthorizationType == type && value.ReferenceNumber == reference && value.StartDate == start && value.EndDate == end).ToListAsync(ct);
+            if (matches.Count > 1) throw new InvalidOperationException("This history entry matches multiple authorizations. Select the specific record in the policy editor.");
+            var entity = matches.SingleOrDefault();
+            var isNew = entity is null;
+            if (entity is null)
+            {
+                entity = new() { PatientInsurancePolicyId = policy.Id, PatientId = patient.Id, ClinicId = patient.ClinicId };
+                db.PatientInsuranceAuthorizations.Add(entity);
+            }
+            bool Changed(string field) => isNew || old.ValueKind == JsonValueKind.Undefined || GetJson(old, field) != GetJson(item, field);
+            if (Changed("recordType")) entity.AuthorizationType = GetJson(item, "recordType")?.Contains("referral", StringComparison.OrdinalIgnoreCase) == true ? InsuranceAuthorizationType.Referral : InsuranceAuthorizationType.Authorization;
+            if (Changed("referenceNumber")) entity.ReferenceNumber = GetJson(item, "referenceNumber");
+            if (Changed("startDate")) entity.StartDate = ParseDate(GetJson(item, "startDate"));
+            if (Changed("endDate")) entity.EndDate = ParseDate(GetJson(item, "endDate"));
+            if (Changed("status") && Enum.TryParse<InsuranceAuthorizationStatus>(GetJson(item, "status"), true, out var status)) entity.Status = status;
+            if (Changed("visitsOrUnitsAuthorized")) entity.AuthorizedUnits = ParseDecimal(GetJson(item, "visitsOrUnitsAuthorized"));
+            if (Changed("notes")) entity.Notes = GetJson(item, "notes");
+            entity.LastModifiedUtc = DateTime.UtcNow;
+            entity.ModifiedByUserId = userId;
+            entity.SyncState = SyncState.Pending;
+        }
+    }
+
+    private static bool SameHistoryValues(JsonElement left, JsonElement right) =>
+        new[] { "recordType", "referenceNumber", "status", "startDate", "endDate", "visitsOrUnitsAuthorized", "notes" }
+            .All(field => GetJson(left, field) == GetJson(right, field));
 
     private static InsurancePayerType ParsePayerType(string value) => value.Trim().ToLowerInvariant() switch { "commercial" => InsurancePayerType.Commercial, "medicare" => InsurancePayerType.Medicare, "medicaid" => InsurancePayerType.Medicaid, "workers' compensation" => InsurancePayerType.WorkersCompensation, "motor vehicle" => InsurancePayerType.MotorVehicle, "liability" => InsurancePayerType.Liability, "self pay" => InsurancePayerType.SelfPay, _ => InsurancePayerType.Other };
     private static void HydrateLegacyPayerAliases(IntakeResponseDraft draft, string? payerInfoJson)
