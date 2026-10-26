@@ -1,6 +1,8 @@
 @* Patient Demographics Card - Editable patient information *@
 @using PTDoc.Application.Services
 @using PTDoc.Application.DTOs
+@using System.Net
+@using System.ComponentModel.DataAnnotations
 @inject IPatientService PatientService
 @inject IToastService ToastService
 
@@ -10,6 +12,7 @@
         <button type="button" 
                 class="patient-demographics-card-edit-btn @(isEditing ? "editing" : "")" 
                 @onclick="ToggleEdit"
+                disabled="@isSaving"
                 aria-label="@(isEditing ? "Cancel editing" : "Edit patient information")">
             @if (isEditing)
             {
@@ -48,6 +51,40 @@
                     <div class="patient-demographics-value-display">@Patient.Email</div>
                 </div>
             </div>
+            <div class="patient-demographics-fields">
+                <div class="patient-demographics-field">
+                    <span class="patient-demographics-label">Phone Number</span>
+                    <div class="patient-demographics-value-display">@Patient.PhoneNumber</div>
+                </div>
+                <div class="patient-demographics-field">
+                    <span class="patient-demographics-label">Address Line 1</span>
+                    <div class="patient-demographics-value-display">@Patient.AddressLine1</div>
+                </div>
+                <div class="patient-demographics-field">
+                    <span class="patient-demographics-label">Address Line 2</span>
+                    <div class="patient-demographics-value-display">@Patient.AddressLine2</div>
+                </div>
+                <div class="patient-demographics-field">
+                    <span class="patient-demographics-label">City</span>
+                    <div class="patient-demographics-value-display">@Patient.City</div>
+                </div>
+                <div class="patient-demographics-field">
+                    <span class="patient-demographics-label">State / Province</span>
+                    <div class="patient-demographics-value-display">@Patient.State</div>
+                </div>
+                <div class="patient-demographics-field">
+                    <span class="patient-demographics-label">Postal Code</span>
+                    <div class="patient-demographics-value-display">@Patient.ZipCode</div>
+                </div>
+                <div class="patient-demographics-field">
+                    <span class="patient-demographics-label">Emergency Contact Name</span>
+                    <div class="patient-demographics-value-display">@Patient.EmergencyContactName</div>
+                </div>
+                <div class="patient-demographics-field">
+                    <span class="patient-demographics-label">Emergency Contact Phone</span>
+                    <div class="patient-demographics-value-display">@Patient.EmergencyContactPhone</div>
+                </div>
+            </div>
         }
         else
         {
@@ -55,19 +92,58 @@
             <div class="patient-demographics-fields">
                 <div class="patient-demographics-field">
                     <label class="patient-demographics-label" for="edit-name">Full Name</label>
-                    <input id="edit-name" type="text" class="patient-demographics-input" @bind="editName" />
+                    <input id="edit-name" type="text" class="patient-demographics-input" @bind="editName" disabled="@isSaving" />
                 </div>
                 <div class="patient-demographics-field">
                     <label class="patient-demographics-label" for="edit-dob">Date of Birth</label>
-                    <input id="edit-dob" type="text" class="patient-demographics-input" @bind="editDateOfBirth" />
+                    <input id="edit-dob" type="text" class="patient-demographics-input" @bind="editDateOfBirth" disabled="@isSaving" />
                 </div>
             </div>
             <div class="patient-demographics-fields">
                 <div class="patient-demographics-field patient-demographics-field-full">
                     <label class="patient-demographics-label" for="edit-email">Email Address</label>
-                    <input id="edit-email" type="email" class="patient-demographics-input" @bind="editEmail" />
+                    <input id="edit-email" type="email" class="patient-demographics-input" @bind="editEmail" maxlength="255" disabled="@isSaving" />
                 </div>
             </div>
+
+            <div class="patient-demographics-fields">
+                <div class="patient-demographics-field">
+                    <label class="patient-demographics-label" for="edit-phone">Phone Number</label>
+                    <input id="edit-phone" type="tel" maxlength="20" class="patient-demographics-input" @bind="editPhoneNumber" disabled="@isSaving" />
+                </div>
+                <div class="patient-demographics-field">
+                    <label class="patient-demographics-label" for="edit-address1">Address Line 1</label>
+                    <input id="edit-address1" type="text" maxlength="200" class="patient-demographics-input" @bind="editAddressLine1" disabled="@isSaving" />
+                </div>
+                <div class="patient-demographics-field">
+                    <label class="patient-demographics-label" for="edit-address2">Address Line 2</label>
+                    <input id="edit-address2" type="text" maxlength="200" class="patient-demographics-input" @bind="editAddressLine2" disabled="@isSaving" />
+                </div>
+                <div class="patient-demographics-field">
+                    <label class="patient-demographics-label" for="edit-city">City</label>
+                    <input id="edit-city" type="text" maxlength="100" class="patient-demographics-input" @bind="editCity" disabled="@isSaving" />
+                </div>
+                <div class="patient-demographics-field">
+                    <label class="patient-demographics-label" for="edit-state">State / Province</label>
+                    <input id="edit-state" type="text" maxlength="100" class="patient-demographics-input" @bind="editState" disabled="@isSaving" />
+                </div>
+                <div class="patient-demographics-field">
+                    <label class="patient-demographics-label" for="edit-postal">Postal Code</label>
+                    <input id="edit-postal" type="text" maxlength="20" class="patient-demographics-input" @bind="editZipCode" disabled="@isSaving" />
+                </div>
+                <div class="patient-demographics-field">
+                    <label class="patient-demographics-label" for="edit-emergency-name">Emergency Contact Name</label>
+                    <input id="edit-emergency-name" type="text" maxlength="200" class="patient-demographics-input" @bind="editEmergencyContactName" disabled="@isSaving" />
+                </div>
+                <div class="patient-demographics-field">
+                    <label class="patient-demographics-label" for="edit-emergency-phone">Emergency Contact Phone</label>
+                    <input id="edit-emergency-phone" type="tel" maxlength="20" class="patient-demographics-input" @bind="editEmergencyContactPhone" disabled="@isSaving" />
+                </div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(saveError))
+            {
+                <p role="alert">@saveError</p>
+            }
 
             <div class="patient-demographics-edit-actions">
                 <button type="button" class="patient-demographics-save-btn" @onclick="HandleSave" disabled="@isSaving">
@@ -110,9 +186,22 @@
     private string editName = string.Empty;
     private string editDateOfBirth = string.Empty;
     private string editEmail = string.Empty;
+    private string? saveError;
+    private DateTime? editVersion;
+    private string editPhoneNumber = string.Empty;
+    private string editAddressLine1 = string.Empty;
+    private string editAddressLine2 = string.Empty;
+    private string editCity = string.Empty;
+    private string editState = string.Empty;
+    private string editZipCode = string.Empty;
+    private string editEmergencyContactName = string.Empty;
+    private string editEmergencyContactPhone = string.Empty;
+
 
     private void ToggleEdit()
     {
+        if (isSaving) return;
+        saveError = null;
         if (isEditing)
         {
             // Cancel - reset values
@@ -124,6 +213,16 @@
             editName = Patient.DisplayName;
             editDateOfBirth = Patient.DateOfBirth ?? string.Empty;
             editEmail = Patient.Email ?? string.Empty;
+            editVersion = Patient.LastModifiedUtc;
+            editPhoneNumber = Patient.PhoneNumber ?? string.Empty;
+            editAddressLine1 = Patient.AddressLine1 ?? string.Empty;
+            editAddressLine2 = Patient.AddressLine2 ?? string.Empty;
+            editCity = Patient.City ?? string.Empty;
+            editState = Patient.State ?? string.Empty;
+            editZipCode = Patient.ZipCode ?? string.Empty;
+            editEmergencyContactName = Patient.EmergencyContactName ?? string.Empty;
+            editEmergencyContactPhone = Patient.EmergencyContactPhone ?? string.Empty;
+
             isEditing = true;
         }
     }
@@ -141,27 +240,52 @@
             return;
         }
 
+        if (isSaving) return;
+        saveError = null;
         if (string.IsNullOrWhiteSpace(editName))
         {
-            ToastService.ShowError("Patient name is required.");
+            saveError = "Patient name is required.";
+            return;
+        }
+
+        var nameParts = editName.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        if (nameParts.Length < 2 || string.IsNullOrWhiteSpace(nameParts[1]))
+        {
+            saveError = "First and last name are required.";
+            return;
+        }
+        if (!DateTime.TryParse(editDateOfBirth, out var dob) || dob == default)
+        {
+            saveError = "Enter a valid date of birth.";
+            return;
+        }
+        if (!string.IsNullOrWhiteSpace(editEmail) && !new EmailAddressAttribute().IsValid(editEmail.Trim()))
+        {
+            saveError = "Enter a valid email address.";
             return;
         }
 
         isSaving = true;
         try
         {
-            var nameParts = editName.Trim().Split(' ', 2);
             var firstName = nameParts[0];
             var lastName = nameParts.Length > 1 ? nameParts[1] : string.Empty;
-
-            DateTime? dob = DateTime.TryParse(editDateOfBirth, out var parsedDob) ? parsedDob : null;
 
             var request = new UpdatePatientRequest
             {
                 FirstName = firstName,
                 LastName = lastName,
                 DateOfBirth = dob,
-                Email = string.IsNullOrWhiteSpace(editEmail) ? null : editEmail
+                ExpectedLastModifiedUtc = editVersion,
+                Email = editEmail.Trim(),
+                Phone = editPhoneNumber.Trim(),
+                AddressLine1 = editAddressLine1.Trim(),
+                AddressLine2 = editAddressLine2.Trim(),
+                City = editCity.Trim(),
+                State = editState.Trim(),
+                ZipCode = editZipCode.Trim(),
+                EmergencyContactName = editEmergencyContactName.Trim(),
+                EmergencyContactPhone = editEmergencyContactPhone.Trim()
             };
 
             var updated = await PatientService.UpdateAsync(patientId, request);
@@ -176,12 +300,24 @@
             }
             else
             {
-                ToastService.ShowError("Patient not found. Please refresh and try again.");
+                saveError = "Patient not found. Your edits are retained; refresh to check the record.";
             }
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
+        {
+            saveError = "Patient information changed since you opened it. Your edits are retained. Copy them before refreshing and reviewing the latest record.";
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+        {
+            saveError = "Review the entered patient details. Your edits are retained.";
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            saveError = "You do not have permission to update this patient. Your edits are retained.";
         }
         catch (Exception)
         {
-            ToastService.ShowError("Failed to save patient information. Please try again.");
+            saveError = "Failed to save patient information. Your edits are retained; please try again.";
         }
         finally
         {

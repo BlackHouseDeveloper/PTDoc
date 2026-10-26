@@ -67,6 +67,9 @@ public sealed class CreatePatientRequest
 /// <summary>Request DTO for updating an existing patient.</summary>
 public sealed class UpdatePatientRequest
 {
+    /// <summary>The version loaded by an editing client; omitted by legacy clients.</summary>
+    public DateTime? ExpectedLastModifiedUtc { get; set; }
+
     [MaxLength(100)]
     public string? FirstName { get; set; }
 

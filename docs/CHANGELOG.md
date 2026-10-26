@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The native kiosk check-in tests now book separate appointment slots for active and expired staff tokens so both cases can exercise check-in against the shared Linux Core test database.
 - Security Settings opens recovery-code regeneration in the authenticated Web form. On native, older recovery-code links direct users to PTDoc Web.
 
+### Changed - Client review Plan 12
+
+- Expanded existing patient demographics editing, retained edits on validation/concurrency failure, exposed Add Patient from the chart, and focused note-type choices after Start New Note.
+
 ### Changed - Client review Plan 11
 
 - Grouped PHI release authorization, status, contacts and recipients on the intake Review step. Previously recorded revocations appear as read-only history in full and shortened intakes.
