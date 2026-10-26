@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Client review Plan 12
+
+- Expanded existing patient demographics editing, retained edits on validation/concurrency failure, exposed Add Patient from the chart, and focused note-type choices after Start New Note.
+
 ### Changed - Client review Plan 11
 
 - Grouped PHI release authorization, status, contacts and recipients on the intake Review step. Previously recorded revocations appear as read-only history in full and shortened intakes.
