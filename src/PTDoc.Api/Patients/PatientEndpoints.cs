@@ -316,6 +316,7 @@ public static class PatientEndpoints
         if (request.MedicalRecordNumber is not null)
             patient.MedicalRecordNumber = request.MedicalRecordNumber.Trim();
 
+        var previousPayerInfoJson = patient.PayerInfoJson;
         if (request.PayerInfoJson is not null)
             patient.PayerInfoJson = request.PayerInfoJson;
 
@@ -375,7 +376,22 @@ public static class PatientEndpoints
 
         if (updateIntakeProjection)
         {
-            await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, patient.PayerInfoJson, patient.ReferringPhysician, patient.PhysicianNpi, patient.ModifiedByUserId, cancellationToken);
+            try
+            {
+                await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, patient.PayerInfoJson, patient.ReferringPhysician, patient.PhysicianNpi, patient.ModifiedByUserId, cancellationToken, request.PayerInfoJson is null ? null : previousPayerInfoJson);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Conflict(new { error = ex.Message });
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.UnprocessableEntity(new { error = ex.Message });
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                return Results.UnprocessableEntity(new { error = "Payer details must contain valid JSON." });
+            }
         }
 
         await integrations.QueuePatientSynchronizationAsync(patient.Id, patient.ModifiedByUserId, patient.LastModifiedUtc, cancellationToken);

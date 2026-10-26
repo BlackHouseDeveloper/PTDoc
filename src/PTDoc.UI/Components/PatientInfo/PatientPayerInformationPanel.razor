@@ -158,10 +158,73 @@
                                   HasError="@HasError("effectiveEnd")" />
         </PatientInfoField>
 
+        <PatientInfoField Label="Visit Limit Type" ForId="pi-visit-limit-type" Error="@GetError("visitLimitType")">
+            <PatientInfoSelect Id="pi-visit-limit-type"
+                               Value="@VisitLimits.VisitLimitType"
+                               ValueChanged="@(v => SetLimit(v, f => f.VisitLimitType = v))"
+                               Placeholder="Select limit type"
+                               Options="@VisitLimitTypeOptions"
+                               HasError="@HasError("visitLimitType")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Visit Limit Period" ForId="pi-visit-limit-period" Error="@GetError("visitLimitPeriod")">
+            <PatientInfoSelect Id="pi-visit-limit-period"
+                               Value="@VisitLimits.VisitLimitPeriod"
+                               ValueChanged="@(v => SetLimit(v, f => f.VisitLimitPeriod = v))"
+                               Placeholder="Select limit period"
+                               Options="@VisitLimitPeriodOptions"
+                               HasError="@HasError("visitLimitPeriod")" />
+        </PatientInfoField>
+
+        <PatientInfoField Label="Total Visit Limit" ForId="pi-total-visit-limit" Error="@GetError("totalVisitLimit")">
+            <PatientInfoTextInput Id="pi-total-visit-limit"
+                                  Value="@VisitLimits.TotalVisitLimit"
+                                  ValueChanged="@(v => SetLimit(v, f => f.TotalVisitLimit = v))"
+                                  Placeholder="e.g., 20"
+                                  HasError="@HasError("totalVisitLimit")" />
+        </PatientInfoField>
+
+        <div class="pi-form-grid-spacer" aria-hidden="true"></div>
+
     </PatientInfoFormGrid>
 </PatientInfoSectionPanel>
 
 @code {
+    [Parameter] public UtilizationVm VisitLimits { get; set; } = new();
+    [Parameter] public EventCallback<UtilizationVm> VisitLimitsChanged { get; set; }
+    private async Task SetLimit(string value, Action<UtilizationVm> setter)
+    {
+        var copy = new UtilizationVm
+        {
+            VisitsUsed = VisitLimits.VisitsUsed, VisitsRemaining = VisitLimits.VisitsRemaining,
+            VisitLimitType = VisitLimits.VisitLimitType, VisitLimitPeriod = VisitLimits.VisitLimitPeriod,
+            TotalVisitLimit = VisitLimits.TotalVisitLimit,
+            DateOfFirstVisitUnderAuthorization = VisitLimits.DateOfFirstVisitUnderAuthorization,
+            NotesComments = VisitLimits.NotesComments
+        };
+        setter(copy);
+        await VisitLimitsChanged.InvokeAsync(copy);
+        await OnAnyFieldChanged.InvokeAsync();
+    }
+    private static readonly IReadOnlyList<PatientInfoSelectOptionVm> VisitLimitTypeOptions = new[]
+    {
+        new PatientInfoSelectOptionVm("visits", "Visits"),
+        new PatientInfoSelectOptionVm("units", "Units"),
+        new PatientInfoSelectOptionVm("combined", "Combined visits / units"),
+        new PatientInfoSelectOptionVm("none", "No limit"),
+        new PatientInfoSelectOptionVm("unknown", "Unknown / Verify"),
+    };
+
+    private static readonly IReadOnlyList<PatientInfoSelectOptionVm> VisitLimitPeriodOptions = new[]
+    {
+        new PatientInfoSelectOptionVm("authorization_period", "Authorization period"),
+        new PatientInfoSelectOptionVm("calendar_year", "Calendar year"),
+        new PatientInfoSelectOptionVm("plan_year", "Plan year"),
+        new PatientInfoSelectOptionVm("episode", "Episode of care"),
+        new PatientInfoSelectOptionVm("lifetime", "Lifetime"),
+    };
+
+
     [Parameter, EditorRequired] public PatientPayerInfoVm Model { get; set; } = null!;
     [Parameter] public EventCallback<PatientPayerInfoVm> ModelChanged { get; set; }
     [Parameter] public IReadOnlyList<PatientInfoSelectOptionVm> ProviderTypeOptions { get; set; } = Array.Empty<PatientInfoSelectOptionVm>();

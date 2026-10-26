@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Client review Plan 14
+
+- Consolidated the patient insurance workflow, keeping policy and authorization/referral records distinct while coordinating one save with version checks. Reused Plan 12 patient concurrency for older payer forms; preserved historical values and unknown JSON.
+
 ### Fixed - MAUI navigation to shared pages
 
 - Native sign-out clears the staff login, the saved patient intake session and the invitation remembered by the WebView. Staff sign-in returns to the requested chart. Patients denied access to the clinical dashboard can open their home exercise program or sign out from the access-denied page.

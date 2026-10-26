@@ -320,6 +320,8 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.CarrierDisplayName).HasMaxLength(200);
             entity.Property(e => e.MemberOrPolicyNumber).HasMaxLength(100);
             entity.Property(e => e.GroupNumber).HasMaxLength(100);
+            entity.Property(e => e.TotalVisitLimit).HasPrecision(18, 2);
+            entity.Property(e => e.VisitLimitType).HasMaxLength(20);
             entity.Property(e => e.DeductibleAmount).HasPrecision(18, 2);
             entity.Property(e => e.DeductibleMet).HasPrecision(18, 2);
             entity.Property(e => e.OutOfPocketMaximum).HasPrecision(18, 2);

@@ -1,7 +1,7 @@
 @* AuthorizationReferralHistoryPanel — editable authorization/referral history rows *@
 @using PTDoc.UI.Components.PatientInfo.Models
 
-<PatientInfoSectionPanel Title="Authorization / PCP Referral History">
+<PatientInfoSectionPanel Embedded="@Embedded" Title="Authorization / PCP Referral History">
     <ChildContent>
         <div class="pi-history-toolbar">
             <button type="button" class="pi-history-add" @onclick="AddHistoryEntry">Add history entry</button>
@@ -94,6 +94,7 @@
 </PatientInfoSectionPanel>
 
 @code {
+    [Parameter] public bool Embedded { get; set; }
     [Parameter, EditorRequired] public List<AuthorizationReferralHistoryEntryVm> Model { get; set; } = new();
     [Parameter] public EventCallback<List<AuthorizationReferralHistoryEntryVm>> ModelChanged { get; set; }
     [Parameter] public Dictionary<string, string> FieldErrors { get; set; } = new();

@@ -16,6 +16,8 @@ public sealed class InsurancePolicyDto
     public DateTime? EffectiveStartDate { get; set; }
     public DateTime? EffectiveEndDate { get; set; }
     public InsurancePlanYearType PlanYearType { get; set; }
+    public decimal? TotalVisitLimit { get; set; }
+    public string? VisitLimitType { get; set; }
     public decimal? DeductibleAmount { get; set; }
     public decimal? DeductibleMet { get; set; }
     public decimal? OutOfPocketMaximum { get; set; }
@@ -93,6 +95,21 @@ public sealed class UpsertInsuranceAuthorizationRequest
     public DateTime? ExpectedLastModifiedUtc { get; set; }
 }
 
+/// <summary>Saves one policy and only its explicitly edited authorization/referral records atomically.</summary>
+public sealed class SaveInsurancePolicyWorkflowRequest
+{
+    public UpsertInsurancePolicyRequest Policy { get; set; } = new();
+    [Range(0, double.MaxValue)] public decimal? TotalVisitLimit { get; set; }
+    [MaxLength(20)] public string? VisitLimitType { get; set; }
+    public List<InsuranceAuthorizationEdit> Authorizations { get; set; } = [];
+}
+
+public sealed class InsuranceAuthorizationEdit
+{
+    public Guid? Id { get; set; }
+    public UpsertInsuranceAuthorizationRequest Values { get; set; } = new();
+}
+
 public sealed record PayerBackfillReport(int PatientsScanned, int PoliciesCreated, int AuthorizationsCreated, int ProviderCandidatesCreated, IReadOnlyList<Guid> AmbiguousPatientIds, IReadOnlyList<Guid> MalformedPatientIds);
 
 public interface IInsurancePolicyService
@@ -100,6 +117,7 @@ public interface IInsurancePolicyService
     Task<IReadOnlyList<InsurancePolicyDto>> ListAsync(Guid patientId, CancellationToken cancellationToken);
     Task<IReadOnlyList<InsurancePolicyDto>> ListAsync(Guid patientId, bool includeArchived, CancellationToken cancellationToken);
     Task<InsurancePolicyDto> UpsertPolicyAsync(Guid patientId, Guid? policyId, UpsertInsurancePolicyRequest request, CancellationToken cancellationToken);
+    Task<InsurancePolicyDto> SaveWorkflowAsync(Guid patientId, Guid? policyId, SaveInsurancePolicyWorkflowRequest request, CancellationToken cancellationToken);
     Task ArchivePolicyAsync(Guid patientId, Guid policyId, CancellationToken cancellationToken);
     Task ReorderAsync(Guid patientId, IReadOnlyDictionary<Guid, InsuranceCoveragePriority> priorities, CancellationToken cancellationToken);
     Task<InsuranceAuthorizationDto> UpsertAuthorizationAsync(Guid patientId, Guid policyId, Guid? authorizationId, UpsertInsuranceAuthorizationRequest request, CancellationToken cancellationToken);
