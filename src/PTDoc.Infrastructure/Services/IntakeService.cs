@@ -97,21 +97,29 @@ public sealed class IntakeService : IIntakeService
         // A new encounter starts with profile facts only, never earlier symptom answers or consents.
         var draft = new IntakeResponseDraft
         {
-            PatientId = patientId, EncounterNoteId = note.Id,
+            PatientId = patientId,
+            EncounterNoteId = note.Id,
             QuestionnaireDefinitionId = IntakeEncounterRules.EvaluationDefinition,
-            EncounterIsReEvaluation = note.IsReEvaluation, IntakeFlowVersion = 2
+            EncounterIsReEvaluation = note.IsReEvaluation,
+            IntakeFlowVersion = 2
         };
         var profile = await IntakeProfilePrefillReader.ReadAsync(_context, patientId, note.ClinicId, cancellationToken);
         profile?.ApplyTo(draft);
         var intake = new IntakeForm
         {
-            PatientId = patientId, ClinicId = note.ClinicId, EncounterNoteId = note.Id,
+            PatientId = patientId,
+            ClinicId = note.ClinicId,
+            EncounterNoteId = note.Id,
             QuestionnaireDefinitionId = IntakeEncounterRules.EvaluationDefinition,
-            EncounterIsReEvaluation = note.IsReEvaluation, TemplateVersion = "1.0",
-            AccessToken = GenerateAccessTokenPlaceholderHash(), ResponseJson = SerializeDraft(draft),
+            EncounterIsReEvaluation = note.IsReEvaluation,
+            TemplateVersion = "1.0",
+            AccessToken = GenerateAccessTokenPlaceholderHash(),
+            ResponseJson = SerializeDraft(draft),
             StructuredDataJson = SerializeStructuredData(draft.StructuredData),
-            PainMapData = BuildPainMapJson(draft), Consents = BuildConsentsJson(draft),
-            LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = _identityContext.GetCurrentUserId(),
+            PainMapData = BuildPainMapJson(draft),
+            Consents = BuildConsentsJson(draft),
+            LastModifiedUtc = DateTime.UtcNow,
+            ModifiedByUserId = _identityContext.GetCurrentUserId(),
             SyncState = SyncState.Pending
         };
         _context.IntakeForms.Add(intake);

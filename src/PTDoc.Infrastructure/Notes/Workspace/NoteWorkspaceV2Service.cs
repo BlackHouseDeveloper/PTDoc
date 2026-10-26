@@ -79,7 +79,9 @@ public sealed class NoteWorkspaceV2Service(
             form.QuestionnaireDefinitionId == IntakeQuestionnaireDefinitions.EvaluationFullV1, cancellationToken);
         return intake is null || !IntakeEncounterRules.HasSupportedResponseVersion(intake, intake.ResponseJson) ? null : new NoteWorkspaceV2EvaluationSeedResponse
         {
-            PatientId = patientId, SourceIntakeId = intake.Id, FromLockedSubmittedIntake = true,
+            PatientId = patientId,
+            SourceIntakeId = intake.Id,
+            FromLockedSubmittedIntake = true,
             Payload = BuildEvaluationSeedPayload(intake, true)
         };
     }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -70,12 +70,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                 name: "QuestionnaireDefinitionId",
                 table: "IntakeForms");
 
-            migrationBuilder.CreateIndex(
-                name: "UX_NoteTemplates_ClinicId_NoteType_Variant_Active",
-                table: "NoteTemplates",
-                columns: new[] { "ClinicId", "NoteType", "Variant" },
-                unique: true,
-                filter: "[IsArchived] = 0");
         }
     }
 }
