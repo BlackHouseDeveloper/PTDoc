@@ -105,7 +105,7 @@ public sealed class InsurancePolicyService(
         if (!policyId.HasValue) db.PatientInsurancePolicies.Add(policy);
         foreach (var (entity, edit) in changes)
         {
-            ApplyAuthorization(entity, edit.Values);
+            ApplyCoverageFields(entity, edit.Values);
             if (!edit.Id.HasValue) policy.Authorizations.Add(entity);
         }
         db.AuditLogs.Add(AuditService.CreateAuditLog(new AuditEvent
@@ -146,7 +146,8 @@ public sealed class InsurancePolicyService(
             throw new ArgumentException("Authorization units and alert threshold cannot be negative.");
     }
 
-    private void ApplyAuthorization(PatientInsuranceAuthorization authorization, UpsertInsuranceAuthorizationRequest request)
+    // Copies insurance payer-approval fields; this helper does not grant application access.
+    private void ApplyCoverageFields(PatientInsuranceAuthorization authorization, UpsertInsuranceAuthorizationRequest request)
     {
         authorization.AuthorizationType = request.AuthorizationType; authorization.ReferenceNumber = Trim(request.ReferenceNumber); authorization.Status = request.Status;
         authorization.ReceivedDate = request.ReceivedDate; authorization.StartDate = request.StartDate; authorization.EndDate = request.EndDate;
@@ -197,7 +198,7 @@ public sealed class InsurancePolicyService(
             : new PatientInsuranceAuthorization { PatientId = patientId, PatientInsurancePolicyId = policyId, ClinicId = policy.ClinicId };
         if (request.ExpectedLastModifiedUtc.HasValue && authorizationId.HasValue && authorization.LastModifiedUtc != request.ExpectedLastModifiedUtc.Value)
             throw new DbUpdateConcurrencyException("The insurance authorization changed in another session.");
-        ApplyAuthorization(authorization, request);
+        ApplyCoverageFields(authorization, request);
         if (!authorizationId.HasValue) db.PatientInsuranceAuthorizations.Add(authorization);
         await db.SaveChangesAsync(cancellationToken);
         return Map(authorization);
