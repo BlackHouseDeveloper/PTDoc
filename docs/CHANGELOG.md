@@ -55,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
 ### Planning - Client review Plan 01
+### Documentation - Client review publication audit
+
+- Reconciled all 36 plan PRs, five dependency stacks, requirement mappings, verified CI heads and separate merge checkpoints. Recorded provider upgrade/downgrade coverage and the remaining clinical, integration and native-platform acceptance gates.
+
 ### Fixed - Client review Plan 01
 
 - Return an explicit authentication denial for cross-site renewal requests, retaining the no-renewal/no-API-call guard and matching other session denials.

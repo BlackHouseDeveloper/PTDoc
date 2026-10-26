@@ -81,6 +81,7 @@ Auth changes can affect all clients. Validate against #153/#154 first; rollback 
 | dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity minimal | PASS: complete test-project CI formatter. |
 | Task-local documentation/link checks; git diff --check main; native GitHub stack and PR metadata comparison | PASS: all 36 requirement records and actual heads/bases verified; five stack IDs confirmed. Archived plan hard-break formatting normalized. |
 | dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~WebSessionActivityIntegrationTests&#124;FullyQualifiedName~WebLoginEndpointIntegrationTests&#124;FullyQualifiedName~AuthServiceTests&#124;FullyQualifiedName~LogoutSessionClassifierTests&#124;FullyQualifiedName~LocalBearerSecurityTests&#124;FullyQualifiedName~ApiAccessTokenForwardingHandlerTests' --verbosity minimal | PASS 76 after the explicit cross-site Unauthorized response; renewal, expiry and other authentication behavior unchanged. |
+| gh pr checks 156 --repo BlackHouseDeveloper/PTDoc | PASS: all 15 current checks at e4364ada2b4c, including Core CI, CodeQL, provider migrations/smoke tests and release gates. See https://github.com/BlackHouseDeveloper/PTDoc/pull/156/checks. Branch evidence does not establish combined-release acceptance. |
 
 ## Remaining acceptance work
 
