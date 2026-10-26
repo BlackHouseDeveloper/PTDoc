@@ -41,6 +41,9 @@ public class ObjectiveVm
 
 public sealed class ObjectiveMetricRowEntry
 {
+    // Editor-only identity survives cloned render models, including ambiguous duplicate legacy observations.
+    // The workspace mapper deliberately does not persist this as a clinical observation dimension.
+    public Guid EditorRowId { get; set; } = Guid.NewGuid();
     public string? MovementId { get; set; }
     public RomMotionMode? MotionMode { get; set; }
     public string? ReferenceDocumentPath { get; set; }

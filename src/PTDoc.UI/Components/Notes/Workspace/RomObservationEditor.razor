@@ -25,7 +25,7 @@
     }
     @foreach (var row in _rows)
     {
-        <fieldset class="rom-editor__row" data-testid="objective-rom-row">
+        <fieldset class="rom-editor__row" data-testid="objective-rom-row" @key="row.EditorRowId">
             <legend>@row.BodyPart — @row.Name</legend>
             <p class="rom-editor__dimensions">@SideLabel(row) · @(row.MotionMode?.ToString() ?? "Mode not recorded") · Unit: @(row.Unit ?? "not recorded")</p>
             @if (row.MotionMode is null)
@@ -72,11 +72,14 @@
     private Task Update(ObjectiveMetricRowEntry row, Action<ObjectiveMetricRowEntry> change)
     {
         if (IsReadOnly) return Task.CompletedTask;
-        change(row); return RowsChanged.InvokeAsync(Clone(_rows));
+        var current = _rows.SingleOrDefault(candidate => candidate.EditorRowId == row.EditorRowId);
+        if (current is null) return Task.CompletedTask;
+        change(current); return RowsChanged.InvokeAsync(Clone(_rows));
     }
     private Task Remove(ObjectiveMetricRowEntry row)
     {
         if (IsReadOnly) return Task.CompletedTask;
-        _rows.Remove(row); return RowsChanged.InvokeAsync(Clone(_rows));
+        _rows.RemoveAll(candidate => candidate.EditorRowId == row.EditorRowId);
+        return RowsChanged.InvokeAsync(Clone(_rows));
     }
 }

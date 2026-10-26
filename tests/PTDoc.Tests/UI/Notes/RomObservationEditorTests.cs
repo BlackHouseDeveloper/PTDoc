@@ -35,4 +35,31 @@ public sealed class RomObservationEditorTests : TestContext
         Assert.Single(cut.FindAll("[data-testid='objective-rom-row']")); Assert.Contains("Mode not recorded", cut.Markup);
         Assert.All(cut.FindAll("input"), e => Assert.True(e.HasAttribute("disabled"))); Assert.DoesNotContain("Remove observation", cut.Markup);
     }
+    [Fact]
+    public async Task EditsAcrossClonedRenders_PreserveBothFieldsAndDuplicateLegacyRows()
+    {
+        var original = new List<ObjectiveMetricRowEntry>
+        {
+            new() { Name="Legacy ROM",BodyPart="Knee",MetricType=MetricType.ROM,Value="100" },
+            new() { Name="Legacy ROM",BodyPart="Knee",MetricType=MetricType.ROM,Value="110" }
+        };
+        List<ObjectiveMetricRowEntry> result = original;
+        IRenderedComponent<RomObservationEditor>? cut = null;
+        cut = RenderComponent<RomObservationEditor>(p => p.Add(c => c.Rows, original).Add(c => c.RowsChanged, rows =>
+        {
+            result = rows;
+            cut?.SetParametersAndRender(p => p.Add(c => c.Rows, rows));
+        }));
+        var values = new[] { "90", "101", "95", "111" };
+        for (var i = 0; i < values.Length; i++)
+        {
+            var index = i;
+            await cut.InvokeAsync(() => cut.FindAll("[data-testid='objective-rom-row'] input:not([type='checkbox'])")[index].Input(values[index]));
+        }
+        Assert.Equal("90", result[0].PreviousValue); Assert.Equal("101", result[0].Value);
+        Assert.Equal("95", result[1].PreviousValue); Assert.Equal("111", result[1].Value);
+        Assert.Equal(original[0].EditorRowId, result[0].EditorRowId); Assert.NotEqual(result[0].EditorRowId, result[1].EditorRowId);
+        Assert.Equal("100", original[0].Value); Assert.Equal("110", original[1].Value);
+    }
+
 }

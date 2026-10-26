@@ -20,6 +20,8 @@ Seven nullable columns are added for each provider; existing Side and Unit now f
 
 The PDF ROM table identifies region/movement, side, mode, reference, previous, current, unit and source; historical missing mode is explicitly labelled. Tests cover dimensions, selection, exact-cell persistence, missing units, unknown legacy data, deletion/reorder, older-client protection, stale writes, offline projection and existing PDF regressions.
 
+Rapid browser edits also verified an editor callback issue: stale cloned row references could drop queued changes. The editor now resolves updates/removals by an editor-only row identity retained through render clones; identical-looking legacy observations remain distinct. This identity is deliberately absent from clinical JSON and typed storage.
+
 ## Dependencies, blockers and owners
 
 No unresolved implementation prerequisite for the bounded changes; remaining acceptance work is listed below.
@@ -85,6 +87,8 @@ Clinical mislabeling and legacy data duplication are primary risks. Use additive
 | Task-local Playwright CLI: synthetic Knee/Cervical ROM save/reload; typed/JSON comparison; 390/768/1440 widths; mobile screenshot inspection | All six current/prior cells retained exact region/side/mode; typed rows match JSON; no horizontal overflow; normal/reference precedes current and mobile inputs remain visible. |
 | python3 workflow.py check 21; git diff --check | Requirement/section/local-link/sensitive-path and whitespace checks passed. |
 | dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~StructuredWorkspaceEditorsTests' --verbosity minimal -m:1 | 10 passed after updating inherited ROM assertions for four cells, fixed region identity and read-only reference values; existing MMT behavior unchanged in this lower layer. |
+| dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~RomObservationEditorTests&#124;FullyQualifiedName~StructuredWorkspaceEditorsTests&#124;FullyQualifiedName~NoteWorkspacePayloadMapperTests&#124;FullyQualifiedName~ObjectiveMetricDimensionsTests' --verbosity minimal -m:1 | 57 passed after the rapid-edit correction; includes duplicate legacy row independence across cloned renders. Counts overlap prior suites. |
+| Task-local Playwright CLI: twelve rapid ROM input changes, save, database verification and reload | All six previous/current pairs retained; keyboard Tab works without the pre-existing incomplete-navigation modal; editor-only row identity is absent from clinical JSON. |
 
 ## Remaining acceptance work
 
