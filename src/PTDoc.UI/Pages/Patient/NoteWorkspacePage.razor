@@ -464,6 +464,9 @@ else
                         if (IsDailyTreatment || IsProgressNote)
                         {
                             <PlanSection Vm="@_note.Plan"
+                                         IsProgressNote="@IsProgressNote"
+                                         SourceLastModifiedUtc="@_lastModifiedUtc"
+                                         HasUnsavedChanges="@(_note.IsDirty || DraftAutosaveService.IsDirty)"
                                          DailyTreatment="@_note.DailyTreatment"
                                          VmChanged="HandlePlanChanged"
                                          DailyTreatmentChanged="HandleDailyTreatmentChanged"
@@ -480,6 +483,9 @@ else
                         else if (IsDischargeNote)
                         {
                             <DischargePlanSection Vm="@_note.Plan"
+                                                  NoteId="@(_note.NoteId ?? Guid.Empty)"
+                                                  SourceLastModifiedUtc="@_lastModifiedUtc"
+                                                  HasUnsavedChanges="@(_note.IsDirty || DraftAutosaveService.IsDirty)"
                                                   VmChanged="HandlePlanChanged"
                                                   LinkedHepItems="@GetLinkedHepItems()"
                                                   IsReadOnly="@IsWorkspaceReadOnly" />

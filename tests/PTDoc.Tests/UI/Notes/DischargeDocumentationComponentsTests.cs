@@ -20,6 +20,7 @@ public sealed class DischargeDocumentationComponentsTests : TestContext
     public DischargeDocumentationComponentsTests()
     {
         Services.AddLogging();
+        Services.AddSingleton(Mock.Of<INoteNarrativeClient>());
         Services.AddSingleton<IToastService, ToastService>();
         Services.AddSingleton(Mock.Of<IAiClinicalGenerationService>());
         Services.AddSingleton(Mock.Of<INoteWorkspaceService>());
@@ -135,7 +136,7 @@ public sealed class DischargeDocumentationComponentsTests : TestContext
         Assert.True(plan.IsNonBillableDischarge);
         Assert.Contains("Non-billable discharge", cut.Markup, StringComparison.Ordinal);
 
-        cut.Find("#discharge-recommendations").Input("Continue HEP independently.");
+        cut.Find("[data-testid=discharge-recommendations-editor-textarea]").Input("Continue HEP independently.");
 
         cut.WaitForAssertion(() =>
         {
