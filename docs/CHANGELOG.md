@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planning - Client review Plan 06
+
+- Added Plan 06 evidence, development specification, acceptance criteria and exact decision/dependency gates. This is planning documentation; the feature is not implemented.
+
 ### Fixed - PR 160 rollback authority and account eligibility
 
 - Verify six new review threads against `97708d8d`, deduplicating the three provider rollback reports into one issue. Four unique findings are valid; the eleven earlier threads remain addressed or invalid under the confirmed self-grant policy. No separately exposed suppressed/Previously missed entries were returned; inaccessible session-only feedback remains unverified.
