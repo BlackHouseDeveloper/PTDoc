@@ -94,6 +94,17 @@
                         </section>
                     }
 
+                    @if (CanEditDraft && State.ProfilePrefill?.HasValuesForBlankFields(ToDraft(State)) == true)
+                    {
+                        <section class="intake-page__notice" data-testid="intake-profile-prefill" aria-label="Saved profile information">
+                            <p>Saved contact and insurance information is available. Use it for blank fields only if you want those fields filled. Existing answers will remain unchanged.</p>
+                            <button type="button" class="btn btn--secondary" disabled="@IsInteractionLocked"
+                                    data-testid="intake-apply-profile" @onclick="ApplyProfilePrefill">Use saved values for blank fields</button>
+                            <button type="button" class="btn btn--secondary" disabled="@IsInteractionLocked"
+                                    data-testid="intake-dismiss-profile" @onclick="() => State.ProfilePrefill = null">Keep my answers</button>
+                        </section>
+                    }
+
                     <fieldset class="intake-page__fieldset" disabled="@IsInteractionLocked">
                         @switch (State.CurrentStep)
                         {
@@ -573,6 +584,18 @@
         }
     }
 
+    private void ApplyProfilePrefill()
+    {
+        if (!CanEditDraft || IsInteractionLocked || State.ProfilePrefill is null) return;
+        var patientMode = State.IsPatientMode;
+        var draft = ToDraft(State);
+        State.ProfilePrefill.ApplyTo(draft, confirmedBlankFields: true);
+        draft.ProfilePrefill = null;
+        State = FromDraft(draft);
+        State.IsPatientMode = patientMode;
+        State.IsDirty = true;
+    }
+
     private Task HandleStateChangedAsync()
     {
         if (!CanEditDraft)
@@ -751,6 +774,10 @@
         var draft = new IntakeResponseDraft
         {
             IntakeId = state.IntakeId,
+            ProfilePrefill = state.ProfilePrefill,
+            PrefilledPrimaryPolicyId = state.PrefilledPrimaryPolicyId,
+            PrefilledSecondaryPolicyId = state.PrefilledSecondaryPolicyId,
+            ProfilePrefillSourceModifiedUtc = state.ProfilePrefillSourceModifiedUtc,
             PatientId = state.PatientId,
             IntakeFlowVersion = CurrentIntakeFlowVersion,
             CurrentStep = (int)state.CurrentStep,
@@ -877,6 +904,10 @@
         return new IntakeWizardState
         {
             IntakeId = hydratedDraft.IntakeId,
+            ProfilePrefill = hydratedDraft.ProfilePrefill,
+            PrefilledPrimaryPolicyId = hydratedDraft.PrefilledPrimaryPolicyId,
+            PrefilledSecondaryPolicyId = hydratedDraft.PrefilledSecondaryPolicyId,
+            ProfilePrefillSourceModifiedUtc = hydratedDraft.ProfilePrefillSourceModifiedUtc,
             PatientId = hydratedDraft.PatientId,
             CurrentStep = ResolveDraftCurrentStep(hydratedDraft),
             ConsentPacket = hydratedDraft.ConsentPacket,

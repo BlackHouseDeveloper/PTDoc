@@ -34,6 +34,33 @@ public sealed class IntakeWizardPageTests : TestContext
         Services.AddSingleton<IOutcomeMeasureRegistry, OutcomeMeasureRegistry>();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ProfilePrefill_RequiresExplicitChoice_AndRetainsExistingAnswers(bool apply)
+    {
+        var patientId = Guid.NewGuid();
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("synthetic-pt");
+        authorization.SetRoles(Roles.PT);
+        Services.AddSingleton(new Mock<PTDoc.Application.Providers.IProviderDirectoryService>().Object);
+        CreateIntakeServiceMock(new IntakeResponseDraft
+        {
+            PatientId = patientId,
+            FullName = "Patient supplied name",
+            PhoneNumber = "",
+            ProfilePrefill = new IntakeProfilePrefill { FullName = "Saved name", PhoneNumber = "555-0107" }
+        });
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}");
+        var cut = RenderPage(patientId);
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("[data-testid='intake-profile-prefill']")));
+        Assert.Equal("", GetWizardState(cut).PhoneNumber);
+        cut.Find(apply ? "[data-testid='intake-apply-profile']" : "[data-testid='intake-dismiss-profile']").Click();
+        Assert.Equal(apply ? "555-0107" : "", GetWizardState(cut).PhoneNumber);
+        Assert.Equal("Patient supplied name", GetWizardState(cut).FullName);
+        Assert.Empty(cut.FindAll("[data-testid='intake-profile-prefill']"));
+    }
+
     [Fact]
     public void ClinicianBlankIntake_RequiresPatientSelectionBeforeWizardRenders()
     {
