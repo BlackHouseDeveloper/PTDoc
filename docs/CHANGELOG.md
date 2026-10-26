@@ -55,8 +55,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
 ### Planning - Client review Plan 01
+### Fixed - Client review Plan 01
 
-- Recorded Plan 01 session evidence and its unresolved browser/circuit reproduction gate; added the client-review source snapshot, requirement ledger and 36-brief tracker. Planning only: no authentication fix is claimed.
+- Repaired the reproduced active Web-session renewal gap with trusted-input renewal, current API session/identity validation, protected idle/absolute expiry, changed-user protection and explicit recovery notices. Added controlled-clock and browser-event regressions; updated the 36-PR tracker with actual branches, stacks, verification and merge checkpoints. Archived source Markdown hard breaks were normalized without changing requirements.
 
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 

@@ -38,6 +38,7 @@ var entraExternalIdOptions = builder.Configuration.GetSection(EntraExternalIdOpt
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IUserService, WebUserService>();
 builder.Services.AddScoped<SignupApiClient>();
 builder.Services.AddScoped<PasswordResetApiClient>();
@@ -224,6 +225,8 @@ else
         .AddCookie(PTDocAuthSchemes.Cookie, ConfigureCookieOptions);
 }
 
+builder.Services.AddOptions<CookieAuthenticationOptions>(PTDocAuthSchemes.Cookie)
+    .Configure<TimeProvider>((options, clock) => options.TimeProvider = clock);
 builder.Services.AddAuthorization(options => options.AddPTDocAuthorizationPolicies());
 builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler,
     ClientStaticCapabilityAuthorizationHandler>();
@@ -386,6 +389,8 @@ if (entraExternalIdOptions.Enabled)
 // Keep PFPT-native login as the canonical entry point.
 app.MapGet("/auth/login", () => Results.Redirect("/login"))
     .AllowAnonymous();
+
+app.MapPost(WebSessionActivity.Endpoint, WebSessionActivity.RenewAsync).AllowAnonymous();
 
 app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory httpClientFactory) =>
 {
@@ -592,7 +597,16 @@ static void ConfigureCookieOptions(CookieAuthenticationOptions options)
     options.ExpireTimeSpan = TimeSpan.FromMinutes(15);
     options.SlidingExpiration = true;
 
-    // HIPAA compliance: Force absolute expiration after 8 hours
+    options.Events.OnValidatePrincipal = WebSessionActivity.ValidateCookieAsync;
+    options.Events.OnCheckSlidingExpiration = context =>
+    {
+        // Only explicitly renew activity requests after the API has accepted the
+        // same session; failed or mismatched requests must not slide the cookie.
+        if (context.Request.Path == WebSessionActivity.Endpoint) context.ShouldRenew = false;
+        return Task.CompletedTask;
+    };
+
+    // The protected session-start claim and API deadline enforce the absolute cap.
     options.Cookie.MaxAge = TimeSpan.FromHours(8);
 
     // Security best practices

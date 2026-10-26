@@ -386,6 +386,8 @@ internal static class WebAuthenticationStepFlow
             new(ClaimTypes.Name, auth.Username),
             new(ClaimTypes.Role, auth.Role),
             new(PTDocClaimTypes.AuthenticationType, "web_cookie"),
+            new(WebSessionActivity.SessionIdClaim, Guid.NewGuid().ToString("N")),
+            new(WebSessionActivity.StartedAtClaim, context.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow().ToString("O")),
             new(PTDocClaimTypes.ApiAccessToken, auth.Token),
             new(PTDocClaimTypes.ApiAccessTokenExpiresAt,
                 new DateTimeOffset(DateTime.SpecifyKind(auth.ExpiresAt.Value, DateTimeKind.Utc)).ToString("O"))

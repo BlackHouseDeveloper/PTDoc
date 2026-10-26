@@ -145,6 +145,8 @@ public sealed class WebLoginEndpointIntegrationTests
         var ticket = cookieOptions.TicketDataFormat.Unprotect(Uri.UnescapeDataString(protectedTicket));
 
         Assert.NotNull(ticket);
+        Assert.True(Guid.TryParseExact(ticket.Principal.FindFirst("ptdoc_web_session_id")?.Value, "N", out _));
+        Assert.True(DateTimeOffset.TryParse(ticket.Principal.FindFirst("ptdoc_web_session_started_at")?.Value, out _));
         var expiryClaim = ticket.Principal.FindFirst(PTDocClaimTypes.ApiAccessTokenExpiresAt)?.Value;
         Assert.True(DateTimeOffset.TryParse(expiryClaim, out var cookieExpiry));
         Assert.Equal(new DateTimeOffset(expiresAt), cookieExpiry);

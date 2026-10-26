@@ -1,31 +1,26 @@
 # Plan PR 01: Verify and repair active-use and multi-tab sessions
 
-**Planning only — this PR does not implement or fix the feature.**
+**Implemented** — only the changes and checks listed below are claimed.
 
 - Requirements: R003, R005, R048, R061
 - Original plan status: Verification Required
 - Branch: `codex/plan-01-session-verification`
 - Base: `main`
-- Expected GitHub number: #155; actual: assigned by GitHub at publication
+- Expected GitHub number: #155; actual: [#156](https://github.com/BlackHouseDeveloper/PTDoc/pull/156)
 - [Authoritative plan brief](https://github.com/BlackHouseDeveloper/PTDoc/blob/codex/plan-01-session-verification/docs/client-review/source/implementation-plan.md#pr-01)
 - Inspected main: `6276027251609df64ffbbfa883f66e2d83dd57e4` (2026-10-26); this supersedes the source plan’s earlier repository snapshot.
 
 ## Current evidence and changes
 
-Main now includes the Settings service/authentication changes from merged #153. Web still configures a 15-minute sliding cookie and an eight-hour cookie MaxAge; MaxAge alone is not proof of an absolute server deadline. The API validates current security state and revocation. The focused synthetic authentication test run passed 49 tests, including cookie issuance/step-up, session validation and bearer security. This does not reproduce or rule out the reported active Blazor-circuit / second-tab failure. #154 still changes Web authentication UI and is unmerged. No authentication code was changed.
+Reproduced the defect in a controlled 16-minute synthetic editing run: the first Blazor tab retained its draft, while a new same-browser tab redirected to login. Server-side Blazor work did not refresh the browser cookie. A code comparison confirms unmerged #154 has identical authentication flow, forwarding handler, app root and routing; its Program changes only add Settings registrations, so this fix does not consume #154 code. The new monitor handles real visible input at most once per minute and validates /api/v1/auth/me before renewal. The endpoint rejects expired/revoked/inactive sessions, user/clinic/role mismatches, cross-site requests and an old circuit attempting to renew another sign-in. Current browser checks confirm successful renewal and same-browser second-tab identity, cross-tab logout (401 plus recoverable sign-in), server revocation (401 plus Sign in action), and changed-user protection (409 plus Reload session without clearing the new cookie). Final real-time Chromium run passed: 17 edits over 978 seconds retained the same clinician, persisted the minute-16 edit and opened a second patient tab without login. The last eight observed renewal responses were 204. A separate untouched PTA profile redirected to login after 15 minutes 38 seconds. Before the fix the equivalent 16-minute run redirected the new tab to login.
 
 ## Dependencies, blockers and owners
 
-- Engineering/QA: run a controlled browser scenario on the integrated #154 build covering active editing across the idle interval, a second tab, explicit logout and API revocation. Existing unit/integration tests are not a substitute for this circuit/browser evidence.
-- Product/security owner: confirm the existing anti-piggyback invariant and allowed idle/absolute policy; no timeout weakening is proposed.
+No unresolved implementation prerequisite for the bounded changes; remaining acceptance work is listed below.
 
 ## Decisions and options
 
-Engineering and security owner: identify the existing anti-piggyback invariant and activity-renewal contract before coding; reproduction can start now. Its preservation controls AC2–AC3.
-
-**Development impact:** Reproduction and evidence gathering can proceed; a specific fix must follow a verified cause.
-
-**Dependent criteria:** AC1–AC3 (activity/session invariant).
+The existing security contract is established by docs/ARCHITECTURE.md and AuthService.ValidateSessionAsync: Web has a 15-minute idle ticket and eight-hour absolute cap; API validation retains clinic-configured idle, revocation, active-user, PIN and MFA checks. These policies are preserved. No duration increase, unlimited session or browser-readable bearer storage was introduced.
 
 ## Development specification
 
@@ -76,12 +71,19 @@ Auth changes can affect all clients. Validate against #153/#154 first; rollback 
 
 | Command/check | Result |
 | --- | --- |
-| dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --filter 'FullyQualifiedName~WebLoginEndpointIntegrationTests&#124;FullyQualifiedName~AuthServiceTests&#124;FullyQualifiedName~LogoutSessionClassifierTests&#124;FullyQualifiedName~LocalBearerSecurityTests' --verbosity minimal | Passed: 49; failed: 0; skipped: 0. Main 6276027; synthetic fixtures; no production session used. |
-| python3 /private/tmp/ptdoc-client-implementation/workflow.py check 1; git diff --check | Passed: requirement IDs, required sections, local links, sensitive local paths and whitespace checked. The script is a task-local document checker; no .NET behavior is asserted by it. |
+| dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --verbosity minimal | PASS: initial Debug graph build, 0 warnings, 0 errors. |
+| dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~WebSessionActivityIntegrationTests&#124;FullyQualifiedName~WebLoginEndpointIntegrationTests&#124;FullyQualifiedName~AuthServiceTests&#124;FullyQualifiedName~LogoutSessionClassifierTests&#124;FullyQualifiedName~LocalBearerSecurityTests&#124;FullyQualifiedName~ApiAccessTokenForwardingHandlerTests' --verbosity minimal | PASS: 76 passed, 0 failed, 0 skipped; controlled-clock cookie/API deadline, legacy rollout, identity, revocation, cross-site, transport and existing auth regressions. |
+| node --test tests/PTDoc.Web.UiQa/tools/session-activity.test.mjs | PASS: 7 tests; trusted/visible input only, no idle heartbeat, throttling, in-flight suppression, 401/409 recovery, retry after transport/503 and lifecycle cleanup. |
+| Synthetic Chromium cross-tab logout, server revocation and different-user sign-in | PASS: logout/revocation 401 with sign-in recovery; old-circuit 409 preserves new-user cookie and reloads correct identity. No external services or real patient data used. |
+| dotnet format whitespace tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --include src/PTDoc.Web/Auth/WebSessionActivity.cs src/PTDoc.Web/Auth/WebAuthenticationStepFlow.cs src/PTDoc.Web/Program.cs tests/PTDoc.Tests/Integration/WebSessionActivityIntegrationTests.cs tests/PTDoc.Tests/Integration/WebLoginEndpointIntegrationTests.cs --verify-no-changes --verbosity minimal | PASS. |
+| python3 .github/scripts/scan_secret_policy.py | PASS. |
+| Synthetic Chromium 16-minute active editing versus separate idle profile; persisted final-edit assertion | PASS: 17 edits over 978 seconds, final minute-16 text persisted, same-user second tab remained signed in, eight observed renewal responses were 204; separate idle profile redirected to login after 15m38s. |
+| dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity minimal | PASS: complete test-project CI formatter. |
+| Task-local documentation/link checks; git diff --check main; native GitHub stack and PR metadata comparison | PASS: all 36 requirement records and actual heads/bases verified; five stack IDs confirmed. Archived plan hard-break formatting normalized. |
 
 ## Remaining acceptance work
 
-AC1–AC4 need browser/circuit evidence. Run two tabs in one synthetic user profile plus a separate second-user profile, preserve active draft text, capture credential-free reason codes, and compare Web/API source/release identifiers. The PR remains draft; no runtime defect is claimed fixed.
+The reproduced local Web cookie/circuit defect is verified fixed. Hosted integrated release, full screen-reader, Entra-provider end-to-end login and native MAUI acceptance remain separate. Existing cookies gain activity renewal on their next sign-in. No clinic security policy changed.
 
 ## Publication and merge boundary
 

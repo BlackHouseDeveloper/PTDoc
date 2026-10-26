@@ -1,4 +1,4 @@
-> Archived planning snapshot, 2026-10-26, before implementation. Runtime/test statements describe that original planning session. Current implementation evidence lives in each plan record and the tracker. Local source paths were removed for publication. Original SHA-256: `0095d0efd59b862be8c82e448222931f29a719ab8603e7c6a8440ba94eedf9dd`.
+> Archived planning snapshot, 2026-10-26, before implementation. Runtime/test statements describe that original planning session. Current implementation evidence lives in each plan record and the tracker. Local source paths were removed and Markdown hard-break spacing normalized for publication. Original SHA-256: `0095d0efd59b862be8c82e448222931f29a719ab8603e7c6a8440ba94eedf9dd`.
 
 # PTDoc client review: evidence-grounded implementation plan
 
@@ -198,13 +198,13 @@ For a decision brief, Definition of Done means the decision/specification is com
 
 ### PR 01: Verify and repair active-use and multi-tab sessions
 
-**Status:** Verification Required  
-**Category:** Authentication and Session Management  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** Web/API authentication; E01  
-**Dependencies:** Coordinate with existing GitHub #153/#154; controlled Web/API build and synthetic accounts.  
-**Source IDs:** R003, R005, R048, R061  
+**Status:** Verification Required\
+**Category:** Authentication and Session Management\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** Web/API authentication; E01\
+**Dependencies:** Coordinate with existing GitHub #153/#154; controlled Web/API build and synthetic accounts.\
+**Source IDs:** R003, R005, R048, R061\
 **Verification Status:** Unable to Verify
 
 #### User Problem
@@ -288,13 +288,13 @@ Engineering and security owner: identify the existing anti-piggyback invariant a
 
 ### PR 02: Recover from note-save errors without trapping navigation
 
-**Status:** Verification Required  
-**Category:** Bug Fix  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** Note workspace and autosave recovery; E02  
-**Dependencies:** PR 01 diagnosis; a safe draft plus failure/conflict fixtures.  
-**Source IDs:** R006, R091  
+**Status:** Verification Required\
+**Category:** Bug Fix\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** Note workspace and autosave recovery; E02\
+**Dependencies:** PR 01 diagnosis; a safe draft plus failure/conflict fixtures.\
+**Source IDs:** R006, R091\
 **Verification Status:** Unable to Verify
 
 #### User Problem
@@ -376,13 +376,13 @@ QA/client: supply recurrence route, note state, timestamp and redacted error evi
 
 ### PR 03: Correct patient timeline timestamps using the agreed display time zone
 
-**Status:** Verification Required  
-**Category:** Bug Fix  
-**Priority:** Medium  
-**Confidence:** High  
-**Affected Area:** Patient timeline; E03  
-**Dependencies:** Synthetic note/intake/appointment timestamps; clinic time-zone decision.  
-**Source IDs:** R007  
+**Status:** Verification Required\
+**Category:** Bug Fix\
+**Priority:** Medium\
+**Confidence:** High\
+**Affected Area:** Patient timeline; E03\
+**Dependencies:** Synthetic note/intake/appointment timestamps; clinic time-zone decision.\
+**Source IDs:** R007\
 **Verification Status:** Unable to Verify
 
 #### User Problem
@@ -462,13 +462,13 @@ January/product owner: should timeline timestamps use clinic time or viewer time
 
 ### PR 04: Validate role configuration and visit types against the existing Settings stack
 
-**Status:** Blocked by Dependency  
-**Category:** Permissions and Multi-Tenancy  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** Settings Roles and Scheduling; E04  
-**Dependencies:** Existing GitHub #153 (services) and #154 (connected UI); approved role matrix.  
-**Source IDs:** R004, R037  
+**Status:** Blocked by Dependency\
+**Category:** Permissions and Multi-Tenancy\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** Settings Roles and Scheduling; E04\
+**Dependencies:** Existing GitHub #153 (services) and #154 (connected UI); approved role matrix.\
+**Source IDs:** R004, R037\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -550,13 +550,13 @@ Engineering owner: supply integrated stack commit and deployment evidence. Valid
 
 ### PR 05: Decide organization and clinic ownership before migrating tenancy
 
-**Status:** Needs Clarification  
-**Category:** Permissions and Multi-Tenancy  
-**Priority:** Needs Decision  
-**Confidence:** Medium  
-**Affected Area:** Organization/clinic membership and local clinician administration; E05  
-**Dependencies:** Client hierarchy and role decision; coordinate #153/#154.  
-**Source IDs:** R001, R085  
+**Status:** Needs Clarification\
+**Category:** Permissions and Multi-Tenancy\
+**Priority:** Needs Decision\
+**Confidence:** Medium\
+**Affected Area:** Organization/clinic membership and local clinician administration; E05\
+**Dependencies:** Client hierarchy and role decision; coordinate #153/#154.\
+**Source IDs:** R001, R085\
 **Verification Status:** Conflicts With Current Implementation
 
 #### User Problem
@@ -637,13 +637,13 @@ January with engineering/security: define organization versus clinic owner, mult
 
 ### PR 06: Decide individual subscription and organization onboarding rules
 
-**Status:** Needs Clarification  
-**Category:** Needs Clarification  
-**Priority:** Needs Decision  
-**Confidence:** Medium  
-**Affected Area:** Registration/subscription lifecycle; E06  
-**Dependencies:** PR 05 decisions; subscription provider, entitlement and payment-failure rules.  
-**Source IDs:** R084, R086  
+**Status:** Needs Clarification\
+**Category:** Needs Clarification\
+**Priority:** Needs Decision\
+**Confidence:** Medium\
+**Affected Area:** Registration/subscription lifecycle; E06\
+**Dependencies:** PR 05 decisions; subscription provider, entitlement and payment-failure rules.\
+**Source IDs:** R084, R086\
 **Verification Status:** Conflicts With Current Implementation
 
 #### User Problem
@@ -724,13 +724,13 @@ January/business owner: confirm whether the favored proposal is approved, who ap
 
 ### PR 07: Prefill intake and preserve patient and policy data across entry flows
 
-**Status:** Ready for Development  
-**Category:** Data Migration or Persistence  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** Patient creation, appointment patient entry, intake seeding; E07,E12,E15  
-**Dependencies:** Existing clinic-scoped patient/policy contracts; PR 15 affects only authorization-field placement.  
-**Source IDs:** R020, R031  
+**Status:** Ready for Development\
+**Category:** Data Migration or Persistence\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** Patient creation, appointment patient entry, intake seeding; E07,E12,E15\
+**Dependencies:** Existing clinic-scoped patient/policy contracts; PR 15 affects only authorization-field placement.\
+**Source IDs:** R020, R031\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -813,13 +813,13 @@ Product/engineering: confirm any fields deliberately excluded from prefill; ordi
 
 ### PR 08: Make intake content and repeat encounters follow the destination note type
 
-**Status:** Ready for Development  
-**Category:** Intake  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** Intake orchestration and note routing; E07,E08  
-**Dependencies:** PR 07 seed rules; PR 20/30/31 define corresponding questionnaires; PR 24 provides outcome forms.  
-**Source IDs:** R010, R062, R074  
+**Status:** Ready for Development\
+**Category:** Intake\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** Intake orchestration and note routing; E07,E08\
+**Dependencies:** PR 07 seed rules; PR 20/30/31 define corresponding questionnaires; PR 24 provides outcome forms.\
+**Source IDs:** R010, R062, R074\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -903,13 +903,13 @@ Engineering: verify exact current repeat-intake paths and deployed SHA before im
 
 ### PR 09: Make intake navigation, review editing and body-map controls clearer
 
-**Status:** Ready for Development  
-**Category:** UI/UX  
-**Priority:** Medium  
-**Confidence:** High  
-**Affected Area:** Intake progress, review and body-map controls; E08,E09  
-**Dependencies:** Coordinate dynamic steps with PR 08.  
-**Source IDs:** R009, R013, R018, R019, R093  
+**Status:** Ready for Development\
+**Category:** UI/UX\
+**Priority:** Medium\
+**Confidence:** High\
+**Affected Area:** Intake progress, review and body-map controls; E08,E09\
+**Dependencies:** Coordinate dynamic steps with PR 08.\
+**Source IDs:** R009, R013, R018, R019, R093\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -994,13 +994,13 @@ January: identify the exact control and desired appearance for the brief white-b
 
 ### PR 10: Clarify medical history, medications and functional limitations
 
-**Status:** Ready for Development  
-**Category:** Intake  
-**Priority:** Medium  
-**Confidence:** High  
-**Affected Area:** MedicalHistoryCard and FunctionalLimitationsCard; E10  
-**Dependencies:** PR 08 intake type visibility; existing reference catalog ownership.  
-**Source IDs:** R014, R015, R016, R022, R063  
+**Status:** Ready for Development\
+**Category:** Intake\
+**Priority:** Medium\
+**Confidence:** High\
+**Affected Area:** MedicalHistoryCard and FunctionalLimitationsCard; E10\
+**Dependencies:** PR 08 intake type visibility; existing reference catalog ownership.\
+**Source IDs:** R014, R015, R016, R022, R063\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -1085,13 +1085,13 @@ January: review final plain-language copy and Other placement during acceptance;
 
 ### PR 11: Group PHI release information and remove intake revocation controls
 
-**Status:** Ready for Development  
-**Category:** Intake  
-**Priority:** Medium  
-**Confidence:** High  
-**Affected Area:** ReviewStep and canonical consent packet; E11  
-**Dependencies:** Existing consent packet schema and approved text.  
-**Source IDs:** R021, R047  
+**Status:** Ready for Development\
+**Category:** Intake\
+**Priority:** Medium\
+**Confidence:** High\
+**Affected Area:** ReviewStep and canonical consent packet; E11\
+**Dependencies:** Existing consent packet schema and approved text.\
+**Source IDs:** R021, R047\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -1172,13 +1172,13 @@ Clinic policy owner: confirm the separate authorized revocation process remains 
 
 ### PR 12: Complete patient chart editing and patient-entry actions
 
-**Status:** Ready for Development  
-**Category:** Enhancement  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** PatientProfile and demographics editor; E12  
-**Dependencies:** Existing patient update API; PR 07 for intake propagation.  
-**Source IDs:** R008, R024, R028  
+**Status:** Ready for Development\
+**Category:** Enhancement\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** PatientProfile and demographics editor; E12\
+**Dependencies:** Existing patient update API; PR 07 for intake propagation.\
+**Source IDs:** R008, R024, R028\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -1261,13 +1261,13 @@ Product owner: confirm whether Add Patient belongs on profile, patient list, or 
 
 ### PR 13: Edit provider-directory entries and carry fax details into care teams
 
-**Status:** Ready for Development  
-**Category:** Provider Communication  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** ProviderDirectorySettingsPanel, ProviderDirectoryService, CareTeamCard; E13  
-**Dependencies:** Existing provider update and approval policy; coordinate Settings stack.  
-**Source IDs:** R023, R026  
+**Status:** Ready for Development\
+**Category:** Provider Communication\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** ProviderDirectorySettingsPanel, ProviderDirectoryService, CareTeamCard; E13\
+**Dependencies:** Existing provider update and approval policy; coordinate Settings stack.\
+**Source IDs:** R023, R026\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -1349,13 +1349,13 @@ January and security owner: approve directory-maintainer roles and whether archi
 
 ### PR 14: Consolidate insurance policy and authorization editing
 
-**Status:** Ready for Development  
-**Category:** Insurance and Authorization  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** PatientInfo panels and chart links; E14  
-**Dependencies:** Existing policy/authorization version contracts; PR 15 decides Authorization Required placement.  
-**Source IDs:** R044, R045, R046  
+**Status:** Ready for Development\
+**Category:** Insurance and Authorization\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** PatientInfo panels and chart links; E14\
+**Dependencies:** Existing policy/authorization version contracts; PR 15 decides Authorization Required placement.\
+**Source IDs:** R044, R045, R046\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -1438,13 +1438,13 @@ January: confirm which historical fields remain editable versus corrected throug
 
 ### PR 15: Resolve authorization-field placement in patient and policy entry
 
-**Status:** Needs Clarification  
-**Category:** Insurance and Authorization  
-**Priority:** High  
-**Confidence:** Medium  
-**Affected Area:** AddPatientModal and policy editor; E15  
-**Dependencies:** Client decision C01; PR 14 policy consolidation.  
-**Source IDs:** R029, R030  
+**Status:** Needs Clarification\
+**Category:** Insurance and Authorization\
+**Priority:** High\
+**Confidence:** Medium\
+**Affected Area:** AddPatientModal and policy editor; E15\
+**Dependencies:** Client decision C01; PR 14 policy consolidation.\
+**Source IDs:** R029, R030\
 **Verification Status:** Unable to Verify
 
 #### User Problem
@@ -1525,13 +1525,13 @@ January: should Authorization Required appear in Add Patient, in the new-policy 
 
 ### PR 16: Create appointments from empty clinician slots and enforce schedulable roles
 
-**Status:** Ready for Development  
-**Category:** Scheduling  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** Appointments, ClinicianScheduler and appointment API; E16  
-**Dependencies:** Existing clinic schedules and visit types; coordinate PR 04.  
-**Source IDs:** R032, R033, R034, R035  
+**Status:** Ready for Development\
+**Category:** Scheduling\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** Appointments, ClinicianScheduler and appointment API; E16\
+**Dependencies:** Existing clinic schedules and visit types; coordinate PR 04.\
+**Source IDs:** R032, R033, R034, R035\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -1616,13 +1616,13 @@ January: confirm off-duty clinician visibility and default view for non-admin ro
 
 ### PR 17: Fax signed notes from review and improve clinic patient selection
 
-**Status:** Ready for Development  
-**Category:** Provider Communication  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** SoapReviewPage, FaxCenter and existing fax integration; E17  
-**Dependencies:** Existing HumbleFax configuration and signed-note export; sandbox credentials for release verification.  
-**Source IDs:** R025, R038  
+**Status:** Ready for Development\
+**Category:** Provider Communication\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** SoapReviewPage, FaxCenter and existing fax integration; E17\
+**Dependencies:** Existing HumbleFax configuration and signed-note export; sandbox credentials for release verification.\
+**Source IDs:** R025, R038\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -1704,13 +1704,13 @@ Integration owner supplies sandbox access and test destination before end-to-end
 
 ### PR 18: Define clinician handoff and shared-treatment sign-off
 
-**Status:** Needs Clarification  
-**Category:** Clinical Workflow  
-**Priority:** High  
-**Confidence:** Medium  
-**Affected Area:** Note handoff, PT/PTA roles and notifications; E18  
-**Dependencies:** Approved PT/PTA sign-off matrix; existing note lifecycle and notification services.  
-**Source IDs:** R041, R042  
+**Status:** Needs Clarification\
+**Category:** Clinical Workflow\
+**Priority:** High\
+**Confidence:** Medium\
+**Affected Area:** Note handoff, PT/PTA roles and notifications; E18\
+**Dependencies:** Approved PT/PTA sign-off matrix; existing note lifecycle and notification services.\
+**Source IDs:** R041, R042\
 **Verification Status:** Unable to Verify
 
 #### User Problem
@@ -1792,13 +1792,13 @@ January/clinical owner: is Send to reassignment, collaboration or review; which 
 
 ### PR 19: Add clinician-authored patient alerts to chart and note headers
 
-**Status:** Needs Clarification  
-**Category:** Clinical Workflow  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** Patient chart Notifications tab and shared note header; E19  
-**Dependencies:** Existing patient permissions and shared header; lifecycle acceptance by clinical owner.  
-**Source IDs:** R043  
+**Status:** Needs Clarification\
+**Category:** Clinical Workflow\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** Patient chart Notifications tab and shared note header; E19\
+**Dependencies:** Existing patient permissions and shared header; lifecycle acceptance by clinical owner.\
+**Source IDs:** R043\
 **Verification Status:** Unable to Verify
 
 #### User Problem
@@ -1879,13 +1879,13 @@ January/clinical owner: decide author/edit/deactivate rights (including another 
 
 ### PR 20: Implement the agreed daily subjective and objective scope
 
-**Status:** Ready for Development  
-**Category:** Clinical Workflow  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** Daily SubjectiveSection and objective composition; E20  
-**Dependencies:** PR 08 shares questionnaire definition; existing progress question labels provide mapping.  
-**Source IDs:** R049, R050, R051, R058  
+**Status:** Ready for Development\
+**Category:** Clinical Workflow\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** Daily SubjectiveSection and objective composition; E20\
+**Dependencies:** PR 08 shares questionnaire definition; existing progress question labels provide mapping.\
+**Source IDs:** R049, R050, R051, R058\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -1969,13 +1969,13 @@ January: confirm final labels during acceptance; the later explicit daily list g
 
 ### PR 21: Represent ROM by movement, side and active/passive measurement
 
-**Status:** Ready for Development  
-**Category:** Clinical Workflow  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** ObjectiveTab and ObjectiveMetric/workspace contracts; E21  
-**Dependencies:** Approved region/movement catalog and existing metric persistence; coordinate PR 22.  
-**Source IDs:** R053, R054, R055, R057  
+**Status:** Ready for Development\
+**Category:** Clinical Workflow\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** ObjectiveTab and ObjectiveMetric/workspace contracts; E21\
+**Dependencies:** Approved region/movement catalog and existing metric persistence; coordinate PR 22.\
+**Source IDs:** R053, R054, R055, R057\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -2060,13 +2060,13 @@ Clinical owner: supply/approve normal-value sources and region-specific applicab
 
 ### PR 22: Separate MMT from joint mobility and reuse ROM movement selections
 
-**Status:** Ready for Development  
-**Category:** Clinical Workflow  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** ObjectiveTab, movement catalog and objective contracts; E21,E22  
-**Dependencies:** PR 21 shared movement identifiers; approved MMT/joint grading definitions.  
-**Source IDs:** R056, R065  
+**Status:** Ready for Development\
+**Category:** Clinical Workflow\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** ObjectiveTab, movement catalog and objective contracts; E21,E22\
+**Dependencies:** PR 21 shared movement identifiers; approved MMT/joint grading definitions.\
+**Source IDs:** R056, R065\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -2149,13 +2149,13 @@ Clinical owner reviews any requested additions or movement mapping exceptions; t
 
 ### PR 23: Establish versioned outcome definitions and validate supplied source assets
 
-**Status:** Ready for Development  
-**Category:** Technical Improvement  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** Outcome registry/reference data and supplied assets; E23  
-**Dependencies:** Clinical owner approval of per-instrument version/scoring; materials M01–M17.  
-**Source IDs:** R012, R095  
+**Status:** Ready for Development\
+**Category:** Technical Improvement\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** Outcome registry/reference data and supplied assets; E23\
+**Dependencies:** Clinical owner approval of per-instrument version/scoring; materials M01–M17.\
+**Source IDs:** R012, R095\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -2237,13 +2237,13 @@ January/clinical owner supplies exact variants, missing-answer rules, assignment
 
 ### PR 24: Deliver approved patient questionnaires with automatic scoring
 
-**Status:** Blocked by Dependency  
-**Category:** Intake  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** OutcomeMeasuresStep and outcome response APIs; E23  
-**Dependencies:** PR 23 contract; first approved patient instrument cohort; assignment decision.  
-**Source IDs:** R011  
+**Status:** Blocked by Dependency\
+**Category:** Intake\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** OutcomeMeasuresStep and outcome response APIs; E23\
+**Dependencies:** PR 23 contract; first approved patient instrument cohort; assignment decision.\
+**Source IDs:** R011\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -2324,13 +2324,13 @@ January selects first cohort and assignment by body region/note type. Activation
 
 ### PR 25: Carry computed outcomes into clinical notes with provenance
 
-**Status:** Blocked by Dependency  
-**Category:** Clinical Workflow  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** Intake projections, outcome results and note objective sections; E23  
-**Dependencies:** PR 24 computed patient results; PR 36 clinician results; note-type routing in PR 08.  
-**Source IDs:** R066  
+**Status:** Blocked by Dependency\
+**Category:** Clinical Workflow\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** Intake projections, outcome results and note objective sections; E23\
+**Dependencies:** PR 24 computed patient results; PR 36 clinician results; note-type routing in PR 08.\
+**Source IDs:** R066\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -2411,13 +2411,13 @@ Clinical owner: confirm correction workflow and prior-result display; no automat
 
 ### PR 26: Capture patient personal goals and use them in SMART-goal drafting
 
-**Status:** Ready for Development  
-**Category:** Clinical Workflow  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** Functional limitations intake and AssessmentWorkspaceSection; E10,E26  
-**Dependencies:** PR 07/08 projection conventions; existing clinician-reviewed AI goal workflow.  
-**Source IDs:** R064  
+**Status:** Ready for Development\
+**Category:** Clinical Workflow\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** Functional limitations intake and AssessmentWorkspaceSection; E10,E26\
+**Dependencies:** PR 07/08 projection conventions; existing clinician-reviewed AI goal workflow.\
+**Source IDs:** R064\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -2497,13 +2497,13 @@ January reviews wording and location during acceptance; no new clinical target r
 
 ### PR 27: Place evaluation assessment narrative after contributing inputs
 
-**Status:** Ready for Development  
-**Category:** Clinical Workflow  
-**Priority:** Medium  
-**Confidence:** High  
-**Affected Area:** Evaluation subjective/assessment layout; E27  
-**Dependencies:** Existing note schema and clinician workflow; separate evidence for reported duplicate/stale fields.  
-**Source IDs:** R059, R068, R069  
+**Status:** Ready for Development\
+**Category:** Clinical Workflow\
+**Priority:** Medium\
+**Confidence:** High\
+**Affected Area:** Evaluation subjective/assessment layout; E27\
+**Dependencies:** Existing note schema and clinician workflow; separate evidence for reported duplicate/stale fields.\
+**Source IDs:** R059, R068, R069\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -2585,13 +2585,13 @@ January: provide the exact frequency field and an anonymized current-versus-prio
 
 ### PR 28: Generate distinct SOAP summaries from their corresponding sections
 
-**Status:** Ready for Development  
-**Category:** AI-Assisted Functionality  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** PlanTab, ClinicalGenerationService and AI contracts; E28  
-**Dependencies:** Existing AI feature flags/provider configuration; clinician-approved synthetic examples.  
-**Source IDs:** R073  
+**Status:** Ready for Development\
+**Category:** AI-Assisted Functionality\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** PlanTab, ClinicalGenerationService and AI contracts; E28\
+**Dependencies:** Existing AI feature flags/provider configuration; clinician-approved synthetic examples.\
+**Source IDs:** R073\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -2672,13 +2672,13 @@ Clinical owner supplies approved quality examples and acceptance rubric; impleme
 
 ### PR 29: Reproduce and repair goal-generation loss and candidate exhaustion
 
-**Status:** Verification Required  
-**Category:** AI-Assisted Functionality  
-**Priority:** High  
-**Confidence:** Medium  
-**Affected Area:** Goal suggestion state and generation workflow; E29  
-**Dependencies:** Synthetic reproduction of eight accepted goals; PR 28 context conventions.  
-**Source IDs:** R070, R071  
+**Status:** Verification Required\
+**Category:** AI-Assisted Functionality\
+**Priority:** High\
+**Confidence:** Medium\
+**Affected Area:** Goal suggestion state and generation workflow; E29\
+**Dependencies:** Synthetic reproduction of eight accepted goals; PR 28 context conventions.\
+**Source IDs:** R070, R071\
 **Verification Status:** Unable to Verify
 
 #### User Problem
@@ -2759,13 +2759,13 @@ January: provide anonymized good/bad examples and clarify whether the eight acce
 
 ### PR 30: Complete progress activity tracking, improvement and plan frequency
 
-**Status:** Ready for Development  
-**Category:** Clinical Workflow  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** ProgressSubjectiveSection and plan composition; E30  
-**Dependencies:** Recorded limitation catalog; PR 08 aligned intake; PR 32 handles AI Suggest.  
-**Source IDs:** R052, R076, R077, R078, R080  
+**Status:** Ready for Development\
+**Category:** Clinical Workflow\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** ProgressSubjectiveSection and plan composition; E30\
+**Dependencies:** Recorded limitation catalog; PR 08 aligned intake; PR 32 handles AI Suggest.\
+**Source IDs:** R052, R076, R077, R078, R080\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -2850,13 +2850,13 @@ January: does the early instruction to remove question 8 apply to progress or on
 
 ### PR 31: Implement the approved discharge questionnaire and recommendation choices
 
-**Status:** Blocked by Dependency  
-**Category:** Clinical Workflow  
-**Priority:** High  
-**Confidence:** Medium  
-**Affected Area:** DischargeSubjectiveSection, DischargePlanSection and discharge intake; E31  
-**Dependencies:** Exact referenced discharge document/revision; approved recommendation options; PR 08.  
-**Source IDs:** R081, R082, R094  
+**Status:** Blocked by Dependency\
+**Category:** Clinical Workflow\
+**Priority:** High\
+**Confidence:** Medium\
+**Affected Area:** DischargeSubjectiveSection, DischargePlanSection and discharge intake; E31\
+**Dependencies:** Exact referenced discharge document/revision; approved recommendation options; PR 08.\
+**Source IDs:** R081, R082, R094\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -2939,13 +2939,13 @@ January supplies the exact discharge document/revision and recommendation vocabu
 
 ### PR 32: Make progress and discharge AI actions produce reviewable suggestions
 
-**Status:** Ready for Development  
-**Category:** AI-Assisted Functionality  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** Progress next-visit plan and discharge generation handlers; E31,E32  
-**Dependencies:** PR 28 section-specific AI contract; PR 31 approved structured fields for full discharge context.  
-**Source IDs:** R079, R083  
+**Status:** Ready for Development\
+**Category:** AI-Assisted Functionality\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** Progress next-visit plan and discharge generation handlers; E31,E32\
+**Dependencies:** PR 28 section-specific AI contract; PR 31 approved structured fields for full discharge context.\
+**Source IDs:** R079, R083\
 **Verification Status:** Partially Implemented
 
 #### User Problem
@@ -3027,13 +3027,13 @@ Clinical owner approves output examples. Full structured discharge-context accep
 
 ### PR 33: Verify and remove redundant Settings scrolling
 
-**Status:** Verification Required  
-**Category:** UI/UX  
-**Priority:** Low  
-**Confidence:** High  
-**Affected Area:** Settings page and shared shell scroll containers; E33  
-**Dependencies:** Integrated #153/#154 UI; supported viewport matrix.  
-**Source IDs:** R002  
+**Status:** Verification Required\
+**Category:** UI/UX\
+**Priority:** Low\
+**Confidence:** High\
+**Affected Area:** Settings page and shared shell scroll containers; E33\
+**Dependencies:** Integrated #153/#154 UI; supported viewport matrix.\
+**Source IDs:** R002\
 **Verification Status:** Unable to Verify
 
 #### User Problem
@@ -3112,13 +3112,13 @@ Engineering supplies the integrated build and exact viewport reproducer; diagnos
 
 ### PR 34: Decide sex and gender terminology, storage and clinical use
 
-**Status:** Needs Clarification  
-**Category:** Needs Clarification  
-**Priority:** Needs Decision  
-**Confidence:** Medium  
-**Affected Area:** Patient demographics and intake identity fields; E34  
-**Dependencies:** Client/clinical decision and existing data inventory.  
-**Source IDs:** R017  
+**Status:** Needs Clarification\
+**Category:** Needs Clarification\
+**Priority:** Needs Decision\
+**Confidence:** Medium\
+**Affected Area:** Patient demographics and intake identity fields; E34\
+**Dependencies:** Client/clinical decision and existing data inventory.\
+**Source IDs:** R017\
 **Verification Status:** Unable to Verify
 
 #### User Problem
@@ -3198,13 +3198,13 @@ January and clinical owner decide labels, options, requiredness, visibility and 
 
 ### PR 35: Decide the zero-authorization-visit documentation safeguard
 
-**Status:** Needs Clarification  
-**Category:** Insurance and Authorization  
-**Priority:** Needs Decision  
-**Confidence:** Medium  
-**Affected Area:** Authorization utilization and note creation; E35  
-**Dependencies:** Clinical/operations policy; existing visit accounting and concurrency rules.  
-**Source IDs:** R089  
+**Status:** Needs Clarification\
+**Category:** Insurance and Authorization\
+**Priority:** Needs Decision\
+**Confidence:** Medium\
+**Affected Area:** Authorization utilization and note creation; E35\
+**Dependencies:** Clinical/operations policy; existing visit accounting and concurrency rules.\
+**Source IDs:** R089\
 **Verification Status:** Unable to Verify
 
 #### User Problem
@@ -3284,13 +3284,13 @@ January/operations owner: what triggers the safeguard, is it a warning or enforc
 
 ### PR 36: Support approved clinician-administered outcome measures
 
-**Status:** Blocked by Dependency  
-**Category:** Clinical Workflow  
-**Priority:** High  
-**Confidence:** High  
-**Affected Area:** Clinician objective outcome entry; E23 and M14–M17  
-**Dependencies:** PR 23 versioned contracts; approved Berg/Tinetti/5xSTS/TUG protocol and trial rules.  
-**Source IDs:** R067  
+**Status:** Blocked by Dependency\
+**Category:** Clinical Workflow\
+**Priority:** High\
+**Confidence:** High\
+**Affected Area:** Clinician objective outcome entry; E23 and M14–M17\
+**Dependencies:** PR 23 versioned contracts; approved Berg/Tinetti/5xSTS/TUG protocol and trial rules.\
+**Source IDs:** R067\
 **Verification Status:** Partially Implemented
 
 #### User Problem
