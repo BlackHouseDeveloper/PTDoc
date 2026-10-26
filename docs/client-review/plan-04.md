@@ -1,31 +1,26 @@
 # Plan PR 04: Validate role configuration and visit types against the existing Settings stack
 
-**Planning only — this PR does not implement or fix the feature.**
+**Implemented (bounded scope)** — only the changes and checks listed below are claimed.
 
 - Requirements: R004, R037
 - Original plan status: Blocked by Dependency
 - Branch: `codex/plan-04-settings-verification`
-- Base: `main`
-- Expected GitHub number: #158; actual: assigned by GitHub at publication
+- Base: `codex/settings-connected-ui`
+- Expected GitHub number: #158; actual: [#159](https://github.com/BlackHouseDeveloper/PTDoc/pull/159)
 - [Authoritative plan brief](https://github.com/BlackHouseDeveloper/PTDoc/blob/codex/plan-01-session-verification/docs/client-review/source/implementation-plan.md#pr-04)
 - Inspected main: `6276027251609df64ffbbfa883f66e2d83dd57e4` (2026-10-26); this supersedes the source plan’s earlier repository snapshot.
 
 ## Current evidence and changes
 
-GitHub #153 is merged at 6276027. #154 is open, ready for review, and targets main; head 89cb3fc041f047512ed3083beb278dfc3573ee35. Its changed files include RolesPermissionsSettings, SchedulingVisitTypesSettings, SettingsAdministrationApiClient, Appointments, NewAppointmentModal and corresponding tests. The inspected role component loads server administration contracts and includes explicit Owner read-only behavior. This existing implementation is the feature owner; the original preview-only baseline is no longer sufficient evidence to create replacement code. PR-body test claims are not treated as independently run results. The exact #154 head was checked out detached without merging. A fresh Debug test build succeeded and 12 focused RolesPermissionsSettings/SchedulingVisitTypesSettings tests passed (0 failed/skipped). This is independently executed component evidence; authenticated browser persistence, role-picker and navigation acceptance remain open.
+Verified existing #154 at 89cb3fc041f047512ed3083beb278dfc3573ee35 with synthetic Admin data. PTA role selection loaded; a reversible permitted billing visibility change survived reload and was restored. A custom 35-minute clinic visit type survived reload and a fresh login, and appeared in New Appointment. Two residual defects reproduced: Duration displayed blank because only 30/45/60/90 options existed, and Cancel/submit were outside the scrollable viewport at 390px. This incremental follow-up renders nonstandard current durations (including historical values) and bounds the dialog with internal scrolling. After compiling, the custom value displayed correctly at 390/768/1440px, keyboard Tab reached the visible Schedule action, and the synthetic saved appointment retained its visit-type ID and a 35-minute interval. Existing Settings contracts and permissions are unchanged.
 
 ## Dependencies, blockers and owners
 
-- QA/engineering: verify the exact #154 candidate in a synthetic authenticated browser, then retain a separate user merge checkpoint before main/deployment acceptance. Testing is already authorized; no replacement Settings implementation is needed.
-- January/security owner: use the approved role capability matrix; do not infer additional privileges from the meeting role-picker complaint.
+No unresolved implementation prerequisite for the bounded changes; remaining acceptance work is listed below.
 
 ## Decisions and options
 
-Engineering owner: supply integrated stack commit and deployment evidence. Validation preparation can proceed, but completion depends on that build.
-
-**Development impact:** Preparation and independent contract work can proceed; dependent feature completion/activation waits for the named prerequisite.
-
-**Dependent criteria:** All post-stack configuration criteria.
+No new permission or clinical policy is introduced. Owner remains read-only under the existing role administration contract; existing custom and historical appointment data retain their meaning.
 
 ## Development specification
 
@@ -78,10 +73,12 @@ Merge/rebase conflicts and privilege drift are the main risks. Validate stack re
 | --- | --- |
 | git switch --detach 89cb3fc041f047512ed3083beb278dfc3573ee35; dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --filter 'FullyQualifiedName~RolesPermissionsSettingsTests&#124;FullyQualifiedName~SchedulingVisitTypesSettingsTests&#124;FullyQualifiedName~SettingsAdministrationApiClientTests' --verbosity minimal -m:1 -p:BuildInParallel=false | PASS: exact #154 candidate; 12 role/visit-type component tests, 0 failed/skipped. No matching SettingsAdministrationApiClientTests class exists; no client-test coverage is claimed by that filter term. |
 | python3 /private/tmp/ptdoc-client-implementation/workflow.py check 4 | PASS: requirement IDs, specification/acceptance sections, local links, no private source paths and git diff --check. |
+| dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~AppointmentComponentsTests&#124;FullyQualifiedName~AppointmentsPageTests&#124;FullyQualifiedName~SettingsAdministrationEndpointIntegrationTests&#124;FullyQualifiedName~SettingsAdministrationTests&#124;FullyQualifiedName~RolesPermissionsSettingsTests&#124;FullyQualifiedName~SchedulingVisitTypesSettingsTests' --verbosity minimal | PASS 209, 0 failed/skipped; includes custom 5/35/120-minute display/submission and historical 37-minute preservation. |
+| Synthetic Chromium Settings persistence and New Appointment verification at 390/768/1440px, then inspect local synthetic appointment interval | PASS custom type/duration saved; 35-minute persisted interval; keyboard-reachable visible actions, no horizontal overflow. |
 
 ## Remaining acceptance work
 
-Run synthetic Admin/Owner/PT/PTA browser scenarios against #154: save/reload roles and visit types, conflict recovery, authorized visibility, role picker and appointment consumption. Existing Owner read-only policy remains in force. User separately decides when to merge #154; no merge was performed.
+The reproduced residual defects are fixed and verified. Before deployment, merge/reconcile existing #154 and this dependent #159, then run the integrated release gate. Full Owner/PT/PTA browser sessions, client acceptance and MAUI publishing were not run; server denied-role/tenant/locked-admin cases are covered by the targeted suite.
 
 ## Publication and merge boundary
 

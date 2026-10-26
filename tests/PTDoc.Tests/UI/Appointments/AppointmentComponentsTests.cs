@@ -514,6 +514,52 @@ public sealed class AppointmentComponentsTests : TestContext
         Assert.Equal("true", cut.Find("#clinician").GetAttribute("aria-invalid"));
     }
 
+    [Theory]
+    [InlineData(35)]
+    [InlineData(5)]
+    [InlineData(120)]
+    public void NewAppointmentModal_CustomVisitDuration_IsVisibleAndSubmitted(int minutes)
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var typeId = Guid.NewGuid();
+        NewAppointmentModal.AppointmentFormData? submitted = null;
+        var cut = RenderComponent<NewAppointmentModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.AvailablePatients, new() { new() { Id = "patient-1", Name = "Synthetic Patient" } })
+            .Add(component => component.AvailableClinicians, new() { new() { Id = "clinician-1", Name = "Synthetic PT" } })
+            .Add(component => component.AvailableVisitTypes, new[]
+            {
+                new NewAppointmentModal.VisitTypeOption { Id = typeId, Name = "Custom visit", DurationMinutes = minutes }
+            })
+            .Add(component => component.OnSubmit, value =>
+            {
+                submitted = value;
+                return Task.FromResult(false);
+            }));
+
+        cut.Find("#patient").Change("patient-1");
+        cut.Find("#clinician").Change("clinician-1");
+        cut.Find("#appointmentType").Change(typeId.ToString());
+        Assert.Equal(minutes.ToString(CultureInfo.InvariantCulture), ((IHtmlSelectElement)cut.Find("#duration")).Value);
+        cut.Find("form").Submit();
+        Assert.NotNull(submitted);
+        Assert.Equal(minutes, submitted.DurationMinutes);
+        Assert.Equal(typeId, submitted.VisitTypeId);
+        Assert.Equal(minutes.ToString(CultureInfo.InvariantCulture), ((IHtmlSelectElement)cut.Find("#duration")).Value);
+    }
+
+    [Fact]
+    public void NewAppointmentModal_HistoricalCustomDuration_RemainsVisibleWithoutActiveType()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var cut = RenderComponent<NewAppointmentModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.InitialValues, new() { DurationMinutes = 37 }));
+        Assert.Equal("37", ((IHtmlSelectElement)cut.Find("#duration")).Value);
+        cut.Find("#duration").Change("60");
+        Assert.Equal("60", ((IHtmlSelectElement)cut.Find("#duration")).Value);
+    }
+
     [Fact]
     public void NewAppointmentModal_WhenParentFails_KeepsModalOpenAndPreservesValues()
     {
