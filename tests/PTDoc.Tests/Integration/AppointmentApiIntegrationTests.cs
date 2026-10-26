@@ -27,6 +27,59 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         _factory = factory;
     }
 
+    [Theory]
+    [InlineData(3, 8, 14)]
+    [InlineData(11, 1, 15)]
+    public async Task SchedulingRoster_RestrictsAssigneesAndPreservesClinicTimeAcrossDst(int month, int day, int utcHour)
+    {
+        var clinicId = Guid.NewGuid();
+        var tenant = new Moq.Mock<ITenantContextAccessor>();
+        tenant.Setup(value => value.GetCurrentClinicId()).Returns(clinicId);
+        using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<ITenantContextAccessor>();
+            services.AddSingleton(tenant.Object);
+        }));
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await db.Database.MigrateAsync();
+        var clinic = new Clinic { Id = clinicId, Name = "Synthetic DST", Slug = $"dst-{clinicId:N}", TimeZoneId = "America/New_York" };
+        var foreignClinic = new Clinic { Name = "Synthetic Foreign", Slug = $"foreign-{Guid.NewGuid():N}" };
+        var pt = new User { Username = $"pt-{Guid.NewGuid():N}", Role = Roles.PT, ClinicId = clinicId, FirstName = "Synthetic", LastName = "PT", PinHash = "test-only" };
+        var pta = new User { Username = $"pta-{Guid.NewGuid():N}", Role = Roles.PTA, ClinicId = clinicId, FirstName = "Synthetic", LastName = "PTA", PinHash = "test-only" };
+        var admin = new User { Username = $"admin-{Guid.NewGuid():N}", Role = Roles.Admin, ClinicId = clinicId, LicenseNumber = "license-does-not-grant-role", PinHash = "test-only" };
+        var foreign = new User { Username = $"foreign-{Guid.NewGuid():N}", Role = Roles.PT, ClinicId = foreignClinic.Id, PinHash = "test-only" };
+        var inactive = new User { Username = $"inactive-{Guid.NewGuid():N}", Role = Roles.PT, ClinicId = clinicId, IsActive = false, PinHash = "test-only" };
+        var patient = new Patient { ClinicId = clinicId, FirstName = "Synthetic", LastName = "DST", DateOfBirth = new(1990, 1, 1) };
+        db.AddRange(clinic, foreignClinic, pt, pta, admin, foreign, inactive, patient,
+            new ClinicBusinessHour { ClinicId = clinicId, DayOfWeek = DayOfWeek.Sunday, IsOpen = true, StartLocalTime = new(0, 0), EndLocalTime = new(23, 0) });
+        await db.SaveChangesAsync();
+        using var client = CreateClientWithRole(factory, Roles.Admin);
+        var date = new DateTime(2026, month, day);
+        var overview = await client.GetFromJsonAsync<AppointmentsOverviewResponse>($"/api/v1/appointments?startDate={date:yyyy-MM-dd}&endDate={date:yyyy-MM-dd}");
+        Assert.NotNull(overview);
+        Assert.Equal("America/New_York", overview!.ClinicTimeZoneId);
+        Assert.Contains(overview.Clinicians, value => value.Id == pt.Id);
+        Assert.Contains(overview.Clinicians, value => value.Id == pta.Id);
+        Assert.DoesNotContain(overview.Clinicians, value => value.Id == admin.Id || value.Id == foreign.Id || value.Id == inactive.Id);
+        foreach (var id in new[] { admin.Id, foreign.Id, inactive.Id })
+        {
+            using var rejected = await client.PostAsJsonAsync("/api/v1/appointments", new CreateAppointmentRequest
+            { PatientId = patient.Id, ClinicianId = id, AppointmentType = "Follow-up", AppointmentDate = date, AppointmentTime = TimeSpan.FromHours(10), DurationMinutes = 45 });
+            Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        }
+        using var accepted = await client.PostAsJsonAsync("/api/v1/appointments", new CreateAppointmentRequest
+        { PatientId = patient.Id, ClinicianId = pt.Id, AppointmentType = "Follow-up", AppointmentDate = date, AppointmentTime = TimeSpan.FromHours(10), DurationMinutes = 45 });
+        Assert.Equal(HttpStatusCode.Created, accepted.StatusCode);
+        var saved = await accepted.Content.ReadFromJsonAsync<AppointmentListItemResponse>();
+        Assert.Equal(new DateTime(2026, month, day, utcHour, 0, 0, DateTimeKind.Utc), saved!.StartTimeUtc);
+        using var invalid = await client.PostAsJsonAsync("/api/v1/appointments", new CreateAppointmentRequest
+        { PatientId = patient.Id, ClinicianId = pta.Id, AppointmentType = "Follow-up", AppointmentDate = date, AppointmentTime = TimeSpan.FromHours(month == 3 ? 2.5 : 1.5), DurationMinutes = 45 });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        db.ChangeTracker.Clear();
+        Assert.Single(await db.Appointments.Where(value => value.PatientId == patient.Id).ToListAsync());
+    }
+
     [Fact]
     public async Task AppointmentsOverview_ReturnsVisitWorkflowStatus_FromLinkedNotes()
     {

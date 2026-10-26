@@ -2741,6 +2741,27 @@ public sealed class SettingsAdministrationTests
         Assert.Contains("defaultAdminView", result.ValidationErrors.Keys);
     }
 
+    [Theory]
+    [InlineData(Roles.Admin)]
+    [InlineData(Roles.Owner)]
+    [InlineData(Roles.PracticeManager)]
+    [InlineData("Clinician")]
+    [InlineData("Provider")]
+    public async Task ScheduleBlockValidation_RejectsNonPtOrPtaAssignee(string role)
+    {
+        await using var context = CreateContext();
+        var clinic = new Clinic { Name = "Synthetic Block", Slug = $"synthetic-block-{Guid.NewGuid():N}" };
+        var user = new User { Username = $"synthetic-{Guid.NewGuid():N}", PinHash = "test-only", Role = role, ClinicId = clinic.Id };
+        context.AddRange(clinic, user);
+        await context.SaveChangesAsync();
+        var service = new SchedulingAdministrationService(context, CreateAuditService().Object);
+        var result = await service.CreateScheduleBlockAsync(clinic.Id,
+            new SaveScheduleBlockRequest(user.Id, "Synthetic block", "administrative", WeekdayFlags.Monday,
+                new TimeOnly(9, 0), new TimeOnly(10, 0), new DateOnly(2026, 10, 26), null, true, true), Guid.NewGuid(), "test");
+        Assert.Equal(SettingsOperationStatus.ValidationFailed, result.Status);
+        Assert.Contains("clinicianId", result.ValidationErrors!.Keys);
+    }
+
     [Fact]
     public async Task ScheduleBlockValidation_RejectsCrossClinicClinician()
     {

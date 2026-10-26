@@ -49,6 +49,7 @@
                                    OnSelectedClinicianIdChanged="HandleSelectedWeekClinicianChanged"
                                    OnViewChanged="HandleViewChanged"
                                    SelectedDate="@selectedDate"
+                                   TodayDate="@ClinicToday"
                                    OnPrevDay="HandlePrevDay"
                                    OnNextDay="HandleNextDay"
                                    OnToday="HandleToday"
@@ -70,6 +71,9 @@
                                     WeekGrouping="@weekGrouping"
                                     Filter="@currentFilter"
                                     OnAppointmentSelected="@HandleAppointmentSelected"
+                                    OnSlotSelected="@HandleSlotSelected"
+                                    SelectedWeekClinicianId="@(Guid.TryParse(selectedWeekClinicianId, out var selectedClinicianGuid) ? selectedClinicianGuid : null)"
+                                    DisplayTimeZone="@clinicTimeZone"
                                     AppointmentStatusOverrides="@appointmentStatusOverrides"
                                     HasActiveFilters="@HasActiveFilters"
                                     ShowEmptyState="@(!isLoadingAppointments && visibleAppointments.Count == 0)"
@@ -135,6 +139,9 @@
     private AppointmentsView selectedView = AppointmentsView.Today;
     private AppointmentsWeekGrouping weekGrouping = AppointmentsWeekGrouping.Clinician;
     private DateTime selectedDate = DateTime.Today;
+    private TimeZoneInfo clinicTimeZone = TimeZoneInfo.Local;
+    private bool hasLoadedClinicTimeZone;
+    private DateTime ClinicToday => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, clinicTimeZone).Date;
     private bool isFiltersOpen = false;
     private AppointmentsFilter currentFilter = new();
     private bool isNewAppointmentModalOpen = false;
@@ -332,7 +339,7 @@
 
     private async Task HandleToday()
     {
-        selectedDate = DateTime.Today;
+        selectedDate = ClinicToday;
         await LoadAppointmentsAsync();
     }
 
@@ -345,13 +352,24 @@
     private void HandleNewAppointment()
     {
         isRescheduleMode = false;
-        appointmentFormInitialValues = null;
+        appointmentFormInitialValues = new() { AppointmentDate = selectedDate.Date, AppointmentTime = new TimeSpan(9, 0, 0), DurationMinutes = 45 };
         appointmentBeingEditedId = null;
         preferredAppointmentPatientId = null;
         initialSendIntakePatientId = null;
         pendingSendIntakePatient = null;
         isResumingAppointmentModalAfterChild = false;
         isNewAppointmentModalOpen = true;
+    }
+
+    private void HandleSlotSelected(AppointmentSlotSelection slot)
+    {
+        if (!availableClinicians.Any(value => value.Id == slot.ClinicianId.ToString("D"))) return;
+        HandleNewAppointment();
+        appointmentFormInitialValues = new()
+        {
+            ClinicianId = slot.ClinicianId.ToString("D"), AppointmentDate = slot.Date,
+            AppointmentTime = slot.Time, DurationMinutes = 45
+        };
     }
 
     private void HandleAddPatientRequested(NewAppointmentModal.AppointmentFormData appointmentDraft)
@@ -495,7 +513,6 @@
 
             UpsertAppointment(savedAppointment);
             appointmentBeingEditedId = null;
-            appointmentFormInitialValues = null;
             isRescheduleMode = false;
             ToastService.ShowSuccess($"{patientName} {actionVerb} for {formData.AppointmentDate:MMM d, yyyy} at {appointmentTime}.");
             return true;
@@ -618,7 +635,7 @@
     {
         if (selectedView == AppointmentsView.Today)
         {
-            return selectedDate.Date == DateTime.Today.Date
+            return selectedDate.Date == ClinicToday
                 ? "Today's Appointments"
                 : $"Appointments for {selectedDate:MMM d, yyyy}";
         }
@@ -744,7 +761,7 @@
         if (string.Equals(dateRange, "today", StringComparison.OrdinalIgnoreCase))
         {
             selectedView = AppointmentsView.Today;
-            selectedDate = DateTime.Today;
+            selectedDate = ClinicToday;
             return;
         }
 
@@ -753,7 +770,7 @@
             || string.Equals(dateRange, "all", StringComparison.OrdinalIgnoreCase))
         {
             selectedView = AppointmentsView.Week;
-            selectedDate = DateTime.Today;
+            selectedDate = ClinicToday;
         }
     }
 
@@ -882,6 +899,10 @@
             var (startDate, endDate) = GetAppointmentLoadWindow();
             var overview = await AppointmentService.GetOverviewAsync(startDate, endDate);
 
+            clinicTimeZone = string.IsNullOrWhiteSpace(overview.ClinicTimeZoneId)
+                ? TimeZoneInfo.Local : TimeZoneInfo.FindSystemTimeZoneById(overview.ClinicTimeZoneId);
+            if (!hasLoadedClinicTimeZone && selectedDate.Date == DateTime.Today) selectedDate = ClinicToday;
+            hasLoadedClinicTimeZone = true;
             appointmentDirectory.Clear();
             appointmentDirectory.AddRange(overview.Appointments);
             appointmentStatusOverrides.Clear();
@@ -896,20 +917,6 @@
                     Name = clinician.DisplayName
                 })
                 .ToList();
-
-            if (availableClinicians.Count == 0)
-            {
-                availableClinicians = appointmentDirectory
-                    .Where(appointment => appointment.ClinicianId.HasValue && !string.IsNullOrWhiteSpace(appointment.ClinicianName))
-                    .GroupBy(appointment => appointment.ClinicianId!.Value)
-                    .Select(group => new NewAppointmentModal.ClinicianOption
-                    {
-                        Id = group.Key.ToString(),
-                        Name = group.First().ClinicianName
-                    })
-                    .OrderBy(clinician => clinician.Name, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-            }
 
             RebuildSchedulerState();
         }
@@ -1168,10 +1175,6 @@
             .ThenBy(appointment => appointment.PatientName)
             .ToList();
 
-        var visibleClinicianKeys = new HashSet<string>(
-            visibleAppointments.Select(GetClinicianIdentityKey),
-            StringComparer.OrdinalIgnoreCase);
-
         var appointmentCountsByClinician = visibleAppointments
             .GroupBy(GetClinicianIdentityKey, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
@@ -1182,29 +1185,26 @@
                 Schedule = new ClinicianSchedule
                 {
                     Id = index + 1,
+                    ClinicianId = clinician.Id,
+                    IsSchedulable = true,
                     Name = FormatClinicianDisplayName(clinician.DisplayName),
                     AppointmentCount = appointmentCountsByClinician.GetValueOrDefault(clinician.Id.ToString("D"), 0)
                 },
                 Key = clinician.Id.ToString("D")
             })
-            .Where(item => selectedView == AppointmentsView.Week || visibleClinicianKeys.Contains(item.Key))
             .Select(item => item.Schedule)
             .ToList();
 
-        if (schedulerClinicians.Count == 0)
+        // Historical assignees remain readable without becoming new scheduling choices.
+        foreach (var group in visibleAppointments.GroupBy(GetClinicianIdentityKey, StringComparer.OrdinalIgnoreCase))
         {
-            schedulerClinicians = visibleAppointments
-                .Select(GetEffectiveClinicianName)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
-                .Select((name, index) => new ClinicianSchedule
-                {
-                    Id = index + 1,
-                    Name = name,
-                    AppointmentCount = visibleAppointments.Count(appointment =>
-                        string.Equals(GetEffectiveClinicianName(appointment), name, StringComparison.OrdinalIgnoreCase))
-                })
-                .ToList();
+            var first = group.First();
+            if (schedulerClinicians.Any(value => value.ClinicianId == first.ClinicianId && first.ClinicianId.HasValue)) continue;
+            schedulerClinicians.Add(new ClinicianSchedule
+            {
+                Id = schedulerClinicians.Count + 1, ClinicianId = first.ClinicianId,
+                Name = GetEffectiveClinicianName(first), AppointmentCount = group.Count(), IsSchedulable = false
+            });
         }
     }
 
@@ -1217,6 +1217,10 @@
                 Id = clinician.Id.ToString("D"),
                 Name = FormatClinicianDisplayName(clinician.DisplayName)
             })
+            .Concat(appointmentDirectory.Where(value => value.ClinicianId.HasValue).Select(value => new WeekClinicianFilterOption
+            {
+                Id = value.ClinicianId!.Value.ToString("D"), Name = FormatClinicianDisplayName(value.ClinicianName) + " (history)"
+            }))
             .DistinctBy(option => option.Id, StringComparer.OrdinalIgnoreCase)
             .OrderBy(option => option.Name, StringComparer.OrdinalIgnoreCase));
     }
@@ -1334,43 +1338,14 @@
         }
 
         appointmentStatusOverrides.Remove(appointment.Id.ToString("D"));
-        EnsureClinicianOption(appointment);
         RebuildSchedulerState();
-    }
-
-    private void EnsureClinicianOption(AppointmentListItemResponse appointment)
-    {
-        if (!appointment.ClinicianId.HasValue || string.IsNullOrWhiteSpace(appointment.ClinicianName))
-        {
-            return;
-        }
-
-        var clinicianId = appointment.ClinicianId.Value;
-        if (clinicianDirectory.All(clinician => clinician.Id != clinicianId))
-        {
-            clinicianDirectory.Add(new AppointmentClinicianResponse
-            {
-                Id = clinicianId,
-                DisplayName = TrimClinicianPrefix(appointment.ClinicianName)
-            });
-        }
-
-        var clinicianIdValue = clinicianId.ToString();
-        if (availableClinicians.All(clinician => !string.Equals(clinician.Id, clinicianIdValue, StringComparison.OrdinalIgnoreCase)))
-        {
-            availableClinicians.Add(new NewAppointmentModal.ClinicianOption
-            {
-                Id = clinicianIdValue,
-                Name = FormatClinicianDisplayName(appointment.ClinicianName)
-            });
-        }
     }
 
     private AppointmentDetailViewModel ToAppointmentDetailViewModel(AppointmentListItemResponse appointment)
     {
         var localStart = ToLocalTime(appointment.StartTimeUtc);
         var localEnd = ToLocalTime(appointment.EndTimeUtc);
-        var durationMinutes = (int)Math.Round((localEnd - localStart).TotalMinutes);
+        var durationMinutes = (int)Math.Round((appointment.EndTimeUtc - appointment.StartTimeUtc).TotalMinutes);
 
         if (durationMinutes <= 0)
         {
@@ -1665,13 +1640,13 @@
         return null;
     }
 
-    private static DateTime ToLocalTime(DateTime utcTime)
+    private DateTime ToLocalTime(DateTime utcTime)
     {
         var normalizedUtc = utcTime.Kind == DateTimeKind.Utc
             ? utcTime
             : DateTime.SpecifyKind(utcTime, DateTimeKind.Utc);
 
-        return normalizedUtc.ToLocalTime();
+        return TimeZoneInfo.ConvertTimeFromUtc(normalizedUtc, clinicTimeZone);
     }
 
     private void HandleLocationChanged(object? sender, LocationChangedEventArgs args)

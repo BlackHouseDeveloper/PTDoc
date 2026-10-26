@@ -22,6 +22,7 @@
 </div>
 
 @code {
+    [Parameter] public DateTime TodayDate { get; set; } = DateTime.Today;
     [Parameter]
     public DateTime SelectedDate { get; set; } = DateTime.Today;
 
@@ -43,7 +44,7 @@
 
     private string Label => SelectedView == AppointmentsView.Week
         ? "Week Schedule"
-        : SelectedDate.Date == DateTime.Today.Date ? "Today's Schedule" : "Schedule";
+        : SelectedDate.Date == TodayDate.Date ? "Today's Schedule" : "Schedule";
 
     private string PreviousLabel => SelectedView == AppointmentsView.Week ? "Previous week" : "Previous day";
 
