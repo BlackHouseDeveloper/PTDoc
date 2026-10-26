@@ -23,6 +23,9 @@ public sealed class DraftAutosaveService : IAsyncDisposable
     private Func<bool>? _canSave;
     private long _dirtyVersion;
     private bool _disposed;
+    private bool _discarded;
+    private CancellationTokenSource? _activeSaveCts;
+    private readonly object _saveCancellationLock = new();
 
     public bool IsDirty { get; private set; }
     public bool IsSaving { get; private set; }
@@ -45,6 +48,7 @@ public sealed class DraftAutosaveService : IAsyncDisposable
 
     public void Reset()
     {
+        _discarded = false;
         CancelDebounce();
         IsDirty = false;
         IsSaving = false;
@@ -57,7 +61,7 @@ public sealed class DraftAutosaveService : IAsyncDisposable
 
     public void MarkDirty()
     {
-        if (_canSave?.Invoke() == false)
+        if (_discarded || _canSave?.Invoke() == false)
         {
             return;
         }
@@ -73,6 +77,30 @@ public sealed class DraftAutosaveService : IAsyncDisposable
     {
         CancelDebounce();
         return await SaveIfNeededAsync(cancellationToken);
+    }
+
+    /// <summary>Stops pending writes for an explicitly abandoned workspace until the next reset.</summary>
+    public async Task DiscardPendingChangesAsync()
+    {
+        _discarded = true;
+        CancelDebounce();
+        lock (_saveCancellationLock)
+        {
+            _activeSaveCts?.Cancel();
+        }
+        // Drain an in-flight operation before the page can dispose its persistence gate.
+        await _saveGate.WaitAsync();
+        try
+        {
+            IsDirty = false;
+            LastErrorMessage = null;
+            Interlocked.Increment(ref _dirtyVersion);
+            NotifyStateChanged();
+        }
+        finally
+        {
+            _saveGate.Release();
+        }
     }
 
     private void ScheduleDebouncedSave()
@@ -103,7 +131,14 @@ public sealed class DraftAutosaveService : IAsyncDisposable
         {
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
-                await SaveIfNeededAsync(cancellationToken);
+                try
+                {
+                    await SaveIfNeededAsync(cancellationToken);
+                }
+                catch (OperationCanceledException) when (_discarded && !cancellationToken.IsCancellationRequested)
+                {
+                    // A discarded workspace may be reset for another note on the same page instance.
+                }
             }
         }
         catch (OperationCanceledException)
@@ -113,15 +148,16 @@ public sealed class DraftAutosaveService : IAsyncDisposable
 
     private async Task<bool> SaveIfNeededAsync(CancellationToken cancellationToken)
     {
-        if (!IsDirty || _saveAsync is null || _canSave?.Invoke() == false)
+        if (_discarded || !IsDirty || _saveAsync is null || _canSave?.Invoke() == false)
         {
             return true;
         }
 
         await _saveGate.WaitAsync(cancellationToken);
+        using var activeSaveCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetimeCts.Token);
         try
         {
-            if (!IsDirty || _saveAsync is null || _canSave?.Invoke() == false)
+            if (_discarded || !IsDirty || _saveAsync is null || _canSave?.Invoke() == false)
             {
                 return true;
             }
@@ -131,7 +167,15 @@ public sealed class DraftAutosaveService : IAsyncDisposable
             var savingVersion = Interlocked.Read(ref _dirtyVersion);
             NotifyStateChanged();
 
-            var result = await _saveAsync(cancellationToken);
+            lock (_saveCancellationLock)
+            {
+                _activeSaveCts = activeSaveCts;
+                if (_discarded)
+                {
+                    activeSaveCts.Cancel();
+                }
+            }
+            var result = await _saveAsync(activeSaveCts.Token);
             if (result.Success)
             {
                 // Only the current dirty generation can clear the dirty state and update save metadata.
@@ -164,6 +208,10 @@ public sealed class DraftAutosaveService : IAsyncDisposable
         }
         finally
         {
+            lock (_saveCancellationLock)
+            {
+                _activeSaveCts = null;
+            }
             IsSaving = false;
             NotifyStateChanged();
             _saveGate.Release();

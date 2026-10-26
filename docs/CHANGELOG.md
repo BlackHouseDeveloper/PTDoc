@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Client review Plan 02
+
+- Added explicit Stay, Retry save and leave, and Leave without saving recovery after a failed note save. Explicit discard cancels/drains pending autosaves and prevents a disposal retry. Added navigation and autosave regressions; full browser fault-injection acceptance remains open.
+
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 
 - Selected external MFA enforcement from the server-authenticated Entra identity type instead of an issuer-supplied PTDoc marker. Entra normalization replaces duplicate/conflicting application-owned authentication, provider, and subject claims; focused tests cover JWT/OIDC identities, missing/conflicting markers, and repeated transformations.
