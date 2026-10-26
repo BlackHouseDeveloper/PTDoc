@@ -84,8 +84,13 @@ public sealed class SettingsAdministrationTests
         Assert.Equal(expected, ExternalMfaAssuranceMiddleware.HasVerifiedMfaMethod(principal));
     }
 
-    [Fact]
-    public async Task ExternalMfaAssurance_EnforcedClinicRejectsMissingMfaAndAuditsDenial()
+    [Theory]
+    [InlineData(PTDocClaimTypes.EntraJwtIdentityType, "entra_jwt")]
+    [InlineData(PTDocClaimTypes.EntraJwtIdentityType, "legacy_jwt")]
+    [InlineData(PTDocClaimTypes.EntraOidcIdentityType, "session_token")]
+    [InlineData(PTDocClaimTypes.EntraJwtIdentityType, null)]
+    public async Task ExternalMfaAssurance_EnforcedClinicRejectsMissingMfaAndAuditsDenial(
+        string identityType, string? authenticationTypeClaim)
     {
         await using var context = CreateContext();
         var now = new DateTimeOffset(2026, 8, 24, 4, 0, 0, TimeSpan.Zero);
@@ -99,6 +104,14 @@ public sealed class SettingsAdministrationTests
 
         var userId = Guid.NewGuid();
         var httpContext = CreateEntraHttpContext(userId, clinic.Id);
+        var identity = new ClaimsIdentity(httpContext.User.Claims
+            .Where(claim => claim.Type != PTDocClaimTypes.AuthenticationType), identityType);
+        if (authenticationTypeClaim is not null)
+        {
+            identity.AddClaim(new Claim(PTDocClaimTypes.AuthenticationType, authenticationTypeClaim));
+            identity.AddClaim(new Claim(PTDocClaimTypes.AuthenticationType, "conflicting_duplicate"));
+        }
+        httpContext.User = new ClaimsPrincipal(identity);
         var nextInvoked = false;
         var audit = CreateAuthAuditService();
         var resolver = CreatePrincipalResolver(httpContext);
@@ -3916,6 +3929,68 @@ public sealed class SettingsAdministrationTests
             It.IsAny<AppointmentReminderDeliveryRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Theory]
+    [InlineData(AppointmentStatus.Scheduled, ReminderDispatchStatus.Pending)]
+    [InlineData(AppointmentStatus.Scheduled, ReminderDispatchStatus.RetryScheduled)]
+    [InlineData(AppointmentStatus.Cancelled, ReminderDispatchStatus.Pending)]
+    [InlineData(AppointmentStatus.Completed, ReminderDispatchStatus.RetryScheduled)]
+    public async Task AppointmentReminderProcessor_SuppressesCrossClinicDispatchBeforeCancellation(
+        AppointmentStatus appointmentStatus, ReminderDispatchStatus dispatchStatus)
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var now = new DateTimeOffset(2026, 10, 26, 18, 0, 0, TimeSpan.Zero);
+        var clinic = new Clinic { Name = "Dispatch Clinic", Slug = $"dispatch-{Guid.NewGuid():N}" };
+        var otherClinic = new Clinic { Name = "Appointment Clinic", Slug = $"appointment-{Guid.NewGuid():N}" };
+        context.AddRange(clinic, otherClinic);
+        await context.SaveChangesAsync();
+        foreach (var preferences in await context.SchedulingPreferences.ToListAsync())
+        {
+            preferences.SendAppointmentReminders = false;
+        }
+        var patient = CreateConsentedPatient(otherClinic.Id, "mismatch@example.invalid", now.UtcDateTime);
+        var visitType = await context.VisitTypes.FirstAsync(item => item.ClinicId == otherClinic.Id);
+        var appointment = CreateIntakeAppointment(otherClinic.Id, patient, visitType, now.UtcDateTime.AddDays(2));
+        appointment.Status = appointmentStatus;
+        var dispatch = new AppointmentReminderDispatch
+        {
+            ClinicId = clinic.Id,
+            Appointment = appointment,
+            AppointmentId = appointment.Id,
+            AppointmentVersionUtc = appointment.LastModifiedUtc,
+            Purpose = ReminderDispatchPurpose.AppointmentReminder,
+            Channel = ReminderChannel.Email,
+            IdempotencyKey = $"clinic-mismatch:{appointment.Id:N}",
+            Status = dispatchStatus,
+            EligibleAtUtc = now.UtcDateTime.AddDays(1),
+            NextAttemptAtUtc = now.UtcDateTime.AddDays(1),
+            CreatedAtUtc = now.UtcDateTime,
+            UpdatedAtUtc = now.UtcDateTime
+        };
+        context.AddRange(patient, appointment, dispatch);
+        await context.SaveChangesAsync();
+        var dispatchId = dispatch.Id;
+        context.ChangeTracker.Clear();
+        var communication = new Mock<ICommunicationService>();
+        var intake = new Mock<IIntakeCommunicationWorkflow>();
+        var processor = new AppointmentCommunicationProcessor(
+            context, communication.Object, intake.Object, new MutableTimeProvider(now),
+            NullLogger<AppointmentCommunicationProcessor>.Instance);
+
+        await processor.ProcessDueAsync();
+
+        var saved = await context.AppointmentReminderDispatches.AsNoTracking().SingleAsync(item => item.Id == dispatchId);
+        Assert.Equal(ReminderDispatchStatus.Suppressed, saved.Status);
+        Assert.Equal("tenant_relationship_mismatch", saved.LastStatusCode);
+        Assert.Equal(now.UtcDateTime, saved.CompletedAtUtc);
+        Assert.Equal(appointmentStatus, (await context.Appointments.AsNoTracking().SingleAsync()).Status);
+        communication.VerifyNoOtherCalls();
+        intake.VerifyNoOtherCalls();
+    }
+
     [Fact]
     public async Task KioskService_MalformedAnonymousCredentialsFailClosed()
     {
@@ -4579,7 +4654,7 @@ public sealed class SettingsAdministrationTests
         claims.AddRange(additionalClaims);
         return new DefaultHttpContext
         {
-            User = new ClaimsPrincipal(new ClaimsIdentity(claims, "test")),
+            User = new ClaimsPrincipal(new ClaimsIdentity(claims, PTDocClaimTypes.EntraJwtIdentityType)),
             Response = { Body = new MemoryStream() }
         };
     }

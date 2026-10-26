@@ -224,6 +224,10 @@ The JWT bearer middleware now fires an `OnAuthenticationFailed` event that write
   types; enabling Entra does not add external-provider claims to local sessions, cookies or JWTs.
   Reauthenticate existing Entra browser sessions at deployment so cookies carry the new identity
   type. External tenant claims still must match the persisted provisioning mapping.
+  External MFA enforcement uses that server-selected identity type, never an issuer-supplied
+  `ptdoc_auth_type` marker. Entra normalization replaces all application-owned authentication,
+  provider and external-subject marker values using the configured provider and validated subject
+  claim; conflicting or duplicate marker values cannot redirect provisioning or disable MFA checks.
 - Recovery-code regeneration and administrator MFA reset return conflict on concurrent credential
   writes. Failed regeneration does not expose replacement codes. A concurrent kiosk-station write
   returns tenant-safe not-found and rolls back its relational token claim and check-in transaction.

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 153 external identity markers and reminder cleanup isolation
+
+- Selected external MFA enforcement from the server-authenticated Entra identity type instead of an issuer-supplied PTDoc marker. Entra normalization replaces duplicate/conflicting application-owned authentication, provider, and subject claims; focused tests cover JWT/OIDC identities, missing/conflicting markers, and repeated transformations.
+- Suppressed cross-clinic reminder dispatch relationships before cancellation evaluates appointment state or version. Added SQLite regressions for pending/retry dispatches referencing scheduled/cancelled/completed appointments, including future dispatches not yet eligible for delivery. No schema changes are required.
+
 ### Fixed - PR 153 bearer recovery and mixed authentication boundaries
 
 - Bound newly issued local access and refresh tokens to the current salted PIN-hash generation. Resetting a PIN or completing a forced change permanently rejects prior tokens, including MFA-authenticated tokens; unbound older tokens require reauthentication. No schema change is required.

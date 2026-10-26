@@ -64,6 +64,38 @@ public class PrincipalProvisioningResolverTests
         Assert.Equal("entra_jwt", transformed.FindFirst(PTDocClaimTypes.AuthenticationType)?.Value);
     }
 
+    [Theory]
+    [InlineData(PTDocClaimTypes.EntraJwtIdentityType)]
+    [InlineData(PTDocClaimTypes.EntraOidcIdentityType)]
+    public async Task EntraTransformation_ReplacesReservedClaimsAndRemainsIdempotent(string identityType)
+    {
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim("sub", "verified-subject"),
+            new Claim(PTDocClaimTypes.ExternalSubject, "spoofed-subject"),
+            new Claim(PTDocClaimTypes.ExternalSubject, "another-subject"),
+            new Claim(PTDocClaimTypes.ExternalProvider, "spoofed-provider"),
+            new Claim(PTDocClaimTypes.ExternalProvider, "another-provider"),
+            new Claim(PTDocClaimTypes.AuthenticationType, "legacy_jwt"),
+            new Claim(PTDocClaimTypes.AuthenticationType, "session_token")
+        ], identityType));
+        var transformation = new EntraExternalIdClaimsTransformation(
+            Options.Create(new EntraExternalIdOptions { Enabled = true }));
+
+        var transformed = await transformation.TransformAsync(principal);
+        var repeated = await transformation.TransformAsync(transformed);
+
+        foreach (var result in new[] { transformed, repeated })
+        {
+            Assert.Equal("verified-subject", Assert.Single(result.FindAll(PTDocClaimTypes.ExternalSubject)).Value);
+            Assert.Equal(EntraExternalIdOptions.DefaultProviderKey,
+                Assert.Single(result.FindAll(PTDocClaimTypes.ExternalProvider)).Value);
+            Assert.Equal("entra_jwt", Assert.Single(result.FindAll(PTDocClaimTypes.AuthenticationType)).Value);
+            Assert.Equal(identityType, result.Identity?.AuthenticationType);
+        }
+        Assert.Equal("legacy_jwt", principal.FindFirst(PTDocClaimTypes.AuthenticationType)?.Value);
+    }
+
     [Fact]
     public void Resolver_UsesExternalMapping_NotEmail_ForPatientResolution()
     {

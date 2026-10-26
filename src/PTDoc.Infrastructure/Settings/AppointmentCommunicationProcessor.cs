@@ -567,14 +567,16 @@ public sealed class AppointmentCommunicationProcessor(
             .Include(item => item.Appointment)
             .Where(item => item.Status == ReminderDispatchStatus.Pending || item.Status == ReminderDispatchStatus.RetryScheduled)
             .Where(item => item.Appointment == null
-                || item.Appointment.Status == AppointmentStatus.Cancelled
-                || item.Appointment.Status == AppointmentStatus.Completed
-                || item.Appointment.Status == AppointmentStatus.NoShow
-                || item.Appointment.Status == AppointmentStatus.CheckedIn
-                || item.Appointment.Status == AppointmentStatus.InProgress
-                || (item.Appointment.LastModifiedUtc == default
-                    ? item.Appointment.StartTimeUtc
-                    : item.Appointment.LastModifiedUtc) != item.AppointmentVersionUtc)
+                || item.Appointment.ClinicId != item.ClinicId
+                || (item.Appointment.ClinicId == item.ClinicId
+                    && (item.Appointment.Status == AppointmentStatus.Cancelled
+                        || item.Appointment.Status == AppointmentStatus.Completed
+                        || item.Appointment.Status == AppointmentStatus.NoShow
+                        || item.Appointment.Status == AppointmentStatus.CheckedIn
+                        || item.Appointment.Status == AppointmentStatus.InProgress
+                        || (item.Appointment.LastModifiedUtc == default
+                            ? item.Appointment.StartTimeUtc
+                            : item.Appointment.LastModifiedUtc) != item.AppointmentVersionUtc)))
             .OrderBy(item => item.UpdatedAtUtc)
             .ThenBy(item => item.Id)
             .Take(BatchSize)
@@ -582,6 +584,12 @@ public sealed class AppointmentCommunicationProcessor(
         foreach (var item in candidates)
         {
             var appointment = item.Appointment;
+            if (appointment is not null && appointment.ClinicId != item.ClinicId)
+            {
+                Suppress(item, "tenant_relationship_mismatch", now);
+                continue;
+            }
+
             var version = appointment?.LastModifiedUtc == default ? appointment?.StartTimeUtc : appointment?.LastModifiedUtc;
             if (appointment is null
                 || appointment.Status is AppointmentStatus.Cancelled

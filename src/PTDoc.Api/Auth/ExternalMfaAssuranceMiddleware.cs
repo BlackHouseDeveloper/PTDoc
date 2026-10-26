@@ -66,10 +66,9 @@ public sealed class ExternalMfaAssuranceMiddleware(RequestDelegate next)
             .Any(value => string.Equals(value, "mfa", StringComparison.OrdinalIgnoreCase));
 
     private static bool IsEntraPrincipal(System.Security.Claims.ClaimsPrincipal principal) =>
-        string.Equals(
-            principal.FindFirst(PTDocClaimTypes.AuthenticationType)?.Value,
-            "entra_jwt",
-            StringComparison.Ordinal);
+        principal.Identity is { IsAuthenticated: true } identity
+        && identity.AuthenticationType is PTDocClaimTypes.EntraJwtIdentityType
+            or PTDocClaimTypes.EntraOidcIdentityType;
 
     private static IEnumerable<string> ExpandClaimValues(string value)
     {
