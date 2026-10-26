@@ -51,10 +51,18 @@ public class PdfIntegrationTests : IAsyncDisposable
     {
         var baseline = new PTDoc.Application.Notes.Workspace.ProgressActivityReference("activity-a", BodyPart.Knee, "Recorded stairs", "Function", "recorded");
         var added = new PTDoc.Application.Notes.Workspace.ProgressActivityReference("activity-b", BodyPart.Shoulder, "New reach difficulty", "Function", "catalog-v1");
-        var payload = new PTDoc.Application.Notes.Workspace.NoteWorkspaceV2Payload { NoteType = NoteType.ProgressNote,
-            ProgressQuestionnaire = new() { PercentImproved = 0, Activities = new() { Baseline = [baseline], WorseIds = [baseline.Id], NewlyDifficult = [added] } } };
-        var hierarchy = _hierarchyBuilder.Build(new NoteExportDto { NoteId = Guid.NewGuid(), NoteType = NoteType.ProgressNote,
-            ContentJson = System.Text.Json.JsonSerializer.Serialize(payload), DateOfService = DateTime.UtcNow });
+        var payload = new PTDoc.Application.Notes.Workspace.NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.ProgressNote,
+            ProgressQuestionnaire = new() { PercentImproved = 0, Activities = new() { Baseline = [baseline], WorseIds = [baseline.Id], NewlyDifficult = [added] } }
+        };
+        var hierarchy = _hierarchyBuilder.Build(new NoteExportDto
+        {
+            NoteId = Guid.NewGuid(),
+            NoteType = NoteType.ProgressNote,
+            ContentJson = System.Text.Json.JsonSerializer.Serialize(payload),
+            DateOfService = DateTime.UtcNow
+        });
         var text = FlattenNodeText(hierarchy.Root);
         Assert.Contains("Percent improved: 0%", text);
         Assert.Contains("Worse: Knee", text); Assert.Contains("Recorded stairs", text);

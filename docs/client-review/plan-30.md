@@ -6,13 +6,13 @@
 - Original plan status: Ready for Development
 - Branch: `codex/plan-30-progress-activities`
 - Base: `main`
-- Expected GitHub number: #184; actual: assigned by GitHub at publication
+- Expected GitHub number: #184; actual: [#187](https://github.com/BlackHouseDeveloper/PTDoc/pull/187)
 - [Authoritative plan brief](https://github.com/BlackHouseDeveloper/PTDoc/blob/codex/plan-01-session-verification/docs/client-review/source/implementation-plan.md#pr-30)
 - Inspected main: `6276027251609df64ffbbfa883f66e2d83dd57e4` (2026-10-26); this supersedes the source plan’s earlier repository snapshot.
 
 ## Current evidence and changes
 
-Progress baseline identities originate from saved structured limitations and signed prior-note history. Improved/same/worse selections are mutually exclusive; newly difficult choices are canonicalized against all relevant body-region catalog entries and carry into the next signed-source baseline. Source notes remain unchanged. Percentage accepts zero and decimals without marking undocumented pain as zero. The browser exposed 82 choices for two fixture regions and retained 37.5%, improved/worse selections, one new activity and 3 visits/week after reload. Legacy activity labels and recommendation content remain readable.
+Progress baseline identities originate from saved structured limitations and signed prior-note history. Improved/same/worse selections are mutually exclusive; newly difficult choices are canonicalized against all relevant body-region catalog entries and carry into the next signed-source baseline. Source notes remain unchanged. Percentage accepts zero and decimals without marking undocumented pain as zero. The browser exposed 82 choices for two fixture regions and retained 37.5%, improved/worse selections, one new activity and 3 visits/week after reload. Legacy activity labels and recommendation content remain readable. CI follow-up corrected initializer whitespace using the owning-project formatter. The C# diff changes only initializer spacing/line breaks, confirmed by whitespace-normalized source comparison; feature behavior and prior passing feature tests are unchanged.
 
 ## Dependencies, blockers and owners
 
@@ -74,6 +74,7 @@ Baseline loss or duplicate activity IDs; retain provenance and use stable IDs.
 | dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~ProgressActivity&#124;FullyQualifiedName~ProgressSubjectiveSectionTests&#124;FullyQualifiedName~NoteWorkspacePayloadMapperTests&#124;FullyQualifiedName~NoteWorkspaceV2ServiceTests&#124;FullyQualifiedName~DailyTreatmentAiReviewTests&#124;FullyQualifiedName~NoteWriteServiceNormalizationTests&#124;FullyQualifiedName~GoalManagementServiceTests&#124;FullyQualifiedName~PdfExportTests&#124;FullyQualifiedName~PdfIntegrationTests&#124;FullyQualifiedName~SyncConflictResolutionTests' --verbosity minimal | 121 passed, 0 failed, 0 skipped; includes shared-write canonicalization and Daily carry-forward preserving signed Progress history. |
 | Synthetic browser Progress save/reload; keyboard and 390/768/1440 viewport checks | PASS: 37.5%, recorded improved/worse, newly difficult activity and 3/week retained; no horizontal overflow. |
 | python3 workflow.py check 30; git diff --check | PASS traceability, local links, sensitive-path and whitespace checks. |
+| dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity minimal; task-local whitespace-normalized source comparison | PASS: complete owning-project CI formatter; whitespace-only C# correction. Existing feature-test results remain applicable. |
 
 ## Remaining acceptance work
 

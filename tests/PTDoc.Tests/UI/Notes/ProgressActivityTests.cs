@@ -74,7 +74,10 @@ public sealed class ProgressActivityTests : TestContext
     }
 
     [Theory]
-    [InlineData(-1, false)] [InlineData(0, true)] [InlineData(100, true)] [InlineData(101, false)]
+    [InlineData(-1, false)]
+    [InlineData(0, true)]
+    [InlineData(100, true)]
+    [InlineData(101, false)]
     public void AllNoteNormalizationPaths_ValidatePercentBounds(int percent, bool valid)
     {
         var json = JsonSerializer.Serialize(new NoteWorkspaceV2Payload { ProgressQuestionnaire = new() { PercentImproved = percent } });
@@ -98,6 +101,7 @@ public sealed class ProgressActivityTests : TestContext
 
     private static BodyRegionCatalog Catalog(BodyPart body) => new()
     {
-        BodyPart = body, FunctionalLimitationCategories = [new() { Name = "Function", Items = ["Activity A", "Activity B"] }]
+        BodyPart = body,
+        FunctionalLimitationCategories = [new() { Name = "Function", Items = ["Activity A", "Activity B"] }]
     };
 }
