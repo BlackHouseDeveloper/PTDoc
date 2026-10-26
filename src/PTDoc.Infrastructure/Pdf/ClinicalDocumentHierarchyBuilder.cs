@@ -403,6 +403,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             Paragraph("Palpation Findings", BuildPalpationSummary(workspace)),
             BuildSpecialTestTable(noteData, workspace),
             BuildManualMuscleTestingTable(workspace),
+            BuildGradedObservationTable(workspace, MetricType.JointMobility),
             BuildRangeOfMotionTable(workspace),
             Paragraph("Additional Findings", workspace?.Objective.ClinicalObservationNotes));
     }
@@ -416,6 +417,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             Paragraph("Posture Findings", BuildPostureSummary(workspace)),
             Paragraph("Palpation Findings", BuildPalpationSummary(workspace)),
             BuildManualMuscleTestingTable(workspace),
+            BuildGradedObservationTable(workspace, MetricType.JointMobility),
             Paragraph("Additional Findings", workspace?.Objective.ClinicalObservationNotes));
     }
 
@@ -460,35 +462,19 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
     }
 
     private static ClinicalDocumentNode BuildManualMuscleTestingTable(NoteWorkspaceV2Payload? workspace)
-    {
-        var rows = workspace?.Objective.Metrics
-            .Where(metric => metric.MetricType == MetricType.MMT)
-            .Select(metric => Row(
-                "Manual Muscle Testing",
-                metric.BodyPart.ToString(),
-                "-",
-                Fallback(metric.NormValue),
-                Fallback(metric.PreviousValue),
-                string.Empty,
-                Fallback(metric.Value),
-                string.Empty,
-                metric.IsWithinNormalLimits ? "Within Normal Limits" : "Needs Review"))
-            .ToList() ?? [];
+        => BuildGradedObservationTable(workspace, MetricType.MMT);
 
-        return TableNode("Manual Muscle Testing Table", ClinicalDocumentSourceKind.Note,
-            columns:
-            [
-                Column("family", "Family"),
-                Column("type", "Type"),
-                Column("specific", "Specific"),
-                Column("normalScore", "Normal Score"),
-                Column("initialScore", "Initial Score"),
-                Column("initialDeficit", "Initial Deficit"),
-                Column("currentScore", "Current Score"),
-                Column("currentDeficit", "Current Deficit"),
-                Column("observation", "Observation")
-            ],
-            rows: rows);
+    private static ClinicalDocumentNode BuildGradedObservationTable(NoteWorkspaceV2Payload? workspace, MetricType kind)
+    {
+        var rows = workspace?.Objective.Metrics.Where(m => m.MetricType == kind)
+            .Select(m => Row(m.BodyPart.ToString(), m.Name, m.Side ?? "Unsided / not recorded",
+                Fallback(m.NormValue), Fallback(m.PreviousValue), Fallback(m.Value), Fallback(m.Unit),
+                string.IsNullOrWhiteSpace(m.MovementId) ? "Historical grading classification not verified" :
+                    string.Join("; ", m.ReferenceDocumentPath, m.ReferenceVersion))).ToList() ?? [];
+        return TableNode(kind == MetricType.MMT ? "Manual Muscle Testing Table" : "Joint Mobility Table", ClinicalDocumentSourceKind.Note,
+            columns: [Column("region", "Region"), Column("movement", "Movement / assessment"), Column("side", "Side"),
+                Column("reference", "Reference"), Column("prior", "Previous"), Column("current", "Current"),
+                Column("unit", "Unit"), Column("source", "Source / classification")], rows: rows);
     }
 
     private static ClinicalDocumentNode BuildRangeOfMotionTable(NoteWorkspaceV2Payload? workspace)

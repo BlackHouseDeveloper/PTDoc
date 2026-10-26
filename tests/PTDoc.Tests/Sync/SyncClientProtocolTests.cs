@@ -2152,4 +2152,18 @@ public class SyncClientProtocolTests
         Assert.Equal("103", (await context.ObjectiveMetrics.AsNoTracking().SingleAsync()).Value);
     }
 
+    [Fact]
+    public async Task ReceiveClientPushAsync_SeparateGradesRejectsCrossKindReplayWithoutMutatingSnapshot()
+    {
+        using var context = CreateInMemoryContext(); await SeedClinicalNoteAsync(context, "{}"); var note = await context.ClinicalNotes.SingleAsync();
+        var engine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var row = GradedObservations.New(BodyPart.Knee, MetricType.MMT, "knee:flexion", "Flexion", "Left"); row.Value = GradedObservations.Grades(MetricType.MMT)[9];
+        var payload = new NoteWorkspaceV2Payload { NoteType = NoteType.Daily, Objective = new() { MeasurementSchemaVersion = 2, Metrics = [row] } };
+        ClientSyncPushRequest Request() => new() { Items = [new() { EntityType = "ClinicalNote", ServerId = note.Id, OperationId = Guid.NewGuid(), Operation = "Update", LastModifiedUtc = DateTime.UtcNow.AddMinutes(1), DataJson = JsonSerializer.Serialize(new { contentJson = JsonSerializer.Serialize(payload) }) }] };
+        var first = await engine.ReceiveClientPushAsync(Request()); Assert.Equal(1, first.AcceptedCount); var before = note.ContentJson;
+        row.Value = GradedObservations.Grades(MetricType.JointMobility)[3]; var second = await engine.ReceiveClientPushAsync(Request());
+        Assert.Equal(0, second.AcceptedCount); Assert.Equal(1, second.ErrorCount); Assert.Equal(before, (await context.ClinicalNotes.AsNoTracking().SingleAsync()).ContentJson);
+        Assert.Equal(GradedObservations.Grades(MetricType.MMT)[9], (await context.ObjectiveMetrics.AsNoTracking().SingleAsync()).Value);
+    }
+
 }
