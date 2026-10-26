@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Plan 14 provider migrations
+
+- Keep visit-limit fields after SQL Server/PostgreSQL upgrades and remove them only on downgrade; preserve unrelated note-template indexes. Failing-first provider-operation regressions now pass.
+
 ### Changed - Plan 14 validation clarity
 
 - Clarified that the insurance helper validates payer-approval fields; server access policies remain independent and unchanged. Insurance and authorization regression checks passed.
