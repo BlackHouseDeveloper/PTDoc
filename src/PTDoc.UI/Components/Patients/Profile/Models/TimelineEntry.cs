@@ -5,6 +5,8 @@ public class TimelineEntry
     public string Type { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
+    public DateTime? TimestampUtc { get; set; }
+    public string DisplayTimeZone { get; set; } = string.Empty;
     public string Date { get; set; } = string.Empty;
     public string Time { get; set; } = string.Empty;
 }

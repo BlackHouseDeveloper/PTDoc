@@ -1,32 +1,26 @@
 # Plan PR 03: Correct patient timeline timestamps using the agreed display time zone
 
-**Planning only — this PR does not implement or fix the feature.**
+**Implemented** — only the changes and checks listed below are claimed.
 
 - Requirements: R007
 - Original plan status: Verification Required
 - Branch: `codex/plan-03-timeline-timezones`
 - Base: `main`
-- Expected GitHub number: #157; actual: assigned by GitHub at publication
+- Expected GitHub number: #157; actual: [#158](https://github.com/BlackHouseDeveloper/PTDoc/pull/158)
 - [Authoritative plan brief](https://github.com/BlackHouseDeveloper/PTDoc/blob/codex/plan-01-session-verification/docs/client-review/source/implementation-plan.md#pr-03)
 - Inspected main: `6276027251609df64ffbbfa883f66e2d83dd57e4` (2026-10-26); this supersedes the source plan’s earlier repository snapshot.
 
 ## Current evidence and changes
 
-At main 6276027, PatientProfile constructs note/appointment/intake timeline entries with DateTime.SpecifyKind(value, Utc).ToLocalTime(). Display therefore depends on the server process local zone. This is a source-verified presentation dependency, not proof which client-visible time is wrong. Clinic.TimeZoneId exists, but the meeting did not choose clinic versus viewer time. No timestamps were rewritten.
+Reproduced on main-derived code with a UTC host: a New York browser displayed synthetic intake instant 2026-10-26T01:30:00Z as 10/26 1:30 AM instead of 10/25 9:30 PM. After the fix, the same stored event displays 10/25/2026 9:30 PM UTC-04:00 with both UTC and Asia/Tokyo hosts. Browser comparisons of all five rendered synthetic rows (notes, appointments and intake) matched their UTC instants and remained in descending instant order. Stored timestamps and date-of-service fields are unchanged. No database migration.
 
 ## Dependencies, blockers and owners
 
-- January/product owner: choose clinic-time or viewer-time display, including cross-zone users.
-- Engineering/QA: compare the same synthetic UTC note/intake/appointment events on two host zones, including midnight and daylight-saving boundaries, after the display contract is approved.
+No unresolved implementation prerequisite for the bounded changes; remaining acceptance work is listed below.
 
 ## Decisions and options
 
-| Option | Behavior | Tradeoff |
-| --- | --- | --- |
-| Clinic time | Use the existing clinic TimeZoneId for event display | Consistent clinic chronology; remote viewers see clinic-local time |
-| Viewer time | Resolve and label the viewer zone | Familiar local time; different viewers can see different dates |
-
-**Unresolved:** Which display zone should be used? Owner: January/product owner. No option is selected by this PR. Event instants and date-only clinical fields must not be migrated by a blanket offset.
+User confirmed 2026-10-26: display timeline dates/times in the viewer’s local time zone; preserve stored UTC timestamps.
 
 ## Development specification
 
@@ -76,11 +70,15 @@ A display fix must not shift signed dates or persisted events. No data rewrite u
 
 | Command/check | Result |
 | --- | --- |
-| python3 /private/tmp/ptdoc-client-implementation/workflow.py check 3 | PASS: requirement IDs, specification/acceptance sections, local links, no private source paths and git diff --check. |
+| dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --filter 'FullyQualifiedName~TimelineTimestampFormatterTests&#124;FullyQualifiedName~PageScopedAppointmentUsageTests&#124;FullyQualifiedName~PatientClinicalInfoCardEditableTests' --verbosity minimal -m:1 -p:BuildInParallel=false | PASS: 34 tests, 0 failed, 0 skipped. |
+| TZ=UTC and TZ=Asia/Tokyo: dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --no-restore --filter 'FullyQualifiedName~TimelineTimestampFormatterTests' --verbosity minimal -m:1 -p:BuildInParallel=false | PASS: 9 tests in each host time zone. |
+| Local Playwright browser comparison, America/New_York viewer; hosts TZ=UTC and TZ=Asia/Tokyo | PASS: original intake instant renders identically at 10/25/2026 9:30 PM UTC-04:00; all rendered event types match raw instants and UTC ordering. |
+| dotnet format whitespace (PTDoc.UI and PTDoc.Tests, --no-restore --verify-no-changes --include changed C# files) | PASS. |
+| python3 workflow.py check 3; git diff --check | PASS: document sections, requirements, local links and whitespace. |
 
 ## Remaining acceptance work
 
-AC1–AC3 remain open until the display contract is approved and synthetic conversion/browser tests run.
+AC1–AC3 passed for the bounded timeline display change. Native MAUI platform publish/install and client acceptance remain unverified.
 
 ## Publication and merge boundary
 

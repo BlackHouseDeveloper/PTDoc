@@ -651,6 +651,8 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
 
     private void RegisterCommonServices(string role = Roles.PT)
     {
+        JSInterop.SetupModule("./_content/PTDoc.UI/js/viewer-time-zone.js")
+            .Setup<string>("getViewerTimeZone").SetResult("America/New_York");
         var authorization = this.AddTestAuthorization();
         authorization.SetAuthorized("test-user");
         authorization.SetRoles(role);
