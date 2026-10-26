@@ -6,13 +6,13 @@
 - Original plan status: Ready for Development
 - Branch: `codex/plan-26-patient-personal-goals`
 - Base: `main`
-- Expected GitHub number: #180; actual: assigned by GitHub at publication
+- Expected GitHub number: #180; actual: [#183](https://github.com/BlackHouseDeveloper/PTDoc/pull/183)
 - [Authoritative plan brief](https://github.com/BlackHouseDeveloper/PTDoc/blob/codex/plan-01-session-verification/docs/client-review/source/implementation-plan.md#pr-26)
 - Inspected main: `6276027251609df64ffbbfa883f66e2d83dd57e4` (2026-10-26); this supersedes the source plan’s earlier repository snapshot.
 
 ## Current evidence and changes
 
-Added the optional personal-goal question directly after functional limitations, with an associated label/help text and 2,000-character limit enforced by server normalization. Whitespace and line breaks remain verbatim in stored intake and assessment; old drafts without a goal remain valid. Existing intake seed context retains source ID and submitted/draft attribution. Added dedicated patient-reported goal context to request, service and provider prompt paths, explicitly excluding inferred measurements/targets/timeframes from the patient statement. Existing generated suggestions remain unaccepted until clinician action; pending suggestions are filtered out of persisted clinical goals. No schema migration. Browser review and saved evaluation reload preserve the synthetic goal exactly; mobile screenshot inspected.
+Added the optional personal-goal question directly after functional limitations, with an associated label/help text and 2,000-character limit enforced by server normalization. Whitespace and line breaks remain verbatim in stored intake and assessment; old drafts without a goal remain valid. Existing intake seed context retains source ID and submitted/draft attribution. Added dedicated patient-reported goal context to request, service and provider prompt paths, explicitly excluding inferred measurements/targets/timeframes from the patient statement. Existing generated suggestions remain unaccepted until clinician action; pending suggestions are filtered out of persisted clinical goals. No schema migration. Browser review and saved evaluation reload preserve the synthetic goal exactly; mobile screenshot inspected. CI follow-up corrected initializer whitespace using the owning-project formatter. The C# diff changes only initializer spacing/line breaks, confirmed by whitespace-normalized source comparison; feature behavior and prior passing feature tests are unchanged.
 
 ## Dependencies, blockers and owners
 
@@ -73,6 +73,7 @@ Patient wording may be mistaken for measured clinical fact; preserve attribution
 | dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --filter 'FullyQualifiedName~IntakeStructuredDataJsonTests&#124;FullyQualifiedName~IntakeServiceTests&#124;FullyQualifiedName~StructuredIntakeComponentsTests&#124;FullyQualifiedName~NoteWorkspaceV2ServiceTests&#124;FullyQualifiedName~NoteWorkspacePayloadMapperTests&#124;FullyQualifiedName~ClinicalGenerationServiceTests&#124;FullyQualifiedName~ClinicalPromptBuilderTests&#124;FullyQualifiedName~AssessmentWorkspaceSectionPrognosisTests&#124;FullyQualifiedName~AiEndpointErrorContractIntegrationTests' --verbosity minimal -m:1 | 196 passed, 0 failed, 0 skipped; includes verbatim persistence, old drafts, length rejection, source intake association, saved note reload, AI context and explicit acceptance. |
 | Task-local Playwright CLI: synthetic intake save/review/reload, evaluation prefill/save/reopen, SQLite exact-value inspection, keyboard order and 390/768/1440 viewports | Passed: exact spaces/line break retained in intake and note, review and assessment display, source association, keyboard order and no horizontal overflow. Mobile screenshot inspected; AI calls mocked only. |
 | python3 workflow.py check 26; git diff --check | Traceability, local links, sensitive-path and whitespace checks pass. |
+| dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity minimal; task-local whitespace-normalized source comparison | PASS: complete owning-project CI formatter; whitespace-only C# correction. Existing feature-test results remain applicable. |
 
 ## Remaining acceptance work
 

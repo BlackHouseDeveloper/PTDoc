@@ -23,7 +23,9 @@ public class ClinicalPromptBuilderTests
     {
         var prompt = new PTDoc.AI.ClinicalPromptBuilder().BuildGoalsPrompt(new PTDoc.Application.AI.GoalNarrativesGenerationRequest
         {
-            NoteId = Guid.NewGuid(), Diagnosis = "Knee pain", FunctionalLimitations = "Walking",
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Knee pain",
+            FunctionalLimitations = "Walking",
             PatientPersonalGoals = "Walk my dog again"
         });
         Assert.Contains("Patient-reported personal goals (not measured findings): Walk my dog again", prompt);

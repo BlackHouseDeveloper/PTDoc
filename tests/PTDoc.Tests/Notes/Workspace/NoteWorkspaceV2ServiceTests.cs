@@ -1238,8 +1238,10 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         seed.Payload.Plan.TreatmentDurationWeeks = [8];
         var savedGoalNote = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
         {
-            PatientId = patient.Id, NoteType = NoteType.Evaluation,
-            DateOfService = new DateTime(2026, 4, 7), Payload = seed.Payload
+            PatientId = patient.Id,
+            NoteType = NoteType.Evaluation,
+            DateOfService = new DateTime(2026, 4, 7),
+            Payload = seed.Payload
         });
         Assert.True(savedGoalNote.IsValid);
         var reloadedGoalNote = await _service.LoadAsync(patient.Id, savedGoalNote.Workspace!.NoteId);
