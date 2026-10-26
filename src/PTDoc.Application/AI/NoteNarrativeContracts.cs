@@ -56,10 +56,14 @@ public static class NoteNarrativeContextBuilder
 
     public static string Title(NoteNarrativePurpose purpose) => purpose switch
     {
-        NoteNarrativePurpose.SubjectiveSummary => "Subjective", NoteNarrativePurpose.ObjectiveSummary => "Objective",
-        NoteNarrativePurpose.AssessmentSummary => "Assessment", NoteNarrativePurpose.PlanSummary => "Plan",
-        NoteNarrativePurpose.NextVisitPlan => "Next visit plan", NoteNarrativePurpose.DischargeRecommendations => "Discharge recommendations",
-        NoteNarrativePurpose.DischargeFollowUp => "Discharge follow-up", _ => "SOAP summary"
+        NoteNarrativePurpose.SubjectiveSummary => "Subjective",
+        NoteNarrativePurpose.ObjectiveSummary => "Objective",
+        NoteNarrativePurpose.AssessmentSummary => "Assessment",
+        NoteNarrativePurpose.PlanSummary => "Plan",
+        NoteNarrativePurpose.NextVisitPlan => "Next visit plan",
+        NoteNarrativePurpose.DischargeRecommendations => "Discharge recommendations",
+        NoteNarrativePurpose.DischargeFollowUp => "Discharge follow-up",
+        _ => "SOAP summary"
     };
 
     public static IReadOnlyList<NoteNarrativeInput> Build(NoteWorkspaceV2Payload payload, NoteNarrativePurpose purpose)
