@@ -16,6 +16,14 @@ public static class IntakeLateralityValues
 
 public sealed class IntakeStructuredDataDto
 {
+    public const int MaxOtherTextLength = 2000;
+
+    [JsonPropertyName("otherMedications")]
+    public string? OtherMedications { get; set; }
+
+    [JsonPropertyName("otherMedicalHistory")]
+    public string? OtherMedicalHistory { get; set; }
+
     [JsonPropertyName("schemaVersion")]
     public string SchemaVersion { get; set; } = string.Empty;
 

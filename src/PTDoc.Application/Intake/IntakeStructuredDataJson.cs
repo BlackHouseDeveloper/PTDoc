@@ -83,6 +83,8 @@ public static class IntakeStructuredDataJson
             SchemaVersion = string.IsNullOrWhiteSpace(payload.SchemaVersion)
                 ? catalog.Version
                 : payload.SchemaVersion.Trim(),
+            OtherMedications = TrimOrNull(payload.OtherMedications),
+            OtherMedicalHistory = TrimOrNull(payload.OtherMedicalHistory),
             NoMedications = payload.NoMedications,
             NoComorbidities = payload.NoComorbidities,
             NoAssistiveDevices = payload.NoAssistiveDevices,
@@ -94,6 +96,9 @@ public static class IntakeStructuredDataJson
             },
             Subjective = NormalizeSubjective(payload.Subjective)
         };
+
+        ValidateOtherText(payload.OtherMedications, payload.NoMedications, "structuredData.otherMedications", validationResult);
+        ValidateOtherText(payload.OtherMedicalHistory, payload.NoComorbidities, "structuredData.otherMedicalHistory", validationResult);
 
         var normalizedBodySelections = new Dictionary<string, NormalizedBodySelection>(StringComparer.OrdinalIgnoreCase);
 
@@ -415,6 +420,19 @@ public static class IntakeStructuredDataJson
             IntakeLateralityValues.Right => IntakeLateralityValues.Right,
             _ => null
         };
+    }
+
+    private static void ValidateOtherText(string? value, bool noneSelected, string path, IntakeStructuredDataValidationResult result)
+    {
+        if (value?.Length > IntakeStructuredDataDto.MaxOtherTextLength)
+        {
+            result.AddError(path, $"Use {IntakeStructuredDataDto.MaxOtherTextLength} characters or fewer.");
+        }
+
+        if (noneSelected && !string.IsNullOrWhiteSpace(value))
+        {
+            result.AddError(path, "Choose either None or enter other details.");
+        }
     }
 
     private static void EnsureEnhancedCollections(IntakeStructuredDataDto payload)
