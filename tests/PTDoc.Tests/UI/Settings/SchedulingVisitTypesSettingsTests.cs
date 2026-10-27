@@ -1,6 +1,10 @@
 using Bunit;
 using Bunit.TestDoubles;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using PTDoc.Application.Services;
+using PTDoc.Application.Settings;
+using PTDoc.Core.Models;
 using PTDoc.UI.Components.Settings;
 
 namespace PTDoc.Tests.UI.Settings;
@@ -33,8 +37,8 @@ public sealed class SchedulingVisitTypesSettingsTests : TestContext
         Assert.Contains("Consultation (Non-Billable)", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Auto Check-In Messaging", cut.Markup, StringComparison.Ordinal);
         Assert.Contains("Save Changes", cut.Find(".scheduling-settings__action-bar").TextContent, StringComparison.Ordinal);
-        Assert.False(cut.Find(".scheduling-panel__add").HasAttribute("disabled"));
-        Assert.All(cut.FindAll(".scheduled-item__actions button"), button => Assert.False(button.HasAttribute("disabled")));
+        Assert.True(cut.Find(".scheduling-panel__add").HasAttribute("disabled"));
+        Assert.All(cut.FindAll(".scheduled-item__actions button"), button => Assert.True(button.HasAttribute("disabled")));
         Assert.All(cut.FindAll(".quick-admin-tools__row"), button => Assert.False(button.HasAttribute("disabled")));
     }
 
@@ -136,6 +140,121 @@ public sealed class SchedulingVisitTypesSettingsTests : TestContext
         cut.Find("#visit-types-tab").KeyDown("ArrowLeft");
 
         Assert.Equal("true", cut.Find("#clinic-hours-tab").GetAttribute("aria-selected"));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void EditBlock_PreservesScopeWeekdaysAndEffectiveDates(bool recurring)
+    {
+        var service = RegisterScheduling();
+        var block = new ScheduleBlockDto(Guid.NewGuid(), Guid.NewGuid(), "Scoped block", "admin",
+            WeekdayFlags.Tuesday | WeekdayFlags.Thursday, new TimeOnly(10, 0), new TimeOnly(11, 0),
+            new DateOnly(2026, 11, 2), new DateOnly(2026, 11, 30), recurring, true, 9);
+        service.Setup(item => item.GetScheduleBlocksAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync([block]);
+        SaveScheduleBlockRequest? saved = null;
+        service.Setup(item => item.UpdateScheduleBlockAsync(It.IsAny<Guid>(), block.Id, It.IsAny<SaveScheduleBlockRequest>(),
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, Guid, SaveScheduleBlockRequest, Guid, string, CancellationToken>((_, _, request, _, _, _) => saved = request)
+            .ReturnsAsync(SettingsOperationResult<ScheduleBlockDto>.Success(block with { Name = "Renamed" }));
+        var cut = RenderComponent<SchedulingVisitTypesSettings>();
+        cut.Find("#schedule-blocks-tab").Click();
+        cut.Find("button[aria-label='Edit Scoped block schedule block']").Click();
+        cut.Find("#scheduling-editor input").Input("Renamed");
+        cut.Find("#scheduling-editor .scheduling-settings__save-action").Click();
+
+        cut.WaitForAssertion(() => Assert.NotNull(saved));
+        Assert.Equal("Renamed", saved!.Name);
+        Assert.Equal(block.ClinicianId, saved.ClinicianId);
+        Assert.Equal(block.Weekdays, saved.Weekdays);
+        Assert.Equal(block.EffectiveStartDate, saved.EffectiveStartDate);
+        Assert.Equal(block.EffectiveEndDate, saved.EffectiveEndDate);
+        Assert.Equal(block.IsRecurring, saved.IsRecurring);
+        Assert.Equal(block.Version, saved.ExpectedVersion);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PartialSave_CancelRestoresCommittedPreferencesAndOriginalHours(bool transportFailure)
+    {
+        var service = RegisterScheduling();
+        var requests = new List<UpdateSchedulingPreferencesRequest>();
+        var hoursRequests = new List<UpdateClinicHoursRequest>();
+        service.Setup(item => item.UpdatePreferencesAsync(It.IsAny<Guid>(), It.IsAny<UpdateSchedulingPreferencesRequest>(),
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, UpdateSchedulingPreferencesRequest, Guid, string, CancellationToken>((_, request, _, _, _) => requests.Add(request))
+            .ReturnsAsync(SettingsOperationResult<SchedulingPreferencesDto>.Success(Preferences with { DefaultAppointmentDurationMinutes = 60, Version = 2 }));
+        service.Setup(item => item.UpdateClinicHoursAsync(It.IsAny<Guid>(), It.IsAny<UpdateClinicHoursRequest>(),
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, UpdateClinicHoursRequest, Guid, string, CancellationToken>((_, request, _, _, _) => hoursRequests.Add(request))
+            .Returns(() => transportFailure
+                ? Task.FromException<SettingsOperationResult<ClinicHoursDto>>(new HttpRequestException())
+                : Task.FromResult(SettingsOperationResult<ClinicHoursDto>.Conflict()));
+        var cut = RenderComponent<SchedulingVisitTypesSettings>();
+        cut.Find("#calendar-behavior-tab").Click();
+        cut.Find("#default-appointment-duration").Change("60 minutes");
+        cut.Find("#clinic-hours-tab").Click();
+        cut.Find("#clinic-time-zone").Input("America/New_York");
+        FindAction(cut, "Save Changes").Click();
+        cut.WaitForAssertion(() => Assert.Contains("preferences saved, but clinic hours", cut.Markup, StringComparison.Ordinal));
+        Assert.Equal("America/New_York", cut.Find("#clinic-time-zone").GetAttribute("value"));
+        FindAction(cut, "Cancel").Click();
+        Assert.Equal("America/Los_Angeles", cut.Find("#clinic-time-zone").GetAttribute("value"));
+        cut.Find("#calendar-behavior-tab").Click();
+        Assert.Equal("60 minutes", cut.Find("#default-appointment-duration").GetAttribute("value"));
+        FindAction(cut, "Save Changes").Click();
+        cut.WaitForAssertion(() => Assert.Equal(2, requests.Count));
+        Assert.Equal(2, requests[1].ExpectedVersion);
+        Assert.Equal(1, hoursRequests[1].ExpectedClinicVersion);
+    }
+
+    [Fact]
+    public void FailedCatalogLoad_DisablesPlaceholderMutationsUntilReload()
+    {
+        var service = RegisterScheduling();
+        var visit = new VisitTypeDto(Guid.NewGuid(), "eval", "Evaluation", 45, true, false, true, true, 0, 1);
+        service.SetupSequence(item => item.GetVisitTypesAsync(It.IsAny<Guid>(), true, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException()).ReturnsAsync([visit]);
+        var cut = RenderComponent<SchedulingVisitTypesSettings>();
+        Assert.All(cut.FindAll(".scheduled-item__actions button"), button => Assert.True(button.HasAttribute("disabled")));
+        cut.FindAll("button").Single(button => button.TextContent == "Reload scheduling settings").Click();
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll(".scheduled-item")));
+        Assert.All(cut.FindAll(".scheduled-item__actions button"), button => Assert.False(button.HasAttribute("disabled")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SchedulingDialogs_RegisterModalHelperAndReleaseOnEscape(bool deactivate)
+    {
+        var service = RegisterScheduling();
+        var visit = new VisitTypeDto(Guid.NewGuid(), "eval", "Evaluation", 45, true, false, true, true, 0, 1);
+        service.Setup(item => item.GetVisitTypesAsync(It.IsAny<Guid>(), true, It.IsAny<CancellationToken>())).ReturnsAsync([visit]);
+        var modal = JSInterop.SetupModule("./_content/PTDoc.UI/js/modal.js");
+        modal.Mode = JSRuntimeMode.Loose;
+        var cut = RenderComponent<SchedulingVisitTypesSettings>();
+        cut.Find($"button[aria-label='{(deactivate ? "Delete" : "Edit")} Evaluation visit type']").Click();
+        var id = deactivate ? "scheduling-deactivation" : "scheduling-editor";
+        cut.WaitForAssertion(() => Assert.Contains(modal.Invocations, call => call.Identifier == "registerEscapeHandler" && Equals(call.Arguments[0], id)));
+        await cut.InvokeAsync(() => cut.Instance.CloseFromJs());
+        cut.WaitForAssertion(() => Assert.Contains(modal.Invocations, call => call.Identifier == "unregisterEscapeHandler" && Equals(call.Arguments[0], id)));
+        Assert.Empty(cut.FindAll(".scheduling-dialog"));
+    }
+
+    private static readonly SchedulingPreferencesDto Preferences = new(45, 15, false, true, true, true, true, true,
+        "Week", "AllDay", null, null, null, true, 24, 1);
+
+    private Mock<ISchedulingAdministrationService> RegisterScheduling()
+    {
+        var service = new Mock<ISchedulingAdministrationService>();
+        service.Setup(item => item.GetVisitTypesAsync(It.IsAny<Guid>(), true, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        service.Setup(item => item.GetScheduleBlocksAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        service.Setup(item => item.GetPreferencesAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(Preferences);
+        service.Setup(item => item.GetClinicHoursAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ClinicHoursDto("America/Los_Angeles", 1, []));
+        Services.AddSingleton(service.Object);
+        return service;
     }
 
     private static AngleSharp.Dom.IElement FindAction(IRenderedComponent<SchedulingVisitTypesSettings> cut, string label) =>

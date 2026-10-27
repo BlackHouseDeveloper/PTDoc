@@ -23,12 +23,17 @@ window.ptdocAuth = {
   },
 
   postStepUp: async (path, payload) => {
-    const response = await fetch(path, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload || {})
-    });
+    let response;
+    try {
+      response = await fetch(path, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload || {})
+      });
+    } catch {
+      return { ok: false, status: 0, body: {} };
+    }
     let body = {};
     try {
       body = await response.json();

@@ -14,6 +14,40 @@ namespace PTDoc.Tests.UI.Appointments;
 [Trait("Category", "CoreCi")]
 public sealed class AppointmentComponentsTests : TestContext
 {
+    [Theory]
+    [InlineData("Follow Up", "Follow-Up")]
+    [InlineData("Follow-up", "Follow-Up")]
+    [InlineData("Custom visit", "Custom visit")]
+    public void AppointmentType_ResolvesLegacyNamesToPersistedOptions(string legacyName, string catalogName)
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var id = Guid.NewGuid();
+        var cut = RenderComponent<NewAppointmentModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.AvailableVisitTypes, new[]
+            {
+                new NewAppointmentModal.VisitTypeOption { Id = id, Name = catalogName, DurationMinutes = 45 }
+            })
+            .Add(component => component.InitialValues, new NewAppointmentModal.AppointmentFormData { AppointmentType = legacyName }));
+        Assert.Equal(id.ToString(), cut.Find("#appointmentType").GetAttribute("value"));
+    }
+
+    [Fact]
+    public void AppointmentType_PrefersExactCustomNameOverLegacyAlias()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var exactId = Guid.NewGuid();
+        var cut = RenderComponent<NewAppointmentModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.AvailableVisitTypes, new[]
+            {
+                new NewAppointmentModal.VisitTypeOption { Id = Guid.NewGuid(), Name = "Follow-Up", DurationMinutes = 45 },
+                new NewAppointmentModal.VisitTypeOption { Id = exactId, Name = "Follow Up", DurationMinutes = 30 }
+            })
+            .Add(component => component.InitialValues, new NewAppointmentModal.AppointmentFormData { AppointmentType = "Follow Up" }));
+        Assert.Equal(exactId.ToString(), cut.Find("#appointmentType").GetAttribute("value"));
+    }
+
     [Fact]
     public void AppointmentDetailModal_CheckedInAppointment_ShowsEnabledStartVisitOnly()
     {

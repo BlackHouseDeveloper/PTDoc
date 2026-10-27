@@ -26,6 +26,7 @@
         <form @onsubmit="CheckIn" @onsubmit:preventDefault="true">
             <label>Appointment check-in code<input inputmode="numeric" autocomplete="one-time-code" @bind="_appointmentToken" autofocus /></label>
             <button type="submit" disabled="@_isBusy">Check In</button>
+            <button type="button" disabled="@_isBusy" @onclick="ResetEnrollment">Staff: re-enroll this station</button>
         </form>
     }
 </main>
@@ -70,6 +71,22 @@
             ShowStatus("Station enrolled. It can only perform appointment check-in.", false);
         }
         catch (Exception) { ShowStatus("This station could not be enrolled. Try again.", true); }
+        finally { _isBusy = false; }
+    }
+
+    private async Task ResetEnrollment()
+    {
+        if (_isBusy) return;
+        _isBusy = true;
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.removeItem", CredentialStorageKey);
+            _deviceCredential = string.Empty;
+            _appointmentToken = string.Empty;
+            _enrollmentCode = string.Empty;
+            ShowStatus("Enter a replacement enrollment code from a clinic administrator.", false);
+        }
+        catch (Exception) { ShowStatus("The station credential could not be cleared. Try again.", true); }
         finally { _isBusy = false; }
     }
 

@@ -23,6 +23,11 @@
         <div class="scheduling-settings__status" role="status">Owner access is read-only. An Administrator must change scheduling configuration.</div>
     }
 
+    @if (_schedulingService is not null && !_catalogLoaded)
+    {
+        <button type="button" @onclick="ReloadSettings" disabled="@_isBusy">Reload scheduling settings</button>
+    }
+
     <div class="scheduling-settings__tabs" role="tablist" aria-label="Scheduling and visit type settings">
         <button
             @ref="_visitTypesTab"
@@ -124,8 +129,12 @@
     @if (_editor is not null)
     {
         <div class="scheduling-dialog-backdrop" @onclick="CloseEditor">
-            <section class="scheduling-dialog" role="dialog" aria-modal="true" aria-labelledby="scheduling-editor-title" @onclick:stopPropagation="true">
+            <section id="scheduling-editor" tabindex="-1" class="scheduling-dialog" role="dialog" aria-modal="true" aria-labelledby="scheduling-editor-title" @onclick:stopPropagation="true">
                 <h2 id="scheduling-editor-title">@(_editor.Kind == EditorKind.VisitType ? "Visit Type" : "Schedule Block")</h2>
+                @if (_statusIsError && _statusMessage is not null)
+                {
+                    <p role="alert">@_statusMessage</p>
+                }
                 <label>Name <input value="@_editor.Name" @oninput="e => _editor.Name = e.Value?.ToString() ?? string.Empty" /></label>
                 @if (_editor.Kind == EditorKind.VisitType)
                 {
@@ -140,10 +149,10 @@
                     <label>Reason code <input value="@_editor.ReasonCode" @oninput="e => _editor.ReasonCode = e.Value?.ToString() ?? string.Empty" /></label>
                     <label>Start <input type="time" value="@FormatTime(_editor.StartTime)" @onchange="e => _editor.StartTime = ParseTime(e.Value, new TimeOnly(12, 0))" /></label>
                     <label>End <input type="time" value="@FormatTime(_editor.EndTime)" @onchange="e => _editor.EndTime = ParseTime(e.Value, new TimeOnly(13, 0))" /></label>
-                    <label><input type="checkbox" checked="@_editor.IsRecurring" @onchange="e => _editor.IsRecurring = ParseBool(e.Value)" /> Recurring weekdays</label>
+                    <label><input type="checkbox" checked="@_editor.IsRecurring" @onchange="e => _editor.IsRecurring = ParseBool(e.Value)" /> Recurring</label>
                 }
                 <div class="scheduling-dialog__actions">
-                    <button type="button" @onclick="CloseEditor">Cancel</button>
+                    <button type="button" @onclick="CloseEditor" disabled="@_isBusy">Cancel</button>
                     <button type="button" class="scheduling-settings__save-action" @onclick="SaveEditor" disabled="@ControlsDisabled">Save</button>
                 </div>
             </section>
@@ -153,11 +162,15 @@
     @if (_pendingDeactivation is not null)
     {
         <div class="scheduling-dialog-backdrop">
-            <section class="scheduling-dialog" role="alertdialog" aria-modal="true" aria-labelledby="deactivate-title">
+            <section id="scheduling-deactivation" tabindex="-1" class="scheduling-dialog" role="alertdialog" aria-modal="true" aria-labelledby="deactivate-title">
                 <h2 id="deactivate-title">Deactivate @_pendingDeactivation.Name?</h2>
+                @if (_statusIsError && _statusMessage is not null)
+                {
+                    <p role="alert">@_statusMessage</p>
+                }
                 <p>Historical appointments will keep this reference, but it will no longer be available for new scheduling.</p>
                 <div class="scheduling-dialog__actions">
-                    <button type="button" @onclick="() => _pendingDeactivation = null">Cancel</button>
+                    <button type="button" @onclick="CloseFromJs" disabled="@_isBusy">Cancel</button>
                     <button type="button" class="scheduling-settings__save-action" @onclick="ConfirmDeactivation" disabled="@ControlsDisabled">Deactivate</button>
                 </div>
             </section>
@@ -166,6 +179,52 @@
 </section>
 
 @code {
+    private IJSObjectReference? _modalModule;
+    private DotNetObjectReference<SchedulingVisitTypesSettings>? _modalReference;
+    private string? _activeModalId;
+
+    private async Task SyncModalAsync()
+    {
+        var modalId = _editor is not null ? "scheduling-editor" : _pendingDeactivation is not null ? "scheduling-deactivation" : null;
+        if (modalId == _activeModalId) return;
+        try
+        {
+            _modalModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/modal.js");
+            if (_modalModule is null) return;
+            _modalReference ??= DotNetObjectReference.Create(this);
+            if (_activeModalId is not null)
+            {
+                await _modalModule.InvokeVoidAsync("unregisterEscapeHandler", _activeModalId);
+                await _modalModule.InvokeVoidAsync("unlockBodyScroll");
+            }
+            if (modalId is not null)
+            {
+                await _modalModule.InvokeVoidAsync("lockBodyScroll");
+                await _modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, _modalReference);
+            }
+            _activeModalId = modalId;
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    private async ValueTask DisposeModalAsync()
+    {
+        try
+        {
+            if (_modalModule is not null)
+            {
+                if (_activeModalId is not null)
+                {
+                    await _modalModule.InvokeVoidAsync("unregisterEscapeHandler", _activeModalId);
+                    await _modalModule.InvokeVoidAsync("unlockBodyScroll");
+                }
+                await _modalModule.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException) { }
+        finally { _modalReference?.Dispose(); }
+    }
+
     private SchedulingTab _activeTab = SchedulingTab.VisitTypes;
     private ElementReference _root;
     private ElementReference _visitTypesTab;
@@ -200,7 +259,9 @@
     private ScheduledItem? _pendingDeactivation;
     private List<ClinicHourDraft> _clinicHours = CreateDefaultHours();
     private SchedulingSnapshot _snapshot = SchedulingSnapshot.Default;
-    private bool ControlsDisabled => _isBusy || !_canMutate;
+    private bool _catalogLoaded;
+    private bool ControlsDisabled => _isBusy || !_canMutate || (_schedulingService is not null && !_catalogLoaded);
+    private bool CatalogDisabled => ControlsDisabled || !_catalogLoaded;
 
     private static readonly TabDefinition[] Tabs =
     [
@@ -247,6 +308,12 @@
             return;
         }
 
+        await ReloadSettings();
+    }
+
+    private async Task ReloadSettings()
+    {
+        if (_schedulingService is null || _isBusy) return;
         _isBusy = true;
         try
         {
@@ -260,12 +327,13 @@
             _scheduleBlocks = (await blocksTask).Select(ScheduledItem.FromBlock).ToList();
             ApplyPreferences(await preferencesTask);
             ApplyClinicHours(await hoursTask);
+            _catalogLoaded = true;
+            _statusMessage = null;
             CaptureSnapshot();
         }
         catch (Exception)
         {
             ShowStatus("Scheduling settings could not be loaded. Documented defaults are shown for retry.", true);
-            CaptureSnapshot();
         }
         finally
         {
@@ -275,21 +343,30 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender)
+        if (firstRender)
         {
-            return;
+            try
+            {
+                _keyboardModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/settings-keyboard.js");
+                await _keyboardModule.InvokeVoidAsync("attachKeyboardGuards", _root);
+            }
+            catch (Exception)
+            {
+                // Interop may be unavailable during prerender or circuit teardown.
+            }
         }
+        await SyncModalAsync();
+    }
 
-        try
+    [JSInvokable]
+    public Task CloseFromJs()
+    {
+        if (!_isBusy)
         {
-            _keyboardModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/settings-keyboard.js");
-            await _keyboardModule.InvokeVoidAsync("attachKeyboardGuards", _root);
+            _editor = null;
+            _pendingDeactivation = null;
         }
-        catch (Exception)
-        {
-            // Blazor handlers still provide selection when interop is unavailable during
-            // prerender, component tests, or circuit teardown.
-        }
+        return InvokeAsync(StateHasChanged);
     }
 
     private void SelectTab(SchedulingTab tab) => _activeTab = tab;
@@ -416,7 +493,7 @@
         </div>
         @if (actionLabel is not null && action is not null)
         {
-            <button type="button" class="scheduling-panel__add" @onclick="action" disabled="@ControlsDisabled">
+            <button type="button" class="scheduling-panel__add" @onclick="action" disabled="@CatalogDisabled">
                 <img src="_content/PTDoc.UI/images/settings/scheduling-add.svg" alt="" aria-hidden="true" />
                 <span>@actionLabel</span>
             </button>
@@ -438,10 +515,10 @@
             </div>
         </div>
         <div class="scheduled-item__actions">
-            <button type="button" aria-label="Edit @item.Name @itemType" @onclick="() => EditScheduledItem(item)" disabled="@ControlsDisabled">
+            <button type="button" aria-label="Edit @item.Name @itemType" @onclick="() => EditScheduledItem(item)" disabled="@CatalogDisabled">
                 <img src="_content/PTDoc.UI/images/settings/scheduling-edit.svg" alt="" aria-hidden="true" />
             </button>
-            <button type="button" aria-label="Delete @item.Name @itemType" @onclick="() => DeleteScheduledItem(item)" disabled="@ControlsDisabled">
+            <button type="button" aria-label="Delete @item.Name @itemType" @onclick="() => DeleteScheduledItem(item)" disabled="@CatalogDisabled">
                 <img src="_content/PTDoc.UI/images/settings/scheduling-delete.svg" alt="" aria-hidden="true" />
             </button>
         </div>
@@ -545,7 +622,7 @@
 
     private async Task SaveChanges()
     {
-        if (!_canMutate) return;
+        if (ControlsDisabled) return;
         if (_schedulingService is null)
         {
             CaptureSnapshot();
@@ -554,6 +631,7 @@
         }
 
         _isBusy = true;
+        var preferencesSaved = false;
         try
         {
             var preferencesRequest = new UpdateSchedulingPreferencesRequest(
@@ -581,7 +659,14 @@
                 return;
             }
 
-            _preferencesVersion = preferencesResult.Value.Version;
+            ApplyPreferences(preferencesResult.Value);
+            _snapshot = SchedulingSnapshot.Capture(this) with
+            {
+                TimeZoneId = _snapshot.TimeZoneId,
+                ClinicVersion = _snapshot.ClinicVersion,
+                Hours = _snapshot.Hours
+            };
+            preferencesSaved = true;
             var hoursRequest = new UpdateClinicHoursRequest(
                 _clinicTimeZoneId,
                 _clinicVersion,
@@ -591,6 +676,7 @@
             if (!hoursResult.Succeeded || hoursResult.Value is null)
             {
                 ShowOperationError(hoursResult.Status, hoursResult.ValidationErrors);
+                ShowStatus($"Scheduling preferences saved, but clinic hours were not saved. {_statusMessage}", true);
                 return;
             }
 
@@ -600,7 +686,9 @@
         }
         catch (Exception)
         {
-            ShowStatus("Scheduling settings could not be saved. Your draft remains available to retry.", true);
+            ShowStatus(preferencesSaved
+                ? "Scheduling preferences saved, but clinic hours could not be saved. Your hours draft remains available to retry."
+                : "Scheduling settings could not be saved. Your draft remains available to retry.", true);
         }
         finally
         {
@@ -610,17 +698,22 @@
 
     private void OpenAddVisitType()
     {
-        if (_canMutate) _editor = EditorDraft.NewVisitType();
+        if (CatalogDisabled) return;
+        _statusMessage = null;
+        _editor = EditorDraft.NewVisitType();
     }
 
     private void OpenAddScheduleBlock()
     {
-        if (_canMutate) _editor = EditorDraft.NewBlock();
+        if (CatalogDisabled) return;
+        _statusMessage = null;
+        _editor = EditorDraft.NewBlock();
     }
 
     private void EditScheduledItem(ScheduledItem item)
     {
-        if (!_canMutate) return;
+        if (CatalogDisabled || item.Id == Guid.Empty) return;
+        _statusMessage = null;
         _editor = item.Kind == EditorKind.VisitType
             ? EditorDraft.FromVisitType(_visitTypes.Single(value => value.Id == item.Id))
             : EditorDraft.FromBlock(_scheduleBlocks.Single(value => value.Id == item.Id));
@@ -628,7 +721,8 @@
 
     private void DeleteScheduledItem(ScheduledItem item)
     {
-        if (!_canMutate) return;
+        if (CatalogDisabled || item.Id == Guid.Empty) return;
+        _statusMessage = null;
         _pendingDeactivation = item;
     }
 
@@ -636,7 +730,7 @@
 
     private void OpenKioskCheckIn() => Navigation.NavigateTo("/settings/kiosk");
 
-    private void CloseEditor() => _editor = null;
+    private void CloseEditor() { if (!_isBusy) _editor = null; }
 
     private async Task SaveEditor()
     {
@@ -673,8 +767,8 @@
             else
             {
                 var request = new SaveScheduleBlockRequest(
-                    null, _editor.Name, _editor.ReasonCode, WeekdayFlags.Weekdays,
-                    _editor.StartTime, _editor.EndTime, DateOnly.FromDateTime(DateTime.Today), null,
+                    _editor.ClinicianId, _editor.Name, _editor.ReasonCode, _editor.Weekdays,
+                    _editor.StartTime, _editor.EndTime, _editor.EffectiveStartDate, _editor.EffectiveEndDate,
                     _editor.IsRecurring, true, _editor.Id == Guid.Empty ? null : _editor.Version);
                 var result = _editor.Id == Guid.Empty
                     ? await _schedulingService.CreateScheduleBlockAsync(Guid.Empty, request, Guid.Empty, string.Empty)
@@ -871,6 +965,10 @@
         public TimeOnly StartTime { get; set; } = new(12, 0);
         public TimeOnly EndTime { get; set; } = new(13, 0);
         public bool IsRecurring { get; set; } = true;
+        public Guid? ClinicianId { get; set; }
+        public WeekdayFlags Weekdays { get; set; } = WeekdayFlags.Weekdays;
+        public DateOnly EffectiveStartDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+        public DateOnly? EffectiveEndDate { get; set; }
         public long Version { get; set; }
 
         public static EditorDraft NewVisitType() => new() { Kind = EditorKind.VisitType };
@@ -895,7 +993,9 @@
             {
                 Id = source.Id, Kind = EditorKind.ScheduleBlock, Name = source.Name,
                 ReasonCode = source.ReasonCode, StartTime = source.StartLocalTime,
-                EndTime = source.EndLocalTime, IsRecurring = source.IsRecurring, Version = source.Version
+                EndTime = source.EndLocalTime, IsRecurring = source.IsRecurring, Version = source.Version,
+                ClinicianId = source.ClinicianId, Weekdays = source.Weekdays,
+                EffectiveStartDate = source.EffectiveStartDate, EffectiveEndDate = source.EffectiveEndDate
             };
         }
     }
@@ -984,6 +1084,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        await DisposeModalAsync();
         if (_keyboardModule is null)
         {
             return;

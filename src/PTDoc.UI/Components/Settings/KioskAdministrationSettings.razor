@@ -1,6 +1,8 @@
 @using PTDoc.Application.Settings
 @inject IServiceProvider Services
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <section class="kiosk-admin" aria-labelledby="kiosk-admin-title" aria-busy="@_isBusy">
     <button type="button" class="kiosk-admin__back" @onclick="BackToSettings">← Back to Settings</button>
@@ -74,7 +76,7 @@
     @if (_pendingStation is not null)
     {
         <div class="kiosk-admin__dialog-backdrop">
-            <section class="kiosk-admin__dialog" role="alertdialog" aria-modal="true" aria-labelledby="kiosk-confirm-title" aria-describedby="kiosk-confirm-description">
+            <section id="kiosk-confirmation" tabindex="-1" class="kiosk-admin__dialog" role="alertdialog" aria-modal="true" aria-labelledby="kiosk-confirm-title" aria-describedby="kiosk-confirm-description">
                 <h2 id="kiosk-confirm-title">@(_pendingAction == KioskAdminAction.Rotate ? "Rotate station enrollment?" : "Revoke kiosk station?")</h2>
                 <p id="kiosk-confirm-description">
                     @(_pendingAction == KioskAdminAction.Rotate
@@ -93,6 +95,66 @@
 </section>
 
 @code {
+    private IJSObjectReference? _modalModule;
+    private DotNetObjectReference<KioskAdministrationSettings>? _modalReference;
+    private string? _activeModalId;
+
+    private async Task SyncModalAsync()
+    {
+        var modalId = _pendingStation is not null ? "kiosk-confirmation" : null;
+        if (modalId == _activeModalId) return;
+        try
+        {
+            _modalModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/modal.js");
+            if (_modalModule is null) return;
+            _modalReference ??= DotNetObjectReference.Create(this);
+            if (_activeModalId is not null)
+            {
+                await _modalModule.InvokeVoidAsync("unregisterEscapeHandler", _activeModalId);
+                await _modalModule.InvokeVoidAsync("unlockBodyScroll");
+            }
+            if (modalId is not null)
+            {
+                await _modalModule.InvokeVoidAsync("lockBodyScroll");
+                await _modalModule.InvokeVoidAsync("registerEscapeHandler", modalId, _modalReference);
+            }
+            _activeModalId = modalId;
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    private async ValueTask DisposeModalAsync()
+    {
+        try
+        {
+            if (_modalModule is not null)
+            {
+                if (_activeModalId is not null)
+                {
+                    await _modalModule.InvokeVoidAsync("unregisterEscapeHandler", _activeModalId);
+                    await _modalModule.InvokeVoidAsync("unlockBodyScroll");
+                }
+                await _modalModule.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException) { }
+        finally { _modalReference?.Dispose(); }
+    }
+
+    protected override Task OnAfterRenderAsync(bool firstRender) => SyncModalAsync();
+
+    [JSInvokable]
+    public Task CloseFromJs()
+    {
+        CancelConfirmation();
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await DisposeModalAsync();
+    }
+
     private IKioskCheckInService? _service;
     private IReadOnlyList<KioskStationDto> _stations = [];
     private string _newStationName = string.Empty;
@@ -254,7 +316,7 @@
         _pendingAction = action;
     }
 
-    private void CancelConfirmation() => _pendingStation = null;
+    private void CancelConfirmation() { if (!_isBusy) _pendingStation = null; }
 
     private async Task ConfirmPendingAction()
     {

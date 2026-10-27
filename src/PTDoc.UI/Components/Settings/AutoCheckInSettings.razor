@@ -83,7 +83,7 @@
             var policyTask = _policyService.GetAsync(Guid.Empty);
             var visitsTask = _schedulingService.GetVisitTypesAsync(Guid.Empty, false);
             await Task.WhenAll(policyTask, visitsTask);
-            _visitTypes = (await visitsTask).Where(item => item.RequiresIntake).ToArray();
+            _visitTypes = (await visitsTask).Where(item => item.IsActive && item.RequiresIntake).ToArray();
             Apply(await policyTask);
         }
         catch (Exception)
@@ -127,7 +127,7 @@
         _enableSms = policy.EnableSms;
         _templateKey = policy.TemplateKey;
         _maxAttempts = policy.MaxAttempts;
-        _eligibleVisitTypeIds = policy.EligibleVisitTypeIds.ToHashSet();
+        _eligibleVisitTypeIds = policy.EligibleVisitTypeIds.Intersect(_visitTypes.Select(item => item.Id)).ToHashSet();
         _version = policy.Version;
         _snapshot = policy;
     }

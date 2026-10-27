@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Antiforgery;
+using PTDoc.Application.Settings;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
@@ -21,6 +23,80 @@ internal static class WebAuthenticationStepFlow
         app.MapPost("/auth/mfa/method", (Delegate)ChooseMfaMethodAsync).AllowAnonymous();
         app.MapPost("/auth/mfa/verify-enrollment", VerifyEnrollmentAsync).AllowAnonymous();
         app.MapPost("/auth/complete", CompleteAuthenticationAsync).AllowAnonymous();
+        app.MapGet("/auth/mfa/recovery-codes", (HttpContext context, IAntiforgery antiforgery) =>
+            RenderRecoveryCodeRegeneration(context, antiforgery, NormalizeReturnUrl(context.Request.Query["returnUrl"])))
+            .RequireAuthorization();
+        app.MapPost("/auth/mfa/recovery-codes", RegenerateRecoveryCodesAsync).RequireAuthorization();
+    }
+
+    private static IResult RenderRecoveryCodeRegeneration(
+        HttpContext context, IAntiforgery antiforgery, string returnUrl, string? error = null)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        var tokens = antiforgery.GetAndStoreTokens(context);
+        const string codePattern = "[0-9]{6}";
+        return RenderPage("Regenerate recovery codes",
+            "Enter a fresh authenticator code. Regenerating invalidates all previous recovery codes.",
+            $"""
+            <form method="post" action="/auth/mfa/recovery-codes" class="auth-form">
+              {Hidden(tokens.FormFieldName, tokens.RequestToken!)}
+              {Hidden("returnUrl", returnUrl)}
+              <label for="authenticator-code">Six-digit authenticator code</label>
+              <input id="authenticator-code" name="code" inputmode="numeric" pattern="{codePattern}" maxlength="6" autocomplete="one-time-code" required />
+              <button type="submit" class="auth-primary">Invalidate and regenerate codes</button>
+              <a href="{Encode(returnUrl)}">Cancel</a>
+            </form>
+            """, error);
+    }
+
+    private static async Task<IResult> RegenerateRecoveryCodesAsync(
+        HttpContext context, IHttpClientFactory httpClientFactory, IAntiforgery antiforgery)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        try
+        {
+            await antiforgery.ValidateRequestAsync(context);
+        }
+        catch (AntiforgeryValidationException)
+        {
+            return Results.BadRequest();
+        }
+
+        var form = await context.Request.ReadFormAsync(context.RequestAborted);
+        var returnUrl = NormalizeReturnUrl(form["returnUrl"]);
+        var code = form["code"].ToString();
+        if (code.Length != 6 || code.Any(character => character is < '0' or > '9'))
+        {
+            return RenderRecoveryCodeRegeneration(context, antiforgery, returnUrl, "Enter the current six-digit code.");
+        }
+
+        try
+        {
+            using var response = await SendAsync(httpClientFactory.CreateClient("ServerAPI"), HttpMethod.Post,
+                "/api/v1/auth/mfa/recovery-codes/regenerate", new { Code = code }, context);
+            if (!response.IsSuccessStatusCode)
+            {
+                return RenderRecoveryCodeRegeneration(context, antiforgery, returnUrl,
+                    "Recovery codes could not be regenerated. Verify your authenticator code and session, then try again.");
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<MfaRecoveryCodeSet>(cancellationToken: context.RequestAborted);
+            if (result is null || result.RecoveryCodes.Count == 0)
+            {
+                return RenderRecoveryCodeRegeneration(context, antiforgery, returnUrl,
+                    "The response did not include recovery codes. Use a fresh authenticator code to try again.");
+            }
+
+            var codes = string.Join("", result.RecoveryCodes.Select(value => $"<li><code>{Encode(value)}</code></li>"));
+            return RenderPage("Save your new recovery codes",
+                "Your previous codes are invalid. Store these single-use codes securely; they will not be shown again.",
+                $"<ul>{codes}</ul><a class=\"auth-primary\" href=\"{Encode(returnUrl)}\">Return</a>");
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            return RenderRecoveryCodeRegeneration(context, antiforgery, returnUrl,
+                "The request could not be completed. Use a fresh authenticator code to try again.");
+        }
     }
 
     internal static async Task<HttpResponseMessage> SendAsync(

@@ -271,10 +271,11 @@ public sealed class NoteWorkspacePageTests : TestContext
         Services.AddSingleton(aiService.Object);
         Services.AddSingleton(new DraftAutosaveService());
 
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/patient/{patientId}/note/{noteId}?section=interventions");
+
         var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
             .Add(component => component.PatientId, patientId.ToString())
-            .Add(component => component.NoteId, noteId.ToString())
-            .Add(component => component.RequestedSection, "interventions"));
+            .Add(component => component.NoteId, noteId.ToString()));
 
         cut.WaitForAssertion(() =>
         {
@@ -681,10 +682,11 @@ public sealed class NoteWorkspacePageTests : TestContext
         Services.AddSingleton(aiService.Object);
         Services.AddSingleton(new DraftAutosaveService());
 
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/patient/{patientId}/note/{noteId}?section=interventions");
+
         var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
             .Add(component => component.PatientId, patientId.ToString())
-            .Add(component => component.NoteId, noteId.ToString())
-            .Add(component => component.RequestedSection, "interventions"));
+            .Add(component => component.NoteId, noteId.ToString()));
 
         cut.WaitForAssertion(() =>
         {
@@ -754,11 +756,12 @@ public sealed class NoteWorkspacePageTests : TestContext
         Services.AddSingleton(aiService.Object);
         Services.AddSingleton(new DraftAutosaveService());
 
+        Services.GetRequiredService<NavigationManager>().NavigateTo(
+            $"/patient/{patientId}/new-note?noteType=Daily%20Treatment%20Note"
+            + $"&appointmentId={appointmentId:D}&allowEvaluationFallback=true");
+
         var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
-            .Add(component => component.PatientId, patientId.ToString())
-            .Add(component => component.RequestedNoteType, "Daily Treatment Note")
-            .Add(component => component.RequestedAppointmentId, appointmentId.ToString("D"))
-            .Add(component => component.RequestedAllowEvaluationFallback, true));
+            .Add(component => component.PatientId, patientId.ToString()));
 
         cut.WaitForAssertion(() =>
         {
@@ -849,12 +852,14 @@ public sealed class NoteWorkspacePageTests : TestContext
         Services.AddSingleton(aiService.Object);
         Services.AddSingleton(new DraftAutosaveService());
 
+        Services.GetRequiredService<NavigationManager>().NavigateTo(
+            $"/patient/{patientId}/new-note?noteType=Daily%20Treatment%20Note"
+            + $"&appointmentId={appointmentId:D}"
+            + $"&dateOfService={dateOfService.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)}"
+            + "&allowEvaluationFallback=true");
+
         var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
-            .Add(component => component.PatientId, patientId.ToString())
-            .Add(component => component.RequestedNoteType, "Daily Treatment Note")
-            .Add(component => component.RequestedAppointmentId, appointmentId.ToString("D"))
-            .Add(component => component.RequestedDateOfService, dateOfService.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture))
-            .Add(component => component.RequestedAllowEvaluationFallback, true));
+            .Add(component => component.PatientId, patientId.ToString()));
 
         cut.WaitForAssertion(() =>
         {
@@ -906,9 +911,11 @@ public sealed class NoteWorkspacePageTests : TestContext
         Services.AddSingleton(aiService.Object);
         Services.AddSingleton(new DraftAutosaveService());
 
+        Services.GetRequiredService<NavigationManager>().NavigateTo(
+            $"/patient/{patientId}/new-note?noteType=Daily%20Treatment%20Note");
+
         var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
-            .Add(component => component.PatientId, patientId.ToString())
-            .Add(component => component.RequestedNoteType, "Daily Treatment Note"));
+            .Add(component => component.PatientId, patientId.ToString()));
 
         cut.WaitForAssertion(() =>
         {
@@ -1312,11 +1319,11 @@ public sealed class NoteWorkspacePageTests : TestContext
         Services.AddSingleton(aiService.Object);
         Services.AddSingleton(new DraftAutosaveService());
 
-        Services.GetRequiredService<NavigationManager>().NavigateTo($"/patient/{patientId}/new-note");
+        Services.GetRequiredService<NavigationManager>().NavigateTo(
+            $"/patient/{patientId}/new-note?noteType=Evaluation%20Note");
 
         var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
-            .Add(component => component.PatientId, patientId.ToString())
-            .Add(component => component.RequestedNoteType, "Evaluation Note"));
+            .Add(component => component.PatientId, patientId.ToString()));
         cut.WaitForAssertion(() => Assert.Equal("Evaluation Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
         cut.Find("#additional-functional-limitations").Input("First edit sent to server");
 
@@ -2298,9 +2305,11 @@ public sealed class NoteWorkspacePageTests : TestContext
         Services.AddSingleton(aiService.Object);
         Services.AddSingleton(new DraftAutosaveService());
 
+        Services.GetRequiredService<NavigationManager>().NavigateTo(
+            $"/patient/{patientId}/new-note?noteType=Daily%20Treatment%20Note");
+
         var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
-            .Add(component => component.PatientId, patientId.ToString())
-            .Add(component => component.RequestedNoteType, "Daily Treatment Note"));
+            .Add(component => component.PatientId, patientId.ToString()));
 
         cut.WaitForAssertion(() => Assert.Equal("Daily Treatment Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
 

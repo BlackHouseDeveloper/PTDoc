@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+#### Authentication routing test hang
+
+- **`PTDoc.Tests.csproj` / `QuickAdminSettingsTests`** — Updated bUnit from 1.26.64 to 1.40.0 and use its built-in .NET 8 query-parameter registration in the authentication routing theory. Affects: component-test infrastructure and the existing five redirect cases. Reason: the older navigation manager and renderer form a circular dependency when the query provider is registered, preventing the test run from completing.
+
+- **`NoteWorkspacePageTests`** — Updated all seven affected workspace test fixtures to supply section, note type, appointment, service date, and evaluation-fallback inputs through navigation URLs, retaining their existing assertions. Affects: workspace routing, carry-forward, save concurrency, and cancellation regressions. Reason: the upgraded bUnit requires query-bound parameters to use the actual query-string provider instead of direct component parameters.
+
+### Changed - agent guidance captures focused Settings and auth checks
+
+- **`AGENTS.md`** — Added the existing isolated Settings modal browser and authentication-request JavaScript regression commands, including their host/fixture requirements and the auth tests' inclusion in the harness test glob.
+
+### Fixed - PR 154 complete review follow-up
+
+- Apply the test formatter's required multiline layout to recovery-code integration fixtures after local verification.
+- Correct the review regression fixtures to supply Admin authentication and query-string binding, and dispatch the timeout field's actual input event; also assert that authentication redirects preserve the return destination.
+- **Settings security and permissions** — Preserve the loaded MFA enforcement mode, effective date, and authorization rollout across unrelated saves and Cancel; retain rollout when resetting visible defaults. Render all contract permission levels, including persisted Full values, with keyboard navigation. Added policy-preservation and permission-level regressions.
+- **Scheduling and appointment compatibility** — Preserve clinician scope, weekdays, and effective dates when editing blocks; reconcile committed preferences independently when clinic hours fail to save; disable placeholder catalog mutations and provide reload. Normalize legacy appointment type aliases after exact custom-name matching, and use the SchedulingAccess catalog endpoint for active visit types. Added block, partial-save, retry, alias, and client-route regressions.
+- **Authentication and kiosk recovery** — Replace the query-selected authentication forms and unmapped JSON requests with a compatibility route to the existing server-controlled challenge flow. Add an authenticated, antiforgery-protected Web recovery-code form using the authenticated API client, safe return URLs, encoded output, and non-cacheable responses. Handle fetch transport failures and provide explicit kiosk re-enrollment without clearing credentials on ordinary appointment errors. Added Web authorization/CSRF/error-path, routing, kiosk, and JavaScript regressions. The reviewed CodeQL form-rendering branch is removed without suppressing the scanner or weakening server authentication.
+- **Settings routing, eligible selections, and modal access** — Apply direct administration routes after role resolution, remove hidden ineligible Auto Check-In selections from editable drafts, and connect scheduling and kiosk dialogs to the existing modal helper with Escape, focus containment/restoration, and background isolation. Added deferred-authorization, selection, modal-lifecycle, and isolated browser focus regressions.
+
 ### Fixed - PR 154 CI contract alignment
 
 - **`RolesPermissionsSettings.razor`** — Send the loaded versions for every supported, unlocked target permission when cloning roles, matching the server's optimistic-concurrency contract. Ignore clone attempts while busy or before the target role has loaded. Added component regressions for exact target versions, locked/unsupported exclusions, conflict preservation, and updated versions after success. Reason: the missing request argument blocked all build-dependent CI workflows.

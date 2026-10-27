@@ -43,7 +43,9 @@ public sealed class SettingsAdministrationApiClient(HttpClient httpClient) :
         SendAsync<bool>(HttpMethod.Post, $"/api/v1/admin/users/{userId}/reset-mfa", body: null, cancellationToken);
 
     public Task<IReadOnlyList<VisitTypeDto>> GetVisitTypesAsync(Guid clinicId, bool includeInactive, CancellationToken cancellationToken = default) =>
-        GetRequiredAsync<IReadOnlyList<VisitTypeDto>>($"/api/v1/admin/scheduling/visit-types?includeInactive={includeInactive.ToString().ToLowerInvariant()}", cancellationToken);
+        GetRequiredAsync<IReadOnlyList<VisitTypeDto>>(includeInactive
+            ? "/api/v1/admin/scheduling/visit-types?includeInactive=true"
+            : "/api/v1/appointments/visit-types", cancellationToken);
 
     public Task<SettingsOperationResult<VisitTypeDto>> CreateVisitTypeAsync(Guid clinicId, SaveVisitTypeRequest request, Guid actorUserId, string correlationId, CancellationToken cancellationToken = default) =>
         SendAsync<VisitTypeDto>(HttpMethod.Post, "/api/v1/admin/scheduling/visit-types", request, cancellationToken);

@@ -664,9 +664,21 @@
         validationErrors.Remove(nameof(AppointmentType));
     }
 
-    private string ResolveVisitTypeId(string appointmentType) => AvailableVisitTypes
-        .FirstOrDefault(item => string.Equals(item.Name, appointmentType, StringComparison.OrdinalIgnoreCase))
-        ?.Id.ToString() ?? appointmentType;
+    private string ResolveVisitTypeId(string appointmentType)
+    {
+        var exact = AvailableVisitTypes.FirstOrDefault(item =>
+            string.Equals(item.Name, appointmentType, StringComparison.OrdinalIgnoreCase));
+        if (exact is not null) return exact.Id.ToString();
+
+        if (AppointmentTypeCatalog.TryParse(appointmentType, out var legacyType))
+        {
+            var equivalent = AvailableVisitTypes.FirstOrDefault(item =>
+                AppointmentTypeCatalog.TryParse(item.Name, out var candidate) && candidate == legacyType);
+            if (equivalent is not null) return equivalent.Id.ToString();
+        }
+
+        return appointmentType;
+    }
 
     private bool HasValidationError(string fieldName) => validationErrors.ContainsKey(fieldName);
 

@@ -95,14 +95,13 @@
         var canAdministerSettings = state.User.IsInRole(Roles.Admin)
             || state.User.IsInRole(Roles.Owner);
         isClinicalApproverOnly = !canAdministerSettings;
-        activeSection = canAdministerSettings ? "roles-permissions" : "documentation";
+        ApplyRouteSection(Navigation.Uri);
         authorizationResolved = true;
     }
 
     protected override void OnInitialized()
     {
         Navigation.LocationChanged += HandleLocationChanged;
-        ApplyRouteSection(Navigation.Uri);
     }
 
     private void HandleLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs eventArgs)

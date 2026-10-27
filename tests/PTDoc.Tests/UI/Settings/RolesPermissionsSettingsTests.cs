@@ -131,6 +131,84 @@ public sealed class RolesPermissionsSettingsTests : TestContext
     }
 
     [Theory]
+    [InlineData(MfaEnforcementMode.GracePeriod, AuthorizationRolloutMode.Shadow)]
+    [InlineData(MfaEnforcementMode.Enforced, AuthorizationRolloutMode.Enforced)]
+    [InlineData(MfaEnforcementMode.Off, AuthorizationRolloutMode.Static)]
+    public void SecuritySaveAndCancel_PreserveLoadedPolicyModes(MfaEnforcementMode mode, AuthorizationRolloutMode rollout)
+    {
+        var effectiveAt = mode == MfaEnforcementMode.Off ? (DateTime?)null : new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc);
+        var policy = new SecurityPolicyDto(mode, effectiveAt, true, 8, 15, true, false, rollout, true, 4);
+        var roles = new Mock<IRolePermissionAdministrationService>();
+        roles.Setup(service => service.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RolePermissionsResponse([], rollout));
+        var security = new Mock<ISecurityPolicyAdministrationService>();
+        security.Setup(service => service.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(policy);
+        var requests = new List<UpdateSecurityPolicyRequest>();
+        security.Setup(service => service.UpdateAsync(It.IsAny<Guid>(), It.IsAny<UpdateSecurityPolicyRequest>(),
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, UpdateSecurityPolicyRequest, Guid, string, CancellationToken>((_, request, _, _, _) => requests.Add(request))
+            .ReturnsAsync(SettingsOperationResult<SecurityPolicyDto>.Success(policy with { SessionInactivityMinutes = 30, Version = 5 }));
+        Services.AddSingleton(roles.Object);
+        Services.AddSingleton(security.Object);
+        var cut = RenderComponent<RolesPermissionsSettings>();
+        cut.Find("#security-settings-tab").Click();
+
+        cut.Find("button[aria-label='Require Multi-Factor Authentication']").Click();
+        cut.FindAll(".security-action-bar button").Single(button => button.TextContent.Contains("Cancel")).Click();
+        cut.Find("#auto-lockout-time").Input("30");
+        cut.Find(".security-action-bar__save").Click();
+        cut.WaitForAssertion(() => Assert.Single(requests));
+        cut.Find(".security-action-bar__save").Click();
+        cut.WaitForAssertion(() => Assert.Equal(2, requests.Count));
+
+        Assert.All(requests, request =>
+        {
+            Assert.Equal(mode, request.MfaEnforcementMode);
+            Assert.Equal(effectiveAt, request.MfaEffectiveAtUtc);
+            Assert.Equal(rollout, request.AuthorizationMode);
+            Assert.Equal(30, request.SessionInactivityMinutes);
+        });
+        Assert.Equal(4, requests[0].ExpectedVersion);
+        Assert.Equal(5, requests[1].ExpectedVersion);
+    }
+
+    [Fact]
+    public void LoadedAdminPermissions_RenderFullAndSupportAllLevelKeyboardNavigation()
+    {
+        var keys = new[] { CapabilityKey.ScheduleViewOwn, CapabilityKey.AppointmentsCreate, CapabilityKey.ReportsExport };
+        var role = new RolePermissionSet(Roles.Admin, "Administrator", false,
+            keys.Select(key => new RolePermissionItem(key, key.ToString(), "", PermissionLevel.Full, PermissionLevel.None, true, 2)).ToArray(),
+            0, 0, 0, 3);
+        var roles = new Mock<IRolePermissionAdministrationService>();
+        roles.Setup(service => service.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RolePermissionsResponse([role], AuthorizationRolloutMode.Static));
+        roles.Setup(service => service.UpdateAsync(It.IsAny<Guid>(), Roles.Admin, It.IsAny<UpdateRolePermissionsRequest>(),
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, string _, UpdateRolePermissionsRequest request, Guid _, string _, CancellationToken _) =>
+                SettingsOperationResult<RolePermissionSet>.Success(role with
+                {
+                    Permissions = role.Permissions.Select(permission => permission.CapabilityKey == request.Permissions[0].CapabilityKey
+                        ? permission with { Level = request.Permissions[0].Level } : permission).ToArray()
+                }));
+        var security = new Mock<ISecurityPolicyAdministrationService>();
+        security.Setup(service => service.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SecurityPolicyDto(MfaEnforcementMode.Off, null, true, 8, 15, true, false, AuthorizationRolloutMode.Static, true, 1));
+        Services.AddSingleton(roles.Object);
+        Services.AddSingleton(security.Object);
+        var cut = RenderComponent<RolesPermissionsSettings>();
+        foreach (var label in new[] { "View Own Schedule", "Create Appointments", "Export Reports" })
+        {
+            var button = cut.Find($"button[aria-label='{label}: Full']");
+            Assert.Equal("true", button.GetAttribute("aria-checked"));
+            Assert.Equal("0", button.GetAttribute("tabindex"));
+        }
+        cut.Find("button[aria-label='Create Appointments: Full']").KeyDown("Home");
+        cut.WaitForAssertion(() => Assert.Equal("true", cut.Find("button[aria-label='Create Appointments: None']").GetAttribute("aria-checked")));
+        cut.Find("button[aria-label='Create Appointments: None']").KeyDown("End");
+        cut.WaitForAssertion(() => Assert.Equal("0", cut.Find("button[aria-label='Create Appointments: Full']").GetAttribute("tabindex")));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void ClonePermissions_SendsEditableTargetVersions_AndPreservesStateOnConflict(bool conflict)

@@ -159,34 +159,22 @@
                                     <p>@permission.Description</p>
                                 </div>
                                 <div class="permission-row__options" role="radiogroup" aria-label="@($"{permission.Name} permission")">
-                                    @{
-                                        var firstLevel = permission.AvailableLevels[0];
-                                        var secondLevel = permission.AvailableLevels[1];
+                                    @for (var index = 0; index < permission.AvailableLevels.Count; index++)
+                                    {
+                                        var levelIndex = index;
+                                        var level = permission.AvailableLevels[levelIndex];
                                         <button
-                                            @ref="permission.FirstLevelButton"
+                                            @ref="permission.LevelButtons[levelIndex]"
                                             type="button"
-                                            class="permission-level @(permission.SelectedLevel == firstLevel ? "is-selected" : string.Empty)"
+                                            class="permission-level @(permission.SelectedLevel == level ? "is-selected" : string.Empty)"
                                             role="radio"
-                                            aria-checked="@(permission.SelectedLevel == firstLevel ? "true" : "false")"
-                                            aria-label="@($"{permission.Name}: {firstLevel}")"
-                                            tabindex="@(permission.SelectedLevel == firstLevel ? "0" : "-1")"
+                                            aria-checked="@(permission.SelectedLevel == level ? "true" : "false")"
+                                            aria-label="@($"{permission.Name}: {level}")"
+                                            tabindex="@(permission.SelectedLevel == level ? "0" : "-1")"
                                             disabled="@(_isBusy || !_canMutate || SelectedRoleIsReadOnly || !permission.IsSupported || permission.LockedMinimum > PermissionLevel.None)"
-                                            @onclick="async () => await SetPermissionLevel(permission, firstLevel)"
-                                            @onkeydown="eventArgs => HandlePermissionLevelKeyDownAsync(eventArgs, permission, 0)">
-                                            @firstLevel
-                                        </button>
-                                        <button
-                                            @ref="permission.SecondLevelButton"
-                                            type="button"
-                                            class="permission-level @(permission.SelectedLevel == secondLevel ? "is-selected" : string.Empty)"
-                                            role="radio"
-                                            aria-checked="@(permission.SelectedLevel == secondLevel ? "true" : "false")"
-                                            aria-label="@($"{permission.Name}: {secondLevel}")"
-                                            tabindex="@(permission.SelectedLevel == secondLevel ? "0" : "-1")"
-                                            disabled="@(_isBusy || !_canMutate || SelectedRoleIsReadOnly || !permission.IsSupported || permission.LockedMinimum > PermissionLevel.None)"
-                                            @onclick="async () => await SetPermissionLevel(permission, secondLevel)"
-                                            @onkeydown="eventArgs => HandlePermissionLevelKeyDownAsync(eventArgs, permission, 1)">
-                                            @secondLevel
+                                            @onclick="async () => await SetPermissionLevel(permission, level)"
+                                            @onkeydown="eventArgs => HandlePermissionLevelKeyDownAsync(eventArgs, permission, levelIndex)">
+                                            @level
                                         </button>
                                     }
                                 </div>
@@ -320,7 +308,10 @@
     private IJSObjectReference? _keyboardModule;
     private string _selectedRole = "PT";
     private string _cloneSourceRole = string.Empty;
-    private bool _requireMfa;
+    private bool _requireMfa => _mfaMode != MfaEnforcementMode.Off;
+    private MfaEnforcementMode _mfaMode;
+    private DateTime? _mfaEffectiveAtUtc;
+    private AuthorizationRolloutMode _authorizationMode;
     private bool _requirePinChange = true;
     private bool _allowRoleCustomization = true;
     private bool _restrictScheduleAccess;
@@ -564,7 +555,21 @@
         }
     }
 
-    private void ToggleMfa() => _requireMfa = !_requireMfa;
+    private void ToggleMfa()
+    {
+        if (_requireMfa)
+        {
+            _mfaMode = MfaEnforcementMode.Off;
+            _mfaEffectiveAtUtc = null;
+        }
+        else
+        {
+            _mfaMode = _securitySnapshot.MfaMode == MfaEnforcementMode.Off
+                ? MfaEnforcementMode.GracePeriod : _securitySnapshot.MfaMode;
+            _mfaEffectiveAtUtc = _securitySnapshot.MfaMode == MfaEnforcementMode.Off
+                ? DateTime.UtcNow.AddDays(14) : _securitySnapshot.MfaEffectiveAtUtc;
+        }
+    }
 
     private void TogglePinChange() => _requirePinChange = !_requirePinChange;
 
@@ -584,11 +589,11 @@
     private void OpenKioskCheckIn() => Navigation.NavigateTo("/settings/kiosk");
 
     private void RegenerateRecoveryCodes() => Navigation.NavigateTo(
-        "/authentication-step-up?mode=recovery-codes&returnUrl=%2Fsettings");
+        "/auth/mfa/recovery-codes?returnUrl=%2Fsettings", forceLoad: true);
 
     private void ResetSecuritySettings()
     {
-        ApplySecurity(SecurityPolicyDefaults, updateSnapshot: false);
+        ApplySecurity(SecurityPolicyDefaults with { AuthorizationMode = _authorizationMode }, updateSnapshot: false);
         _securityVersion = _securitySnapshot.Version;
         ShowStatus("Canonical defaults applied locally. Select Save Changes to persist them.", false);
     }
@@ -622,14 +627,14 @@
             var result = await _securityService.UpdateAsync(
                 Guid.Empty,
                 new UpdateSecurityPolicyRequest(
-                    _requireMfa ? MfaEnforcementMode.GracePeriod : MfaEnforcementMode.Off,
-                    _requireMfa ? DateTime.UtcNow.AddDays(14) : null,
+                    _mfaMode,
+                    _mfaEffectiveAtUtc,
                     _requirePinChange,
                     minimumPinLength,
                     inactivityMinutes,
                     _allowRoleCustomization,
                     _restrictScheduleAccess,
-                    AuthorizationRolloutMode.Static,
+                    _authorizationMode,
                     _securityVersion),
                 Guid.Empty,
                 string.Empty);
@@ -688,6 +693,7 @@
                 continue;
             }
 
+            permission.AvailableLevels = Enum.GetNames<PermissionLevel>();
             permission.SelectedLevel = persisted.Level.ToString();
             permission.Version = persisted.Version;
             permission.LockedMinimum = persisted.LockedMinimum;
@@ -701,7 +707,9 @@
 
     private void ApplySecurity(SecurityPolicyDto policy, bool updateSnapshot = true)
     {
-        _requireMfa = policy.MfaEnforcementMode != MfaEnforcementMode.Off;
+        _mfaMode = policy.MfaEnforcementMode;
+        _mfaEffectiveAtUtc = policy.MfaEffectiveAtUtc;
+        _authorizationMode = policy.AuthorizationMode;
         _requirePinChange = policy.RequirePinChangeOnFirstLogin;
         _minimumPinLength = policy.MinimumPinLength.ToString();
         _autoLockoutTime = policy.SessionInactivityMinutes.ToString();
@@ -715,7 +723,9 @@
     }
 
     private SecuritySnapshot CaptureSecurity() => new(
-        _requireMfa,
+        _mfaMode,
+        _mfaEffectiveAtUtc,
+        _authorizationMode,
         _requirePinChange,
         _minimumPinLength,
         _autoLockoutTime,
@@ -928,20 +938,13 @@
 
         public string SelectedLevel { get; set; } = selectedLevel;
 
-        public IReadOnlyList<string> AvailableLevels { get; } = availableLevels;
+        public IReadOnlyList<string> AvailableLevels { get; set; } = availableLevels;
 
         public bool IsRecommended { get; } = isRecommended;
 
-        public ElementReference FirstLevelButton { get; set; }
+        public ElementReference[] LevelButtons { get; } = new ElementReference[Enum.GetValues<PermissionLevel>().Length];
 
-        public ElementReference SecondLevelButton { get; set; }
-
-        public ElementReference GetLevelButton(int index) => index switch
-        {
-            0 => FirstLevelButton,
-            1 => SecondLevelButton,
-            _ => throw new ArgumentOutOfRangeException(nameof(index), index, null)
-        };
+        public ElementReference GetLevelButton(int index) => LevelButtons[index];
 
         public long Version { get; set; }
 
@@ -951,7 +954,9 @@
     }
 
     private sealed record SecuritySnapshot(
-        bool RequireMfa,
+        MfaEnforcementMode MfaMode,
+        DateTime? MfaEffectiveAtUtc,
+        AuthorizationRolloutMode AuthorizationMode,
         bool RequirePinChange,
         string MinimumPinLength,
         string InactivityMinutes,
@@ -959,17 +964,17 @@
         bool RestrictScheduleAccess,
         long Version)
     {
-        public static SecuritySnapshot Default { get; } = new(false, true, "8", "15", true, false, 0);
+        public static SecuritySnapshot Default { get; } = new(MfaEnforcementMode.Off, null, AuthorizationRolloutMode.Static, true, "8", "15", true, false, 0);
 
         public SecurityPolicyDto ToDto() => new(
-            RequireMfa ? MfaEnforcementMode.GracePeriod : MfaEnforcementMode.Off,
-            RequireMfa ? DateTime.UtcNow.AddDays(14) : null,
+            MfaMode,
+            MfaEffectiveAtUtc,
             RequirePinChange,
             int.TryParse(MinimumPinLength, out var minimum) ? minimum : 8,
             int.TryParse(InactivityMinutes, out var timeout) ? timeout : 15,
             AllowRoleCustomization,
             RestrictScheduleAccess,
-            AuthorizationRolloutMode.Static,
+            AuthorizationMode,
             true,
             Version);
     }
