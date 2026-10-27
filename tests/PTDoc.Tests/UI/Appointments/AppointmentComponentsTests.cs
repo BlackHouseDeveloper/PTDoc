@@ -15,6 +15,51 @@ namespace PTDoc.Tests.UI.Appointments;
 public sealed class AppointmentComponentsTests : TestContext
 {
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AppointmentType_UnavailablePersistedTypeRequiresExplicitReplacement(bool hasActiveCatalog)
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var unavailableId = Guid.NewGuid();
+        var activeId = Guid.NewGuid();
+        NewAppointmentModal.AppointmentFormData? saved = null;
+        var cut = RenderComponent<NewAppointmentModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.AvailableVisitTypes, hasActiveCatalog
+                ? new[] { new NewAppointmentModal.VisitTypeOption { Id = activeId, Name = "Active custom visit", DurationMinutes = 30 } }
+                : Array.Empty<NewAppointmentModal.VisitTypeOption>())
+            .Add(component => component.InitialValues, new NewAppointmentModal.AppointmentFormData
+            {
+                PatientId = "patient-1",
+                ClinicianId = "clinician-1",
+                AppointmentType = "Retired custom visit",
+                VisitTypeId = unavailableId,
+                AppointmentDate = DateTime.Today,
+                AppointmentTime = TimeSpan.FromHours(9),
+                DurationMinutes = 45
+            })
+            .Add(component => component.OnSubmit, data =>
+            {
+                saved = data;
+                return Task.FromResult(false);
+            }));
+
+        var unavailableOption = cut.Find($"#appointmentType option[value='{unavailableId}']");
+        Assert.True(unavailableOption.HasAttribute("disabled"));
+        Assert.Contains("Retired custom visit", unavailableOption.TextContent, StringComparison.Ordinal);
+        cut.Find("form").Submit();
+        Assert.Null(saved);
+        Assert.Contains("Select a replacement before saving", cut.Markup, StringComparison.Ordinal);
+        Assert.Equal("true", cut.Find("#appointmentType").GetAttribute("aria-invalid"));
+
+        cut.Find("#appointmentType").Change(hasActiveCatalog ? activeId.ToString() : "Follow Up");
+        cut.Find("form").Submit();
+        cut.WaitForAssertion(() => Assert.NotNull(saved));
+        Assert.Equal(hasActiveCatalog ? activeId : (Guid?)null, saved!.VisitTypeId);
+        Assert.Equal(hasActiveCatalog ? "Active custom visit" : "Follow Up", saved.AppointmentType);
+    }
+
+    [Theory]
     [InlineData("Follow Up", "Follow-Up")]
     [InlineData("Follow-up", "Follow-Up")]
     [InlineData("Custom visit", "Custom visit")]

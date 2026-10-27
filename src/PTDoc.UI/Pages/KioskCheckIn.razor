@@ -13,12 +13,20 @@
         <div class="kiosk-check-in__status @(_statusIsError ? "is-error" : string.Empty)" role="@(_statusIsError ? "alert" : "status")">@_statusMessage</div>
     }
 
-    @if (string.IsNullOrWhiteSpace(_deviceCredential))
+    @if (string.IsNullOrWhiteSpace(_deviceCredential) || _replacingEnrollment)
     {
         <form @onsubmit="Enroll" @onsubmit:preventDefault="true">
-            <h2>Enroll this station</h2>
+            <h2>@(_replacingEnrollment ? "Replace station enrollment" : "Enroll this station")</h2>
+            @if (_replacingEnrollment)
+            {
+                <p>Enter a one-time enrollment code issued by a clinic administrator. The current credential is kept until the replacement is accepted.</p>
+            }
             <label>One-time station code<input autocomplete="one-time-code" @bind="_enrollmentCode" /></label>
             <button type="submit" disabled="@_isBusy">Enroll Station</button>
+            @if (_replacingEnrollment)
+            {
+                <button type="button" disabled="@_isBusy" @onclick="CancelReplacement">Cancel</button>
+            }
         </form>
     }
     else
@@ -26,7 +34,7 @@
         <form @onsubmit="CheckIn" @onsubmit:preventDefault="true">
             <label>Appointment check-in code<input inputmode="numeric" autocomplete="one-time-code" @bind="_appointmentToken" autofocus /></label>
             <button type="submit" disabled="@_isBusy">Check In</button>
-            <button type="button" disabled="@_isBusy" @onclick="ResetEnrollment">Staff: re-enroll this station</button>
+            <button type="button" disabled="@_isBusy" @onclick="RequestReplacement">Staff: re-enroll this station</button>
         </form>
     }
 </main>
@@ -41,6 +49,7 @@
     private bool _statusIsError;
     private bool _isBusy;
     private bool _loadedStorage;
+    private bool _replacingEnrollment;
 
     protected override void OnInitialized() =>
         _service = Services.GetService(typeof(IKioskCheckInService)) as IKioskCheckInService;
@@ -55,7 +64,7 @@
 
     private async Task Enroll()
     {
-        if (_service is null) return;
+        if (_service is null || _isBusy) return;
         _isBusy = true;
         try
         {
@@ -65,8 +74,10 @@
                 ShowStatus("The enrollment code is invalid, expired, or already used.", true);
                 return;
             }
+            await JS.InvokeVoidAsync("localStorage.setItem", CredentialStorageKey, result.Value.DeviceCredential);
             _deviceCredential = result.Value.DeviceCredential;
-            await JS.InvokeVoidAsync("localStorage.setItem", CredentialStorageKey, _deviceCredential);
+            _replacingEnrollment = false;
+            _appointmentToken = string.Empty;
             _enrollmentCode = string.Empty;
             ShowStatus("Station enrolled. It can only perform appointment check-in.", false);
         }
@@ -74,20 +85,20 @@
         finally { _isBusy = false; }
     }
 
-    private async Task ResetEnrollment()
+    private void RequestReplacement()
     {
         if (_isBusy) return;
-        _isBusy = true;
-        try
-        {
-            await JS.InvokeVoidAsync("localStorage.removeItem", CredentialStorageKey);
-            _deviceCredential = string.Empty;
-            _appointmentToken = string.Empty;
-            _enrollmentCode = string.Empty;
-            ShowStatus("Enter a replacement enrollment code from a clinic administrator.", false);
-        }
-        catch (Exception) { ShowStatus("The station credential could not be cleared. Try again.", true); }
-        finally { _isBusy = false; }
+        _replacingEnrollment = true;
+        _enrollmentCode = string.Empty;
+        _statusMessage = null;
+    }
+
+    private void CancelReplacement()
+    {
+        if (_isBusy) return;
+        _replacingEnrollment = false;
+        _enrollmentCode = string.Empty;
+        _statusMessage = null;
     }
 
     private async Task CheckIn()

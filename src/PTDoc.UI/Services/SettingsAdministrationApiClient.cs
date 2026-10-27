@@ -5,7 +5,7 @@ using PTDoc.Application.Settings;
 
 namespace PTDoc.UI.Services;
 
-/// <summary>Web-only HTTP façade for clinic Settings administration.</summary>
+/// <summary>HTTP façade for clinic Settings administration and the shared appointment catalog.</summary>
 public sealed class SettingsAdministrationApiClient(HttpClient httpClient) :
     IRolePermissionAdministrationService,
     ISecurityPolicyAdministrationService,

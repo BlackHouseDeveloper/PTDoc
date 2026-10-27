@@ -13,6 +13,10 @@
     {
         <p class="quick-settings__status @(_statusIsError ? "is-error" : string.Empty)" role="@(_statusIsError ? "alert" : "status")">@_statusMessage</p>
     }
+    @if (!_settingsLoaded && _policyService is not null && _schedulingService is not null)
+    {
+        <button type="button" class="quick-settings__reload" @onclick="ReloadSettings" disabled="@_isBusy">Reload Settings</button>
+    }
     @if (!_canMutate)
     {
         <p class="quick-settings__status" role="status">Owner access is read-only. An Administrator must change Auto Check-In configuration.</p>
@@ -59,11 +63,12 @@
     private string _templateKey = "default-intake-invite";
     private long _version;
     private bool _isBusy;
+    private bool _settingsLoaded;
     private bool _canMutate = true;
     private bool _statusIsError;
     private string? _statusMessage;
     private AutoCheckInPolicyDto _snapshot = new(false, 24, true, true, "default-intake-invite", 3, [], 0);
-    private bool ControlsDisabled => _isBusy || !_canMutate;
+    private bool ControlsDisabled => _isBusy || !_canMutate || !_settingsLoaded;
 
     protected override async Task OnInitializedAsync()
     {
@@ -76,8 +81,15 @@
 
         _policyService = Services.GetService(typeof(IAutoCheckInAdministrationService)) as IAutoCheckInAdministrationService;
         _schedulingService = Services.GetService(typeof(ISchedulingAdministrationService)) as ISchedulingAdministrationService;
+        await ReloadSettings();
+    }
+
+    private async Task ReloadSettings()
+    {
         if (_policyService is null || _schedulingService is null) return;
+        _settingsLoaded = false;
         _isBusy = true;
+        _statusMessage = null;
         try
         {
             var policyTask = _policyService.GetAsync(Guid.Empty);
@@ -85,17 +97,18 @@
             await Task.WhenAll(policyTask, visitsTask);
             _visitTypes = (await visitsTask).Where(item => item.IsActive && item.RequiresIntake).ToArray();
             Apply(await policyTask);
+            _settingsLoaded = true;
         }
         catch (Exception)
         {
-            ShowStatus("Auto Check-In settings could not be loaded.", true);
+            ShowStatus("Auto Check-In settings could not be loaded. Reload before making changes.", true);
         }
         finally { _isBusy = false; }
     }
 
     private async Task Save()
     {
-        if (_policyService is null || !_canMutate) return;
+        if (_policyService is null || ControlsDisabled) return;
         _isBusy = true;
         try
         {

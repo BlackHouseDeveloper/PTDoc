@@ -43,6 +43,66 @@ public sealed class RolesPermissionsSettingsTests : TestContext
                 .ToArray());
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void FailedLoad_DisablesSecurityPermissionAndCloneWritesUntilReload(bool failSecurity)
+    {
+        var role = new RolePermissionSet(Roles.PT, "Physical Therapist", false,
+            [new RolePermissionItem(CapabilityKey.ScheduleViewOwn, "Schedule", "", PermissionLevel.View, PermissionLevel.None, true, 7)],
+            0, 0, 0, 1);
+        var roles = new Mock<IRolePermissionAdministrationService>();
+        var security = new Mock<ISecurityPolicyAdministrationService>();
+        var policy = new SecurityPolicyDto(MfaEnforcementMode.Enforced, DateTime.UnixEpoch, true, 10, 30, true, false, AuthorizationRolloutMode.Enforced, true, 9);
+        var response = new RolePermissionsResponse([role], AuthorizationRolloutMode.Enforced);
+        var retry = false;
+        roles.Setup(service => service.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(() => !failSecurity && !retry
+                ? Task.FromException<RolePermissionsResponse>(new HttpRequestException()) : Task.FromResult(response));
+        security.Setup(service => service.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(() => failSecurity && !retry
+                ? Task.FromException<SecurityPolicyDto>(new HttpRequestException()) : Task.FromResult(policy));
+        UpdateSecurityPolicyRequest? savedSecurity = null;
+        UpdateRolePermissionsRequest? savedPermissions = null;
+        security.Setup(service => service.UpdateAsync(It.IsAny<Guid>(), It.IsAny<UpdateSecurityPolicyRequest>(),
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, UpdateSecurityPolicyRequest, Guid, string, CancellationToken>((_, request, _, _, _) => savedSecurity = request)
+            .ReturnsAsync(SettingsOperationResult<SecurityPolicyDto>.Success(policy));
+        roles.Setup(service => service.UpdateAsync(It.IsAny<Guid>(), Roles.PT, It.IsAny<UpdateRolePermissionsRequest>(),
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, string, UpdateRolePermissionsRequest, Guid, string, CancellationToken>((_, _, request, _, _, _) => savedPermissions = request)
+            .ReturnsAsync(SettingsOperationResult<RolePermissionSet>.Success(role));
+        Services.AddSingleton(roles.Object);
+        Services.AddSingleton(security.Object);
+
+        var cut = RenderComponent<RolesPermissionsSettings>();
+        Assert.Contains("could not be loaded", cut.Markup, StringComparison.Ordinal);
+        Assert.All(cut.FindAll("button[role='radio']"), button => Assert.True(button.HasAttribute("disabled")));
+        Assert.True(cut.Find("#clone-role-select").HasAttribute("disabled"));
+        cut.Find("button[aria-label='View Own Schedule: View']").Click();
+        Assert.Null(savedPermissions);
+        cut.Find("#security-settings-tab").Click();
+        Assert.True(cut.Find(".security-action-bar__save").HasAttribute("disabled"));
+        Assert.True(cut.Find("#auto-lockout-time").HasAttribute("disabled"));
+        cut.Find(".security-action-bar__save").Click();
+        Assert.Null(savedSecurity);
+        roles.Verify(service => service.CloneAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CloneRolePermissionsRequest>(),
+            It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        retry = true;
+        cut.Find(".roles-permissions__reload").Click();
+        Assert.False(cut.Find(".security-action-bar__save").HasAttribute("disabled"));
+        cut.Find(".security-action-bar__save").Click();
+        cut.WaitForAssertion(() => Assert.NotNull(savedSecurity));
+        Assert.Equal(9, savedSecurity!.ExpectedVersion);
+        Assert.Equal(MfaEnforcementMode.Enforced, savedSecurity.MfaEnforcementMode);
+        Assert.Equal(AuthorizationRolloutMode.Enforced, savedSecurity.AuthorizationMode);
+        cut.Find("#role-permissions-tab").Click();
+        cut.Find("button[aria-label='View Own Schedule: None']").Click();
+        cut.WaitForAssertion(() => Assert.NotNull(savedPermissions));
+        Assert.Equal(7, Assert.Single(savedPermissions!.Permissions).ExpectedVersion);
+    }
+
     [Fact]
     public void PermissionAndRoleSelections_UpdateVisibleUiState()
     {

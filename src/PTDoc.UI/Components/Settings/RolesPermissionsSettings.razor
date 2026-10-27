@@ -52,6 +52,11 @@
         </div>
     }
 
+    @if (HasRemoteServices && !_settingsLoaded)
+    {
+        <button type="button" class="roles-permissions__reload" @onclick="ReloadSettings" disabled="@_isBusy">Reload Settings</button>
+    }
+
     @if (!_canMutate)
     {
         <div class="roles-permissions__status" role="status">Owner access is read-only. An Administrator must make permission or security-policy changes.</div>
@@ -121,14 +126,14 @@
                 </div>
                 <div class="clone-permissions__actions">
                     <label class="roles-permissions__sr-only" for="clone-role-select">Source role</label>
-                    <select id="clone-role-select" @bind="_cloneSourceRole" disabled="@(_isBusy || !_canMutate || SelectedRoleIsReadOnly)">
+                    <select id="clone-role-select" @bind="_cloneSourceRole" disabled="@(ControlsDisabled || SelectedRoleIsReadOnly)">
                         <option value=""></option>
                         @foreach (var role in Roles.Where(role => role.Name != _selectedRole))
                         {
                             <option value="@role.Name">@role.DisplayName</option>
                         }
                     </select>
-                    <button type="button" @onclick="ClonePermissions" disabled="@(_isBusy || !_canMutate || SelectedRoleIsReadOnly || string.IsNullOrWhiteSpace(_cloneSourceRole))">Clone</button>
+                    <button type="button" @onclick="ClonePermissions" disabled="@(ControlsDisabled || SelectedRoleIsReadOnly || string.IsNullOrWhiteSpace(_cloneSourceRole))">Clone</button>
                 </div>
             </section>
 
@@ -171,7 +176,7 @@
                                             aria-checked="@(permission.SelectedLevel == level ? "true" : "false")"
                                             aria-label="@($"{permission.Name}: {level}")"
                                             tabindex="@(permission.SelectedLevel == level ? "0" : "-1")"
-                                            disabled="@(_isBusy || !_canMutate || SelectedRoleIsReadOnly || !permission.IsSupported || permission.LockedMinimum > PermissionLevel.None)"
+                                            disabled="@(ControlsDisabled || SelectedRoleIsReadOnly || !permission.IsSupported || permission.LockedMinimum > PermissionLevel.None)"
                                             @onclick="async () => await SetPermissionLevel(permission, level)"
                                             @onkeydown="eventArgs => HandlePermissionLevelKeyDownAsync(eventArgs, permission, levelIndex)">
                                             @level
@@ -283,7 +288,7 @@
             @QuickAdminTools()
 
             <div class="security-action-bar" aria-label="Security settings actions">
-                <button type="button" @onclick="ResetSecuritySettings" disabled="@(_isBusy || !_canMutate)">
+                <button type="button" @onclick="ResetSecuritySettings" disabled="@(ControlsDisabled)">
                     <img src="_content/PTDoc.UI/images/settings/reset.svg" alt="" aria-hidden="true" />
                     <span>Reset to Default</span>
                 </button>
@@ -291,7 +296,7 @@
                     <img src="_content/PTDoc.UI/images/settings/cancel.svg" alt="" aria-hidden="true" />
                     <span>Cancel</span>
                 </button>
-                <button type="button" class="security-action-bar__save" @onclick="SaveSecurityChanges" disabled="@(_isBusy || !_canMutate)">
+                <button type="button" class="security-action-bar__save" @onclick="SaveSecurityChanges" disabled="@(ControlsDisabled)">
                     <img src="_content/PTDoc.UI/images/settings/save.svg" alt="" aria-hidden="true" />
                     <span>Save Changes</span>
                 </button>
@@ -319,6 +324,9 @@
     private string _minimumPinLength = "8";
     private bool _isBusy;
     private bool _canMutate = true;
+    private bool _settingsLoaded;
+    private bool HasRemoteServices => _roleService is not null || _securityService is not null;
+    private bool ControlsDisabled => _isBusy || !_canMutate || (HasRemoteServices && !_settingsLoaded);
     private bool _statusIsError;
     private string? _statusMessage;
     private long _securityVersion;
@@ -356,12 +364,15 @@
 
         _roleService = Services.GetService(typeof(IRolePermissionAdministrationService)) as IRolePermissionAdministrationService;
         _securityService = Services.GetService(typeof(ISecurityPolicyAdministrationService)) as ISecurityPolicyAdministrationService;
-        if (_roleService is null || _securityService is null)
-        {
-            return;
-        }
+        await ReloadSettings();
+    }
 
+    private async Task ReloadSettings()
+    {
+        if (_roleService is null || _securityService is null) return;
+        _settingsLoaded = false;
         _isBusy = true;
+        _statusMessage = null;
         try
         {
             var rolesTask = _roleService.GetAsync(Guid.Empty);
@@ -369,10 +380,11 @@
             await Task.WhenAll(rolesTask, securityTask);
             ApplyRoles(await rolesTask);
             ApplySecurity(await securityTask);
+            _settingsLoaded = true;
         }
         catch (Exception)
         {
-            ShowStatus("Settings could not be loaded. The documented defaults are shown; retry after the API is available.", true);
+            ShowStatus("Settings could not be loaded. Reload before making changes.", true);
         }
         finally
         {
@@ -444,7 +456,7 @@
 
     private async Task SetPermissionLevel(PermissionDefinition permission, string level)
     {
-        if (_isBusy || !_canMutate || SelectedRoleIsReadOnly || !permission.IsSupported ||
+        if (ControlsDisabled || SelectedRoleIsReadOnly || !permission.IsSupported ||
             !Enum.TryParse<PermissionLevel>(level, out var parsedLevel))
         {
             return;
@@ -514,7 +526,7 @@
 
     private async Task ClonePermissions()
     {
-        if (_isBusy || _roleService is null || !_canMutate || string.IsNullOrWhiteSpace(_cloneSourceRole) || SelectedRoleIsReadOnly ||
+        if (ControlsDisabled || _roleService is null || string.IsNullOrWhiteSpace(_cloneSourceRole) || SelectedRoleIsReadOnly ||
             !_rolePermissionSets.TryGetValue(_selectedRole, out var targetRole))
         {
             return;
@@ -606,7 +618,7 @@
 
     private async Task SaveSecurityChanges()
     {
-        if (!_canMutate) return;
+        if (ControlsDisabled) return;
         if (!int.TryParse(_autoLockoutTime, out var inactivityMinutes) ||
             !int.TryParse(_minimumPinLength, out var minimumPinLength))
         {
@@ -817,7 +829,7 @@
                 role="switch"
                 aria-checked="@(isEnabled ? "true" : "false")"
                 aria-label="@label"
-                disabled="@(_isBusy || !_canMutate)"
+                disabled="@(ControlsDisabled)"
                 @onclick="toggle">
                 <span aria-hidden="true"></span>
             </button>
@@ -833,7 +845,7 @@
                 type="text"
                 inputmode="numeric"
                 value="@value"
-                disabled="@(_isBusy || !_canMutate)"
+                disabled="@(ControlsDisabled)"
                 @oninput="eventArgs => valueChanged(eventArgs.Value?.ToString() ?? string.Empty)" />
         </div>
     </text>;

@@ -90,6 +90,10 @@
                         aria-invalid="@AriaInvalid(nameof(AppointmentType))"
                         aria-describedby="@GetFieldDescriptionId(nameof(AppointmentType))">
                         <option value="">Select type...</option>
+                        @if (RequiresVisitTypeReplacement)
+                        {
+                            <option value="@VisitTypeId" disabled>@AppointmentType (unavailable — select a replacement)</option>
+                        }
                         @if (AvailableVisitTypes.Count > 0)
                         {
                             @foreach (var visitType in AvailableVisitTypes)
@@ -496,7 +500,11 @@
             validationErrors[nameof(PatientId)] = "Select a patient.";
         }
 
-        if (string.IsNullOrWhiteSpace(AppointmentType) || (AvailableVisitTypes.Count > 0 && string.IsNullOrWhiteSpace(VisitTypeId)))
+        if (RequiresVisitTypeReplacement)
+        {
+            validationErrors[nameof(AppointmentType)] = "This appointment type is unavailable. Select a replacement before saving.";
+        }
+        else if (string.IsNullOrWhiteSpace(AppointmentType) || (AvailableVisitTypes.Count > 0 && string.IsNullOrWhiteSpace(VisitTypeId)))
         {
             validationErrors[nameof(AppointmentType)] = "Select an appointment type.";
         }
@@ -663,6 +671,11 @@
         }
         validationErrors.Remove(nameof(AppointmentType));
     }
+
+    private bool RequiresVisitTypeReplacement => !string.IsNullOrWhiteSpace(VisitTypeId)
+        && (AvailableVisitTypes.Count > 0
+            ? !AvailableVisitTypes.Any(item => item.Id.ToString() == VisitTypeId)
+            : !AppointmentTypeCatalog.TryParse(VisitTypeId, out _));
 
     private string ResolveVisitTypeId(string appointmentType)
     {

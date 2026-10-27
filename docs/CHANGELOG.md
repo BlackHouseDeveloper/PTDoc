@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 154 follow-up review
+
+- Keep remote Roles/Security and Auto Check-In mutations disabled after either required initial load fails, and provide an explicit reload action. Added failure/retry regressions that verify saves use the loaded policy and permission versions.
+- Register the shared scheduling catalog client in MAUI using its authenticated `ApiClient`, preserving appointment-page dependency resolution and bearer authentication. Added catalog coverage through the MAUI authentication handler.
+- Preserve kiosk credentials while requesting replacement enrollment; only replace them after the API validates an administrator-issued, one-time enrollment code. Invalid codes and Cancel leave the existing station usable, with focused regression coverage.
+- Show unavailable appointment types explicitly when editing and require a replacement before submitting. Added regressions for populated catalogs and legacy fallback choices, including successful replacement payloads.
+
 ### Fixed
 
 #### Authentication routing test hang

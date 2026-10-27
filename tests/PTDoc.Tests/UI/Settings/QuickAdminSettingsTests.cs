@@ -15,6 +15,50 @@ public sealed class QuickAdminSettingsTests : TestContext
 {
     public QuickAdminSettingsTests() => JSInterop.Mode = JSRuntimeMode.Loose;
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AutoCheckIn_FailedLoadDisablesWritesUntilBothResourcesReload(bool failPolicy)
+    {
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("admin-user");
+        authorization.SetRoles(Roles.Admin);
+        var policy = new AutoCheckInPolicyDto(true, 48, false, true, "default-intake-invite", 2, [], 8);
+        var service = new Mock<IAutoCheckInAdministrationService>();
+        var scheduling = new Mock<ISchedulingAdministrationService>();
+        var retry = false;
+        service.Setup(item => item.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(() => failPolicy && !retry ? Task.FromException<AutoCheckInPolicyDto>(new HttpRequestException()) : Task.FromResult(policy));
+        scheduling.Setup(item => item.GetVisitTypesAsync(It.IsAny<Guid>(), false, It.IsAny<CancellationToken>()))
+            .Returns(() => !failPolicy && !retry
+                ? Task.FromException<IReadOnlyList<VisitTypeDto>>(new HttpRequestException())
+                : Task.FromResult<IReadOnlyList<VisitTypeDto>>([]));
+        UpdateAutoCheckInPolicyRequest? saved = null;
+        service.Setup(item => item.UpdateAsync(It.IsAny<Guid>(), It.IsAny<UpdateAutoCheckInPolicyRequest>(),
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, UpdateAutoCheckInPolicyRequest, Guid, string, CancellationToken>((_, request, _, _, _) => saved = request)
+            .ReturnsAsync(SettingsOperationResult<AutoCheckInPolicyDto>.Success(policy));
+        Services.AddSingleton(service.Object);
+        Services.AddSingleton(scheduling.Object);
+
+        var cut = RenderComponent<AutoCheckInSettings>();
+        Assert.Contains("could not be loaded", cut.Markup, StringComparison.Ordinal);
+        Assert.All(cut.FindAll("input"), input => Assert.True(input.HasAttribute("disabled")));
+        Assert.True(cut.Find(".quick-settings__primary").HasAttribute("disabled"));
+        cut.Find(".quick-settings__primary").Click();
+        Assert.Null(saved);
+
+        retry = true;
+        cut.Find(".quick-settings__reload").Click();
+        Assert.False(cut.Find(".quick-settings__primary").HasAttribute("disabled"));
+        cut.Find(".quick-settings__primary").Click();
+        cut.WaitForAssertion(() => Assert.NotNull(saved));
+        Assert.Equal(8, saved!.ExpectedVersion);
+        Assert.Equal(48, saved.LeadHours);
+        Assert.True(saved.IsEnabled);
+        Assert.False(saved.EnableEmail);
+    }
+
     [Fact]
     public void AutoCheckIn_RemovesHiddenIneligibleSelectionsOnLoadAndCancel()
     {
@@ -68,7 +112,7 @@ public sealed class QuickAdminSettingsTests : TestContext
     }
 
     [Fact]
-    public void KioskReEnrollment_ClearsOnlyOnExplicitStaffAction()
+    public void KioskReEnrollment_PreservesCredentialUntilAdminIssuedCodeIsAccepted()
     {
         JSInterop.Setup<string?>("localStorage.getItem", "ptdoc.kiosk.deviceCredential").SetResult("old-device-credential");
         var service = new Mock<IKioskCheckInService>();
@@ -76,6 +120,8 @@ public sealed class QuickAdminSettingsTests : TestContext
             .ReturnsAsync(SettingsOperationResult<KioskCheckInResult>.NotFound());
         service.Setup(item => item.EnrollAsync("replacement-code", It.IsAny<CancellationToken>()))
             .ReturnsAsync(SettingsOperationResult<KioskEnrollmentResult>.Success(new KioskEnrollmentResult(Guid.NewGuid(), "Lobby", "replacement-credential")));
+        service.Setup(item => item.EnrollAsync("invalid-code", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SettingsOperationResult<KioskEnrollmentResult>.NotFound());
         Services.AddSingleton(service.Object);
         var cut = RenderComponent<KioskCheckIn>();
         cut.WaitForElement("button[type='button']");
@@ -83,11 +129,20 @@ public sealed class QuickAdminSettingsTests : TestContext
         cut.WaitForAssertion(() => Assert.Contains("invalid, expired", cut.Markup, StringComparison.Ordinal));
         Assert.DoesNotContain(JSInterop.Invocations, call => call.Identifier == "localStorage.removeItem");
         cut.Find("button[type='button']").Click();
-        cut.WaitForAssertion(() => Assert.Contains("Enroll this station", cut.Markup, StringComparison.Ordinal));
-        Assert.Contains(JSInterop.Invocations, call => call.Identifier == "localStorage.removeItem" && Equals(call.Arguments[0], "ptdoc.kiosk.deviceCredential"));
+        cut.WaitForAssertion(() => Assert.Contains("Replace station enrollment", cut.Markup, StringComparison.Ordinal));
+        cut.Find("form input").Change("invalid-code");
+        cut.Find("form").Submit();
+        cut.WaitForAssertion(() => Assert.Contains("enrollment code is invalid", cut.Markup, StringComparison.Ordinal));
+        Assert.DoesNotContain(JSInterop.Invocations, call => call.Identifier is "localStorage.removeItem" or "localStorage.setItem");
+        cut.Find("button[type='button']").Click();
+        cut.Find("form").Submit();
+        service.Verify(item => item.CheckInAsync("old-device-credential", It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        cut.Find("button[type='button']").Click();
         cut.Find("form input").Change("replacement-code");
         cut.Find("form").Submit();
         cut.WaitForAssertion(() => Assert.Contains(JSInterop.Invocations, call => call.Identifier == "localStorage.setItem" && Equals(call.Arguments[1], "replacement-credential")));
+        Assert.DoesNotContain(JSInterop.Invocations, call => call.Identifier == "localStorage.removeItem");
+        Assert.Contains("Appointment check-in code", cut.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
