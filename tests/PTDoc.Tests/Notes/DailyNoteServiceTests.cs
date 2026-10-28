@@ -1259,4 +1259,21 @@ public class DailyNoteServiceTests : IDisposable
         Assert.Single(results);
         Assert.Equal(patient1.Id, results[0].PatientId);
     }
+    [Fact]
+    public async Task VersionedRom_LegacyDailyApiRoundTripsDimensionsAndRejectsOlderWriter()
+    {
+        var patient = await CreatePatientAsync(); var request = BuildRequest(patient.Id);
+        request.Content.MeasurementSchemaVersion = 1;
+        request.Content.ObjectiveMeasures = [new() { MeasureType=(int)ObjectiveMeasureType.ROM, BodyPart="Knee", Specificity="Flexion",
+            MovementId="knee:flexion", Side="Right", MotionMode=RomMotionMode.Passive, Unit="degrees", Value="108", BaselineValue="95", Notes="0-135 degrees", ReferenceDocumentPath="source.md", ReferenceVersion="v1" }];
+        var saved = await _service.SaveDraftAsync(request); Assert.True(saved.IsValid, string.Join("; ", saved.Errors));
+        var note = await _db.ClinicalNotes.SingleAsync(); var original = note.ContentJson;
+        var metric = await _db.ObjectiveMetrics.SingleAsync(); Assert.Equal("Right", metric.Side); Assert.Equal(RomMotionMode.Passive, metric.MotionMode);
+        Assert.Equal("95", metric.PreviousValue); Assert.Equal("source.md", metric.ReferenceDocumentPath);
+        var read = await _service.GetByIdAsync(note.Id); var dto = Assert.Single(read!.Content.ObjectiveMeasures);
+        Assert.Equal("knee:flexion", dto.MovementId); Assert.Equal("degrees", dto.Unit); Assert.Equal(1, read.Content.MeasurementSchemaVersion);
+        var older = await _service.SaveDraftAsync(BuildRequest(patient.Id)); Assert.False(older.IsValid);
+        Assert.Equal(original, (await _db.ClinicalNotes.AsNoTracking().SingleAsync()).ContentJson);
+    }
+
 }

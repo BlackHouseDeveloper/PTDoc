@@ -277,6 +277,15 @@ public class SyncClientProtocolTests
             BodyPart = BodyPart.Knee,
             MetricType = MetricType.ROM,
             Value = "90",
+            Name = "Knee flexion",
+            MovementId = "knee:knee-flexion",
+            Side = "Left",
+            Unit = "degrees",
+            MotionMode = RomMotionMode.Passive,
+            NormValue = "0-135 degrees",
+            PreviousValue = "80",
+            ReferenceDocumentPath = "docs/clinicrefdata/Normal ROM Measurements.md",
+            ReferenceVersion = "2026-04-18",
             IsWNL = false
         };
         var oldMetric = new ObjectiveMetric
@@ -303,6 +312,13 @@ public class SyncClientProtocolTests
         Assert.Equal("ObjectiveMetric", result.Items[0].EntityType);
         Assert.Equal(recentMetric.Id, result.Items[0].ServerId);
         Assert.Contains("NoteId", result.Items[0].DataJson);
+        using var metricJson = JsonDocument.Parse(result.Items[0].DataJson);
+        Assert.Equal("Left", metricJson.RootElement.GetProperty("Side").GetString());
+        Assert.Equal("knee:knee-flexion", metricJson.RootElement.GetProperty("MovementId").GetString());
+        Assert.Equal((int)RomMotionMode.Passive, metricJson.RootElement.GetProperty("MotionMode").GetInt32());
+        Assert.Equal("degrees", metricJson.RootElement.GetProperty("Unit").GetString());
+        Assert.Equal("80", metricJson.RootElement.GetProperty("PreviousValue").GetString());
+
     }
 
     [Fact]
@@ -2104,4 +2120,36 @@ public class SyncClientProtocolTests
         });
         await context.SaveChangesAsync();
     }
+    [Fact]
+    public async Task ReceiveClientPushAsync_VersionedRomUpdatesTypedRowsAndRejectsDimensionLoss()
+    {
+        using var context = CreateInMemoryContext(); var patient = new Patient { FirstName = "Synthetic", LastName = "Offline ROM" };
+        context.Patients.Add(patient);
+        var note = new ClinicalNote { PatientId = patient.Id, NoteType = NoteType.Daily, ContentJson = "{}", LastModifiedUtc = DateTime.UtcNow.AddHours(-1) };
+        context.ClinicalNotes.Add(note); await context.SaveChangesAsync();
+        var engine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            Objective = new()
+            {
+                MeasurementSchemaVersion = 1,
+                Metrics = [new() { Name="Flexion", MovementId="knee:flexion", BodyPart=BodyPart.Knee, MetricType=MetricType.ROM,
+                Side="Left", MotionMode=RomMotionMode.Active, Unit="degrees", Value="103", NormValue="0-135 degrees" }]
+            }
+        };
+        ClientSyncPushRequest Request(string content, DateTime date) => new()
+        {
+            Items = [new() { EntityType="ClinicalNote",ServerId=note.Id,
+            LocalId=1,OperationId=Guid.NewGuid(),Operation="Update",LastModifiedUtc=date,DataJson=JsonSerializer.Serialize(new {contentJson=content}) }]
+        };
+        var first = await engine.ReceiveClientPushAsync(Request(JsonSerializer.Serialize(payload), DateTime.UtcNow)); Assert.Equal(1, first.AcceptedCount);
+        var metric = await context.ObjectiveMetrics.SingleAsync(); Assert.Equal("103", metric.Value); Assert.Equal(RomMotionMode.Active, metric.MotionMode);
+        var original = (await context.ClinicalNotes.AsNoTracking().SingleAsync()).ContentJson;
+        var older = await engine.ReceiveClientPushAsync(Request(JsonSerializer.Serialize(new NoteWorkspaceV2Payload()), DateTime.UtcNow.AddMinutes(1)));
+        Assert.Equal(0, older.AcceptedCount); Assert.Equal(1, older.ErrorCount);
+        Assert.Equal(original, (await context.ClinicalNotes.AsNoTracking().SingleAsync()).ContentJson);
+        Assert.Equal("103", (await context.ObjectiveMetrics.AsNoTracking().SingleAsync()).Value);
+    }
+
 }

@@ -1,4 +1,5 @@
 @namespace PTDoc.UI.Components.Notes.Workspace
+@using System.Text.Json
 @using PTDoc.Application.Notes.Workspace
 @using PTDoc.Application.Outcomes
 @using PTDoc.Core.Models
@@ -37,92 +38,8 @@
                 }
             </div>
 
-            <div class="objective-tab__section" data-testid="objective-rom-section">
-                <div class="objective-tab__section-header">
-                    <h3 class="objective-tab__section-heading">Range of Motion (ROM)</h3>
-                </div>
-
-                @if (RomCatalogOptions.Count == 0)
-                {
-                    <p class="objective-tab__helper">Select a body part to load source-backed ROM options.</p>
-                }
-                else
-                {
-                    <div class="objective-tab__option-grid">
-                        @foreach (var option in RomCatalogOptions)
-                        {
-                            var isSelected = HasMetric(option, MetricType.ROM);
-                            <button type="button"
-                                    class="objective-tab__chip @(isSelected ? "objective-tab__chip--active" : "")"
-                                    disabled="@IsReadOnly"
-                                    @onclick="() => AddMetric(option, MetricType.ROM)">
-                                @option
-                            </button>
-                        }
-                    </div>
-                }
-
-                @if (RomMetrics.Count > 0)
-                {
-                    <div class="objective-tab__editor-list">
-                        @foreach (var metric in RomMetrics)
-                        {
-                            <div class="objective-tab__editor-row" data-testid="objective-rom-row">
-                                <div class="objective-tab__editor-header">
-                                    <strong>@metric.Name</strong>
-                                    @if (!IsReadOnly)
-                                    {
-                                        <button type="button" class="objective-tab__remove-btn" @onclick="() => RemoveMetric(metric)">Remove</button>
-                                    }
-                                </div>
-                                <div class="objective-tab__editor-grid">
-                                    <label>
-                                        <span>Body part</span>
-                                        <select class="objective-tab__select"
-                                                value="@(metric.BodyPart ?? string.Empty)"
-                                                disabled="@IsReadOnly"
-                                                @onchange="e => UpdateMetric(metric, row => row.BodyPart = e.Value?.ToString())">
-                                            <option value="">Use primary body part</option>
-                                            @foreach (var option in _bodyPartOptions)
-                                            {
-                                                <option value="@option" selected="@string.Equals(metric.BodyPart, option, StringComparison.OrdinalIgnoreCase)">@option</option>
-                                            }
-                                        </select>
-                                    </label>
-                                    <label>
-                                        <span>Current value</span>
-                                        <input class="objective-tab__text-input"
-                                               value="@metric.Value"
-                                               disabled="@IsReadOnly"
-                                               @oninput="e => UpdateMetric(metric, row => row.Value = e.Value?.ToString() ?? string.Empty)" />
-                                    </label>
-                                    <label>
-                                        <span>Normal value</span>
-                                        <input class="objective-tab__text-input"
-                                               value="@metric.NormValue"
-                                               disabled="@IsReadOnly"
-                                               @oninput="e => UpdateMetric(metric, row => row.NormValue = e.Value?.ToString())" />
-                                    </label>
-                                    <label>
-                                        <span>Previous value</span>
-                                        <input class="objective-tab__text-input"
-                                               value="@metric.PreviousValue"
-                                               disabled="@IsReadOnly"
-                                               @oninput="e => UpdateMetric(metric, row => row.PreviousValue = e.Value?.ToString())" />
-                                    </label>
-                                    <label class="objective-tab__checkbox-item">
-                                        <input type="checkbox"
-                                               checked="@metric.IsWithinNormalLimits"
-                                               disabled="@IsReadOnly"
-                                               @onchange="e => UpdateMetric(metric, row => row.IsWithinNormalLimits = (bool)e.Value!)" />
-                                        Within normal limits
-                                    </label>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
+            <RomObservationEditor Rows="@RomMetrics" RowsChanged="HandleRomRowsChanged"
+                                  Region="@ParseBodyPart(_vm.SelectedBodyPart)" Catalog="@_catalog" IsReadOnly="@IsReadOnly" />
 
             <div class="objective-tab__section" data-testid="objective-mmt-section">
                 <div class="objective-tab__section-header">
@@ -601,7 +518,7 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        _vm = Vm;
+        _vm = JsonSerializer.Deserialize<ObjectiveVm>(JsonSerializer.Serialize(Vm))!;
         await EnsureCatalogAsync();
     }
 
@@ -681,10 +598,6 @@
         "Limping", "Patient uses assistive device"
     ];
 
-    private List<string> RomCatalogOptions => _catalog?.NormalRangeOfMotionOptions
-        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
-        .ToList() ?? [];
-
     private List<string> StrengthGradeOptions => _catalog?.MmtGradeOptions
         .Concat(_catalog?.JointMobilityGradeOptions ?? [])
         .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -763,24 +676,10 @@
         await VmChanged.InvokeAsync(_vm);
     }
 
-    private bool HasMetric(string name, MetricType metricType) =>
-        _vm.Metrics.Any(metric =>
-            metric.MetricType == metricType
-            && string.Equals(metric.Name, name, StringComparison.OrdinalIgnoreCase));
-
-    private Task AddMetric(string name, MetricType metricType)
+    private Task HandleRomRowsChanged(List<ObjectiveMetricRowEntry> rows)
     {
-        if (!HasMetric(name, metricType))
-        {
-            _vm.Metrics.Add(new ObjectiveMetricRowEntry
-            {
-                Name = name,
-                BodyPart = null,
-                MetricType = metricType,
-                NormValue = ResolveNormalValue(name, metricType)
-            });
-        }
-
+        if (IsReadOnly) return Task.CompletedTask;
+        _vm.Metrics = _vm.Metrics.Where(m => m.MetricType != MetricType.ROM).Concat(rows).ToList();
         return VmChanged.InvokeAsync(_vm);
     }
 
@@ -1015,20 +914,6 @@
 
     private static BodyPart ParseBodyPart(string? value) =>
         Enum.TryParse<BodyPart>(value, ignoreCase: true, out var parsed) ? parsed : BodyPart.Other;
-
-    private static string? ResolveNormalValue(string name, MetricType metricType)
-    {
-        if (metricType == MetricType.MMT)
-        {
-            return "5/5";
-        }
-
-        var lastToken = name
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .LastOrDefault();
-
-        return lastToken?.Any(char.IsDigit) == true ? lastToken : null;
-    }
 
     private static string NormalizeCode(string? code) => code?.Trim() ?? string.Empty;
 

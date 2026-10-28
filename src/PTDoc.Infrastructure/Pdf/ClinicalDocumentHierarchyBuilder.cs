@@ -493,26 +493,19 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
 
     private static ClinicalDocumentNode BuildRangeOfMotionTable(NoteWorkspaceV2Payload? workspace)
     {
-        var rows = workspace?.Objective.Metrics
-            .Where(metric => metric.MetricType == MetricType.ROM)
+        var rows = workspace?.Objective.Metrics.Where(metric => metric.MetricType == MetricType.ROM)
             .Select(metric => Row(
-                metric.BodyPart.ToString(),
-                Fallback(metric.NormValue),
-                Fallback(metric.PreviousValue),
-                Fallback(metric.Value),
-                metric.IsWithinNormalLimits ? "Within Normal Limits" : string.Empty))
+                $"{metric.BodyPart}: {metric.Name}",
+                string.IsNullOrWhiteSpace(metric.Side) ? "Unsided / not recorded" : metric.Side,
+                metric.MotionMode?.ToString() ?? "Mode not recorded",
+                Fallback(metric.NormValue), Fallback(metric.PreviousValue), Fallback(metric.Value), Fallback(metric.Unit),
+                string.Join("; ", new[] { metric.IsWithinNormalLimits ? "Within Normal Limits" : null,
+                    metric.ReferenceDocumentPath, metric.ReferenceVersion }.Where(v => !string.IsNullOrWhiteSpace(v)))))
             .ToList() ?? [];
-
         return TableNode("Range Of Motion Table", ClinicalDocumentSourceKind.Note,
-            columns:
-            [
-                Column("measure", "Measure"),
-                Column("norm", "Norm"),
-                Column("initial", "Initial"),
-                Column("current", "Current"),
-                Column("comments", "Comments")
-            ],
-            rows: rows);
+            columns: [Column("measure", "Movement"), Column("side", "Side"), Column("mode", "Mode"),
+                Column("norm", "Reference"), Column("initial", "Previous"), Column("current", "Current"),
+                Column("unit", "Unit"), Column("comments", "Reference source / comments")], rows: rows);
     }
 
     private static ClinicalDocumentNode BuildDiagnosisSection(ExportDocumentContext context)
