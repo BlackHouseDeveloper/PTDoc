@@ -61,7 +61,6 @@
             <AuthorizationDetailsPanel
                 Model="@Vm.Authorization"
                 ModelChanged="@(m => { Vm.Authorization = m; })"
-                AuthorizationRequired="@Vm.AdditionalSettings.AuthorizationRequired"
                 FieldErrors="@GetPanelErrors("auth")"
                 OnAnyFieldChanged="HandleFieldChanged" />
 
@@ -442,7 +441,7 @@
                 PrimaryCareProviderName = Vm.SupportingDocs.PrimaryCareProviderName,
                 ReferringPhysicianName = Vm.SupportingDocs.ReferringPhysicianName,
                 PhysicianNpiNumber = Vm.SupportingDocs.PhysicianNpiNumber,
-                AuthorizationRequired = Vm.AdditionalSettings.AuthorizationRequired,
+                AuthorizationRequired = loadedPayerInfo?.AuthorizationRequired,
                 AuthorizationStatus = Vm.AdditionalSettings.AuthorizationStatus,
                 AuthorizationType = Vm.AdditionalSettings.AuthorizationType,
                 ReAuthorizationDueDate = Vm.AdditionalSettings.ReAuthorizationDueDate,

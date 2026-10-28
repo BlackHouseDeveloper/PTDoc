@@ -3,14 +3,7 @@
 @using PTDoc.UI.Components.PatientInfo.Models
 
 <PatientInfoSectionPanel Title="Authorization / PCP Referral Details">
-    @if (!ShouldShowDetails)
-    {
-        <div class="pi-auth-details-empty" role="status">
-            <p>@DetailsPrompt</p>
-        </div>
-    }
-    else
-    {
+    <p>Enter authorization or referral details when available.</p>
         <PatientInfoFormGrid>
 
         <PatientInfoField Label="Authorization / Referral Number" ForId="pi-auth-number" Error="@GetError("authNumber")">
@@ -63,35 +56,16 @@
         {
             <p class="pi-auth-date-range-error" role="alert">@DateRangeError</p>
         }
-    }
 </PatientInfoSectionPanel>
 
 @code {
     [Parameter, EditorRequired] public AuthorizationDetailsVm Model { get; set; } = null!;
     [Parameter] public EventCallback<AuthorizationDetailsVm> ModelChanged { get; set; }
-    [Parameter] public string AuthorizationRequired { get; set; } = string.Empty;
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public Dictionary<string, string> FieldErrors { get; set; } = new();
     [Parameter] public EventCallback OnAnyFieldChanged { get; set; }
 
     private string DateRangeError => ValidateDateRange();
-    private bool IsRequiredYes => string.Equals(AuthorizationRequired, "Yes", StringComparison.OrdinalIgnoreCase);
-    private bool IsRequiredNo => string.Equals(AuthorizationRequired, "No", StringComparison.OrdinalIgnoreCase);
-    private bool IsRequiredUnknown => string.Equals(AuthorizationRequired, "Unknown", StringComparison.OrdinalIgnoreCase);
-    private bool HasAnyDetails =>
-        !string.IsNullOrWhiteSpace(Model.AuthorizationNumber) ||
-        !string.IsNullOrWhiteSpace(Model.DateAuthorizationReceived) ||
-        !string.IsNullOrWhiteSpace(Model.AuthorizationStartDate) ||
-        !string.IsNullOrWhiteSpace(Model.AuthorizationEndDate) ||
-        !string.IsNullOrWhiteSpace(Model.NumberOfVisitsOrUnitsAuthorized);
-    private bool ShouldShowDetails => IsRequiredYes || HasAnyDetails;
-    private string DetailsPrompt =>
-        IsRequiredNo
-            ? "Authorization or PCP referral is marked not required for this patient."
-            : IsRequiredUnknown
-                ? "Authorization / PCP referral requirement is marked unknown for this patient. Select Yes to enter details if available."
-                : "Select Yes for Authorization / PCP Referral Required to enter authorization, referral, or prescription details.";
-
     private string GetError(string key) =>
         FieldErrors.TryGetValue(key, out var msg) ? msg : string.Empty;
 
