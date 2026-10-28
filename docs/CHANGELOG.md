@@ -54,6 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - Client review Plan 04
 
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
+### Changed - Client review Plan 33
+
+- Fixed redundant Settings document scrolling by containing visually hidden labels within the Settings page. Verified the precise cause and compiled fix on #154 at desktop/tablet/phone sizes with keyboard and enlarged-text checks; existing shared-header 200% phone reflow remains documented.
 
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 
