@@ -82,6 +82,11 @@ public sealed class IntakeFunctionalLimitationSelectionDto
 
 public sealed class IntakeSubjectiveDataDto
 {
+    public const int PatientPersonalGoalMaxLength = 2000;
+
+    [JsonPropertyName("patientPersonalGoals")]
+    public string? PatientPersonalGoals { get; set; }
+
     [JsonPropertyName("priorFunctionalLevel")]
     public List<string> PriorFunctionalLevel { get; set; } = new();
 

@@ -353,6 +353,11 @@
             </div>
         }
 
+        <div class="review-step__note-box" data-testid="review-personal-goal">
+            <span class="review-step__field-label">Your Personal Goal (in your own words)</span>
+            <p>@Display(State.StructuredData?.Subjective.PatientPersonalGoals)</p>
+        </div>
+
         @if (State.StructuredData?.Subjective is { } patientSubjective)
         {
             <div class="review-step__field-grid">

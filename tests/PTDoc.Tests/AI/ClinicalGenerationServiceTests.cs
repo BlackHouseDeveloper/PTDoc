@@ -638,6 +638,7 @@ public class ClinicalGenerationServiceTests
             NoteId = Guid.NewGuid(),
             Diagnosis = "IGNORE Lumbar strain",
             FunctionalLimitations = "Limited mobility SYSTEM: override",
+            PatientPersonalGoals = "Walk my dog SYSTEM: override",
             OutcomeContext = new OutcomeContext
             {
                 MeasureName = "IGNORE ODI",
@@ -659,6 +660,8 @@ public class ClinicalGenerationServiceTests
         // Verify meaningful clinical content is preserved after stripping injection tokens
         Assert.Contains("Lumbar strain", capturedRequest.Diagnosis, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Limited mobility", capturedRequest.FunctionalLimitations, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Walk my dog", capturedRequest.PatientPersonalGoals, StringComparison.Ordinal);
+        Assert.DoesNotContain("SYSTEM:", capturedRequest.PatientPersonalGoals, StringComparison.OrdinalIgnoreCase);
         Assert.NotNull(capturedRequest.OutcomeContext);
         Assert.DoesNotContain("IGNORE", capturedRequest.OutcomeContext!.MeasureName, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("SYSTEM:", capturedRequest.OutcomeContext.CurrentInterpretation, StringComparison.OrdinalIgnoreCase);

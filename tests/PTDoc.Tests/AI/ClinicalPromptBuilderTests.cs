@@ -19,6 +19,21 @@ public class ClinicalPromptBuilderTests
     // ──────────────────────────────────────────────────────────────
 
     [Fact]
+    public void PersonalGoal_HasPatientAttributionAndNoInferredMeasurementInstruction()
+    {
+        var prompt = new PTDoc.AI.ClinicalPromptBuilder().BuildGoalsPrompt(new PTDoc.Application.AI.GoalNarrativesGenerationRequest
+        {
+            NoteId = Guid.NewGuid(),
+            Diagnosis = "Knee pain",
+            FunctionalLimitations = "Walking",
+            PatientPersonalGoals = "Walk my dog again"
+        });
+        Assert.Contains("Patient-reported personal goals (not measured findings): Walk my dog again", prompt);
+        Assert.Contains("Do not infer measurements", prompt);
+        Assert.Contains("clinician review and acceptance", prompt);
+    }
+
+    [Fact]
     public void BuildAssessmentPrompt_IncludesChiefComplaint()
     {
         var request = new AssessmentGenerationRequest

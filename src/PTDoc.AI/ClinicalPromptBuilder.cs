@@ -104,6 +104,9 @@ public sealed class ClinicalPromptBuilder
         sb.AppendLine($"Functional Limitations: {Sanitize(request.FunctionalLimitations)}");
 
         AppendOptionalField(sb, "Prior Level of Function", request.PriorLevelOfFunction);
+        AppendOptionalField(sb, "Patient-reported personal goals (not measured findings)", request.PatientPersonalGoals);
+        if (!string.IsNullOrWhiteSpace(request.PatientPersonalGoals))
+            sb.AppendLine("Do not infer measurements, baseline capacity, target values or timeframes from the patient's personal statement. Suggestions require clinician review and acceptance.");
         AppendOptionalField(sb, "Existing Short-Term Goals (do not repeat)", request.ShortTermGoals);
         AppendOptionalField(sb, "Existing Long-Term Goals (do not repeat)", request.LongTermGoals);
 

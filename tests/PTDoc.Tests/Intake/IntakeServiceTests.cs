@@ -46,6 +46,24 @@ public sealed class IntakeServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task PersonalGoal_PersistsThroughDraftCreationAndReload()
+    {
+        var patient = CreatePatient("Goal", "Fixture");
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        const string goal = "  Walk my dog again.\nWithout changing my words!  ";
+        var created = await _service.EnsureDraftAsync(patient.Id, new IntakeResponseDraft
+        {
+            PatientId = patient.Id,
+            StructuredData = new() { Subjective = new() { PatientPersonalGoals = goal } }
+        });
+        Assert.Equal(IntakeEnsureDraftStatus.Created, created.Status);
+        _context.ChangeTracker.Clear();
+        var reloaded = await _service.GetDraftByPatientIdAsync(patient.Id);
+        Assert.Equal(goal, reloaded!.StructuredData!.Subjective.PatientPersonalGoals);
+    }
+
+    [Fact]
     public async Task EnsureDraftAsync_ReturnsExistingUnlockedDraft_WhenPresent()
     {
         var patient = CreatePatient("Avery", "Existing");

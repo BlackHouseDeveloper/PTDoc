@@ -94,6 +94,17 @@
         </label>
     </section>
 
+    <section class="intake-card__section" data-testid="intake-personal-goal">
+        <label for="intake-personal-goal">What would you most like to be able to do after physical therapy? (Optional)
+            <textarea id="intake-personal-goal" class="form-control"
+                      maxlength="@IntakeSubjectiveDataDto.PatientPersonalGoalMaxLength"
+                      aria-describedby="intake-personal-goal-help"
+                      value="@Subjective.PatientPersonalGoals"
+                      @oninput="OnPersonalGoalChangedAsync"></textarea>
+        </label>
+        <p id="intake-personal-goal-help" class="intake-card__helper">Use your own words. Your clinician will review your goal with you.</p>
+    </section>
+
     <section class="intake-card__section intake-card__history-grid">
         <div>
             <label class="intake-card__field-label" for="intake-onset-date">When did the issue begin?</label>
@@ -265,6 +276,8 @@
 
         await NotifyChangedAsync();
     }
+
+    private Task OnPersonalGoalChangedAsync(ChangeEventArgs args) => UpdateAsync(() => Subjective.PatientPersonalGoals = args.Value?.ToString());
 
     private Task OnCurrentLevelChangedAsync(ChangeEventArgs args) => UpdateAsync(() => State.CurrentLevelOfFunction = args.Value?.ToString());
     private Task OnAdditionalLimitationsChangedAsync(ChangeEventArgs args) => UpdateAsync(() => State.FunctionalLimitations = args.Value?.ToString());

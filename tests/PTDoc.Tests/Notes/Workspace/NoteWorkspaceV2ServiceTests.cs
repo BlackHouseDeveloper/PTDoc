@@ -1151,6 +1151,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
                 ],
                 Subjective = new IntakeSubjectiveDataDto
                 {
+                    PatientPersonalGoals = "  Walk my dog again.  ",
                     PriorFunctionalLevel = ["Independent"],
                     OnsetDate = new DateTime(2026, 3, 15),
                     KnownCause = "Twisted knee stepping off a curb.",
@@ -1200,6 +1201,8 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Equal(WorkspaceSeedKind.IntakePrefill, seed.Payload.SeedContext.Kind);
         Assert.Equal(seed.SourceIntakeId, seed.Payload.SeedContext.SourceIntakeId);
         Assert.True(seed.Payload.SeedContext.FromLockedSubmittedIntake);
+        Assert.Equal("  Walk my dog again.  ", seed.Payload.Assessment.PatientPersonalGoals);
+        Assert.Empty(seed.Payload.Assessment.Goals);
         Assert.Equal(6, seed.Payload.Subjective.CurrentPainScore);
         Assert.True(seed.Payload.Subjective.IsPainScoreDocumented);
         Assert.Contains("Lives alone", seed.Payload.Subjective.LivingSituation);
@@ -1231,6 +1234,20 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Contains("42/80", seed.Payload.Objective.ClinicalObservationNotes ?? string.Empty, StringComparison.Ordinal);
         Assert.Empty(seed.Payload.Objective.OutcomeMeasures);
         Assert.Empty(_context.OutcomeMeasureResults);
+        seed.Payload.Plan.TreatmentFrequencyDaysPerWeek = [2];
+        seed.Payload.Plan.TreatmentDurationWeeks = [8];
+        var savedGoalNote = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.Evaluation,
+            DateOfService = new DateTime(2026, 4, 7),
+            Payload = seed.Payload
+        });
+        Assert.True(savedGoalNote.IsValid);
+        var reloadedGoalNote = await _service.LoadAsync(patient.Id, savedGoalNote.Workspace!.NoteId);
+        Assert.Equal("  Walk my dog again.  ", reloadedGoalNote!.Payload.Assessment.PatientPersonalGoals);
+        Assert.Equal(seed.SourceIntakeId, reloadedGoalNote.Payload.SeedContext.SourceIntakeId);
+        Assert.Empty(_context.PatientGoals);
     }
 
     [Fact]

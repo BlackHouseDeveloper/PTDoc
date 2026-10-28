@@ -255,6 +255,10 @@ public sealed record GoalNarrativesGenerationRequest
     /// </summary>
     public required string FunctionalLimitations { get; init; }
 
+    /// <summary>Patient-reported priorities, not a measured baseline or accepted clinical goal.</summary>
+    public string? PatientPersonalGoals { get; init; }
+
+
     /// <summary>
     /// Prior level of function before injury or illness.
     /// </summary>
