@@ -81,7 +81,7 @@ internal static class WebAuthenticationStepFlow
             }
 
             var result = await response.Content.ReadFromJsonAsync<MfaRecoveryCodeSet>(cancellationToken: context.RequestAborted);
-            if (result is null || result.RecoveryCodes.Count == 0)
+            if (result?.RecoveryCodes is not { Count: > 0 })
             {
                 return RenderRecoveryCodeRegeneration(context, antiforgery, returnUrl,
                     "The response did not include recovery codes. Use a fresh authenticator code to try again.");

@@ -1,6 +1,8 @@
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
-<section class="documentation-settings" aria-labelledby="documentation-settings-title">
+<section class="documentation-settings" aria-labelledby="documentation-settings-title" @ref="_root">
     <header class="documentation-settings__page-header">
         <img src="_content/PTDoc.UI/images/settings/clinical.svg" alt="" aria-hidden="true" />
         <div>
@@ -20,16 +22,21 @@
     }
 
     <div class="documentation-settings__tabs" role="tablist" aria-label="Documentation and compliance settings">
-        @foreach (var tab in Tabs)
+        @for (var index = 0; index < Tabs.Count; index++)
         {
+            var tabIndex = index;
+            var tab = Tabs[tabIndex];
             <button
+                @ref="_tabButtons[tabIndex]"
                 type="button"
                 id="@tab.TabId"
                 class="documentation-settings__tab @(tab.Tab == _activeTab ? "is-active" : string.Empty)"
                 role="tab"
                 aria-selected="@(tab.Tab == _activeTab ? "true" : "false")"
                 aria-controls="@tab.PanelId"
-                @onclick="() => SelectTab(tab.Tab)">
+                tabindex="@(tab.Tab == _activeTab ? "0" : "-1")"
+                @onclick="() => SelectTab(tab.Tab)"
+                @onkeydown="args => HandleTabKeyDown(args, tabIndex)">
                 <span class="documentation-icon" style="@IconStyle(tab.IconPath)" aria-hidden="true"></span>
                 <span>@tab.Label</span>
             </button>
@@ -268,6 +275,9 @@
 </section>
 
 @code {
+    private ElementReference _root;
+    private readonly ElementReference[] _tabButtons = new ElementReference[Tabs.Count];
+    private IJSObjectReference? _keyboardModule;
     private DocumentationTab _activeTab = DocumentationTab.HardStops;
     private DocumentationSettingsState _settings = DocumentationSettingsState.Default();
     private DocumentationSettingsState _snapshot = DocumentationSettingsState.Default();
@@ -298,6 +308,46 @@
     }
 
     private void SelectTab(DocumentationTab tab) => _activeTab = tab;
+
+    private async Task HandleTabKeyDown(KeyboardEventArgs args, int currentIndex)
+    {
+        var targetIndex = args.Key switch
+        {
+            "ArrowRight" => (currentIndex + 1) % Tabs.Count,
+            "ArrowLeft" => (currentIndex + Tabs.Count - 1) % Tabs.Count,
+            "Home" => 0,
+            "End" => Tabs.Count - 1,
+            _ => -1
+        };
+        if (targetIndex < 0) return;
+        SelectTab(Tabs[targetIndex].Tab);
+        await _tabButtons[targetIndex].FocusAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            _keyboardModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/settings-keyboard.js");
+            if (_keyboardModule is not null) await _keyboardModule.InvokeVoidAsync("attachKeyboardGuards", _root);
+        }
+        catch (Exception)
+        {
+            // Selection still works when interop is unavailable during prerender or teardown.
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_keyboardModule is null) return;
+        try
+        {
+            await _keyboardModule.InvokeVoidAsync("detachKeyboardGuards", _root);
+            await _keyboardModule.DisposeAsync();
+        }
+        catch (JSDisconnectedException) { }
+    }
 
     private RenderFragment ToggleSetting(string label, string description, bool enabled, Action<bool> onChanged) => @<div class="documentation-setting-row">
         <div><strong>@label</strong><p>@description</p></div>

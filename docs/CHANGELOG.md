@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 154 kiosk recovery and remaining review findings
+
+- Keep successful kiosk enrollment credentials usable in memory when browser storage fails, show a persistent storage warning, and retry persistence without consuming another enrollment code. Handle blocked storage reads without terminating the page; added fresh/replacement enrollment, check-in, and retry regressions.
+- Disable kiosk administration mutations until stations load successfully, expose Reload Stations, and retain refresh-failure feedback after successful writes. Added initial-load and post-create refresh recovery coverage for the previously missed review finding.
+- Add roving tab focus and Arrow/Home/End navigation to Documentation & Compliance using the existing Settings keyboard helper. Added component navigation/lifecycle coverage and an isolated browser check that preserves native Tab behavior. Corrected the cleanup regression to dispose components through the bUnit renderer so it exercises the component's asynchronous disposal lifecycle.
+- Return the recovery-code error form when a successful API response contains missing, null, or empty recovery codes, with integration coverage for each response shape.
+
 ### Fixed - PR 154 follow-up review
 
 - Keep remote Roles/Security and Auto Check-In mutations disabled after either required initial load fails, and provide an explicit reload action. Added failure/retry regressions that verify saves use the loaded policy and permission versions.

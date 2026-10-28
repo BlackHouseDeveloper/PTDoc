@@ -1,6 +1,7 @@
 using Bunit;
 using Bunit.TestDoubles;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
 using Moq;
 using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.Services;
@@ -14,6 +15,90 @@ namespace PTDoc.Tests.UI.Settings;
 public sealed class QuickAdminSettingsTests : TestContext
 {
     public QuickAdminSettingsTests() => JSInterop.Mode = JSRuntimeMode.Loose;
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void KioskEnrollment_StorageFailureRetainsCredentialAndRetriesWithoutReenrolling(bool replacing, bool failRead)
+    {
+        var getStorage = JSInterop.Setup<string?>("localStorage.getItem", "ptdoc.kiosk.deviceCredential");
+        if (failRead) getStorage.SetException(new JSException("Storage blocked"));
+        else getStorage.SetResult(replacing ? "old-credential" : null);
+        var failWrite = true;
+        JSInterop.SetupVoid("localStorage.setItem", _ => failWrite).SetException(new JSException("Storage full"));
+        var service = new Mock<IKioskCheckInService>();
+        service.Setup(item => item.EnrollAsync("one-time-code", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SettingsOperationResult<KioskEnrollmentResult>.Success(new KioskEnrollmentResult(Guid.NewGuid(), "Lobby", "new-credential")));
+        service.Setup(item => item.CheckInAsync("new-credential", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SettingsOperationResult<KioskCheckInResult>.Success(new KioskCheckInResult(Guid.NewGuid(), DateTime.UtcNow)));
+        Services.AddSingleton(service.Object);
+        var cut = RenderComponent<KioskCheckIn>();
+        if (replacing) cut.Find("form button[type='button']").Click();
+        cut.Find("form input").Change("one-time-code");
+        cut.Find("form").Submit();
+
+        cut.WaitForAssertion(() => Assert.Contains("browser could not save its credential", cut.Markup, StringComparison.Ordinal));
+        Assert.Contains("Appointment check-in code", cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("could not be enrolled", cut.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("new-credential", cut.Markup, StringComparison.Ordinal);
+        cut.Find("form input").Change("12345678");
+        cut.Find("form").Submit();
+        service.Verify(item => item.CheckInAsync("new-credential", "12345678", It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Contains("browser could not save its credential", cut.Markup, StringComparison.Ordinal);
+        cut.Find("aside button").Click(); // A failed retry must retain the warning and credential.
+        Assert.Contains("browser could not save its credential", cut.Markup, StringComparison.Ordinal);
+        failWrite = false;
+        cut.Find("aside button").Click();
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("aside")));
+        service.Verify(item => item.EnrollAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(3, JSInterop.Invocations.Count(call => call.Identifier == "localStorage.setItem" && Equals(call.Arguments[1], "new-credential")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void KioskAdministration_LoadFailureDisablesMutationsUntilReload(bool failAfterCreate)
+    {
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("admin-user");
+        authorization.SetRoles(Roles.Admin);
+        var service = new Mock<IKioskCheckInService>();
+        var loads = 0;
+        service.Setup(item => item.GetStationsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(() => ++loads == (failAfterCreate ? 2 : 1)
+                ? Task.FromException<IReadOnlyList<KioskStationDto>>(new HttpRequestException())
+                : Task.FromResult<IReadOnlyList<KioskStationDto>>([]));
+        service.Setup(item => item.CreateStationAsync(It.IsAny<Guid>(), It.IsAny<CreateKioskStationRequest>(),
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SettingsOperationResult<KioskEnrollmentCodeDto>.Success(new KioskEnrollmentCodeDto(Guid.NewGuid(), "one-time-code", DateTime.UtcNow.AddMinutes(15))));
+        var appointmentId = Guid.NewGuid();
+        service.Setup(item => item.CreateCheckInTokenAsync(It.IsAny<Guid>(), appointmentId,
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SettingsOperationResult<KioskCheckInTokenDto>.Success(new KioskCheckInTokenDto(appointmentId, "12345678", "qr-code", DateTime.UtcNow.AddMinutes(15))));
+        Services.AddSingleton(service.Object);
+        var cut = RenderComponent<KioskAdministrationSettings>();
+        if (failAfterCreate)
+        {
+            cut.Find(".kiosk-admin__create input").Change("Lobby");
+            cut.Find(".kiosk-admin__create").Submit();
+            Assert.Contains("one-time-code", cut.Markup, StringComparison.Ordinal);
+        }
+        Assert.Contains("Kiosk stations could not be loaded", cut.Markup, StringComparison.Ordinal);
+        Assert.All(cut.FindAll("form input, form button"), element => Assert.True(element.HasAttribute("disabled")));
+        cut.Find(".kiosk-admin__create").Submit();
+        cut.Find(".kiosk-admin__token form").Submit();
+        service.Verify(item => item.CreateStationAsync(It.IsAny<Guid>(), It.IsAny<CreateKioskStationRequest>(),
+            It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(failAfterCreate ? 1 : 0));
+        service.Verify(item => item.CreateCheckInTokenAsync(It.IsAny<Guid>(), It.IsAny<Guid>(),
+            It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        cut.Find(".kiosk-admin__reload").Click();
+        Assert.All(cut.FindAll("form input, form button"), element => Assert.False(element.HasAttribute("disabled")));
+        cut.Find("#kiosk-appointment-id").Change(appointmentId.ToString());
+        cut.Find(".kiosk-admin__token form").Submit();
+        cut.WaitForAssertion(() => Assert.Contains("12345678", cut.Markup, StringComparison.Ordinal));
+    }
 
     [Theory]
     [InlineData(true)]

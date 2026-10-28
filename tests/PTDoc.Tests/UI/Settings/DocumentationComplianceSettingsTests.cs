@@ -8,6 +8,44 @@ namespace PTDoc.Tests.UI.Settings;
 [Trait("Category", "CoreCi")]
 public sealed class DocumentationComplianceSettingsTests : TestContext
 {
+    public DocumentationComplianceSettingsTests() => JSInterop.Mode = JSRuntimeMode.Loose;
+
+    [Fact]
+    public void Tabs_UseRovingTabStopAndArrowHomeEndNavigation()
+    {
+        var cut = RenderComponent<DocumentationComplianceSettings>();
+        Assert.Single(cut.FindAll("button[role='tab'][tabindex='0']"));
+        var steps = new[]
+        {
+            ("hard-stops-tab", "ArrowLeft", "note-behavior-tab", "note-behavior-panel"),
+            ("note-behavior-tab", "ArrowRight", "hard-stops-tab", "hard-stops-panel"),
+            ("hard-stops-tab", "ArrowRight", "progress-notes-tab", "progress-notes-panel"),
+            ("progress-notes-tab", "End", "note-behavior-tab", "note-behavior-panel"),
+            ("note-behavior-tab", "Home", "hard-stops-tab", "hard-stops-panel")
+        };
+        foreach (var (source, key, target, panel) in steps)
+        {
+            cut.Find($"#{source}").KeyDown(key);
+            Assert.Equal(target, Assert.Single(cut.FindAll("button[role='tab'][tabindex='0']")).Id);
+            Assert.Equal("true", cut.Find($"#{target}").GetAttribute("aria-selected"));
+            Assert.Equal(target, cut.Find($"#{panel}").GetAttribute("aria-labelledby"));
+        }
+        JSInterop.VerifyFocusAsyncInvoke(steps.Length);
+        cut.Find("#hard-stops-tab").KeyDown("Tab");
+        Assert.Equal("0", cut.Find("#hard-stops-tab").GetAttribute("tabindex"));
+    }
+
+    [Fact]
+    public void Tabs_AttachAndDetachExistingKeyboardGuards()
+    {
+        var module = JSInterop.SetupModule("./_content/PTDoc.UI/js/settings-keyboard.js");
+        module.Mode = JSRuntimeMode.Loose;
+        RenderComponent<DocumentationComplianceSettings>();
+        Assert.Contains(module.Invocations, call => call.Identifier == "attachKeyboardGuards");
+        DisposeComponents();
+        Assert.Contains(module.Invocations, call => call.Identifier == "detachKeyboardGuards");
+    }
+
     [Fact]
     public void DefaultState_RendersDocumentedHardStopsAndUnavailableSaveExplanation()
     {

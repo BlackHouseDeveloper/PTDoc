@@ -548,6 +548,40 @@ public sealed class WebLoginEndpointIntegrationTests
         }
     }
 
+    [Theory]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("{\"recoveryCodes\":null}")]
+    [InlineData("{\"recoveryCodes\":[]}")]
+    public async Task RecoveryCodes_MissingOrNullCodesReturnRetryableForm(string payload)
+    {
+        var upstream = new RecordingHttpClientFactory(request =>
+            request.RequestUri!.AbsolutePath == "/api/v1/auth/pin-login"
+                ? SuccessfulLogin()
+                : new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json")
+                });
+        await using var factory = new PTDocWebFactory(upstream);
+        using var client = await CreateRecoveryClientAsync(factory);
+        using var formResponse = await client.GetAsync("/auth/mfa/recovery-codes");
+        var document = new AngleSharp.Html.Parser.HtmlParser().ParseDocument(await formResponse.Content.ReadAsStringAsync());
+        var token = document.QuerySelector("input[name='__RequestVerificationToken']")!.GetAttribute("value")!;
+        using var response = await client.PostAsync("/auth/mfa/recovery-codes", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = token,
+            ["code"] = "123456"
+        }));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(response.Headers.CacheControl?.NoStore);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("response did not include recovery codes", html, StringComparison.Ordinal);
+        Assert.Contains("role=\"alert\"", html, StringComparison.Ordinal);
+        Assert.Contains("action=\"/auth/mfa/recovery-codes\"", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Save your new recovery codes", html, StringComparison.Ordinal);
+    }
+
     private static HttpResponseMessage SuccessfulLogin() => new(HttpStatusCode.OK)
     {
         Content = JsonContent.Create(new

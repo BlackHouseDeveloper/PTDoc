@@ -13,6 +13,14 @@
         <div class="kiosk-check-in__status @(_statusIsError ? "is-error" : string.Empty)" role="@(_statusIsError ? "alert" : "status")">@_statusMessage</div>
     }
 
+    @if (_credentialNeedsStorage)
+    {
+        <aside class="kiosk-check-in__status is-error" role="alert">
+            <p>Station enrolled for this session, but the browser could not save its credential. Keep this page open and retry saving before refreshing or closing it.</p>
+            <button type="button" disabled="@_isBusy" @onclick="RetryCredentialStorage">Retry Saving Credential</button>
+        </aside>
+    }
+
     @if (string.IsNullOrWhiteSpace(_deviceCredential) || _replacingEnrollment)
     {
         <form @onsubmit="Enroll" @onsubmit:preventDefault="true">
@@ -50,6 +58,7 @@
     private bool _isBusy;
     private bool _loadedStorage;
     private bool _replacingEnrollment;
+    private bool _credentialNeedsStorage;
 
     protected override void OnInitialized() =>
         _service = Services.GetService(typeof(IKioskCheckInService)) as IKioskCheckInService;
@@ -58,7 +67,14 @@
     {
         if (!firstRender || _loadedStorage) return;
         _loadedStorage = true;
-        _deviceCredential = await JS.InvokeAsync<string?>("localStorage.getItem", CredentialStorageKey) ?? string.Empty;
+        try
+        {
+            _deviceCredential = await JS.InvokeAsync<string?>("localStorage.getItem", CredentialStorageKey) ?? string.Empty;
+        }
+        catch (Exception)
+        {
+            ShowStatus("Browser storage is unavailable. A new enrollment can be used for this session; keep this page open until its credential can be saved.", true);
+        }
         StateHasChanged();
     }
 
@@ -74,14 +90,37 @@
                 ShowStatus("The enrollment code is invalid, expired, or already used.", true);
                 return;
             }
-            await JS.InvokeVoidAsync("localStorage.setItem", CredentialStorageKey, result.Value.DeviceCredential);
             _deviceCredential = result.Value.DeviceCredential;
             _replacingEnrollment = false;
             _appointmentToken = string.Empty;
             _enrollmentCode = string.Empty;
+            await PersistCredential();
             ShowStatus("Station enrolled. It can only perform appointment check-in.", false);
         }
         catch (Exception) { ShowStatus("This station could not be enrolled. Try again.", true); }
+        finally { _isBusy = false; }
+    }
+
+    private async Task PersistCredential()
+    {
+        _credentialNeedsStorage = true;
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", CredentialStorageKey, _deviceCredential);
+            _credentialNeedsStorage = false;
+        }
+        catch (Exception)
+        {
+            // Enrollment already consumed the server code. Keep the returned credential
+            // usable in this session and expose a storage-only retry.
+        }
+    }
+
+    private async Task RetryCredentialStorage()
+    {
+        if (_isBusy || !_credentialNeedsStorage) return;
+        _isBusy = true;
+        try { await PersistCredential(); }
         finally { _isBusy = false; }
     }
 
