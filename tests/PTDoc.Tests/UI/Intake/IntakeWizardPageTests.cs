@@ -152,8 +152,12 @@ public sealed class IntakeWizardPageTests : TestContext
         authorization.SetRoles(Roles.PT);
         var initial = new IntakeResponseDraft
         {
-            PatientId = patientId, IntakeFlowVersion = 2, CurrentStep = (int)IntakeStep.PainAssessment,
-            InsuranceCompanyName = "Stale", MemberOrPolicyNumber = "OLD", MedicalHistoryNotes = "Keep me",
+            PatientId = patientId,
+            IntakeFlowVersion = 2,
+            CurrentStep = (int)IntakeStep.PainAssessment,
+            InsuranceCompanyName = "Stale",
+            MemberOrPolicyNumber = "OLD",
+            MedicalHistoryNotes = "Keep me",
             ProfilePrefill = new IntakeProfilePrefill { InsuranceCompanyName = "Current", MemberOrPolicyNumber = "NEW", Fingerprint = "current-offer" }
         };
         var service = CreateIntakeServiceMock(initial);

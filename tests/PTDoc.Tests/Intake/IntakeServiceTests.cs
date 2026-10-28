@@ -57,9 +57,11 @@ public sealed class IntakeServiceTests : IDisposable
         var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
         var policy = new PatientInsurancePolicy
         {
-            PatientId = patient.Id, ClinicId = _clinicId,
+            PatientId = patient.Id,
+            ClinicId = _clinicId,
             CoveragePriority = secondary ? InsuranceCoveragePriority.Secondary : InsuranceCoveragePriority.Primary,
-            CarrierDisplayName = "Clinician policy", MemberOrPolicyNumber = "CURRENT"
+            CarrierDisplayName = "Clinician policy",
+            MemberOrPolicyNumber = "CURRENT"
         };
         _context.PatientInsurancePolicies.Add(policy);
         await _context.SaveChangesAsync();
@@ -76,9 +78,11 @@ public sealed class IntakeServiceTests : IDisposable
         var patient = CreatePatient("Legacy", "Timestamp");
         var policy = new PatientInsurancePolicy
         {
-            PatientId = patient.Id, ClinicId = _clinicId,
+            PatientId = patient.Id,
+            ClinicId = _clinicId,
             CoveragePriority = secondary ? InsuranceCoveragePriority.Secondary : InsuranceCoveragePriority.Primary,
-            CarrierDisplayName = "Original", LastModifiedUtc = patient.LastModifiedUtc.AddHours(-1)
+            CarrierDisplayName = "Original",
+            LastModifiedUtc = patient.LastModifiedUtc.AddHours(-1)
         };
         _context.AddRange(patient, policy);
         await _context.SaveChangesAsync();

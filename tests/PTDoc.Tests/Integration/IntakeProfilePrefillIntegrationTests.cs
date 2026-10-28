@@ -346,15 +346,21 @@ public sealed class IntakeProfilePrefillIntegrationTests : IClassFixture<PtDocAp
             policy.IsArchived = true;
             db.PatientInsuranceAuthorizations.Add(new PatientInsuranceAuthorization
             {
-                PatientId = patient.Id, ClinicId = policy.ClinicId, PatientInsurancePolicyId = policy.Id, ReferenceNumber = "KEEP-AUTH"
+                PatientId = patient.Id,
+                ClinicId = policy.ClinicId,
+                PatientInsurancePolicyId = policy.Id,
+                ReferenceNumber = "KEEP-AUTH"
             });
             await db.SaveChangesAsync();
             if (!omit)
             {
                 var replacement = new PatientInsurancePolicy
                 {
-                    PatientId = patient.Id, ClinicId = policy.ClinicId, CoveragePriority = policy.CoveragePriority,
-                    CarrierDisplayName = "Replacement", MemberOrPolicyNumber = "CURRENT"
+                    PatientId = patient.Id,
+                    ClinicId = policy.ClinicId,
+                    CoveragePriority = policy.CoveragePriority,
+                    CarrierDisplayName = "Replacement",
+                    MemberOrPolicyNumber = "CURRENT"
                 };
                 db.PatientInsurancePolicies.Add(replacement);
                 replacementId = replacement.Id;
@@ -382,7 +388,8 @@ public sealed class IntakeProfilePrefillIntegrationTests : IClassFixture<PtDocAp
         };
         using var reconcile = await client.PutAsJsonAsync(path, new UpdateIntakeRequest
         {
-            ResponseJson = IntakeDraftPersistence.SerializePersistenceJson(draft), Consents = ReviewConsents
+            ResponseJson = IntakeDraftPersistence.SerializePersistenceJson(draft),
+            Consents = ReviewConsents
         });
         Assert.Equal(HttpStatusCode.OK, reconcile.StatusCode);
         using var submitted = await client.PostAsync(path + "/submit", null);
@@ -420,7 +427,10 @@ public sealed class IntakeProfilePrefillIntegrationTests : IClassFixture<PtDocAp
         var payer = JsonSerializer.Serialize(new { insuranceCompanyName = "UI Carrier", providerType = alias, memberIdPolicyNumber = "UI-MEMBER" });
         using var created = await client.PostAsJsonAsync("/api/v1/patients", new CreatePatientRequest
         {
-            FirstName = "Alias", LastName = "Fixture", DateOfBirth = new DateTime(1990, 1, 1), PayerInfoJson = payer
+            FirstName = "Alias",
+            LastName = "Fixture",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            PayerInfoJson = payer
         });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         var patient = (await created.Content.ReadFromJsonAsync<PatientResponse>())!;
@@ -449,8 +459,12 @@ public sealed class IntakeProfilePrefillIntegrationTests : IClassFixture<PtDocAp
     {
         using var created = await staff.PostAsJsonAsync("/api/v1/patients", new CreatePatientRequest
         {
-            FirstName = "Mary Jane", LastName = "Smith", DateOfBirth = new DateTime(1990, 1, 1),
-            Email = $"review-{Guid.NewGuid():N}@example.test", Phone = "555-0107", AddressLine1 = "Old address",
+            FirstName = "Mary Jane",
+            LastName = "Smith",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            Email = $"review-{Guid.NewGuid():N}@example.test",
+            Phone = "555-0107",
+            AddressLine1 = "Old address",
             PayerInfoJson = """{"insuranceCompanyName":"Primary","memberOrPolicyNumber":"P7","secondaryInsuranceCompanyName":"Secondary","secondaryMemberOrPolicyNumber":"S7"}"""
         });
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
