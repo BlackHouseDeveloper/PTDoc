@@ -218,6 +218,11 @@ public sealed class NoteWorkspaceV2Service(
         DryNeedlingBillingPolicy.Enforce(payload);
         NormalizeCptModifierSources(payload.Plan.SelectedCptCodes);
 
+        payload.ProgressQuestionnaire ??= new WorkspaceProgressNoteQuestionnaireV2();
+        var progressErrors = await ProgressActivityWriteValidator.PrepareAsync(db, workspaceCatalogs, payload, note, request.PatientId, noteId, cancellationToken);
+        if (progressErrors.Count > 0)
+            return new NoteWorkspaceV2SaveResponse { IsValid = false, Errors = progressErrors };
+
         var interventionErrors = NormalizeAndValidateInterventions(payload);
         if (interventionErrors.Count > 0)
         {
@@ -1218,6 +1223,9 @@ public sealed class NoteWorkspaceV2Service(
         payload.Plan.ClinicalSummary = null;
         payload.Plan.ComputedPlanOfCare = new ComputedPlanOfCareV2();
         payload.DailyTreatment = new WorkspaceDailyTreatmentV2();
+        if (targetNoteType == NoteType.ProgressNote)
+            payload.ProgressQuestionnaire = new WorkspaceProgressNoteQuestionnaireV2
+            { Activities = ProgressActivityTracking.BaselineFrom(sourcePayload, sourceNoteId) };
 
         return payload;
     }

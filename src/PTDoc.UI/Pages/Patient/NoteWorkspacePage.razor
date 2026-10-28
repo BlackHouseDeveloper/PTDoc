@@ -463,6 +463,7 @@ else
                         if (IsDailyTreatment || IsProgressNote)
                         {
                             <PlanSection Vm="@_note.Plan"
+                                         ShowProgressFrequency="@IsProgressNote"
                                          DailyTreatment="@_note.DailyTreatment"
                                          VmChanged="HandlePlanChanged"
                                          DailyTreatmentChanged="HandleDailyTreatmentChanged"

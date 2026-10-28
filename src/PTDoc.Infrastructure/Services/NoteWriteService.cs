@@ -13,6 +13,7 @@ using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Outcomes;
+using PTDoc.Infrastructure.Notes.Workspace;
 
 namespace PTDoc.Infrastructure.Services;
 
@@ -48,6 +49,7 @@ public sealed class NoteWriteService(
             request.IsReEvaluation,
             request.DateOfService,
             request.ContentJson);
+        normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(db, null, request.PatientId, noteId, normalizedContentJson, ct);
         var isDryNeedling = IsDryNeedlingContent(
             request.NoteType,
             request.IsReEvaluation,
@@ -191,12 +193,14 @@ public sealed class NoteWriteService(
             throw new ArgumentException("TotalMinutes must be zero or greater.", nameof(request.TotalMinutes));
         }
 
+        ProgressActivityTracking.ValidateJsonWrite(note.ContentJson, request.ContentJson ?? note.ContentJson);
         var effectiveDateOfService = request.DateOfService ?? note.DateOfService;
         var normalizedContentJson = NormalizeContentJson(
             note.NoteType,
             note.IsReEvaluation,
             effectiveDateOfService,
             request.ContentJson ?? note.ContentJson);
+        normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(db, note, note.PatientId, note.Id, normalizedContentJson, ct);
         var isDryNeedling = IsDryNeedlingContent(
             note.NoteType,
             note.IsReEvaluation,
@@ -328,6 +332,7 @@ public sealed class NoteWriteService(
         DateTime dateOfService,
         string? contentJson)
     {
+        ProgressActivityTracking.ValidateJsonWrite(null, contentJson);
         if (string.IsNullOrWhiteSpace(contentJson))
         {
             return SerializeWorkspacePayload(CreateEmptyWorkspacePayload(noteType, dateOfService));

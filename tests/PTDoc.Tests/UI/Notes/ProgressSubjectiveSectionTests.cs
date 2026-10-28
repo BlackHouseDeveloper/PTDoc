@@ -1,4 +1,7 @@
 using Bunit;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
+using PTDoc.UI.Services;
 using Microsoft.AspNetCore.Components;
 using PTDoc.UI.Components.Notes.Models;
 using PTDoc.UI.Components.Notes.Workspace.ProgressNote;
@@ -9,6 +12,7 @@ namespace PTDoc.Tests.UI.Notes;
 [Trait("Category", "CoreCi")]
 public sealed class ProgressSubjectiveSectionTests : TestContext
 {
+    public ProgressSubjectiveSectionTests() => Services.AddSingleton(new Mock<INoteWorkspaceService>(MockBehavior.Loose).Object);
     [Fact]
     public void ProgressSubjectiveSection_UsesSliderForCurrentPain()
     {
