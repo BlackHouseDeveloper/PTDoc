@@ -295,6 +295,7 @@ builder.Services.AddScoped<PTDoc.Application.Compliance.ISignatureService, PTDoc
 builder.Services.AddScoped<PTDoc.Application.Compliance.ICarryForwardService, PTDoc.Infrastructure.Compliance.CarryForwardService>();
 // Register Daily Note service (Daily Treatment Note workflow — RQ-DN-001 through RQ-DN-022)
 builder.Services.AddScoped<PTDoc.Application.Services.IDailyNoteService, PTDoc.Infrastructure.Services.DailyNoteService>();
+builder.Services.AddScoped<PTDoc.Application.Services.INoteHandoffService, PTDoc.Infrastructure.Services.NoteHandoffService>();
 builder.Services.AddScoped<PTDoc.Application.Services.INoteWriteService, PTDoc.Infrastructure.Services.NoteWriteService>();
 builder.Services.AddSingleton<PTDoc.Application.Services.IIcd10Service, PTDoc.Infrastructure.Services.WorkspaceCatalogIcd10Service>();
 builder.Services.Configure<PTDoc.Application.Configuration.RetentionOptions>(
@@ -1039,6 +1040,7 @@ app.MapIntakeEndpoints();  // Sprint O: Intake CRUD
 app.MapIntakeAccessEndpoints(); // Standalone patient invite validation, OTP, and patient access
 app.MapIntakeDeliveryEndpoints(); // Share-link, QR, email, and SMS intake delivery
 app.MapCommunicationEndpoints(); // Canonical ACS-backed email/SMS delivery endpoints
+app.MapNoteHandoffEndpoints();
 app.MapNoteCrudEndpoints(); // Sprint O: Note CRUD (create/update drafts)
 app.MapObjectiveMetricEndpoints(); // Sprint O: ObjectiveMetric CRUD per note
 app.MapSyncEndpoints(); // Sync endpoints

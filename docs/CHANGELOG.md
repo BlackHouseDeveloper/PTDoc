@@ -54,6 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - Client review Plan 04
 
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
+### Added - Client review Plan 18
+
+- Added same-clinic PT-to-PTA and PTA-to-PT collaboration/reassignment for all saved note states, with atomic idempotent in-app notifications and explicit responsible-clinician tracking. Existing edit permissions, PT final-signing/co-sign rules and signed clinical evidence remain unchanged. Added provider migrations, concurrency/tenancy tests and an accessible shared workspace dialog. Fixed the reproduced zero-height notification list so recipients can open handoff links.
 
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 
