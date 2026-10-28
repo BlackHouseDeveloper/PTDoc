@@ -46,6 +46,37 @@ public sealed class IntakeServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureDraft_OtherDetailsAndMultipleSelectionsSurviveDatabaseReload()
+    {
+        var patient = CreatePatient("Synthetic", "OtherDetails");
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var catalog = new IntakeReferenceDataCatalogService();
+        var medicationIds = catalog.GetMedications().Take(2).Select(x => x.Id).ToList();
+        var historyIds = catalog.GetComorbidities().Take(2).Select(x => x.Id).ToList();
+        await _service.EnsureDraftAsync(patient.Id, new IntakeResponseDraft
+        {
+            PatientId = patient.Id,
+            MedicalHistoryNotes = "Existing surgery evidence",
+            StructuredData = new IntakeStructuredDataDto
+            {
+                MedicationIds = medicationIds,
+                ComorbidityIds = historyIds,
+                OtherMedications = "Unlisted medication",
+                OtherMedicalHistory = "Unlisted history"
+            }
+        });
+        _context.ChangeTracker.Clear();
+        var loaded = await _service.GetLatestByPatientIdAsync(patient.Id);
+        Assert.NotNull(loaded);
+        Assert.Equal(medicationIds.OrderBy(x => x), loaded.StructuredData!.MedicationIds.OrderBy(x => x));
+        Assert.Equal(historyIds.OrderBy(x => x), loaded.StructuredData.ComorbidityIds.OrderBy(x => x));
+        Assert.Equal("Unlisted medication", loaded.StructuredData.OtherMedications);
+        Assert.Equal("Unlisted history", loaded.StructuredData.OtherMedicalHistory);
+        Assert.Equal("Existing surgery evidence", loaded.MedicalHistoryNotes);
+    }
+
+    [Fact]
     public async Task EnsureDraftAsync_ReturnsExistingUnlockedDraft_WhenPresent()
     {
         var patient = CreatePatient("Avery", "Existing");
