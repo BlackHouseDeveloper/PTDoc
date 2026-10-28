@@ -3,6 +3,7 @@
 @if (!string.IsNullOrWhiteSpace(Href))
 {
     <a href="@Href"
+       @onclick="OnClick"
        class="patient-primary-action-button"
        data-testid="patient-primary-action"
        aria-label="@Label">
