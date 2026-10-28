@@ -1,8 +1,9 @@
+@using PTDoc.UI.Components.Intake.Models
 @using PTDoc.Application.ReferenceData
 @inject IIntakeReferenceDataCatalogService IntakeReferenceData
 
 <section class="intake-card">
-    <h2>Insurance &amp; Payer Information</h2>
+    <IntakeSectionHeading Section="IntakeReviewTarget.Insurance" FocusRequested="@FocusRequested">Insurance &amp; Payer Information</IntakeSectionHeading>
     <p class="intake-card__subtext">Please provide your insurance information (optional):</p>
 
     <div class="intake-card__form-grid">
@@ -103,6 +104,8 @@
 </section>
 
 @code {
+    [Parameter] public bool FocusRequested { get; set; }
+
     [Parameter] public string? InsuranceCompanyName { get; set; }
     [Parameter] public string? MemberOrPolicyNumber { get; set; }
     [Parameter] public string? GroupNumber { get; set; }

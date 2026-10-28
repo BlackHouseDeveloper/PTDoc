@@ -69,7 +69,7 @@
                 <h2>Personal Information</h2>
                 <p>Review your submitted demographic and emergency contact information.</p>
             </div>
-            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.Demographics)" disabled="@IsReadOnlyReview">Edit</button>
+            <button type="button" class="review-step__edit-button" aria-label="Edit personal information" @onclick="() => OnEditRequestedAsync(IntakeReviewTarget.PersonalInformation)" disabled="@IsReadOnlyReview">Edit</button>
         </div>
 
         <div class="review-step__field-grid">
@@ -136,7 +136,7 @@
                 <h2>Care Team</h2>
                 <p>Primary and referring doctor information captured with this intake.</p>
             </div>
-            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.Demographics)" disabled="@IsReadOnlyReview">Edit</button>
+            <button type="button" class="review-step__edit-button" aria-label="Edit care team" @onclick="() => OnEditRequestedAsync(IntakeReviewTarget.CareTeam)" disabled="@IsReadOnlyReview">Edit</button>
         </div>
 
         <div class="review-step__field-grid">
@@ -169,7 +169,7 @@
                 <h2>Insurance &amp; Payer</h2>
                 <p>Insurance details captured during demographics.</p>
             </div>
-            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.Demographics)" disabled="@IsReadOnlyReview">Edit</button>
+            <button type="button" class="review-step__edit-button" aria-label="Edit insurance" @onclick="() => OnEditRequestedAsync(IntakeReviewTarget.Insurance)" disabled="@IsReadOnlyReview">Edit</button>
         </div>
 
         <div class="review-step__field-grid">
@@ -230,7 +230,7 @@
                 <h2>Medical History</h2>
                 <p>These answers summarize the health history captured in the Medical History / Pain Assessment step.</p>
             </div>
-            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.PainAssessment)" disabled="@IsReadOnlyReview">Edit</button>
+            <button type="button" class="review-step__edit-button" aria-label="Edit medical history" @onclick="() => OnEditRequestedAsync(IntakeReviewTarget.MedicalHistory)" disabled="@IsReadOnlyReview">Edit</button>
         </div>
 
         <div class="review-step__row-list">
@@ -386,7 +386,7 @@
                 <h2>Medical History / Pain Assessment</h2>
                 <p>Review the mapped pain areas, severity, and structured pain detail captured in the combined intake step.</p>
             </div>
-            <button type="button" class="review-step__edit-button" @onclick="() => OnEditRequestedAsync(IntakeStep.PainAssessment)" disabled="@IsReadOnlyReview">Edit</button>
+            <button type="button" class="review-step__edit-button" aria-label="Edit pain areas" @onclick="() => OnEditRequestedAsync(IntakeReviewTarget.PainAreas)" disabled="@IsReadOnlyReview">Edit</button>
         </div>
 
         <div class="review-step__stack">
@@ -909,7 +909,7 @@
     [Parameter] public string? ValidationMessage { get; set; }
     [Parameter] public EventCallback OnBack { get; set; }
     [Parameter] public EventCallback OnSubmit { get; set; }
-    [Parameter] public EventCallback<IntakeStep> OnEditStep { get; set; }
+    [Parameter] public EventCallback<IntakeReviewTarget> OnEditStep { get; set; }
     [Parameter] public EventCallback OnMarkReviewed { get; set; }
     [Parameter] public bool CanMarkReviewed { get; set; }
     [Parameter] public bool IsMarkingReviewed { get; set; }
@@ -1046,7 +1046,7 @@
 
     private Task OnSubmitClicked() => !IsReadOnlyReview && SubmitReady && OnSubmit.HasDelegate ? OnSubmit.InvokeAsync() : Task.CompletedTask;
 
-    private Task OnEditRequestedAsync(IntakeStep step) => !IsReadOnlyReview && OnEditStep.HasDelegate ? OnEditStep.InvokeAsync(step) : Task.CompletedTask;
+    private Task OnEditRequestedAsync(IntakeReviewTarget target) => !IsReadOnlyReview && OnEditStep.HasDelegate ? OnEditStep.InvokeAsync(target) : Task.CompletedTask;
 
     private Task OnMarkReviewedClicked() => ShowClinicianReviewCallout && OnMarkReviewed.HasDelegate ? OnMarkReviewed.InvokeAsync() : Task.CompletedTask;
 

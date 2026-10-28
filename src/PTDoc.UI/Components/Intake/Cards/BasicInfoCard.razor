@@ -1,7 +1,8 @@
+@using PTDoc.UI.Components.Intake.Models
 @using System.Globalization
 
 <section class="intake-card">
-    <h2>Basic Information</h2>
+    <IntakeSectionHeading Section="IntakeReviewTarget.PersonalInformation" FocusRequested="@FocusRequested">Basic Information</IntakeSectionHeading>
 
     <div class="intake-card__form-grid">
         <label for="intake-full-name">Full Name *
@@ -100,6 +101,8 @@
 </section>
 
 @code {
+    [Parameter] public bool FocusRequested { get; set; }
+
     private static readonly IReadOnlyDictionary<string, string> EmptyErrors = new Dictionary<string, string>(StringComparer.Ordinal);
     private const string FullNameField = "FullName";
     private const string DateOfBirthField = "DateOfBirth";

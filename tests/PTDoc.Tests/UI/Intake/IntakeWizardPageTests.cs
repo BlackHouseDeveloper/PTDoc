@@ -356,6 +356,43 @@ public sealed class IntakeWizardPageTests : TestContext
         });
     }
 
+    [Theory]
+    [InlineData("Edit personal information", IntakeReviewTarget.PersonalInformation, IntakeStep.Demographics)]
+    [InlineData("Edit care team", IntakeReviewTarget.CareTeam, IntakeStep.Demographics)]
+    [InlineData("Edit insurance", IntakeReviewTarget.Insurance, IntakeStep.Demographics)]
+    [InlineData("Edit medical history", IntakeReviewTarget.MedicalHistory, IntakeStep.PainAssessment)]
+    [InlineData("Edit pain areas", IntakeReviewTarget.PainAreas, IntakeStep.PainAssessment)]
+    public void ReviewEdit_FocusesRequestedSectionAndRetainsAnswersWithoutSaving(
+        string label, IntakeReviewTarget target, IntakeStep step)
+    {
+        var patientId = Guid.NewGuid();
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("patient-user");
+        authorization.SetRoles(Roles.Patient);
+        Services.AddSingleton(new Mock<PTDoc.Application.Providers.IProviderDirectoryService>().Object);
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var draft = CreateSubmittableReviewDraft(patientId);
+        draft.InsuranceCompanyName = "Synthetic Insurance";
+        draft.SelectedBodyRegion = nameof(BodyRegion.NeckFront);
+        var service = CreateIntakeServiceMock(draft);
+        var cut = RenderPage(patientId);
+
+        cut.Find($"button[aria-label='{label}']").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(step, GetWizardState(cut).CurrentStep);
+            Assert.Equal("-1", cut.Find($"#intake-section-{target}").GetAttribute("tabindex"));
+            var focus = Assert.Single(JSInterop.Invocations["Blazor._internal.domWrapper.focus"]);
+            Assert.False((bool)focus.Arguments[1]!);
+            Assert.Equal(draft.FullName, GetWizardState(cut).FullName);
+            Assert.Equal(draft.InsuranceCompanyName, GetWizardState(cut).InsuranceCompanyName);
+            Assert.Contains(BodyRegion.NeckFront, GetWizardState(cut).SelectedBodyRegions);
+        });
+        service.Verify(s => s.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()), Times.Never);
+        service.Verify(s => s.SubmitAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private static IntakeResponseDraft CreateSubmittableReviewDraft(Guid patientId)
     {
         return new IntakeResponseDraft
