@@ -45,6 +45,113 @@ public sealed class IntakeServiceTests : IDisposable
             draftCanonicalizer);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProfilePrefill_LegacySourceRejectsNewNormalizedPolicy(bool secondary)
+    {
+        var patient = CreatePatient("Legacy", "Source");
+        patient.PayerInfoJson = """{"insuranceCompanyName":"Old primary","memberOrPolicyNumber":"OLD-P","secondaryInsuranceCompanyName":"Old secondary","secondaryMemberOrPolicyNumber":"OLD-S"}""";
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        var policy = new PatientInsurancePolicy
+        {
+            PatientId = patient.Id, ClinicId = _clinicId,
+            CoveragePriority = secondary ? InsuranceCoveragePriority.Secondary : InsuranceCoveragePriority.Primary,
+            CarrierDisplayName = "Clinician policy", MemberOrPolicyNumber = "CURRENT"
+        };
+        _context.PatientInsurancePolicies.Add(policy);
+        await _context.SaveChangesAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SubmitAsync(draft));
+        Assert.Equal("CURRENT", policy.MemberOrPolicyNumber);
+        Assert.False((await _context.IntakeForms.SingleAsync()).IsLocked);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProfilePrefill_MissingExactVersionRejectsDelayedCorrectionBelowAggregate(bool secondary)
+    {
+        var patient = CreatePatient("Legacy", "Timestamp");
+        var policy = new PatientInsurancePolicy
+        {
+            PatientId = patient.Id, ClinicId = _clinicId,
+            CoveragePriority = secondary ? InsuranceCoveragePriority.Secondary : InsuranceCoveragePriority.Primary,
+            CarrierDisplayName = "Original", LastModifiedUtc = patient.LastModifiedUtc.AddHours(-1)
+        };
+        _context.AddRange(patient, policy);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        if (secondary) draft.PrefilledSecondaryPolicyModifiedUtc = null;
+        else draft.PrefilledPrimaryPolicyModifiedUtc = null;
+        var intake = await _context.IntakeForms.SingleAsync();
+        intake.ResponseJson = IntakeDraftPersistence.SerializePersistenceJson(draft);
+        policy.MemberOrPolicyNumber = "DELAYED-CORRECTION";
+        policy.LastModifiedUtc = policy.LastModifiedUtc.AddMinutes(30);
+        await _context.SaveChangesAsync();
+        Assert.True(policy.LastModifiedUtc < draft.ProfilePrefillSourceModifiedUtc);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SubmitAsync(draft));
+        Assert.Equal("DELAYED-CORRECTION", policy.MemberOrPolicyNumber);
+        Assert.False(intake.IsLocked);
+    }
+
+    [Fact]
+    public async Task ProfilePrefill_ServiceSaveAndSubmitPreserveSourceAndNewerDemographics()
+    {
+        var patient = CreatePatient("Mary Jane", "Smith");
+        patient.Phone = "OLD";
+        patient.AddressLine1 = "OLD ADDRESS";
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        patient.FirstName = "Corrected Compound";
+        patient.Phone = "CURRENT";
+        patient.AddressLine1 = "CURRENT ADDRESS";
+        // Offline corrections need not have a timestamp newer than the prefill.
+        patient.LastModifiedUtc = patient.LastModifiedUtc.AddMinutes(-1);
+        await _context.SaveChangesAsync();
+        draft.PrefilledDemographics = null;
+        draft.ProfilePrefillSourceModifiedUtc = null;
+        draft.MedicalHistoryNotes = "Keep this answer";
+        await _service.SaveDraftAsync(draft);
+        Assert.NotNull((await _service.GetLatestByPatientIdAsync(patient.Id))!.PrefilledDemographics);
+        await _service.SubmitAsync(draft);
+        Assert.Equal("Corrected Compound", patient.FirstName);
+        Assert.Equal("CURRENT", patient.Phone);
+        Assert.Equal("CURRENT ADDRESS", patient.AddressLine1);
+        var submitted = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
+        Assert.Equal("Mary Jane Smith", submitted.FullName);
+        Assert.Equal("OLD", submitted.PhoneNumber);
+        Assert.Equal("Keep this answer", submitted.MedicalHistoryNotes);
+    }
+
+    [Fact]
+    public async Task ProfilePrefill_ReconciliationRejectsStaleOfferAndPreservesOtherAnswers()
+    {
+        var patient = CreatePatient("Saved", "Patient");
+        var policy = new PatientInsurancePolicy { PatientId = patient.Id, ClinicId = _clinicId, CarrierDisplayName = "Original" };
+        _context.AddRange(patient, policy);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        draft.MedicalHistoryNotes = "Keep this answer";
+        draft.ProfileUpdate = new IntakeProfileUpdate { Action = IntakeProfileAction.UsePrimary, ExpectedFingerprint = draft.ProfilePrefill!.Fingerprint };
+        policy.MemberOrPolicyNumber = "CURRENT";
+        policy.LastModifiedUtc = policy.LastModifiedUtc.AddMinutes(1);
+        await _context.SaveChangesAsync();
+        var before = (await _context.IntakeForms.SingleAsync()).ResponseJson;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SaveDraftAsync(draft));
+        Assert.Equal(before, (await _context.IntakeForms.SingleAsync()).ResponseJson);
+        draft.ProfileUpdate.ExpectedFingerprint = (await IntakeProfilePrefillReader.ReadAsync(_context, patient.Id, _clinicId))!.Fingerprint;
+        await _service.SaveDraftAsync(draft);
+        var saved = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
+        Assert.Equal("CURRENT", saved.MemberOrPolicyNumber);
+        Assert.Equal("Keep this answer", saved.MedicalHistoryNotes);
+        Assert.Null(saved.ProfileUpdate);
+        await _service.SubmitAsync(saved);
+        Assert.True((await _context.IntakeForms.SingleAsync()).IsLocked);
+    }
+
     [Fact]
     public void ProfilePrefill_NewJsonPreservesUnknownFieldsAndExplicitBlanks()
     {
@@ -316,6 +423,15 @@ public sealed class IntakeServiceTests : IDisposable
                 draft.PrefilledSecondaryPolicyModifiedUtc = null;
                 draft.ProfilePrefillSourceModifiedUtc = null;
                 break;
+        }
+        if (change is "legacy-changed" or "missing-timestamp")
+        {
+            // Model a previously stored legacy draft; client metadata can no longer replace it.
+            var legacy = JsonSerializer.Deserialize<IntakeResponseDraft>(originalJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+            legacy.PrefilledPrimaryPolicyModifiedUtc = draft.PrefilledPrimaryPolicyModifiedUtc;
+            legacy.PrefilledSecondaryPolicyModifiedUtc = draft.PrefilledSecondaryPolicyModifiedUtc;
+            legacy.ProfilePrefillSourceModifiedUtc = draft.ProfilePrefillSourceModifiedUtc;
+            intake.ResponseJson = originalJson = IntakeDraftPersistence.SerializePersistenceJson(legacy);
         }
         await _context.SaveChangesAsync();
 

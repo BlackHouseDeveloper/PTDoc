@@ -327,9 +327,22 @@ public static class IntakeAccessEndpoints
             return validationProblem!;
         }
 
+        string responseJson;
+        try
+        {
+            responseJson = await IntakeProfileUpdates.PrepareAsync(db, intake, request.ResponseJson, cancellationToken);
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest(new { error = "Intake response must be a valid JSON object." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.Conflict(new { error = ex.Message });
+        }
         intake.PainMapData = painMapData;
         intake.Consents = normalizedConsents;
-        intake.ResponseJson = string.IsNullOrWhiteSpace(request.ResponseJson) ? "{}" : request.ResponseJson;
+        intake.ResponseJson = responseJson;
         if (request.StructuredData is not null)
         {
             intake.StructuredDataJson = structuredDataJson;

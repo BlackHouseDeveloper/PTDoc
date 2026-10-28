@@ -117,6 +117,7 @@ public sealed class IntakeService : IIntakeService
         draft.PatientId = patientId;
         draft.IsLocked = false;
         draft.IsSubmitted = false;
+        profile?.InitializeSource(draft);
         profile?.ApplyTo(draft);
 
         var intake = new IntakeForm
@@ -139,6 +140,8 @@ public sealed class IntakeService : IIntakeService
         await _context.SaveChangesAsync(cancellationToken);
 
         draft.IntakeId = intake.Id;
+        draft.LastModifiedUtc = intake.LastModifiedUtc;
+        draft.ProfilePrefill = profile;
         return IntakeEnsureDraftResult.Created(draft);
     }
 
@@ -231,6 +234,9 @@ public sealed class IntakeService : IIntakeService
         var draft = new IntakeResponseDraft();
         // Copy state properties
         CopyDraftProperties(canonicalState, draft);
+        var initialProfile = JsonSerializer.Deserialize<IntakeProfilePrefill>(SerializeDraft(canonicalState), SerializerOptions)!;
+        initialProfile.SourceModifiedUtc = patient.LastModifiedUtc;
+        initialProfile.InitializeSource(draft);
         draft.PatientId = patient.Id;
 
         var intake = new IntakeForm
@@ -280,6 +286,8 @@ public sealed class IntakeService : IIntakeService
             if (hasLockedIntake)
                 return;
             var clinicId = _tenantContext.GetCurrentClinicId();
+            var profile = await IntakeProfilePrefillReader.ReadAsync(_context, patientId, clinicId, cancellationToken);
+            profile?.InitializeSource(canonicalState);
             intake = new IntakeForm
             {
                 PatientId = patientId,
@@ -300,7 +308,8 @@ public sealed class IntakeService : IIntakeService
         }
         else
         {
-            intake.ResponseJson = SerializeDraft(canonicalState);
+            intake.ResponseJson = await IntakeProfileUpdates.PrepareAsync(
+                _context, intake, SerializeDraft(canonicalState), cancellationToken);
             intake.StructuredDataJson = SerializeStructuredData(canonicalState.StructuredData);
             intake.PainMapData = BuildPainMapJson(canonicalState);
             intake.Consents = BuildConsentsJson(canonicalState);
@@ -329,6 +338,8 @@ public sealed class IntakeService : IIntakeService
         if (intake is null)
             return;
 
+        canonicalState = JsonSerializer.Deserialize<IntakeResponseDraft>(await IntakeProfileUpdates.PrepareAsync(
+            _context, intake, SerializeDraft(canonicalState), cancellationToken), SerializerOptions)!;
         if (!await IntakeDomainProjection.HasCurrentPolicySourcesAsync(
                 _context, patientId, intake.ClinicId, canonicalState, cancellationToken))
         {
@@ -362,6 +373,7 @@ public sealed class IntakeService : IIntakeService
 
         if (patient is not null)
         {
+            canonicalState = IntakeProfileUpdates.ForPatientWrite(canonicalState, patient);
             var name = canonicalState.FullName?.Trim() ?? string.Empty;
             var spaceIndex = name.IndexOf(' ');
             if (!string.IsNullOrWhiteSpace(name)
@@ -443,6 +455,9 @@ public sealed class IntakeService : IIntakeService
         target.PrefilledPrimaryPolicyModifiedUtc = source.PrefilledPrimaryPolicyModifiedUtc;
         target.PrefilledSecondaryPolicyModifiedUtc = source.PrefilledSecondaryPolicyModifiedUtc;
         target.ProfilePrefillSourceModifiedUtc = source.ProfilePrefillSourceModifiedUtc;
+        target.PrefilledDemographics = source.PrefilledDemographics;
+        target.OmitPrimaryPolicy = source.OmitPrimaryPolicy;
+        target.OmitSecondaryPolicy = source.OmitSecondaryPolicy;
         target.CurrentStep = source.CurrentStep;
         target.ConsentPacket = IntakeDraftPersistence.CloneConsentPacket(source.ConsentPacket);
         target.HipaaAcknowledged = source.HipaaAcknowledged;

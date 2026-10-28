@@ -7,6 +7,9 @@ namespace PTDoc.Application.Intake;
 /// <summary>Saved demographic/policy values offered separately from intake answers.</summary>
 public sealed class IntakeProfilePrefill
 {
+    public string? Fingerprint { get; set; }
+    public bool PrimaryPolicyAmbiguous { get; set; }
+    public bool SecondaryPolicyAmbiguous { get; set; }
     public DateTime? DateOfBirth { get; set; }
     public Guid? PrimaryPolicyId { get; set; }
     public Guid? SecondaryPolicyId { get; set; }
@@ -47,7 +50,7 @@ public sealed class IntakeProfilePrefill
             || string.IsNullOrWhiteSpace(draft.EmergencyContactName) && !string.IsNullOrWhiteSpace(EmergencyContactName)
             || string.IsNullOrWhiteSpace(draft.EmergencyContactPhone) && !string.IsNullOrWhiteSpace(EmergencyContactPhone)
             || draft.DateOfBirth is null && DateOfBirth is not null
-            || string.IsNullOrWhiteSpace(draft.InsuranceCompanyName) && string.IsNullOrWhiteSpace(draft.MemberOrPolicyNumber)
+            || !draft.OmitPrimaryPolicy && !PrimaryPolicyAmbiguous && string.IsNullOrWhiteSpace(draft.InsuranceCompanyName) && string.IsNullOrWhiteSpace(draft.MemberOrPolicyNumber)
                 && string.IsNullOrWhiteSpace(draft.GroupNumber) && string.IsNullOrWhiteSpace(draft.PayerType)
                 && string.IsNullOrWhiteSpace(draft.AdjusterName) && string.IsNullOrWhiteSpace(draft.AdjusterPhone)
                 && string.IsNullOrWhiteSpace(draft.AdjusterEmail) && string.IsNullOrWhiteSpace(draft.AdjusterFax)
@@ -55,7 +58,7 @@ public sealed class IntakeProfilePrefill
                     || !string.IsNullOrWhiteSpace(GroupNumber) || !string.IsNullOrWhiteSpace(PayerType)
                     || !string.IsNullOrWhiteSpace(AdjusterName) || !string.IsNullOrWhiteSpace(AdjusterPhone)
                     || !string.IsNullOrWhiteSpace(AdjusterEmail) || !string.IsNullOrWhiteSpace(AdjusterFax))
-            || string.IsNullOrWhiteSpace(draft.SecondaryInsuranceCompanyName)
+            || !draft.OmitSecondaryPolicy && !SecondaryPolicyAmbiguous && string.IsNullOrWhiteSpace(draft.SecondaryInsuranceCompanyName)
                 && string.IsNullOrWhiteSpace(draft.SecondaryMemberOrPolicyNumber) && string.IsNullOrWhiteSpace(draft.SecondaryGroupNumber)
                 && (!string.IsNullOrWhiteSpace(SecondaryInsuranceCompanyName) || !string.IsNullOrWhiteSpace(SecondaryMemberOrPolicyNumber)
                     || !string.IsNullOrWhiteSpace(SecondaryGroupNumber)));
@@ -68,10 +71,15 @@ public sealed class IntakeProfilePrefill
         var draft = original.Deserialize<IntakeResponseDraft>(options) ?? new();
         draft.IsLocked = false;
         draft.IsSubmitted = false;
+        InitializeSource(draft);
         ApplyTo(draft);
         var populated = JsonSerializer.SerializeToNode(draft, options)!.AsObject();
         string[] fields =
         [
+            "prefilledDemographics",
+            "omitPrimaryPolicy",
+            "omitSecondaryPolicy",
+            "profileUpdate",
             "fullName",
             "dateOfBirth",
             "emailAddress",
@@ -104,10 +112,38 @@ public sealed class IntakeProfilePrefill
         {
             var existingKey = original.Select(item => item.Key)
                 .FirstOrDefault(key => string.Equals(key, field, StringComparison.OrdinalIgnoreCase));
+            foreach (var key in original.Select(item => item.Key).Where(key => string.Equals(key, field, StringComparison.OrdinalIgnoreCase)).ToArray())
+                original.Remove(key);
             original[existingKey ?? field] = populated[field]?.DeepClone();
         }
         return original.ToJsonString(options);
     }
+
+    // Called only when the server creates an intake. Record absence as well as presence.
+    public void InitializeSource(IntakeResponseDraft draft)
+    {
+        draft.PrefilledDemographics = JsonSerializer.Deserialize<IntakeProfilePrefill>(JsonSerializer.Serialize(this));
+        draft.PrefilledPrimaryPolicyId = PrimaryPolicyId;
+        draft.PrefilledSecondaryPolicyId = SecondaryPolicyId;
+        draft.PrefilledPrimaryPolicyModifiedUtc = PrimaryPolicyModifiedUtc;
+        draft.PrefilledSecondaryPolicyModifiedUtc = SecondaryPolicyModifiedUtc;
+        draft.ProfilePrefillSourceModifiedUtc = SourceModifiedUtc;
+        draft.OmitPrimaryPolicy = false;
+        draft.OmitSecondaryPolicy = false;
+        draft.ProfileUpdate = null;
+    }
+
+    public static string? NormalizeProviderType(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "commercial" => "Commercial",
+        "medicare" => "Medicare",
+        "medicaid" => "Medicaid",
+        "workers_comp" => "Workers' Compensation",
+        "motor_vehicle" => "Motor Vehicle",
+        "liability" => "Liability",
+        "self_pay" => "Self Pay",
+        _ => null
+    };
 
     public void ApplyTo(IntakeResponseDraft draft, bool confirmedBlankFields = false)
     {
@@ -129,7 +165,7 @@ public sealed class IntakeProfilePrefill
         if (Empty(draft.EmergencyContactPhone)) draft.EmergencyContactPhone = EmergencyContactPhone;
         draft.DateOfBirth ??= DateOfBirth;
         // A policy is copied as a unit; never combine one carrier with another policy's member number.
-        if (Empty(draft.InsuranceCompanyName) && Empty(draft.MemberOrPolicyNumber) && Empty(draft.GroupNumber)
+        if (!draft.OmitPrimaryPolicy && !PrimaryPolicyAmbiguous && Empty(draft.InsuranceCompanyName) && Empty(draft.MemberOrPolicyNumber) && Empty(draft.GroupNumber)
             && Empty(draft.PayerType) && Empty(draft.AdjusterName) && Empty(draft.AdjusterPhone)
             && Empty(draft.AdjusterEmail) && Empty(draft.AdjusterFax))
         {
@@ -144,7 +180,7 @@ public sealed class IntakeProfilePrefill
             draft.PrefilledPrimaryPolicyId = PrimaryPolicyId;
             draft.PrefilledPrimaryPolicyModifiedUtc = PrimaryPolicyModifiedUtc;
         }
-        if (Empty(draft.SecondaryInsuranceCompanyName) && Empty(draft.SecondaryMemberOrPolicyNumber)
+        if (!draft.OmitSecondaryPolicy && !SecondaryPolicyAmbiguous && Empty(draft.SecondaryInsuranceCompanyName) && Empty(draft.SecondaryMemberOrPolicyNumber)
             && Empty(draft.SecondaryGroupNumber))
         {
             draft.SecondaryInsuranceCompanyName = SecondaryInsuranceCompanyName;

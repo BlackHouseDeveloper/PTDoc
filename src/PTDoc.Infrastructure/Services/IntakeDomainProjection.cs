@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Services;
+using PTDoc.Application.Intake;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 
@@ -23,7 +24,8 @@ public static class IntakeDomainProjection
 
     public static async Task<bool> HasCurrentPolicySourcesAsync(ApplicationDbContext db, Guid patientId, Guid? clinicId, IntakeResponseDraft draft, CancellationToken ct)
     {
-        if (draft.PrefilledPrimaryPolicyId is null && draft.PrefilledSecondaryPolicyId is null) return true;
+        if (draft.PrefilledPrimaryPolicyId is null && draft.PrefilledSecondaryPolicyId is null
+            && draft.ProfilePrefillSourceModifiedUtc is null && draft.PrefilledDemographics is null) return true;
 
         var policies = await db.PatientInsurancePolicies.AsNoTracking()
             .Where(policy => policy.PatientId == patientId && policy.ClinicId == clinicId
@@ -32,21 +34,19 @@ public static class IntakeDomainProjection
 
         bool IsCurrent(Guid? sourceId, DateTime? sourceModifiedUtc, InsuranceCoveragePriority priority)
         {
-            if (sourceId is null) return true;
             var candidates = policies.Where(policy => policy.CoveragePriority == priority).ToArray();
+            if (sourceId is null) return candidates.Length == 0;
             if (candidates.Length != 1 || candidates[0].Id != sourceId.Value) return false;
-            // New drafts retain each policy's exact version; older drafts only have the combined source timestamp.
-            return IsPolicyVersionCurrent(candidates[0], sourceModifiedUtc, draft.ProfilePrefillSourceModifiedUtc);
+            // Aggregate profile timestamps cannot establish an individual policy version.
+            return IsPolicyVersionCurrent(candidates[0], sourceModifiedUtc);
         }
 
-        return IsCurrent(draft.PrefilledPrimaryPolicyId, draft.PrefilledPrimaryPolicyModifiedUtc, InsuranceCoveragePriority.Primary)
-            && IsCurrent(draft.PrefilledSecondaryPolicyId, draft.PrefilledSecondaryPolicyModifiedUtc, InsuranceCoveragePriority.Secondary);
+        return (draft.OmitPrimaryPolicy || IsCurrent(draft.PrefilledPrimaryPolicyId, draft.PrefilledPrimaryPolicyModifiedUtc, InsuranceCoveragePriority.Primary))
+            && (draft.OmitSecondaryPolicy || IsCurrent(draft.PrefilledSecondaryPolicyId, draft.PrefilledSecondaryPolicyModifiedUtc, InsuranceCoveragePriority.Secondary));
     }
 
-    private static bool IsPolicyVersionCurrent(PatientInsurancePolicy policy, DateTime? sourceModifiedUtc, DateTime? legacySourceModifiedUtc)
-        => sourceModifiedUtc.HasValue
-            ? policy.LastModifiedUtc == sourceModifiedUtc.Value
-            : legacySourceModifiedUtc.HasValue && policy.LastModifiedUtc <= legacySourceModifiedUtc.Value;
+    private static bool IsPolicyVersionCurrent(PatientInsurancePolicy policy, DateTime? sourceModifiedUtc)
+        => sourceModifiedUtc.HasValue && policy.LastModifiedUtc == sourceModifiedUtc.Value;
 
     public static Task UpsertAsync(ApplicationDbContext db, Patient patient, string? responseJson, Guid userId, CancellationToken ct)
     {
@@ -76,11 +76,11 @@ public static class IntakeDomainProjection
 
         await UpsertProviderAsync(db, patient, draft.PrimaryDoctorName, draft.PrimaryDoctorPhone, null, PatientProviderRole.PrimaryCare, userId, ct);
         await UpsertProviderAsync(db, patient, draft.ReferringDoctorName, draft.ReferringDoctorPhone, draft.ReferringDoctorNpi, PatientProviderRole.Referring, userId, ct);
-        await UpsertPolicyAsync(db, patient, InsuranceCoveragePriority.Primary, draft.InsuranceCompanyName, draft.MemberOrPolicyNumber, draft.GroupNumber, draft.PayerType, draft.AdjusterName, draft.AdjusterPhone, draft.AdjusterEmail, draft.AdjusterFax, userId, ct,
-            draft.PrefilledPrimaryPolicyId, draft.PrefilledPrimaryPolicyModifiedUtc, draft.ProfilePrefillSourceModifiedUtc);
-        await UpsertPolicyAsync(db, patient, InsuranceCoveragePriority.Secondary, draft.SecondaryInsuranceCompanyName, draft.SecondaryMemberOrPolicyNumber, draft.SecondaryGroupNumber, null, null, null, null, null, userId, ct,
-            draft.PrefilledSecondaryPolicyId, draft.PrefilledSecondaryPolicyModifiedUtc, draft.ProfilePrefillSourceModifiedUtc);
-        await UpsertAuthorizationAsync(db, patient, draft, userId, ct);
+        if (!draft.OmitPrimaryPolicy) await UpsertPolicyAsync(db, patient, InsuranceCoveragePriority.Primary, draft.InsuranceCompanyName, draft.MemberOrPolicyNumber, draft.GroupNumber, draft.PayerType, draft.AdjusterName, draft.AdjusterPhone, draft.AdjusterEmail, draft.AdjusterFax, userId, ct,
+            draft.PrefilledPrimaryPolicyId, draft.PrefilledPrimaryPolicyModifiedUtc);
+        if (!draft.OmitSecondaryPolicy) await UpsertPolicyAsync(db, patient, InsuranceCoveragePriority.Secondary, draft.SecondaryInsuranceCompanyName, draft.SecondaryMemberOrPolicyNumber, draft.SecondaryGroupNumber, null, null, null, null, null, userId, ct,
+            draft.PrefilledSecondaryPolicyId, draft.PrefilledSecondaryPolicyModifiedUtc);
+        if (!draft.OmitPrimaryPolicy) await UpsertAuthorizationAsync(db, patient, draft, userId, ct);
     }
 
     private static async Task UpsertProviderAsync(ApplicationDbContext db, Patient patient, string? displayName, string? phone, string? npi, PatientProviderRole role, Guid userId, CancellationToken ct)
@@ -126,13 +126,13 @@ public static class IntakeDomainProjection
               && string.Equals(Trim(entry.Phone), phone, StringComparison.OrdinalIgnoreCase);
 
     private static async Task UpsertPolicyAsync(ApplicationDbContext db, Patient patient, InsuranceCoveragePriority priority, string? carrier, string? member, string? group, string? payerType, string? adjusterName, string? adjusterPhone, string? adjusterEmail, string? adjusterFax, Guid userId, CancellationToken ct,
-        Guid? sourceId, DateTime? sourceModifiedUtc, DateTime? legacySourceModifiedUtc)
+        Guid? sourceId, DateTime? sourceModifiedUtc)
     {
         carrier = Trim(carrier); member = Trim(member); group = Trim(group); var normalizedPayerType = string.IsNullOrWhiteSpace(payerType) ? InsurancePayerType.Other : ParsePayerType(payerType); if (carrier is null && member is null && group is null && normalizedPayerType != InsurancePayerType.SelfPay) return;
         var policy = await db.PatientInsurancePolicies.FirstOrDefaultAsync(p => p.PatientId == patient.Id && p.ClinicId == patient.ClinicId
             && p.CoveragePriority == priority && !p.IsArchived && p.Status == InsurancePolicyStatus.Active
             && (!sourceId.HasValue || p.Id == sourceId.Value), ct);
-        if (sourceId.HasValue && (policy is null || !IsPolicyVersionCurrent(policy, sourceModifiedUtc, legacySourceModifiedUtc)))
+        if (sourceId.HasValue && (policy is null || !IsPolicyVersionCurrent(policy, sourceModifiedUtc)))
             throw new InvalidOperationException(StalePolicySourceMessage);
         if (policy is null) { policy = new() { PatientId = patient.Id, ClinicId = patient.ClinicId, CoveragePriority = priority, Status = InsurancePolicyStatus.Active }; db.PatientInsurancePolicies.Add(policy); }
         if (carrier is not null) { policy.CarrierDisplayName = carrier; policy.CarrierKey = string.Join('-', carrier.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries)); }
@@ -199,6 +199,7 @@ public static class IntakeDomainProjection
             using var document = JsonDocument.Parse(payerInfoJson ?? "{}");
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object) return;
+            draft.PayerType ??= IntakeProfilePrefill.NormalizeProviderType(GetJson(root, "providerType"));
             draft.MemberOrPolicyNumber ??= GetJson(root, "memberOrPolicyNumber", "memberIdPolicyNumber");
             draft.SecondaryMemberOrPolicyNumber ??= GetJson(root, "secondaryMemberOrPolicyNumber", "secondaryMemberIdPolicyNumber");
         }

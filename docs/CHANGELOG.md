@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed - beta deployment sign-in retries
+### Fixed - PR 162 follow-up source validation and reconciliation
+
+- Preserve server-owned intake source metadata across both draft PUT routes, direct service saves/submission and offline sync; record absent policy sources and require exact per-policy versions instead of an aggregate timestamp fallback. Ordinary client payloads cannot erase or forge accepted sources.
+- Preserve chart demographics corrected after prefill while retaining submitted answers. Older prefilled drafts without field snapshots conservatively keep chart demographics.
+- Add explicit refresh, accept-current and omit-policy controls with server validation of the offered profile. Preserve other answers, reject changed offers and ambiguous policy acceptance, and keep existing authorizations attached to their original policies when primary coverage changes.
+- Normalize supported Patient Info `providerType` aliases before normalized policy creation/update, with canonical payer type taking precedence.
+- Add service, authenticated/standalone SQLite API, wizard, client-transport and sync regressions. The complete refreshed ten-comment classification, duplicate mapping, TRICARE decision, verification commands and eligible threads are recorded in `docs/client-review/plan-07.md`. Builds and tests remain pending user execution; no schema migration.
+- Correct the reconciliation integration test's refresh request to use the patient-scoped latest-intake GET route, matching the production client. User verification reported 2,416/2,420 passing; all four standalone reconciliation cases stopped at an unsupported GET on the PUT-only intake-ID route. Added refresh status, intake/patient identity and profile-offer assertions; rerun after rebuilding is pending.
+
+### Fixed - PR 162 intake prefill review
+
+- **`IntakeDomainProjection` / intake submission paths** — Reject changed, replaced, reordered, ambiguous, inactive, archived, or incorrectly scoped prefilled policy sources before submission mutates records. Preserve independent primary/secondary policy versions through JSON and wizard saves, and target the accepted policy ID during projection. Older drafts retain their combined-timestamp compatibility check. No schema migration.
+- **`IntakeService` / `IntakeEndpoints`** — Preserve structured compound names when the submitted full name matches the saved name; explicitly edited names retain the existing update behavior.
+- **`IntakeProfilePrefill` / `IntakeProfilePrefillReader`** — Offer Self Pay and other supported policy-only values for explicit blank-field prefill, and translate legacy `providerType` values supported by the intake selector without replacing canonical payer values.
+- Added service, SQLite API/standalone-link, and wizard regressions for policy-source conflicts, unchanged submission, compound names, payer aliases, and prefill persistence. User verification exposed two fixture failures; corrected the policy-reorder setup to stage its swap transactionally through an unused priority, respecting SQLite's active-priority unique index, and asserted both reordered member numbers survive rejection. Verification of this correction is pending; the complete review inventory and remaining TRICARE compatibility decision are recorded in `docs/client-review/plan-07.md`.
 
 - Retry transient HTTP failures during the four seeded-role sign-in checks in `Deploy Beta`, with bounded connection and request timeouts, so a brief App Service restart response does not stop Web deployment after API health checks pass. Invalid credentials still fail immediately.
 

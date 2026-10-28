@@ -1155,8 +1155,10 @@ public class SyncClientProtocolTests
         Assert.Contains("locked", response.Items[0].Error, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Fact]
-    public async Task ReceiveClientPushAsync_AppliesIntakeFormPayload_WhenUnlocked()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReceiveClientPushAsync_AppliesIntakeFormPayload_WhenUnlocked(bool create)
     {
         var context = CreateInMemoryContext();
         var patient = new Patient
@@ -1170,18 +1172,19 @@ public class SyncClientProtocolTests
         context.Patients.Add(patient);
 
         var lastModifiedUtc = DateTime.UtcNow;
+        var sourceId = Guid.NewGuid();
         var intake = new IntakeForm
         {
             PatientId = patient.Id,
             TemplateVersion = "1.0",
             AccessToken = Guid.NewGuid().ToString("N"),
-            ResponseJson = "{\"old\":\"data\"}",
+            ResponseJson = JsonSerializer.Serialize(new { prefilledPrimaryPolicyId = sourceId, prefilledPrimaryPolicyModifiedUtc = lastModifiedUtc }),
             IsLocked = false,
             LastModifiedUtc = lastModifiedUtc.AddMinutes(-10),
             ModifiedByUserId = Guid.NewGuid(),
             SyncState = SyncState.Pending
         };
-        context.IntakeForms.Add(intake);
+        if (!create) context.IntakeForms.Add(intake);
         await context.SaveChangesAsync();
 
         var syncEngine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
@@ -1195,11 +1198,11 @@ public class SyncClientProtocolTests
                     ServerId = intake.Id,
                     LocalId = 1,
                     OperationId = Guid.NewGuid(),
-                    Operation = "Update",
+                    Operation = create ? "Create" : "Update",
                     DataJson = JsonSerializer.Serialize(new
                     {
                         patientId = patient.Id,
-                        responseJson = "{\"q1\":\"updated answer\"}",
+                        responseJson = JsonSerializer.Serialize(new { q1 = "updated answer", prefilledPrimaryPolicyId = Guid.NewGuid(), profileUpdate = new { action = 1, expectedFingerprint = "unverified" } }),
                         painMapData = "{\"regions\":[]}",
                         consents = "{}",
                         templateVersion = "1.0",
@@ -1215,7 +1218,19 @@ public class SyncClientProtocolTests
         Assert.Equal(1, response.AcceptedCount);
 
         var updated = await context.IntakeForms.AsNoTracking().FirstAsync(row => row.Id == intake.Id);
-        Assert.Equal("{\"q1\":\"updated answer\"}", updated.ResponseJson);
+        using var saved = JsonDocument.Parse(updated.ResponseJson);
+        Assert.Equal("updated answer", saved.RootElement.GetProperty("q1").GetString());
+        Assert.False(saved.RootElement.TryGetProperty("profileUpdate", out _));
+        if (create)
+        {
+            Assert.False(saved.RootElement.TryGetProperty("prefilledPrimaryPolicyId", out _));
+            Assert.True(saved.RootElement.TryGetProperty("profilePrefillSourceModifiedUtc", out _));
+        }
+        else
+        {
+            Assert.Equal(sourceId, saved.RootElement.GetProperty("prefilledPrimaryPolicyId").GetGuid());
+            Assert.Equal(lastModifiedUtc, saved.RootElement.GetProperty("prefilledPrimaryPolicyModifiedUtc").GetDateTime());
+        }
         Assert.Equal(SyncState.Synced, updated.SyncState);
     }
 

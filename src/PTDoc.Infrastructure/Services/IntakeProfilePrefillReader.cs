@@ -51,17 +51,7 @@ public static class IntakeProfilePrefillReader
             {
                 legacy.MemberOrPolicyNumber ??= ReadAlias(json.RootElement, "memberIdPolicyNumber");
                 legacy.SecondaryMemberOrPolicyNumber ??= ReadAlias(json.RootElement, "secondaryMemberIdPolicyNumber");
-                legacy.PayerType ??= ReadAlias(json.RootElement, "providerType")?.Trim().ToLowerInvariant() switch
-                {
-                    "commercial" => "Commercial",
-                    "medicare" => "Medicare",
-                    "medicaid" => "Medicaid",
-                    "workers_comp" => "Workers' Compensation",
-                    "motor_vehicle" => "Motor Vehicle",
-                    "liability" => "Liability",
-                    "self_pay" => "Self Pay",
-                    _ => null
-                };
+                legacy.PayerType ??= IntakeProfilePrefill.NormalizeProviderType(ReadAlias(json.RootElement, "providerType"));
             }
         }
         catch (JsonException) { legacy = new(); }
@@ -117,6 +107,10 @@ public static class IntakeProfilePrefillReader
             profile.SecondaryMemberOrPolicyNumber = legacy.SecondaryMemberOrPolicyNumber;
             profile.SecondaryGroupNumber = legacy.SecondaryGroupNumber;
         }
+        profile.PrimaryPolicyAmbiguous = primary.Length > 1;
+        profile.SecondaryPolicyAmbiguous = secondary.Length > 1;
+        profile.Fingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            JsonSerializer.SerializeToUtf8Bytes(profile)));
         return profile;
     }
 

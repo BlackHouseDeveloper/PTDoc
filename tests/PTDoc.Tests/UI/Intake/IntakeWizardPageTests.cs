@@ -44,13 +44,27 @@ public sealed class IntakeWizardPageTests : TestContext
         authorization.SetAuthorized("synthetic-pt");
         authorization.SetRoles(Roles.PT);
         Services.AddSingleton(new Mock<PTDoc.Application.Providers.IProviderDirectoryService>().Object);
-        CreateIntakeServiceMock(new IntakeResponseDraft
+        var initial = new IntakeResponseDraft
         {
             PatientId = patientId,
             FullName = "Patient supplied name",
             PhoneNumber = "",
-            ProfilePrefill = new IntakeProfilePrefill { FullName = "Saved name", PhoneNumber = "555-0107" }
-        });
+            ProfilePrefill = new IntakeProfilePrefill { FullName = "Saved name", PhoneNumber = "555-0107", Fingerprint = "offer" }
+        };
+        var service = CreateIntakeServiceMock(initial);
+        IntakeResponseDraft? accepted = null;
+        service.Setup(value => value.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()))
+            .Callback<IntakeResponseDraft, CancellationToken>((draft, _) =>
+            {
+                Assert.Equal(IntakeProfileAction.FillBlankFields, draft.ProfileUpdate!.Action);
+                Assert.Equal("offer", draft.ProfileUpdate.ExpectedFingerprint);
+                initial.ProfilePrefill!.ApplyTo(draft, confirmedBlankFields: true);
+                draft.ProfileUpdate = null;
+                draft.ProfilePrefill = null;
+                accepted = draft;
+            }).Returns(Task.CompletedTask);
+        service.Setup(value => value.GetLatestByPatientIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => accepted ?? initial);
         Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}");
         var cut = RenderPage(patientId);
         cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("[data-testid='intake-profile-prefill']")));
@@ -72,7 +86,7 @@ public sealed class IntakeWizardPageTests : TestContext
         var authorization = this.AddTestAuthorization();
         authorization.SetAuthorized("synthetic-pt");
         authorization.SetRoles(Roles.PT);
-        var service = CreateIntakeServiceMock(new IntakeResponseDraft
+        var initial = new IntakeResponseDraft
         {
             PatientId = patientId,
             IntakeFlowVersion = 2,
@@ -84,16 +98,30 @@ public sealed class IntakeWizardPageTests : TestContext
             ProfilePrefillSourceModifiedUtc = secondaryVersion,
             ProfilePrefill = new IntakeProfilePrefill
             {
+                Fingerprint = "self-pay-offer",
                 PayerType = "Self Pay",
                 PrimaryPolicyId = primaryId,
                 PrimaryPolicyModifiedUtc = primaryVersion,
                 SourceModifiedUtc = primaryVersion
             }
-        });
+        };
+        var service = CreateIntakeServiceMock(initial);
         IntakeResponseDraft? saved = null;
         service.Setup(value => value.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()))
-            .Callback<IntakeResponseDraft, CancellationToken>((draft, _) => saved = draft)
+            .Callback<IntakeResponseDraft, CancellationToken>((draft, _) =>
+            {
+                if (draft.ProfileUpdate is not null)
+                {
+                    Assert.Equal("self-pay-offer", draft.ProfileUpdate.ExpectedFingerprint);
+                    initial.ProfilePrefill!.ApplyTo(draft, confirmedBlankFields: true);
+                    draft.ProfileUpdate = null;
+                    draft.ProfilePrefill = null;
+                }
+                saved = draft;
+            })
             .Returns(Task.CompletedTask);
+        service.Setup(value => value.GetLatestByPatientIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => saved ?? initial);
         Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}");
         var cut = RenderPage(patientId);
 
@@ -111,6 +139,45 @@ public sealed class IntakeWizardPageTests : TestContext
             Assert.Equal(secondaryVersion, saved.PrefilledSecondaryPolicyModifiedUtc);
             Assert.Equal("Existing secondary", saved.SecondaryInsuranceCompanyName);
         });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ProfilePrefill_InsuranceRecoverySubmitsExplicitActionAndKeepsOtherAnswers(bool omit)
+    {
+        var patientId = Guid.NewGuid();
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("synthetic-pt");
+        authorization.SetRoles(Roles.PT);
+        var initial = new IntakeResponseDraft
+        {
+            PatientId = patientId, IntakeFlowVersion = 2, CurrentStep = (int)IntakeStep.PainAssessment,
+            InsuranceCompanyName = "Stale", MemberOrPolicyNumber = "OLD", MedicalHistoryNotes = "Keep me",
+            ProfilePrefill = new IntakeProfilePrefill { InsuranceCompanyName = "Current", MemberOrPolicyNumber = "NEW", Fingerprint = "current-offer" }
+        };
+        var service = CreateIntakeServiceMock(initial);
+        IntakeResponseDraft? accepted = null;
+        service.Setup(value => value.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()))
+            .Callback<IntakeResponseDraft, CancellationToken>((draft, _) =>
+            {
+                Assert.Equal(omit ? IntakeProfileAction.OmitPrimary : IntakeProfileAction.UsePrimary, draft.ProfileUpdate!.Action);
+                Assert.Equal("current-offer", draft.ProfileUpdate.ExpectedFingerprint);
+                Assert.Equal("Keep me", draft.MedicalHistoryNotes);
+                draft.InsuranceCompanyName = omit ? null : "Current";
+                draft.MemberOrPolicyNumber = omit ? null : "NEW";
+                draft.OmitPrimaryPolicy = omit;
+                draft.ProfileUpdate = null;
+                accepted = draft;
+            }).Returns(Task.CompletedTask);
+        service.Setup(value => value.GetLatestByPatientIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => accepted ?? initial);
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}");
+        var cut = RenderPage(patientId);
+        cut.Find(omit ? "[data-testid='intake-omit-primary']" : "[data-testid='intake-use-primary']").Click();
+        cut.WaitForAssertion(() => Assert.Equal(omit ? null : "NEW", GetWizardState(cut).MemberOrPolicyNumber));
+        Assert.Equal("Keep me", GetWizardState(cut).MedicalHistoryNotes);
+        Assert.Equal(omit, GetWizardState(cut).OmitPrimaryPolicy);
     }
 
     [Fact]
