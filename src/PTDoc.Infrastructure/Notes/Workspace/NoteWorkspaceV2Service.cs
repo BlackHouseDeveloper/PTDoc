@@ -219,6 +219,16 @@ public sealed class NoteWorkspaceV2Service(
         NormalizeCptModifierSources(payload.Plan.SelectedCptCodes);
 
         var interventionErrors = NormalizeAndValidateInterventions(payload);
+        if (request.NoteType == NoteType.Daily && payload.DryNeedling is null)
+        {
+            interventionErrors.AddRange(DailyQuestionnaireDefinition.Validate(payload.DailyTreatment.Questionnaire));
+            if (note is not null && payload.DailyTreatment.Questionnaire is null)
+            {
+                var existingPayload = await DeserializePayloadAsync(note, cancellationToken);
+                if (existingPayload.Payload.DailyTreatment?.Questionnaire is not null)
+                    interventionErrors.Add("Reload this Daily note in a compatible client to preserve its versioned questionnaire.");
+            }
+        }
         if (interventionErrors.Count > 0)
         {
             return new NoteWorkspaceV2SaveResponse
@@ -1218,6 +1228,20 @@ public sealed class NoteWorkspaceV2Service(
         payload.Plan.ClinicalSummary = null;
         payload.Plan.ComputedPlanOfCare = new ComputedPlanOfCareV2();
         payload.DailyTreatment = new WorkspaceDailyTreatmentV2();
+        if (targetNoteType == NoteType.Daily)
+        {
+            // Preserve stable diagnoses and activity context, but never present a prior complaint
+            // or prior visit's pain ratings as today's Daily patient report.
+            payload.Subjective.Problems = [];
+            payload.Subjective.OtherProblem = null;
+            payload.Subjective.CurrentPainScore = 0;
+            payload.Subjective.BestPainScore = 0;
+            payload.Subjective.WorstPainScore = 0;
+            payload.Subjective.IsPainScoreDocumented = false;
+            payload.Subjective.PainFrequency = string.Empty;
+            payload.Subjective.NarrativeContext ??= new();
+            payload.Subjective.NarrativeContext.ChiefComplaint = null;
+        }
 
         return payload;
     }
@@ -1547,6 +1571,21 @@ public sealed class NoteWorkspaceV2Service(
         if (nonSelectableOutcomeErrors.Count > 0)
         {
             throw new InvalidOperationException(string.Join(" ", nonSelectableOutcomeErrors));
+        }
+
+        // Daily's historical outcomes are displayed read-only. An unrelated draft edit
+        // must not replace their IDs or original recording clinician.
+        if (note.NoteType == NoteType.Daily && existingResults.Count == payload.Objective.OutcomeMeasures.Count)
+        {
+            var remaining = existingResults.ToList();
+            foreach (var entry in payload.Objective.OutcomeMeasures)
+            {
+                var match = remaining.FirstOrDefault(result => result.MeasureType == entry.MeasureType
+                    && result.Score == entry.Score && result.DateRecorded == entry.RecordedAtUtc);
+                if (match is null) break;
+                remaining.Remove(match);
+            }
+            if (remaining.Count == 0) return Task.CompletedTask;
         }
 
         db.OutcomeMeasureResults.RemoveRange(existingResults);

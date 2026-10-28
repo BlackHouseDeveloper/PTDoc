@@ -1,312 +1,178 @@
 @namespace PTDoc.UI.Components.Notes.Workspace.DailyTreatment
+@using System.Text.Json
 @using PTDoc.UI.Components.Notes.Models
+@using PTDoc.Application.Notes.Workspace
 
 <section class="daily-subjective @(IsDarkMode ? "daily-subjective--dark" : string.Empty)" data-testid="daily-subjective-section">
     <div class="daily-grid">
         <div class="daily-col-12">
-            <FormSection Title="Chief Complaint / Carry-Forward Context" Subtitle="Confirm carried-forward complaint and add today's update">
-                @if (!string.IsNullOrWhiteSpace(GetCarriedForwardComplaint()))
-                {
-                    <div class="daily-subjective__progress-note" data-testid="daily-carried-forward-chief-complaint">
-                        <strong>Carried-forward chief complaint</strong>
-                        <p>@GetCarriedForwardComplaint()</p>
+            <FormSection Title="Pain and Body Region" Subtitle="Document today's patient-reported pain and symptoms">
+                <fieldset class="daily-question-group">
+                    <legend>Body regions (select all that apply)</legend>
+                    <CheckboxGrid Options="@BodyPartOptions" Selected="_vm.Locations" SelectedChanged="UpdateLocations" IsReadOnly="@ReadOnly" Columns="2" />
+                </fieldset>
+                <label class="daily-subjective__label" for="daily-pain-location">Pain location details</label>
+                <input id="daily-pain-location" class="daily-question-input" disabled="@ReadOnly"
+                       @bind="_vm.OtherLocation" @bind:event="oninput" @bind:after="NotifySubjectiveAsync" />
+                <label class="daily-subjective__label" for="daily-pain-description">Pain description</label>
+                <textarea id="daily-pain-description" class="daily-question-input" rows="3" disabled="@ReadOnly"
+                          @bind="_vm.KnownCause" @bind:event="oninput" @bind:after="NotifySubjectiveAsync"></textarea>
+                <fieldset class="daily-question-group">
+                    <legend>Associated symptoms (select all that apply)</legend>
+                    <CheckboxGrid Options="@SymptomOptions" Selected="_dailyTreatment.AssociatedSymptoms" SelectedChanged="UpdateSymptoms" IsReadOnly="@ReadOnly" Columns="2" />
+                </fieldset>
+                <div data-question-id="current-pain" data-reference-number="3" class="daily-question-group">
+                    <label class="daily-subjective__label" for="daily-current-pain">@DailyQuestionnaireDefinition.CurrentPain.Label</label>
+                    <input id="daily-current-pain" class="daily-question-input" type="number" min="0" max="10" disabled="@ReadOnly"
+                           value="@(_vm.IsPainScoreDocumented ? _vm.CurrentPainScore.ToString() : string.Empty)" @oninput="UpdateCurrentPain" />
+                    <div class="daily-question-pain-range">
+                        <label>Best<input class="daily-question-input" type="number" min="0" max="10" disabled="@ReadOnly" @bind="_vm.BestPainScore" @bind:after="NotifySubjectiveAsync" /></label>
+                        <label>Worst<input class="daily-question-input" type="number" min="0" max="10" disabled="@ReadOnly" @bind="_vm.WorstPainScore" @bind:after="NotifySubjectiveAsync" /></label>
                     </div>
-                }
-
-                <CheckboxGrid Options="_bodyParts"
-                              Selected="_vm.Locations"
-                              SelectedChanged="UpdateLocations"
-                              IsReadOnly="IsReadOnly"
-                              Columns="2" />
-
-                <EditableTextArea Label="Today's update/additions"
-                                  Value="@(_vm.OtherProblem ?? string.Empty)"
-                                  ValueChanged="UpdateOtherProblem"
-                                  IsReadOnly="IsReadOnly"
-                                  Placeholder="Add today's patient-reported update or additions to the carried-forward complaint."
-                                  Rows="3" />
+                </div>
             </FormSection>
         </div>
-
-        <div class="daily-col-12">
-            <div class="daily-subjective__progress-note">
-                <strong>Daily Visit Update</strong>
-                <p>Document patient-reported changes since the last visit.</p>
+        @if (UnsupportedVersion)
+        {
+            <div class="daily-col-12" role="status">This saved Daily questionnaire uses another version and is read-only in this client.
+                <p>@DailyQuestionnaireDefinition.Summarize(_answers)</p>
             </div>
-        </div>
-
-        <div class="daily-col-12">
-            <FormSection Title="Pain Level Comparison">
-                <div class="daily-subjective__comparison">
-                    <div class="daily-subjective__comparison-card">
-                        <span>Baseline (Initial Eval)</span>
-                        <strong>@(_baselinePainLevel == 0 ? "--/10" : $"{_baselinePainLevel}/10")</strong>
-                    </div>
-                    <div class="daily-subjective__comparison-card daily-subjective__comparison-card--current">
-                        <span>Current (Today)</span>
-                        <strong>@_vm.CurrentPainScore/10</strong>
-                    </div>
+        }
+        else if (!IsReadOnly || _dailyTreatment.Questionnaire is not null)
+        {
+            @foreach (var question in DailyQuestionnaireDefinition.Questions.Where(q => q.Id != "current-pain"))
+            {
+                <div class="daily-col-12" data-question-id="@question.Id" data-reference-number="@question.ReferenceNumber">
+                    <FormSection Title="@question.Label">
+                        @if (question.Id == "activity-changes")
+                        {
+                            <CheckboxGrid Options="@DailyQuestionnaireDefinition.ActivityChanges.Options" Selected="_answers.ImprovedActivities" SelectedChanged="UpdateImproved" IsReadOnly="@ReadOnly" Columns="2" />
+                            <fieldset class="daily-question-group"><legend>Which activities have stayed the same?</legend>
+                                <CheckboxGrid Options="@DailyQuestionnaireDefinition.ActivityStateOptions" Selected="_answers.SameActivities" SelectedChanged="UpdateSame" IsReadOnly="@ReadOnly" Columns="2" />
+                            </fieldset>
+                            <fieldset class="daily-question-group"><legend>Which activities have gotten worse?</legend>
+                                <CheckboxGrid Options="@DailyQuestionnaireDefinition.ActivityStateOptions" Selected="_answers.WorseActivities" SelectedChanged="UpdateWorse" IsReadOnly="@ReadOnly" Columns="2" />
+                            </fieldset>
+                            <fieldset class="daily-question-group"><legend>Which activities are newly difficult?</legend>
+                                <CheckboxGrid Options="@DailyQuestionnaireDefinition.ActivityStateOptions" Selected="_answers.NewDifficultyActivities" SelectedChanged="UpdateNewDifficulty" IsReadOnly="@ReadOnly" Columns="2" />
+                            </fieldset>
+                        }
+                        else
+                        {
+                            <label class="daily-question-label" for="@($"daily-{question.Id}")">@question.Label</label>
+                            <select id="@($"daily-{question.Id}")" class="daily-question-input" disabled="@ReadOnly" value="@Answer(question.Id)" @onchange="e => UpdateAnswer(question.Id, e)">
+                                <option value="">Select an answer</option>
+                                @if (!string.IsNullOrEmpty(Answer(question.Id)) && !question.Options.Contains(Answer(question.Id)))
+                                { <option value="@Answer(question.Id)">@Answer(question.Id) (saved value)</option> }
+                                @foreach (var option in question.Options) { <option value="@option">@option</option> }
+                            </select>
+                        }
+                    </FormSection>
                 </div>
-
-                <label class="daily-subjective__label" for="current-pain">Current Pain Level (0-10)</label>
-                <input id="current-pain"
-                       class="daily-subjective__range"
-                       type="range"
-                       min="0"
-                       max="10"
-                       disabled="@IsReadOnly"
-                       @bind="_vm.CurrentPainScore"
-                       @bind:event="oninput" />
-
-                <div class="daily-subjective__range-legend">
-                    <span>No Pain (0)</span>
-                    <span>@_vm.CurrentPainScore</span>
-                    <span>Severe (10)</span>
-                </div>
-            </FormSection>
-        </div>
-
-        <div class="daily-col-12">
-            <FormSection Title="Pain Details">
-                <div class="daily-subjective__field">
-                    <label for="pain-location">Pain Location *</label>
-                    <input id="pain-location"
-                           type="text"
-                           placeholder="e.g., Lower back, Right shoulder..."
-                           disabled="@IsReadOnly"
-                           @bind="_painLocation"
-                           @bind:event="oninput" />
-                    @if (!IsReadOnly && string.IsNullOrWhiteSpace(_painLocation))
-                    {
-                        <p class="daily-subjective__validation">Pain location is required.</p>
-                    }
-                </div>
-
-                <EditableTextArea Label="Pain Description"
-                                  Value="@(_vm.KnownCause ?? string.Empty)"
-                                  ValueChanged="UpdateKnownCause"
-                                  IsReadOnly="IsReadOnly"
-                                  Placeholder="Describe the quality, onset, duration, aggravating/relieving factors..."
-                                  Rows="3" />
-            </FormSection>
-        </div>
-
-        <div class="daily-col-12">
-            <FormSection Title="Associated Symptoms">
-                <CheckboxGrid Options="_associatedSymptomOptions"
-                              Selected="_dailyTreatment.AssociatedSymptoms"
-                              SelectedChanged="UpdateAssociatedSymptoms"
-                              IsReadOnly="IsReadOnly"
-                              Columns="2" />
-            </FormSection>
-        </div>
-
-        <div class="daily-col-12">
-            <FormSection Title="Functional Limitations">
-                <EditableTextArea Value="@(_vm.AdditionalFunctionalLimitations ?? string.Empty)"
-                                  ValueChanged="UpdateAdditionalFunctionalLimitations"
-                                  IsReadOnly="IsReadOnly"
-                                  Placeholder="Activities the patient has difficulty with or can perform with changed tolerance..."
-                                  Rows="3" />
-            </FormSection>
-        </div>
-
-        <div class="daily-col-12">
-            <FormSection Title="Progress Since Last Visit">
-                <EditableTextArea Label="Visit changes since last visit *"
-                                  Value="@_dailyTreatment.ChangesSinceLastVisit"
-                                  ValueChanged="UpdateChangesSinceLastVisit"
-                                  IsReadOnly="IsReadOnly"
-                                  Placeholder="What has changed? Better, worse, or same?"
-                                  Rows="3"
-                                  IsRequired="true"
-                                  ShowValidation="@string.IsNullOrWhiteSpace(_dailyTreatment.ChangesSinceLastVisit)" />
-
-                <EditableTextArea Label="Subjective Update"
-                                  Value="@_dailyTreatment.SubjectiveUpdate"
-                                  ValueChanged="UpdateSubjectiveUpdate"
-                                  IsReadOnly="IsReadOnly"
-                                  Placeholder="Patient-reported status, tolerance, soreness, or concerns since the last visit."
-                                  Rows="3" />
-
-                <div class="daily-subjective__field">
-                    <label for="hep-adherence">Home Exercise Program Adherence *</label>
-                    <select id="hep-adherence" disabled="@IsReadOnly" value="@_dailyTreatment.HepAdherence" @onchange="HandleHepAdherenceChanged">
-                        <option value="">Select adherence level</option>
-                        <option>Excellent (&gt;90%)</option>
-                        <option>Good (70-90%)</option>
-                        <option>Fair (50-69%)</option>
-                        <option>Poor (&lt;50%)</option>
-                    </select>
-                    @if (!IsReadOnly && string.IsNullOrWhiteSpace(_dailyTreatment.HepAdherence))
-                    {
-                        <p class="daily-subjective__validation">Adherence level is required.</p>
-                    }
-                </div>
-
-                <EditableTextArea Label="HEP Update"
-                                  Value="@_dailyTreatment.HepUpdateNotes"
-                                  ValueChanged="UpdateHepUpdateNotes"
-                                  IsReadOnly="IsReadOnly"
-                                  Placeholder="Document HEP changes, patient questions, or adherence context."
-                                  Rows="3" />
-
-                <EditableTextArea Label="Functional Improvements"
-                                  Value="@_dailyTreatment.FunctionalImprovements"
-                                  ValueChanged="UpdateFunctionalImprovements"
-                                  IsReadOnly="IsReadOnly"
-                                  Placeholder="What activities can the patient now do that they had difficulty with before?"
-                                  Rows="3" />
-
-                <EditableTextArea Label="New or Changed Symptoms"
-                                  Value="@_dailyTreatment.NewOrChangedSymptoms"
-                                  ValueChanged="UpdateNewOrChangedSymptoms"
-                                  IsReadOnly="IsReadOnly"
-                                  Placeholder="Any new pain areas, increased/decreased symptoms..."
-                                  Rows="3" />
-
-                <EditableTextArea Label="Barriers to Progress"
-                                  Value="@_dailyTreatment.BarriersToProgress"
-                                  ValueChanged="UpdateBarriersToProgress"
-                                  IsReadOnly="IsReadOnly"
-                                  Placeholder="Work schedule conflicts, equipment access, pain flare-ups..."
-                                  Rows="3" />
-            </FormSection>
-        </div>
+            }
+            <div class="daily-col-12">
+                <FormSection Title="Additional Information">
+                    <label class="daily-subjective__label" for="daily-additional-information">Additional information for your therapist</label>
+                    <textarea id="daily-additional-information" class="daily-question-input" rows="4" maxlength="2000" disabled="@ReadOnly"
+                              @bind="_answers.AdditionalInformation" @bind:event="oninput" @bind:after="NotifyDailyAsync"></textarea>
+                </FormSection>
+            </div>
+        }
+        @if (LegacyEntries.Any())
+        {
+            <div class="daily-col-12">
+                <details class="daily-legacy" open="@IsReadOnly" data-testid="daily-historical-values">
+                    <summary>Previously recorded Daily information</summary>
+                    <p>Saved historical values are retained separately from today's questionnaire.</p>
+                    <dl>
+                        @foreach (var entry in LegacyEntries)
+                        { <dt>@entry.Label</dt><dd>@entry.Value</dd> }
+                    </dl>
+                </details>
+            </div>
+        }
     </div>
 </section>
 
 @code {
-    private SubjectiveVm _vm = new();
-    private DailyTreatmentVm _dailyTreatment = new();
-    private int _baselinePainLevel = 0;
-    private string _painLocation = string.Empty;
-
-    private static readonly string[] _bodyParts =
-    [
-        "Shoulder Pain", "Elbow Pain", "Wrist/Hand Pain", "Neck Pain",
-        "Back Pain", "Hip Pain", "Knee Pain", "Ankle/Foot Pain"
-    ];
-
-    private static readonly string[] _associatedSymptomOptions =
-    [
-        "Sharp Pain", "Dull Ache", "Stiffness", "Weakness", "Numbness", "Tingling", "Swelling", "Instability"
-    ];
-
     [Parameter, EditorRequired] public SubjectiveVm Vm { get; set; } = new();
     [Parameter] public DailyTreatmentVm DailyTreatment { get; set; } = new();
     [Parameter, EditorRequired] public EventCallback<SubjectiveVm> VmChanged { get; set; }
     [Parameter] public EventCallback<DailyTreatmentVm> DailyTreatmentChanged { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public bool IsDarkMode { get; set; }
-
+    private SubjectiveVm _vm = new();
+    private DailyTreatmentVm _dailyTreatment = new();
+    private DailyQuestionnaireV1 _answers = new();
+    private bool UnsupportedVersion => _answers.Version != DailyQuestionnaireDefinition.Version;
+    private bool ReadOnly => IsReadOnly || UnsupportedVersion;
+    private static readonly string[] BodyParts = ["Shoulder Pain", "Elbow Pain", "Wrist/Hand Pain", "Neck Pain", "Back Pain", "Hip Pain", "Knee Pain", "Ankle/Foot Pain"];
+    private static readonly string[] Symptoms = ["Sharp Pain", "Dull Ache", "Stiffness", "Weakness", "Numbness", "Tingling", "Swelling", "Instability"];
+    private IReadOnlyList<string> BodyPartOptions => BodyParts.Concat(_vm.Locations).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    private IReadOnlyList<string> SymptomOptions => Symptoms.Concat(_dailyTreatment.AssociatedSymptoms).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     protected override void OnParametersSet()
     {
-        _vm = Vm;
-        _dailyTreatment = DailyTreatment;
-        if (_vm.BestPainScore > 0)
+        _vm = Clone(Vm);
+        _dailyTreatment = Clone(DailyTreatment);
+        _answers = DailyQuestionnaireDefinition.Clone(_dailyTreatment.Questionnaire) ?? new();
+        _answers.ImprovedActivities ??= []; _answers.SameActivities ??= [];
+        _answers.WorseActivities ??= []; _answers.NewDifficultyActivities ??= [];
+        _vm.Locations ??= []; _dailyTreatment.AssociatedSymptoms ??= [];
+    }
+    private static T Clone<T>(T value) => JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(value))!;
+    private string Answer(string id) => id switch
+    {
+        "overall-condition" => _answers.OverallCondition, "pain-change" => _answers.PainChange,
+        "pain-frequency" => _vm.PainFrequency, "daily-activity-ease" => _answers.DailyActivityEase,
+        "hep-adherence" => _answers.HepAdherence, _ => string.Empty
+    };
+    private async Task UpdateAnswer(string id, ChangeEventArgs e)
+    {
+        if (ReadOnly) return;
+        var value = e.Value?.ToString() ?? string.Empty;
+        switch (id)
         {
-            _baselinePainLevel = _vm.BestPainScore;
+            case "overall-condition": _answers.OverallCondition = value; break;
+            case "pain-change": _answers.PainChange = value; break;
+            case "pain-frequency": _vm.PainFrequency = value; await NotifySubjectiveAsync(); return;
+            case "daily-activity-ease": _answers.DailyActivityEase = value; break;
+            case "hep-adherence": _answers.HepAdherence = value; break;
         }
+        await NotifyDailyAsync();
     }
-
-    private string GetCarriedForwardComplaint()
+    private Task UpdateCurrentPain(ChangeEventArgs e)
     {
-        var values = _vm.Problems
-            .Concat(_vm.Locations)
-            .Append(_vm.OtherLocation)
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => value!.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        return values.Count == 0 ? string.Empty : string.Join("; ", values);
+        if (ReadOnly) return Task.CompletedTask;
+        _vm.IsPainScoreDocumented = int.TryParse(e.Value?.ToString(), out var value) && value is >= 0 and <= 10;
+        _vm.CurrentPainScore = _vm.IsPainScoreDocumented ? value : 0;
+        return NotifySubjectiveAsync();
     }
-
-    private Task UpdateLocations(HashSet<string> value)
+    private Task UpdateLocations(HashSet<string> values) { _vm.Locations = values; return NotifySubjectiveAsync(); }
+    private Task UpdateSymptoms(HashSet<string> values) { _dailyTreatment.AssociatedSymptoms = values; return NotifyDailyAsync(); }
+    private Task UpdateImproved(HashSet<string> values)
     {
-        _vm.Locations = value;
-        return VmChanged.InvokeAsync(_vm);
+        if (values.Contains("None") && !_answers.ImprovedActivities.Contains("None")) values = ["None"];
+        else if (values.Count > 1) values.Remove("None");
+        _answers.ImprovedActivities = values; return NotifyDailyAsync();
     }
-
-    private Task UpdateAssociatedSymptoms(HashSet<string> value)
+    private Task UpdateSame(HashSet<string> values) { _answers.SameActivities = values; return NotifyDailyAsync(); }
+    private Task UpdateWorse(HashSet<string> values) { _answers.WorseActivities = values; return NotifyDailyAsync(); }
+    private Task UpdateNewDifficulty(HashSet<string> values) { _answers.NewDifficultyActivities = values; return NotifyDailyAsync(); }
+    private Task NotifySubjectiveAsync() => ReadOnly ? Task.CompletedTask : VmChanged.InvokeAsync(Clone(_vm));
+    private Task NotifyDailyAsync()
     {
-        _dailyTreatment.AssociatedSymptoms = value;
-        return NotifyDailyChangedAsync();
+        if (ReadOnly) return Task.CompletedTask;
+        _dailyTreatment.Questionnaire = DailyQuestionnaireDefinition.Clone(_answers);
+        return DailyTreatmentChanged.InvokeAsync(Clone(_dailyTreatment));
     }
-
-    private Task UpdateOtherProblem(string value)
+    private IEnumerable<(string Label, string? Value)> LegacyEntries => new (string, string?)[]
     {
-        _vm.OtherProblem = value;
-        return VmChanged.InvokeAsync(_vm);
-    }
-
-    private Task UpdateKnownCause(string value)
-    {
-        _vm.KnownCause = value;
-        return VmChanged.InvokeAsync(_vm);
-    }
-
-    private Task UpdateAdditionalFunctionalLimitations(string value)
-    {
-        _vm.AdditionalFunctionalLimitations = value;
-        return VmChanged.InvokeAsync(_vm);
-    }
-
-    private Task UpdatePreviousTreatment(string value)
-    {
-        _dailyTreatment.PreviousTreatment = value;
-        return NotifyDailyChangedAsync();
-    }
-
-    private Task UpdateChangesSinceLastVisit(string value)
-    {
-        _dailyTreatment.ChangesSinceLastVisit = value;
-        return NotifyDailyChangedAsync();
-    }
-
-    private Task UpdatePainLevelChanges(string value)
-    {
-        _dailyTreatment.PainLevelChanges = value;
-        return NotifyDailyChangedAsync();
-    }
-
-    private Task UpdateSubjectiveUpdate(string value)
-    {
-        _dailyTreatment.SubjectiveUpdate = value;
-        return NotifyDailyChangedAsync();
-    }
-
-    private Task HandleHepAdherenceChanged(ChangeEventArgs args)
-    {
-        _dailyTreatment.HepAdherence = args.Value?.ToString() ?? string.Empty;
-        return NotifyDailyChangedAsync();
-    }
-
-    private Task UpdateHepUpdateNotes(string value)
-    {
-        _dailyTreatment.HepUpdateNotes = value;
-        return NotifyDailyChangedAsync();
-    }
-
-    private Task UpdateFunctionalImprovements(string value)
-    {
-        _dailyTreatment.FunctionalImprovements = value;
-        return NotifyDailyChangedAsync();
-    }
-
-    private Task UpdateNewOrChangedSymptoms(string value)
-    {
-        _dailyTreatment.NewOrChangedSymptoms = value;
-        return NotifyDailyChangedAsync();
-    }
-
-    private Task UpdateBarriersToProgress(string value)
-    {
-        _dailyTreatment.BarriersToProgress = value;
-        return NotifyDailyChangedAsync();
-    }
-
-    private Task NotifyDailyChangedAsync() => DailyTreatmentChanged.InvokeAsync(_dailyTreatment);
+        ("Historical complaint", string.Join("; ", _vm.Problems ?? [])), ("Historical complaint additions", _vm.OtherProblem),
+        ("Visit changes", _dailyTreatment.ChangesSinceLastVisit), ("Pain level changes", _dailyTreatment.PainLevelChanges),
+        ("Subjective update", _dailyTreatment.SubjectiveUpdate), ("HEP adherence", _dailyTreatment.HepAdherence),
+        ("HEP update", _dailyTreatment.HepUpdateNotes), ("Functional improvements", _dailyTreatment.FunctionalImprovements),
+        ("New or changed symptoms", _dailyTreatment.NewOrChangedSymptoms), ("Barriers to progress", _dailyTreatment.BarriersToProgress),
+        ("Previous treatment", _dailyTreatment.PreviousTreatment), ("Response to treatment", _dailyTreatment.ResponseToTreatment),
+        ("Functional limitations", _vm.AdditionalFunctionalLimitations)
+    }.Where(e => !string.IsNullOrWhiteSpace(e.Item2));
 }

@@ -393,6 +393,7 @@ else
                                       LongTermGoalCount="@LongTermGoalCount"
                                       GoalItems="@GoalItems"
                                       GoalHints="@GoalHints"
+                                      AllowOutcomeAuthoring="@(!IsDailyTreatment)"
                                       ShowInterventionAuthoring="@(!IsEvaluationNote && !IsDailyTreatment && !IsProgressNote)" />
                         break;
 
@@ -2855,6 +2856,7 @@ else
         values.AddRange(_note.Subjective.Locations.OrderBy(value => value));
         AddPart(values, _note.Subjective.OtherLocation);
         AddPart(values, _note.Subjective.OtherProblem);
+        AddPart(values, DailyQuestionnaireDefinition.Summarize(_note.DailyTreatment.Questionnaire));
         AddPart(values, _note.DailyTreatment.SubjectiveUpdate);
         AddPart(values, _note.DailyTreatment.ChangesSinceLastVisit);
         AddPart(values, _note.DailyTreatment.NewOrChangedSymptoms);
@@ -2881,6 +2883,7 @@ else
         }
 
         AddAiInput(inputs, "Pain frequency", _note.Subjective.PainFrequency, selectedBodyPart);
+        if (IsDailyTreatment) AddAiInput(inputs, "Daily patient update", DailyQuestionnaireDefinition.Summarize(_note.DailyTreatment.Questionnaire), selectedBodyPart);
         AddAiInput(inputs, "Known cause", _note.Subjective.KnownCause, selectedBodyPart);
         AddAiInput(inputs, "Prior functional level", JoinValues(_note.Subjective.PriorFunctionalLevel), selectedBodyPart);
         AddAiInput(inputs, "Current level of function", _note.Subjective.CurrentLevelOfFunction, selectedBodyPart);

@@ -594,13 +594,13 @@ public sealed class NoteWorkspacePageTests : TestContext
                         },
                         Subjective = new WorkspaceSubjectiveV2
                         {
-                            CurrentPainScore = 3,
+                            CurrentPainScore = 0,
                             Locations = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Right shoulder" }
                         }
                     },
                     Subjective = new SubjectiveVm
                     {
-                        CurrentPainScore = 3,
+                        CurrentPainScore = 0,
                         Locations = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Right shoulder" }
                     }
                 }
@@ -622,8 +622,8 @@ public sealed class NoteWorkspacePageTests : TestContext
             Assert.Equal("Daily Treatment Note", noteTypeSelect.GetAttribute("value"));
             Assert.Single(cut.FindAll("[data-testid='soap-tab-interventions']"));
             Assert.Contains("Started a new Daily Treatment Note with carry-forward from the latest signed Progress Note.", cut.Markup, StringComparison.Ordinal);
-            Assert.Equal("3", cut.Find("#current-pain").GetAttribute("value"));
-            Assert.False(cut.Find("#current-pain").HasAttribute("disabled"));
+            Assert.Equal(string.Empty, cut.Find("#daily-current-pain").GetAttribute("value"));
+            Assert.False(cut.Find("#daily-current-pain").HasAttribute("disabled"));
             Assert.Contains("Signed Progress Note", cut.Find("[data-testid='note-workspace-seed-source']").TextContent, StringComparison.Ordinal);
         });
 
