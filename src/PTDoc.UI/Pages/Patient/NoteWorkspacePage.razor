@@ -1704,6 +1704,7 @@ else
                 return;
             }
 
+            var added = 0;
             foreach (var description in ParseGoalSuggestions(result.GeneratedText))
             {
                 if (_note.Assessment.Goals.Any(goal => string.Equals(goal.Description, description, StringComparison.OrdinalIgnoreCase)))
@@ -1719,6 +1720,13 @@ else
                     Timeframe = GoalTimeframe.ShortTerm,
                     Status = GoalStatus.Active
                 });
+                added++;
+            }
+
+            if (added == 0)
+            {
+                SetStatusMessage("No new goal suggestions were returned. Existing goals and pending suggestions are unchanged.", "info", showToast: true, toastTitle: "No new suggestions");
+                return;
             }
 
             MarkUnsaved();
