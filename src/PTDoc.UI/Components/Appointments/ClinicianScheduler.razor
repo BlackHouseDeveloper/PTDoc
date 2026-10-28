@@ -4,7 +4,7 @@
 @* Clinician Scheduler Component *@
 
 <div class="clinician-scheduler">
-    <p id="scheduler-scroll-hint" class="scheduler-scroll-hint">@ScrollHint</p>
+    <p id="scheduler-scroll-hint" class="scheduler-scroll-hint">@ScrollHint Times shown in @DisplayTimeZone.Id.</p>
     <div class="scheduler-viewport"
          tabindex="0"
          role="region"
@@ -43,15 +43,19 @@
                             </div>
                             
                             <div class="appointments-container">
-                                <div class="appointment-slots-grid" style="@GetSlotGridStyle()" aria-hidden="true">
+                                <div class="appointment-slots-grid" style="@GetSlotGridStyle()">
                                     @for (int i = 0; i < SlotCount; i++)
                                     {
-                                        <div class="appointment-slot"></div>
+                                        var slotTime = CalendarStart.AddMinutes(i * EffectiveSlotMinutes).ToTimeSpan();
+                                        <button type="button" class="appointment-slot"
+                                                aria-label="@GetSlotLabel(clinician.ClinicianId, SelectedDate, slotTime)"
+                                                disabled="@(!CanSelectSlot(clinician.ClinicianId, SelectedDate, slotTime))"
+                                                @onclick="@(() => SelectSlotAsync(clinician.ClinicianId, SelectedDate, slotTime))"></button>
                                     }
                                 </div>
                                 
                                 @* Render appointments for this clinician *@
-                                @foreach (var appt in GetAppointmentsForClinician(clinician.Name))
+                                @foreach (var appt in GetAppointmentsForClinician(clinician))
                                 {
                                     var effectiveBlockStatus = GetEffectiveBlockStatus(appt, SelectedDate);
                                     <button type="button"
@@ -95,10 +99,14 @@
                         </div>
                         
                         <div class="appointments-container">
-                            <div class="appointment-slots-grid" style="@GetSlotGridStyle()" aria-hidden="true">
+                            <div class="appointment-slots-grid" style="@GetSlotGridStyle()">
                                 @for (int i = 0; i < SlotCount; i++)
                                 {
-                                    <div class="appointment-slot"></div>
+                                    var slotTime = CalendarStart.AddMinutes(i * EffectiveSlotMinutes).ToTimeSpan();
+                                    <button type="button" class="appointment-slot"
+                                            aria-label="@GetSlotLabel(SelectedWeekClinicianId, day.Date, slotTime)"
+                                            disabled="@(!CanSelectSlot(SelectedWeekClinicianId, day.Date, slotTime))"
+                                            @onclick="@(() => SelectSlotAsync(SelectedWeekClinicianId, day.Date, slotTime))"></button>
                                 }
                             </div>
                             
@@ -148,10 +156,14 @@
                         </div>
 
                         <div class="appointments-container">
-                            <div class="appointment-slots-grid" style="@GetSlotGridStyle()" aria-hidden="true">
+                            <div class="appointment-slots-grid" style="@GetSlotGridStyle()">
                                 @for (int i = 0; i < SlotCount; i++)
                                 {
-                                    <div class="appointment-slot"></div>
+                                    var slotTime = CalendarStart.AddMinutes(i * EffectiveSlotMinutes).ToTimeSpan();
+                                    <button type="button" class="appointment-slot"
+                                            aria-label="@GetSlotLabel(SelectedWeekClinicianId, day.Date, slotTime)"
+                                            disabled="@(!CanSelectSlot(SelectedWeekClinicianId, day.Date, slotTime))"
+                                            @onclick="@(() => SelectSlotAsync(SelectedWeekClinicianId, day.Date, slotTime))"></button>
                                 }
                             </div>
 
@@ -189,6 +201,30 @@
 </div>
 
 @code {
+    [Parameter] public EventCallback<AppointmentSlotSelection> OnSlotSelected { get; set; }
+    [Parameter] public Guid? SelectedWeekClinicianId { get; set; }
+    [Parameter] public TimeZoneInfo DisplayTimeZone { get; set; } = TimeZoneInfo.Local;
+
+    private string GetSlotLabel(Guid? clinicianId, DateTime date, TimeSpan time) =>
+        $"New appointment for {Clinicians?.FirstOrDefault(value => value.ClinicianId == clinicianId)?.Name ?? "selected clinician"}, {date:MMM d, yyyy} at {TimeOnly.FromTimeSpan(time):h:mm tt} ({DisplayTimeZone.Id})";
+
+    private bool CanSelectSlot(Guid? clinicianId, DateTime date, TimeSpan time)
+    {
+        if (!OnSlotSelected.HasDelegate || !clinicianId.HasValue
+            || Clinicians?.Any(value => value.ClinicianId == clinicianId && value.IsSchedulable) != true) return false;
+        var local = DateTime.SpecifyKind(date.Date.Add(time), DateTimeKind.Unspecified);
+        if (DisplayTimeZone.IsInvalidTime(local) || DisplayTimeZone.IsAmbiguousTime(local)) return false;
+        var start = TimeZoneInfo.ConvertTimeToUtc(local, DisplayTimeZone);
+        return Appointments?.Any(value => value.ClinicianId == clinicianId
+            && value.AppointmentStatus is not ("Cancelled" or "No Show" or "NoShow")
+            && value.StartTimeUtc < start.AddMinutes(EffectiveSlotMinutes) && value.EndTimeUtc > start) != true;
+    }
+
+    private Task SelectSlotAsync(Guid? clinicianId, DateTime date, TimeSpan time) =>
+        CanSelectSlot(clinicianId, date, time)
+            ? OnSlotSelected.InvokeAsync(new AppointmentSlotSelection(clinicianId!.Value, date.Date, time))
+            : Task.CompletedTask;
+
     [Parameter]
     public DateTime SelectedDate { get; set; } = DateTime.Today;
 
@@ -299,7 +335,7 @@
         return weekDays;
     }
 
-    private List<SchedulerAppointmentItem> GetAppointmentsForClinician(string clinicianName)
+    private List<SchedulerAppointmentItem> GetAppointmentsForClinician(ClinicianSchedule clinician)
     {
         if (Appointments is null)
         {
@@ -308,7 +344,8 @@
 
         return Appointments
             .Where(appointment =>
-                string.Equals(GetEffectiveClinicianName(appointment), clinicianName, StringComparison.OrdinalIgnoreCase)
+                (clinician.ClinicianId.HasValue ? appointment.ClinicianId == clinician.ClinicianId
+                    : string.Equals(GetEffectiveClinicianName(appointment), clinician.Name, StringComparison.OrdinalIgnoreCase))
                 && ToLocalTime(appointment.StartTimeUtc).Date == SelectedDate.Date)
             .OrderBy(appointment => ToLocalTime(appointment.StartTimeUtc))
             .Select(BuildSchedulerAppointment)
@@ -500,13 +537,13 @@
         return $"PT-{compactId[..6].ToUpperInvariant()}";
     }
 
-    private static DateTime ToLocalTime(DateTime utcTime)
+    private DateTime ToLocalTime(DateTime utcTime)
     {
         var normalizedUtc = utcTime.Kind == DateTimeKind.Utc
             ? utcTime
             : DateTime.SpecifyKind(utcTime, DateTimeKind.Utc);
 
-        return normalizedUtc.ToLocalTime();
+        return TimeZoneInfo.ConvertTimeFromUtc(normalizedUtc, DisplayTimeZone);
     }
 
     private static string GetEffectiveClinicianName(AppointmentListItemResponse appointment)
@@ -521,11 +558,11 @@
             : $"Dr. {appointment.ClinicianName}";
     }
 
-    private static SchedulerAppointmentItem BuildSchedulerAppointment(AppointmentListItemResponse appointment)
+    private SchedulerAppointmentItem BuildSchedulerAppointment(AppointmentListItemResponse appointment)
     {
         var localStartTime = ToLocalTime(appointment.StartTimeUtc);
         var localEndTime = ToLocalTime(appointment.EndTimeUtc);
-        var durationMinutes = (int)Math.Round((localEndTime - localStartTime).TotalMinutes);
+        var durationMinutes = (int)Math.Round((appointment.EndTimeUtc - appointment.StartTimeUtc).TotalMinutes);
 
         if (durationMinutes <= 0)
         {

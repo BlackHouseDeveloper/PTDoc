@@ -140,7 +140,26 @@
 }
 
 .appointment-slot {
+    appearance: none;
+    background: transparent;
+    border: 0;
     border-bottom: 1px solid var(--border);
+    padding: 0;
+    width: 100%;
+    cursor: pointer;
+}
+
+.appointment-slot:hover:not(:disabled) {
+    background: var(--muted);
+}
+
+.appointment-slot:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+}
+
+.appointment-slot:disabled {
+    cursor: default;
 }
 
 .appointment-block {

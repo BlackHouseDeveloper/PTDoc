@@ -113,6 +113,8 @@ public sealed class AppointmentClinicianResponse
 /// </summary>
 public sealed class AppointmentsOverviewResponse
 {
+    /// <summary>Clinic time zone used for both schedule display and entry; null only for older servers.</summary>
+    public string? ClinicTimeZoneId { get; set; }
     public IReadOnlyList<AppointmentListItemResponse> Appointments { get; set; } = Array.Empty<AppointmentListItemResponse>();
     public IReadOnlyList<AppointmentClinicianResponse> Clinicians { get; set; } = Array.Empty<AppointmentClinicianResponse>();
 }
