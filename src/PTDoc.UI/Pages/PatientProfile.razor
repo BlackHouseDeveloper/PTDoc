@@ -2,6 +2,7 @@
 @attribute [Authorize(Policy = AuthorizationPolicies.PatientRead)]
 @rendermode InteractiveServer
 @inject NavigationManager NavigationManager
+@inject IJSRuntime JS
 @implements IDisposable
 @using Microsoft.AspNetCore.Components.Routing
 @using PTDoc.Application.Services
@@ -111,6 +112,8 @@
 
     private PatientProfileVm patient = new();
     private readonly List<TimelineEntry> timelineEntries = new();
+    private TimeZoneInfo? viewerTimeZone;
+    private bool disposed;
     private readonly List<NoteListItemApiResponse> recentNotes = new();
     private bool isLoading = true;
     private bool timelineLoading;
@@ -212,6 +215,27 @@
         return string.Join(", ", parts) is { Length: > 0 } addr ? addr : null;
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/viewer-time-zone.js");
+            var zoneId = await module.InvokeAsync<string>("getViewerTimeZone");
+            if (!disposed && TimeZoneInfo.TryFindSystemTimeZoneById(zoneId, out var zone))
+            {
+                viewerTimeZone = zone;
+                foreach (var entry in timelineEntries) TimelineTimestampFormatter.Apply(entry, viewerTimeZone);
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException or TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+            // Until browser time-zone data is available, display explicitly labelled UTC.
+        }
+    }
+
     private async Task ReloadTimelineAsync()
     {
         if (currentPatientId == Guid.Empty)
@@ -228,7 +252,7 @@
         recentNotes.Clear();
         StateHasChanged();
 
-        var timelineRows = new List<(DateTime TimestampUtc, TimelineEntry Entry)>();
+        var timelineRows = new List<(DateTime? TimestampUtc, TimelineEntry Entry)>();
         var errors = new List<string>();
 
         try
@@ -278,14 +302,15 @@
                 .OrderByDescending(row => row.TimestampUtc)
                 .Select(row => row.Entry));
 
+        foreach (var entry in timelineEntries) TimelineTimestampFormatter.Apply(entry, viewerTimeZone);
+
         timelineErrorMessage = errors.Count == 0 ? null : string.Join(" ", errors);
         timelineLoading = false;
     }
 
-    private static (DateTime TimestampUtc, TimelineEntry Entry) CreateNoteTimelineEntry(NoteListItemApiResponse note)
+    private static (DateTime? TimestampUtc, TimelineEntry Entry) CreateNoteTimelineEntry(NoteListItemApiResponse note)
     {
         var timestampUtc = DateTime.SpecifyKind(note.LastModifiedUtc, DateTimeKind.Utc);
-        var localTimestamp = timestampUtc.ToLocalTime();
         var type = MapNoteTimelineType(note.NoteType);
 
         return (
@@ -295,15 +320,13 @@
                 Type = type,
                 Title = note.NoteType,
                 Description = GetNoteDescription(note),
-                Date = localTimestamp.ToString("M/d/yyyy"),
-                Time = localTimestamp.ToString("h:mm tt")
+                TimestampUtc = timestampUtc
             });
     }
 
-    private static (DateTime TimestampUtc, TimelineEntry Entry) CreateAppointmentTimelineEntry(AppointmentListItemResponse appointment)
+    private static (DateTime? TimestampUtc, TimelineEntry Entry) CreateAppointmentTimelineEntry(AppointmentListItemResponse appointment)
     {
         var timestampUtc = DateTime.SpecifyKind(appointment.StartTimeUtc, DateTimeKind.Utc);
-        var localTimestamp = timestampUtc.ToLocalTime();
         var appointmentType = string.IsNullOrWhiteSpace(appointment.AppointmentType)
             ? "Appointment"
             : appointment.AppointmentType;
@@ -315,17 +338,16 @@
                 Type = "appointment",
                 Title = appointmentType,
                 Description = BuildAppointmentDescription(appointment),
-                Date = localTimestamp.ToString("M/d/yyyy"),
-                Time = localTimestamp.ToString("h:mm tt")
+                TimestampUtc = timestampUtc
             });
     }
 
-    private static (DateTime TimestampUtc, TimelineEntry Entry) CreateIntakeTimelineEntry(IntakeResponseDraft intake)
+    private static (DateTime? TimestampUtc, TimelineEntry Entry) CreateIntakeTimelineEntry(IntakeResponseDraft intake)
     {
-        var timestampUtc = DateTime.SpecifyKind(
-            intake.SubmittedAt ?? intake.LastModifiedUtc ?? DateTime.UtcNow,
-            DateTimeKind.Utc);
-        var localTimestamp = timestampUtc.ToLocalTime();
+        var recordedAt = intake.SubmittedAt ?? intake.LastModifiedUtc;
+        var timestampUtc = recordedAt.HasValue
+            ? DateTime.SpecifyKind(recordedAt.Value, DateTimeKind.Utc)
+            : (DateTime?)null;
 
         return (
             timestampUtc,
@@ -334,8 +356,7 @@
                 Type = "intake",
                 Title = BuildIntakeTimelineTitle(intake),
                 Description = BuildIntakeStateMessage(intake),
-                Date = localTimestamp.ToString("M/d/yyyy"),
-                Time = localTimestamp.ToString("h:mm tt")
+                TimestampUtc = timestampUtc
             });
     }
 
@@ -575,6 +596,7 @@
 
     public void Dispose()
     {
+        disposed = true;
         NavigationManager.LocationChanged -= HandleLocationChanged;
     }
 }
