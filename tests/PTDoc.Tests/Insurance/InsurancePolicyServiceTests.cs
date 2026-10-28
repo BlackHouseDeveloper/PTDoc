@@ -18,5 +18,60 @@ public sealed class InsurancePolicyServiceTests : IDisposable
     [Fact] public async Task IntakeSameProviderShortcut_ReusesOnePatientScopedCandidateForBothRoles() { var userId = Guid.NewGuid(); var draft = new PTDoc.Application.Services.IntakeResponseDraft { PrimaryDoctorName = "Dr. Shared Provider", PrimaryDoctorPhone = "555-0101", ReferringDoctorName = "Dr. Shared Provider", ReferringDoctorPhone = "555-0101" }; await IntakeDomainProjection.UpsertAsync(db, patient, draft, userId, default); await db.SaveChangesAsync(); var provider = Assert.Single(await db.ProviderDirectoryEntries.ToListAsync()); Assert.Equal(ProviderDirectoryStatus.Pending, provider.Status); Assert.Equal(ProviderSubmissionSource.PatientIntake, provider.SubmissionSource); var relationships = await db.PatientProviderRelationships.OrderBy(value => value.Role).ToListAsync(); Assert.Equal(2, relationships.Count); Assert.All(relationships, relationship => Assert.Equal(provider.Id, relationship.ProviderDirectoryEntryId)); Assert.Contains(relationships, relationship => relationship.Role == PatientProviderRole.PrimaryCare); Assert.Contains(relationships, relationship => relationship.Role == PatientProviderRole.Referring); }
     [Fact] public async Task ArchivedPolicy_IsHiddenByDefaultAndReturnedForHistory() { var policy = await service.UpsertPolicyAsync(patient.Id, null, new() { CoveragePriority = InsuranceCoveragePriority.Primary, CarrierDisplayName = "Historical Carrier", PayerType = InsurancePayerType.Commercial }, default); await service.ArchivePolicyAsync(patient.Id, policy.Id, default); Assert.Empty(await service.ListAsync(patient.Id, default)); var archived = Assert.Single(await service.ListAsync(patient.Id, true, default)); Assert.True(archived.IsArchived); Assert.Equal(InsurancePolicyStatus.Inactive, archived.Status); }
     [Fact] public async Task HistoryList_DeniesPatientOutsideCurrentTenant() { var otherPatient = new Patient { Id = Guid.NewGuid(), ClinicId = Guid.NewGuid(), FirstName = "Other", LastName = "Tenant", DateOfBirth = new(1990, 1, 1) }; db.Patients.Add(otherPatient); await db.SaveChangesAsync(); await Assert.ThrowsAsync<KeyNotFoundException>(() => service.ListAsync(otherPatient.Id, true, default)); }
+    [Theory]
+    [InlineData("providerType")]
+    [InlineData("payerType")]
+    public async Task Tricare_LegacyBackfillAndPolicyEditPreserveDistinctType(string key)
+    {
+        patient.PayerInfoJson = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            [key] = " TRICARE ",
+            ["insuranceCompanyName"] = "TRICARE Carrier",
+            ["memberIdPolicyNumber"] = "TRI-001"
+        });
+        await db.SaveChangesAsync();
+        var imported = await service.BackfillLegacyPayerDataAsync(default);
+        Assert.Equal(1, imported.PoliciesCreated);
+        var policy = Assert.Single(await service.ListAsync(patient.Id, default));
+        Assert.Equal(InsurancePayerType.Tricare, policy.PayerType);
+        var updated = await service.UpsertPolicyAsync(patient.Id, policy.Id, new()
+        {
+            CoveragePriority = policy.CoveragePriority,
+            CarrierDisplayName = policy.CarrierDisplayName,
+            PayerType = InsurancePayerType.Tricare,
+            MemberOrPolicyNumber = "TRI-UPDATED",
+            ExpectedLastModifiedUtc = policy.LastModifiedUtc
+        }, default);
+        Assert.Equal(policy.Id, updated.Id);
+        Assert.Equal(InsurancePayerType.Tricare, updated.PayerType);
+        Assert.Equal("TRI-UPDATED", updated.MemberOrPolicyNumber);
+        Assert.Equal(0, (await service.BackfillLegacyPayerDataAsync(default)).PoliciesCreated);
+        Assert.Equal(InsurancePayerType.Tricare, (await db.PatientInsurancePolicies.AsNoTracking().SingleAsync()).PayerType);
+    }
+    [Theory]
+    [InlineData(" tricare ", "medicare", InsurancePayerType.Tricare)]
+    [InlineData("Medicare", "tricare", InsurancePayerType.Medicare)]
+    [InlineData("workers_comp", "tricare", InsurancePayerType.WorkersCompensation)]
+    [InlineData("Unrecognized payer", "tricare", InsurancePayerType.Other)]
+    public async Task Backfill_CanonicalPayerTypeWinsOverConflictingAlias(string canonical, string alias, InsurancePayerType expected)
+    {
+        patient.PayerInfoJson = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            payerType = canonical,
+            providerType = alias,
+            insuranceCompanyName = "Primary Carrier",
+            memberIdPolicyNumber = "PRIMARY",
+            secondaryInsuranceCompanyName = "Secondary Carrier",
+            secondaryMemberIdPolicyNumber = "SECONDARY"
+        });
+        await db.SaveChangesAsync();
+        Assert.Equal(2, (await service.BackfillLegacyPayerDataAsync(default)).PoliciesCreated);
+        var policies = await service.ListAsync(patient.Id, default);
+        Assert.Equal(2, policies.Count);
+        Assert.All(policies, policy => Assert.Equal(expected, policy.PayerType));
+        Assert.Contains(policies, policy => policy.CoveragePriority == InsuranceCoveragePriority.Primary && policy.MemberOrPolicyNumber == "PRIMARY");
+        Assert.Contains(policies, policy => policy.CoveragePriority == InsuranceCoveragePriority.Secondary && policy.MemberOrPolicyNumber == "SECONDARY");
+        Assert.Equal(0, (await service.BackfillLegacyPayerDataAsync(default)).PoliciesCreated);
+    }
     public void Dispose() => db.Dispose();
 }
