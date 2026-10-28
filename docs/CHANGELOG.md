@@ -54,6 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - Client review Plan 04
 
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
+### Changed - Client review Plan 11
+
+- Grouped PHI release choice with authorized contacts and removed intake revocation inputs. Historical revocations remain read-only and inactive consents are not shown as affirmative.
 
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 

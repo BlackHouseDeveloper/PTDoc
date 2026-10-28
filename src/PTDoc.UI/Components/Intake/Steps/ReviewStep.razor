@@ -518,7 +518,7 @@
             </div>
 
             <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.HipaaAcknowledged == true)" @onchange="OnHipaaChanged" disabled="@IsReadOnlyReview" />
+                <input type="checkbox" class="form-check-input" checked="@HipaaConsentComplete" @onchange="OnHipaaChanged" disabled="@(IsReadOnlyReview || IsConsentRevoked("hipaaAcknowledged"))" />
                 <span>I acknowledge receipt of the HIPAA Notice of Privacy Practices.</span>
             </label>
 
@@ -533,36 +533,23 @@
         </div>
     </section>
 
-    <section class="review-step__card review-step__card--warning">
-        <div class="review-step__card-header">
-            <div>
-                <h2>Consent Revocation</h2>
-                <p>@ConsentRevocationCopy</p>
-            </div>
-        </div>
-
-        <div class="review-step__check-grid">
-            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(IsConsentRevoked("hipaaAcknowledged"))" @onchange="OnRevokeHipaaChanged" disabled="@IsReadOnlyReview" />
-                <span>HIPAA Privacy Notice</span>
-            </label>
-
-            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(IsConsentRevoked("treatmentConsentAccepted"))" @onchange="OnRevokeTreatmentChanged" disabled="@IsReadOnlyReview" />
-                <span>Treatment Consent</span>
-            </label>
-
-            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@MarketingCommunicationsRevoked" @onchange="OnRevokeMarketingChanged" disabled="@IsReadOnlyReview" />
-                <span>Marketing Communications</span>
-            </label>
-
-            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(IsConsentRevoked("phiReleaseAuthorized"))" @onchange="OnRevokePhiChanged" disabled="@IsReadOnlyReview" />
-                <span>PHI Release</span>
-            </label>
-        </div>
-    </section>
+    @if (HasRecordedRevocation)
+    {
+        <section class="review-step__card review-step__card--warning" data-testid="recorded-consent-revocations">
+            <h2>Recorded Consent Revocations</h2>
+            <p>Previously recorded revocations remain in effect. This intake does not change them.</p>
+            @if (ConsentPacket.LastRevocationAtUtc.HasValue)
+            {
+                <p>Recorded @ConsentPacket.LastRevocationAtUtc.Value.ToString("yyyy-MM-dd HH:mm 'UTC'")</p>
+            }
+            <ul>
+                @foreach (var key in ConsentPacket.RevokedConsentKeys)
+                {
+                    <li>@ConsentLabel(key): Revoked</li>
+                }
+            </ul>
+        </section>
+    }
 
     <section class="review-step__card">
         <div class="review-step__card-header">
@@ -574,15 +561,15 @@
 
         <div class="review-step__check-grid">
             <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.CommunicationCallConsent == true)" @onchange="OnCallConsentChanged" disabled="@IsReadOnlyReview" />
+                <input type="checkbox" class="form-check-input" checked="@PhoneCallsAllowed" @onchange="OnCallConsentChanged" disabled="@(IsReadOnlyReview || IsConsentRevoked("communicationCallConsent"))" />
                 <span>Allow phone call reminders and follow-up communication.</span>
             </label>
             <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.CommunicationTextConsent == true)" @onchange="OnTextConsentChanged" disabled="@IsReadOnlyReview" />
+                <input type="checkbox" class="form-check-input" checked="@TextMessagesAllowed" @onchange="OnTextConsentChanged" disabled="@(IsReadOnlyReview || IsConsentRevoked("communicationTextConsent"))" />
                 <span>Allow text / SMS reminders and follow-up communication.</span>
             </label>
             <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.CommunicationEmailConsent == true)" @onchange="OnEmailConsentChanged" disabled="@IsReadOnlyReview" />
+                <input type="checkbox" class="form-check-input" checked="@EmailAllowed" @onchange="OnEmailConsentChanged" disabled="@(IsReadOnlyReview || IsConsentRevoked("communicationEmailConsent"))" />
                 <span>Allow email reminders and follow-up communication.</span>
             </label>
         </div>
@@ -624,11 +611,11 @@
 
         <div class="review-step__check-grid">
             <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.DryNeedlingConsentAccepted == true)" @onchange="OnDryNeedlingChanged" disabled="@IsReadOnlyReview" />
+                <input type="checkbox" class="form-check-input" checked="@DryNeedlingAllowed" @onchange="OnDryNeedlingChanged" disabled="@(IsReadOnlyReview || IsConsentRevoked("dryNeedlingConsentAccepted"))" />
                 <span>I authorize dry needling treatment when clinically indicated.</span>
             </label>
             <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.PelvicFloorConsentAccepted == true)" @onchange="OnPelvicFloorChanged" disabled="@IsReadOnlyReview" />
+                <input type="checkbox" class="form-check-input" checked="@PelvicFloorAllowed" @onchange="OnPelvicFloorChanged" disabled="@(IsReadOnlyReview || IsConsentRevoked("pelvicFloorConsentAccepted"))" />
                 <span>I authorize pelvic floor therapy treatment when clinically indicated.</span>
             </label>
         </div>
@@ -658,36 +645,13 @@
     <section class="review-step__card">
         <div class="review-step__card-header">
             <div>
-                <h2>PHI Release Status</h2>
-                <p>Authorization to release protected health information to approved recipients.</p>
-            </div>
-            <button type="button" class="review-step__text-button" @onclick="OpenPhiDetails">View Details</button>
-        </div>
-
-        <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
-            <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.PhiReleaseAuthorized == true)" @onchange="OnPhiAuthorizedChanged" disabled="@IsReadOnlyReview" />
-            <span>I authorize release of protected health information to approved recipients.</span>
-        </label>
-
-        <div class="review-step__row review-step__row--panel">
-            <div>
-                <span>Release Authorization</span>
-                <p>@(PhiReleaseAllowed ? PhiRecipientSummary : "PHI release has been revoked in this draft.")</p>
-            </div>
-            <StatusBadge Text="@(PhiReleaseAllowed ? "Allowed" : "Revoked")" Variant="@(PhiReleaseAllowed ? BadgeVariant.Success : BadgeVariant.Secondary)" />
-        </div>
-    </section>
-
-    <section class="review-step__card">
-        <div class="review-step__card-header">
-            <div>
                 <h2>Billing Consent Status</h2>
                 <p>Credit-card and billing authorization status for this intake.</p>
             </div>
         </div>
 
         <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
-            <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.CreditCardAuthorizationAccepted == true)" @onchange="OnBillingConsentChanged" disabled="@IsReadOnlyReview" />
+            <input type="checkbox" class="form-check-input" checked="@BillingConsentAuthorized" @onchange="OnBillingConsentChanged" disabled="@(IsReadOnlyReview || IsConsentRevoked("creditCardAuthorizationAccepted"))" />
             <span>I authorize the billing and credit-card policy associated with this intake.</span>
         </label>
 
@@ -700,7 +664,7 @@
         </div>
     </section>
 
-    <section class="review-step__card">
+    <section class="review-step__card" data-testid="release-and-contacts">
         <div class="review-step__card-header">
             <div>
                 <h2>Additional Consent Details</h2>
@@ -710,9 +674,32 @@
 
         <div class="review-step__check-grid">
             <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.MediaConsentAccepted == true)" @onchange="OnMediaConsentChanged" disabled="@IsReadOnlyReview" />
+                <input type="checkbox" class="form-check-input" checked="@MediaConsentAllowed" @onchange="OnMediaConsentChanged" disabled="@(IsReadOnlyReview || IsConsentRevoked("mediaConsentAccepted"))" />
                 <span>I authorize media capture related to treatment, education, or documentation.</span>
             </label>
+        </div>
+
+        <div class="review-step__subsection" data-testid="phi-release-choice">
+            <div class="review-step__card-header">
+                <div>
+                    <h3>PHI Release Status</h3>
+                    <p>Authorization to release protected health information to approved recipients.</p>
+                </div>
+                <button type="button" class="review-step__text-button" @onclick="OpenPhiDetails">View Details</button>
+            </div>
+
+            <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+                <input type="checkbox" class="form-check-input" checked="@PhiReleaseAllowed" @onchange="OnPhiAuthorizedChanged" disabled="@(IsReadOnlyReview || IsConsentRevoked("phiReleaseAuthorized"))" />
+                <span>I authorize release of protected health information to approved recipients.</span>
+            </label>
+
+            <div class="review-step__row review-step__row--panel">
+                <div>
+                    <span>Release Authorization</span>
+                    <p>@(PhiReleaseAllowed ? PhiRecipientSummary : PhiReleaseStatusText)</p>
+                </div>
+                <StatusBadge Text="@PhiReleaseStatusText" Variant="@(PhiReleaseAllowed ? BadgeVariant.Success : BadgeVariant.Secondary)" />
+            </div>
         </div>
 
         <div class="review-step__subsection">
@@ -760,14 +747,14 @@
                             <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
                                 <input type="checkbox"
                                        class="form-check-input"
-                                       checked="@IsPhiRecipientSelected(contact)"
-                                       disabled="@(IsReadOnlyReview || ConsentPacket.PhiReleaseAuthorized != true)"
+                                       checked="@(PhiReleaseAllowed && IsPhiRecipientSelected(contact))"
+                                       disabled="@(IsReadOnlyReview || !PhiReleaseAllowed)"
                                        @onchange="args => OnPhiRecipientChanged(contact.Id, args)" />
                                 <span>@contact.Name — @contact.Relationship</span>
                             </label>
                         }
                     </div>
-                    @if (!PhiRecipientsComplete && ConsentPacket.PhiReleaseAuthorized == true)
+                    @if (!PhiRecipientsComplete && PhiReleaseAllowed)
                     {
                         <p class="review-step__validation-hint" role="alert">Select at least one contact to receive protected health information.</p>
                     }
@@ -800,8 +787,8 @@
         </div>
 
         <div class="review-step__status-chip-row">
-            <StatusBadge Text="HIPAA Acknowledged" Variant="@(HipaaConsentComplete ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
-            <StatusBadge Text="Treatment Consent Accepted" Variant="@(TreatmentConsentComplete ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
+            <StatusBadge Text="@(HipaaConsentComplete ? "HIPAA Acknowledged" : "HIPAA Not Acknowledged")" Variant="@(HipaaConsentComplete ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
+            <StatusBadge Text="@(TreatmentConsentComplete ? "Treatment Consent Accepted" : "Treatment Consent Inactive")" Variant="@(TreatmentConsentComplete ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
             <StatusBadge Text="Terms Accepted" Variant="@(State.TermsOfServiceAccepted ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
             <StatusBadge Text="Answers Confirmed" Variant="@(FinalAttestationAccepted ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
         </div>
@@ -854,7 +841,7 @@
 
         <div class="review-step__modal-body">
             <p>Release authorization applies to care coordination, billing, and approved third-party requests associated with treatment.</p>
-            <p>Current status: <strong>@(PhiReleaseAllowed ? "Authorized" : "Revoked")</strong></p>
+            <p>Current status: <strong>@PhiReleaseStatusText</strong></p>
             <p>Revoking PHI release does not affect your required HIPAA acknowledgement, but it may limit information-sharing workflows until a clinician reviews the intake.</p>
         </div>
     </div>
@@ -928,6 +915,9 @@
         && !string.IsNullOrWhiteSpace(ValidationMessage)
         && ValidationMessage.StartsWith("Intake submitted successfully", StringComparison.Ordinal);
     private bool CompletionReady => IsReadOnlyReview || SubmitReady;
+    private bool HasRecordedRevocation => ConsentPacket.WrittenRevocationReceived == true || ConsentPacket.RevokedConsentKeys.Count > 0;
+    private bool MediaConsentAllowed => ConsentPacket.MediaConsentAccepted == true && !IsConsentRevoked("mediaConsentAccepted");
+    private string PhiReleaseStatusText => IsConsentRevoked("phiReleaseAuthorized") ? "Revoked" : PhiReleaseAllowed ? "Authorized" : "Not Authorized";
     private bool PhiReleaseAllowed => IntakeConsentJson.IsPhiReleaseConsentActive(ConsentPacket);
     private IReadOnlyList<AuthorizedContact> PopulatedAuthorizedContacts => ConsentPacket.AuthorizedContacts
         .Where(contact => !contact.IsEmpty)
@@ -958,10 +948,6 @@
     private bool PelvicFloorAllowed => IntakeConsentJson.IsPelvicFloorConsentActive(ConsentPacket);
     private bool BillingConsentAuthorized => IntakeConsentJson.IsCreditCardAuthorizationConsentActive(ConsentPacket);
     private bool FinalAttestationAccepted => ConsentPacket.FinalAttestationAccepted ?? State.AccuracyConfirmed;
-    private bool MarketingCommunicationsRevoked =>
-        IsConsentRevoked("communicationCallConsent")
-        || IsConsentRevoked("communicationTextConsent")
-        || IsConsentRevoked("communicationEmailConsent");
     private int? PainLevel => State.PainSeverityProvided ? State.PainSeverityScore : null;
     private int PainLevelPercent => PainLevel.HasValue ? PainLevel.Value * 10 : 0;
     private string PainDuration => GetPainDuration(State.PainDetailDrafts);
@@ -974,9 +960,6 @@
     private string LegalAgreementsInfoText => IsReadOnlyReview
         ? "This response is locked for clinician review. Agreement values are read-only."
         : "Submission locks this response for clinician review. Required agreements must stay active through final submission.";
-    private string ConsentRevocationCopy => IsReadOnlyReview
-        ? "Revocation selections are shown exactly as submitted."
-        : "You may revoke previously granted consents. Revoking required consents will prevent final submission.";
     private string CompletionStatusMessage => CompletionReady
         ? (IsReadOnlyReview ? "Submitted intake is complete and locked for review." : "All required consents complete.")
         : "Complete the required agreements before submitting this intake.";
@@ -988,10 +971,10 @@
     private string BillingTimestampText => State.IsSubmitted
         ? "Billing consent captured when the intake was submitted and locked."
         : "Billing consent timestamp will be recorded when this intake is submitted.";
-    private string BillingConsentStatusText => IsReadOnlyReview
+    private string BillingConsentStatusText => IsConsentRevoked("creditCardAuthorizationAccepted") ? "Revoked" : IsReadOnlyReview
         ? "Captured"
         : BillingConsentAuthorized ? "Authorized" : "Pending";
-    private BadgeVariant BillingConsentStatusVariant => IsReadOnlyReview || BillingConsentAuthorized
+    private BadgeVariant BillingConsentStatusVariant => IsConsentRevoked("creditCardAuthorizationAccepted") ? BadgeVariant.Secondary : IsReadOnlyReview || BillingConsentAuthorized
         ? BadgeVariant.Success
         : BadgeVariant.Warning;
     private IReadOnlyList<string> SelectedRegionLabels => GetSelectedRegionLabels(State);
@@ -1064,36 +1047,6 @@
         var accepted = ToBool(args);
         ConsentPacket.FinalAttestationAccepted = accepted;
         State.AccuracyConfirmed = accepted;
-    });
-
-    private Task OnRevokeHipaaChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
-    {
-        var revoked = ToBool(args);
-        SetConsentRevoked("hipaaAcknowledged", revoked);
-        State.RevokeHipaaPrivacyNotice = revoked;
-    });
-
-    private Task OnRevokeTreatmentChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
-    {
-        var revoked = ToBool(args);
-        SetConsentRevoked("treatmentConsentAccepted", revoked);
-        State.RevokeTreatmentConsent = revoked;
-    });
-
-    private Task OnRevokeMarketingChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
-    {
-        var revoked = ToBool(args);
-        SetConsentRevoked("communicationCallConsent", revoked);
-        SetConsentRevoked("communicationTextConsent", revoked);
-        SetConsentRevoked("communicationEmailConsent", revoked);
-        State.RevokeMarketingCommunications = revoked;
-    });
-
-    private Task OnRevokePhiChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
-    {
-        var revoked = ToBool(args);
-        SetConsentRevoked("phiReleaseAuthorized", revoked);
-        State.RevokePhiRelease = revoked;
     });
 
     private Task OnCallConsentChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
@@ -1213,20 +1166,20 @@
         return ConsentPacket.RevokedConsentKeys.Any(existing => string.Equals(existing, key, StringComparison.OrdinalIgnoreCase));
     }
 
-    private void SetConsentRevoked(string key, bool revoked)
+    private static string ConsentLabel(string key) => key.ToLowerInvariant() switch
     {
-        if (revoked)
-        {
-            if (!ConsentPacket.RevokedConsentKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
-            {
-                ConsentPacket.RevokedConsentKeys.Add(key);
-            }
-
-            return;
-        }
-
-        ConsentPacket.RevokedConsentKeys.RemoveAll(existing => string.Equals(existing, key, StringComparison.OrdinalIgnoreCase));
-    }
+        "hipaaacknowledged" => "HIPAA Privacy Notice",
+        "treatmentconsentaccepted" => "Treatment Consent",
+        "communicationcallconsent" => "Phone Calls",
+        "communicationtextconsent" => "Text/SMS",
+        "communicationemailconsent" => "Email",
+        "phireleaseauthorized" => "PHI Release",
+        "dryneedlingconsentaccepted" => "Dry Needling",
+        "pelvicfloorconsentaccepted" => "Pelvic Floor Therapy",
+        "creditcardauthorizationaccepted" => "Billing Authorization",
+        "mediaconsentaccepted" => "Media Consent",
+        _ => "Other consent"
+    };
 
     private AuthorizedContact GetAuthorizedContact(int index)
     {

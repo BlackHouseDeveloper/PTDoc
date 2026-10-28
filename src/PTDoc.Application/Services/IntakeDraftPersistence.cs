@@ -137,12 +137,12 @@ public static class IntakeDraftPersistence
             packet.CommunicationEmail = draft.EmailAddress;
         }
 
-        SetRevoked(packet, "hipaaAcknowledged", draft.RevokeHipaaPrivacyNotice);
-        SetRevoked(packet, "treatmentConsentAccepted", draft.RevokeTreatmentConsent);
-        SetRevoked(packet, "phiReleaseAuthorized", draft.RevokePhiRelease);
-        SetRevoked(packet, "communicationCallConsent", draft.RevokeMarketingCommunications);
-        SetRevoked(packet, "communicationTextConsent", draft.RevokeMarketingCommunications);
-        SetRevoked(packet, "communicationEmailConsent", draft.RevokeMarketingCommunications);
+        MergeLegacyRevocation(packet, "hipaaAcknowledged", draft.RevokeHipaaPrivacyNotice);
+        MergeLegacyRevocation(packet, "treatmentConsentAccepted", draft.RevokeTreatmentConsent);
+        MergeLegacyRevocation(packet, "phiReleaseAuthorized", draft.RevokePhiRelease);
+        MergeLegacyRevocation(packet, "communicationCallConsent", draft.RevokeMarketingCommunications);
+        MergeLegacyRevocation(packet, "communicationTextConsent", draft.RevokeMarketingCommunications);
+        MergeLegacyRevocation(packet, "communicationEmailConsent", draft.RevokeMarketingCommunications);
 
         return packet;
     }
@@ -309,7 +309,7 @@ public static class IntakeDraftPersistence
                || !draft.BillingConsentAuthorized;
     }
 
-    private static void SetRevoked(IntakeConsentPacket packet, string key, bool revoked)
+    private static void MergeLegacyRevocation(IntakeConsentPacket packet, string key, bool revoked)
     {
         if (revoked)
         {
@@ -321,6 +321,6 @@ public static class IntakeDraftPersistence
             return;
         }
 
-        packet.RevokedConsentKeys.RemoveAll(existing => string.Equals(existing, key, StringComparison.OrdinalIgnoreCase));
+        // Absent legacy inputs cannot cancel a revocation recorded in the canonical packet.
     }
 }
