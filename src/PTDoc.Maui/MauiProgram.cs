@@ -12,6 +12,7 @@ using PTDoc.Application.Outcomes;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Security;
 using PTDoc.Application.Services;
+using PTDoc.Application.Settings;
 using PTDoc.Core.Services;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.LocalData;
@@ -60,6 +61,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<IOutcomeMeasureRegistry, OutcomeMeasureRegistry>();
         builder.Services.AddSingleton<IIntakeDraftCanonicalizer, IntakeDraftCanonicalizer>();
         builder.Services.AddScoped<IAppointmentService, AppointmentApiService>();
+        builder.Services.AddScoped<ISchedulingAdministrationService>(sp =>
+            new SettingsAdministrationApiClient(sp.GetRequiredService<IHttpClientFactory>().CreateClient("ApiClient")));
         builder.Services.AddScoped<IPaymentClientService, PaymentClientApiService>();
         builder.Services.AddScoped<IIntegrationClientService, IntegrationClientApiService>();
         builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();

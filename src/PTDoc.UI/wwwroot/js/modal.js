@@ -210,33 +210,33 @@ export class ModalHelper {
     }
 
     hideBackgroundSiblings(modalId, modalElement) {
-        const overlayElement = modalElement.closest('.modal-overlay, .detail-backdrop, .notifications-modal-overlay, .appointment-detail-modal-overlay, .appointment-detail-modal__overlay, .appointment-payment-modal__overlay, .signature-consent-overlay, .intervention-dialog-backdrop') ?? modalElement;
-        const parent = overlayElement.parentElement;
-        if (!parent) return;
-
+        const overlayElement = modalElement.closest('.modal-overlay, .detail-backdrop, .notifications-modal-overlay, .appointment-detail-modal-overlay, .appointment-detail-modal__overlay, .appointment-payment-modal__overlay, .signature-consent-overlay, .intervention-dialog-backdrop, .scheduling-dialog-backdrop, .kiosk-admin__dialog-backdrop') ?? modalElement;
+        // Settings dialogs are nested in the page shell: also disable its outer navigation.
+        const hideAncestors = overlayElement.matches('.scheduling-dialog-backdrop, .kiosk-admin__dialog-backdrop');
         const hiddenSiblings = [];
-        Array.from(parent.children).forEach(child => {
-            if (child === overlayElement || child.contains(overlayElement)) {
-                return;
-            }
-
-            hiddenSiblings.push({
-                element: child,
-                ariaHidden: child.getAttribute('aria-hidden')
+        let branch = overlayElement;
+        do {
+            const parent = branch.parentElement;
+            if (!parent) break;
+            Array.from(parent.children).forEach(child => {
+                if (child === branch) return;
+                hiddenSiblings.push({
+                    element: child,
+                    ariaHidden: child.getAttribute('aria-hidden'),
+                    inert: child.inert
+                });
+                child.setAttribute('aria-hidden', 'true');
+                if ('inert' in child) child.inert = true;
             });
-            child.setAttribute('aria-hidden', 'true');
-
-            if ('inert' in child) {
-                child.inert = true;
-            }
-        });
+            branch = parent;
+        } while (hideAncestors && branch !== document.body);
 
         this.hiddenSiblingSets.set(modalId, hiddenSiblings);
     }
 
     restoreBackgroundSiblings(modalId) {
         const hiddenSiblings = this.hiddenSiblingSets.get(modalId) ?? [];
-        hiddenSiblings.forEach(({ element, ariaHidden }) => {
+        hiddenSiblings.forEach(({ element, ariaHidden, inert }) => {
             if (!element || !document.contains(element)) {
                 return;
             }
@@ -248,7 +248,7 @@ export class ModalHelper {
             }
 
             if ('inert' in element) {
-                element.inert = false;
+                element.inert = inert;
             }
         });
 

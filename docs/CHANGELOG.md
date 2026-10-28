@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 154 kiosk recovery and remaining review findings
+
+- Keep successful kiosk enrollment credentials usable in memory when browser storage fails, show a persistent storage warning, and retry persistence without consuming another enrollment code. Handle blocked storage reads without terminating the page; added fresh/replacement enrollment, check-in, and retry regressions.
+- Disable kiosk administration mutations until stations load successfully, expose Reload Stations, and retain refresh-failure feedback after successful writes. Added initial-load and post-create refresh recovery coverage for the previously missed review finding.
+- Add roving tab focus and Arrow/Home/End navigation to Documentation & Compliance using the existing Settings keyboard helper. Added component navigation/lifecycle coverage and an isolated browser check that preserves native Tab behavior. Corrected the cleanup regression to dispose components through the bUnit renderer so it exercises the component's asynchronous disposal lifecycle.
+- Return the recovery-code error form when a successful API response contains missing, null, or empty recovery codes, with integration coverage for each response shape.
+
+### Fixed - PR 154 follow-up review
+
+- Keep remote Roles/Security and Auto Check-In mutations disabled after either required initial load fails, and provide an explicit reload action. Added failure/retry regressions that verify saves use the loaded policy and permission versions.
+- Register the shared scheduling catalog client in MAUI using its authenticated `ApiClient`, preserving appointment-page dependency resolution and bearer authentication. Added catalog coverage through the MAUI authentication handler.
+- Preserve kiosk credentials while requesting replacement enrollment; only replace them after the API validates an administrator-issued, one-time enrollment code. Invalid codes and Cancel leave the existing station usable, with focused regression coverage.
+- Show unavailable appointment types explicitly when editing and require a replacement before submitting. Added regressions for populated catalogs and legacy fallback choices, including successful replacement payloads.
+
+### Fixed
+
+#### Authentication routing test hang
+
+- **`PTDoc.Tests.csproj` / `QuickAdminSettingsTests`** — Updated bUnit from 1.26.64 to 1.40.0 and use its built-in .NET 8 query-parameter registration in the authentication routing theory. Affects: component-test infrastructure and the existing five redirect cases. Reason: the older navigation manager and renderer form a circular dependency when the query provider is registered, preventing the test run from completing.
+
+- **`NoteWorkspacePageTests`** — Updated all seven affected workspace test fixtures to supply section, note type, appointment, service date, and evaluation-fallback inputs through navigation URLs, retaining their existing assertions. Affects: workspace routing, carry-forward, save concurrency, and cancellation regressions. Reason: the upgraded bUnit requires query-bound parameters to use the actual query-string provider instead of direct component parameters.
+
+### Changed - agent guidance captures focused Settings and auth checks
+
+- **`AGENTS.md`** — Added the existing isolated Settings modal browser and authentication-request JavaScript regression commands, including their host/fixture requirements and the auth tests' inclusion in the harness test glob.
+
+### Fixed - PR 154 complete review follow-up
+
+- Apply the test formatter's required multiline layout to recovery-code integration fixtures after local verification.
+- Correct the review regression fixtures to supply Admin authentication and query-string binding, and dispatch the timeout field's actual input event; also assert that authentication redirects preserve the return destination.
+- **Settings security and permissions** — Preserve the loaded MFA enforcement mode, effective date, and authorization rollout across unrelated saves and Cancel; retain rollout when resetting visible defaults. Render all contract permission levels, including persisted Full values, with keyboard navigation. Added policy-preservation and permission-level regressions.
+- **Scheduling and appointment compatibility** — Preserve clinician scope, weekdays, and effective dates when editing blocks; reconcile committed preferences independently when clinic hours fail to save; disable placeholder catalog mutations and provide reload. Normalize legacy appointment type aliases after exact custom-name matching, and use the SchedulingAccess catalog endpoint for active visit types. Added block, partial-save, retry, alias, and client-route regressions.
+- **Authentication and kiosk recovery** — Replace the query-selected authentication forms and unmapped JSON requests with a compatibility route to the existing server-controlled challenge flow. Add an authenticated, antiforgery-protected Web recovery-code form using the authenticated API client, safe return URLs, encoded output, and non-cacheable responses. Handle fetch transport failures and provide explicit kiosk re-enrollment without clearing credentials on ordinary appointment errors. Added Web authorization/CSRF/error-path, routing, kiosk, and JavaScript regressions. The reviewed CodeQL form-rendering branch is removed without suppressing the scanner or weakening server authentication.
+- **Settings routing, eligible selections, and modal access** — Apply direct administration routes after role resolution, remove hidden ineligible Auto Check-In selections from editable drafts, and connect scheduling and kiosk dialogs to the existing modal helper with Escape, focus containment/restoration, and background isolation. Added deferred-authorization, selection, modal-lifecycle, and isolated browser focus regressions.
+
+### Fixed - PR 154 CI contract alignment
+
+- **`RolesPermissionsSettings.razor`** — Send the loaded versions for every supported, unlocked target permission when cloning roles, matching the server's optimistic-concurrency contract. Ignore clone attempts while busy or before the target role has loaded. Added component regressions for exact target versions, locked/unsupported exclusions, conflict preservation, and updated versions after success. Reason: the missing request argument blocked all build-dependent CI workflows.
+- **`SettingsAdministrationApiClient.cs`** — Match the nullable kiosk enrollment and check-in parameters declared by `IKioskCheckInService`, removing three compiler warnings without changing server validation.
+
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 
 - Selected external MFA enforcement from the server-authenticated Entra identity type instead of an issuer-supplied PTDoc marker. Entra normalization replaces duplicate/conflicting application-owned authentication, provider, and subject claims; focused tests cover JWT/OIDC identities, missing/conflicting markers, and repeated transformations.
@@ -96,6 +136,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added - Settings services and API layer
 
+- **Connected Settings and authentication UI review slice** — Wired the verified Roles, Security, Scheduling, Documentation, Auto Check-In, and Kiosk surfaces to the administration contracts, added appointment visit-type catalog consumption, and completed Web PIN/MFA step-up interactions with loading, validation, conflict, retry, and read-only states. Reason: presentation behavior and visual assets remain independently reviewable from persistence and server enforcement in the stacked delivery sequence.
+- Rebased the connected Settings UI onto the merged services layer, retaining its stricter PIN validation, clinic-specific reset policy, and hardened Web authentication step flow instead of restoring the earlier inline handlers.
 - **Settings services and API review slice** — Connected the persisted Settings aggregates to clinic-scoped administration services, dynamic authorization, PIN/TOTP step-up authentication, appointment availability, reminders, Auto Check-In, kiosk workflows, API endpoints, and focused server-side regression coverage. Reason: security-sensitive workflow logic is isolated from the generated persistence artifacts so it can be reviewed as a dedicated stacked change.
 
 ### Fixed - Settings services and API review follow-up

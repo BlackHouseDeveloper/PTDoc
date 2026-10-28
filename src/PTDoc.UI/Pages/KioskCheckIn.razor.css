@@ -1,0 +1,8 @@
+.kiosk-check-in { display: grid; gap: var(--spacing-6); width: min(calc(100% - (2 * var(--spacing-4))), 34rem); margin: var(--spacing-10) auto; padding: var(--spacing-6); color: var(--foreground); }
+.kiosk-check-in header { text-align: center; }
+.kiosk-check-in form { display: grid; gap: var(--spacing-4); padding: var(--spacing-6); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); box-shadow: var(--shadow-lg); }
+.kiosk-check-in label { display: grid; gap: var(--spacing-2); font-weight: var(--font-weight-semibold); }
+.kiosk-check-in input { min-height: var(--touch-target-mobile); font-size: var(--text-lg); text-align: center; letter-spacing: .08em; }
+.kiosk-check-in button { min-height: var(--touch-target-mobile); color: var(--primary-foreground); background: var(--primary); }
+.kiosk-check-in__status { padding: var(--spacing-4); border-radius: var(--radius-md); color: var(--settings-summary-foreground); background: var(--settings-summary-bg); }
+.kiosk-check-in__status.is-error { color: var(--destructive); background: color-mix(in srgb, var(--destructive) 8%, var(--card)); }
