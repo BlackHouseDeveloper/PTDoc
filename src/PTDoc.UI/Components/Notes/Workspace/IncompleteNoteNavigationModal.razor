@@ -49,11 +49,17 @@
 }
 
 @code {
-    private const string ModalId = "incomplete-note-navigation-modal";
+    private readonly string ModalId = $"incomplete-note-navigation-modal-{Guid.NewGuid():N}";
     private DotNetObjectReference<IncompleteNoteNavigationModal>? _dotNetReference;
     private IJSObjectReference? _modalModule;
     private ElementReference _cancelButton;
     private bool _registered;
+    private bool _registering;
+    private bool _disposed;
+    private bool _closing;
+    private bool _wasOpen;
+    private int _generation;
+    private bool CanRegister => IsOpen && CompletionState.FirstMissingItem is not null && !_closing && !_disposed;
 
     [Parameter] public bool IsOpen { get; set; }
     [Parameter, EditorRequired] public NoteCompletionState CompletionState { get; set; } = NoteCompletionState.Complete([]);
@@ -62,29 +68,59 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!IsOpen || _registered)
+        if (!CanRegister || _registered || _registering)
         {
             return;
         }
 
+        var generation = _generation;
+        _registering = true;
         try
         {
             _modalModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/modal.js");
+            if (!CanRegister || generation != _generation)
+            {
+                return;
+            }
+
             _dotNetReference ??= DotNetObjectReference.Create(this);
-            await _modalModule.InvokeVoidAsync("registerEscapeHandler", ModalId, _dotNetReference);
-            await Task.Delay(75);
-            await _cancelButton.FocusAsync();
+            // Track ownership before yielding: close/dispose can run while interop is pending.
             _registered = true;
+            await _modalModule.InvokeVoidAsync("registerEscapeHandler", ModalId, _dotNetReference);
+            if (!CanRegister || generation != _generation)
+            {
+                await UnregisterAsync();
+                return;
+            }
+
+            await _cancelButton.FocusAsync();
         }
         catch (Exception)
         {
+            await UnregisterAsync();
             // JS interop is unavailable in prerendering and some component tests. The modal remains usable.
+        }
+        finally
+        {
+            _registering = false;
+            if (CanRegister && generation != _generation)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!IsOpen && _registered)
+        var open = IsOpen && CompletionState.FirstMissingItem is not null;
+        if (open != _wasOpen)
+        {
+            _generation++;
+            _closing = false;
+            _wasOpen = open;
+        }
+
+        if (!open)
         {
             await UnregisterAsync();
         }
@@ -93,9 +129,17 @@
     [JSInvokable]
     public async Task CloseFromJs() => await CancelAsync();
 
-    private async Task ContinueAsync() => await OnContinue.InvokeAsync();
+    private Task ContinueAsync() => CloseAsync(OnContinue);
 
-    private async Task CancelAsync() => await OnCancel.InvokeAsync();
+    private Task CancelAsync() => CloseAsync(OnCancel);
+
+    private async Task CloseAsync(EventCallback callback)
+    {
+        _closing = true;
+        _generation++;
+        await UnregisterAsync();
+        await callback.InvokeAsync();
+    }
 
     private async Task UnregisterAsync()
     {
@@ -104,6 +148,7 @@
             return;
         }
 
+        _registered = false;
         try
         {
             if (_modalModule is not null)
@@ -115,12 +160,12 @@
         {
             // Best-effort cleanup only.
         }
-
-        _registered = false;
     }
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
+        _generation++;
         await UnregisterAsync();
 
         try

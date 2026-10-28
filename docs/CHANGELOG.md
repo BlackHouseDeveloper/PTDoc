@@ -54,6 +54,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - Client review Plan 04
 
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
+### Fixed - Plan 02 incomplete-note keyboard cleanup
+
+- Track modal handler ownership before asynchronous registration, remove the delayed focus race, and invalidate stale work on close/dispose. Synthetic Evaluation/Daily failure-matrix verification now covers retained edits, retry, discard, and no abandoned autosave.
+
+### Changed - Client review Plan 02
+
+- Added explicit Stay, Retry save and leave, and Leave without saving recovery after a failed note save. Explicit discard cancels/drains pending autosaves and prevents a disposal retry. Added navigation and autosave regressions; full browser fault-injection acceptance remains open.
 
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 
