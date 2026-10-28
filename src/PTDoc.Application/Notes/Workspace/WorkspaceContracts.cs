@@ -438,6 +438,7 @@ public sealed class WorkspaceGoalEntryV2
 
 public sealed class WorkspacePlanV2
 {
+    public Dictionary<string, PTDoc.Application.AI.NoteNarrativeProvenance> AcceptedNarrativeProvenance { get; set; } = new();
     public List<int> TreatmentFrequencyDaysPerWeek { get; set; } = new();
     public List<int> TreatmentDurationWeeks { get; set; } = new();
     public HashSet<string> TreatmentFocuses { get; set; } = new(StringComparer.OrdinalIgnoreCase);

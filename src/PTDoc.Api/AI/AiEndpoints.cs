@@ -30,6 +30,11 @@ public static class AiEndpoints
             .RequireRateLimiting("AiGeneration")
             .WithTags("AI Generation");
 
+        group.MapPost("/narrative", NoteNarrativeEndpoint.Generate)
+            .RequireAuthorization(AuthorizationPolicies.NoteWrite)
+            .WithName("GenerateNoteNarrative")
+            .WithSummary("Generate purpose-specific paragraphs from an authorized saved draft");
+
         group.MapPost("/assessment", GenerateAssessment)
             .WithName("GenerateAssessment")
             .WithSummary("Generate AI assessment text")

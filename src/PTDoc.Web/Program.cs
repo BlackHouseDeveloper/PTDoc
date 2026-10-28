@@ -82,6 +82,7 @@ builder.Services.AddTransient<IClaimsTransformation, EntraExternalIdClaimsTransf
 
 // Register HTTP-backed AI generation for the shared UI workspace.
 builder.Services.AddScoped<PTDoc.Application.AI.IAiClinicalGenerationService, HttpAiClinicalGenerationService>();
+builder.Services.AddScoped<PTDoc.Application.AI.INoteNarrativeClient, HttpNoteNarrativeClient>();
 
 // Register Sprint M: Outcome Measure services
 builder.Services.AddSingleton<PTDoc.Application.Outcomes.IOutcomeMeasureRegistry, PTDoc.Infrastructure.Outcomes.OutcomeMeasureRegistry>();

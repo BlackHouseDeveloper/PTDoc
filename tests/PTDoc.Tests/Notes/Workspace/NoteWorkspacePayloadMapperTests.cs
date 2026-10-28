@@ -16,6 +16,26 @@ public sealed class NoteWorkspacePayloadMapperTests
         new(new IntakeReferenceDataCatalogService(), new OutcomeMeasureRegistry());
 
     [Fact]
+    public void AcceptedNarrativeProvenance_SurvivesPayloadJsonAndUiRoundTrip()
+    {
+        var original = new PTDoc.Application.AI.NoteNarrativeProvenance(
+            PTDoc.Application.AI.NoteNarrativePurpose.SoapSummary, DateTime.UtcNow,
+            "source-sha256", ["section-narrative-v1"], ["mock-provider"]);
+        var payload = new NoteWorkspaceV2Payload();
+        payload.Plan.ClinicalSummary = "Clinician-accepted draft";
+        payload.Plan.AcceptedNarrativeProvenance[nameof(PlanVm.ClinicalSummary)] = original;
+        var ui = _mapper.MapToUiPayload(payload);
+        var mapped = _mapper.MapToV2Payload(ui, NoteType.Evaluation);
+        var restored = System.Text.Json.JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(System.Text.Json.JsonSerializer.Serialize(mapped))!;
+        var provenance = restored.Plan.AcceptedNarrativeProvenance[nameof(PlanVm.ClinicalSummary)];
+        Assert.Equal(original.SourceSha256, provenance.SourceSha256);
+        Assert.Equal(original.SourceLastModifiedUtc, provenance.SourceLastModifiedUtc);
+        Assert.Equal(original.TemplateVersions, provenance.TemplateVersions);
+        Assert.Equal(original.Models, provenance.Models);
+        Assert.Equal("Clinician-accepted draft", restored.Plan.ClinicalSummary);
+    }
+
+    [Fact]
     public void MapToUiPayload_SplitsCatalogSelectionsFromLegacySubjectiveValues()
     {
         var payload = new NoteWorkspaceV2Payload

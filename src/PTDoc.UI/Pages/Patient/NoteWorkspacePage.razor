@@ -38,6 +38,7 @@
 @inject IPatientService PatientService
 @inject IIntegrationClientService Integrations
 @inject IAiClinicalGenerationService AiService
+@inject INoteNarrativeClient NarrativeClient
 @inject DraftAutosaveService DraftAutosaveService
 @inject IToastService ToastService
 @inject IJSRuntime JS
@@ -486,6 +487,8 @@ else
                         else
                         {
                             <PlanTab NoteId="@(_note.NoteId ?? Guid.Empty)"
+                                     SourceLastModifiedUtc="@_lastModifiedUtc"
+                                     HasUnsavedChanges="@(_note.IsDirty || DraftAutosaveService.IsDirty)"
                                      Vm="@_note.Plan"
                                      VmChanged="HandlePlanChanged"
                                      IsReadOnly="@IsWorkspaceReadOnly"
@@ -654,6 +657,7 @@ else
     private bool _isRegeneratingSummary;
     private bool _isRegeneratingGoals;
     private string? _pendingClinicalSummary;
+    private NoteNarrativeResult? _pendingSummaryResult;
     private string? _pendingNavigationTarget;
     private string? _pendingNoteTypeChange;
     private SoapSection? _pendingSectionChange;
@@ -1001,6 +1005,7 @@ else
         _isDarkMode = false;
         _lastEditableSection = SoapSection.Plan;
         _pendingClinicalSummary = null;
+        _pendingSummaryResult = null;
         _lastModifiedUtc = null;
         _editGeneration = 0;
         _hasSaveConflict = false;
@@ -1117,6 +1122,7 @@ else
         _note.IsDirty = false;
         _note.MarkSaved();
         _pendingClinicalSummary = null;
+        _pendingSummaryResult = null;
         _dateOfService = dateOfService == default ? DateTime.UtcNow : dateOfService;
         if (resetAutosave)
         {
@@ -1561,94 +1567,59 @@ else
 
     private async Task HandleRegenerateSummaryAsync()
     {
-        if (IsWorkspaceReadOnly)
+        if (IsWorkspaceReadOnly) return;
+        if (!_note.NoteId.HasValue || !_lastModifiedUtc.HasValue || _note.IsDirty || DraftAutosaveService.IsDirty)
         {
-            return;
+            SetStatusMessage("Save your latest changes before generating a summary.", "error"); return;
         }
-
-        if (!_note.NoteId.HasValue)
-        {
-            SetStatusMessage("Save the note before generating an AI plan summary.", "error", showToast: true, toastTitle: "AI generation unavailable");
-            return;
-        }
-
-        if (!HasConcreteBodyPart(GetSelectedBodyPart()))
-        {
-            SetStatusMessage("Select a body part before generating an AI plan summary.", "error", showToast: true, toastTitle: "AI generation unavailable");
-            return;
-        }
-
+        var source = new NoteNarrativeRequest(_note.NoteId.Value, _lastModifiedUtc.Value, NoteNarrativePurpose.SoapSummary);
+        var editGeneration = _editGeneration;
         _isRegeneratingSummary = true;
         ClearStatusMessage();
-        StateHasChanged();
-
         try
         {
-            var result = await AiService.GeneratePlanOfCareAsync(new PlanOfCareGenerationRequest
-            {
-                NoteId = _note.NoteId ?? Guid.Empty,
-                Diagnosis = GetDiagnosisSummary(),
-                SelectedBodyPart = GetSelectedBodyPart(),
-                AssessmentSummary = GetAssessmentSummary(),
-                Goals = GetGoalsSummary(),
-                Precautions = GetPrecautionsSummary(),
-                StructuredInputs = GetPlanAiInputs(),
-                IsNoteSigned = _note.Status != NoteStatus.Draft
-            });
-
+            var result = await NarrativeClient.GenerateAsync(source);
+            if (_disposed || _note.NoteId != source.NoteId || _lastModifiedUtc != source.ExpectedLastModifiedUtc || _editGeneration != editGeneration
+                || IsWorkspaceReadOnly || _note.IsDirty) return;
             if (!result.Success)
-            {
-                SetStatusMessage(result.ErrorMessage ?? "Unable to generate a clinical summary.", "error", showToast: true, toastTitle: "AI generation failed");
-                return;
-            }
-
+            { SetStatusMessage(result.ErrorMessage ?? "Unable to generate a summary. You can edit manually.", "error"); return; }
+            if (result.NoteId != source.NoteId || result.SourceLastModifiedUtc != source.ExpectedLastModifiedUtc || result.Purpose != source.Purpose)
+            { SetStatusMessage("The note changed. Save and generate again.", "error"); return; }
+            _pendingSummaryResult = result;
             _pendingClinicalSummary = result.GeneratedText;
-            SetStatusMessage("Clinical summary regenerated. Review and accept it before applying it to the note.", "success", showToast: true, toastTitle: "AI generation complete");
+            SetStatusMessage("SOAP paragraphs generated. Review and accept them before applying.", "success");
         }
-        catch (Exception ex)
-        {
-            Logger.LogError(
-                ex,
-                "Clinical summary regeneration failed (noteType={NoteType}, noteIdPresent={HasNoteId})",
-                _note.NoteType,
-                _note.NoteId.HasValue);
-            SetStatusMessage("Unable to generate a clinical summary.", "error", showToast: true, toastTitle: "AI generation failed");
-        }
-        finally
-        {
-            _isRegeneratingSummary = false;
-        }
+        catch
+        { if (_note.NoteId == source.NoteId) SetStatusMessage("Unable to generate a summary. You can continue editing manually.", "error"); }
+        finally { _isRegeneratingSummary = false; }
     }
 
-    private async Task HandleAcceptPendingSummaryAsync()
+    private bool CanAcceptPendingSummary => !_disposed && _pendingSummaryResult is not null && !IsWorkspaceReadOnly
+        && !_note.IsDirty && !DraftAutosaveService.IsDirty && _pendingSummaryResult.NoteId == _note.NoteId
+        && _pendingSummaryResult.SourceLastModifiedUtc == _lastModifiedUtc;
+
+    private Task HandleAcceptPendingSummaryAsync()
     {
         if (string.IsNullOrWhiteSpace(_pendingClinicalSummary))
         {
-            return;
+            return Task.CompletedTask;
         }
 
         if (!_note.NoteId.HasValue)
         {
             SetStatusMessage("Save the note before accepting AI-generated summary content.", "error", showToast: true, toastTitle: "AI acceptance unavailable");
-            return;
+            return Task.CompletedTask;
         }
 
+        if (!CanAcceptPendingSummary)
+        { SetStatusMessage("The note changed. Generate a new summary before accepting.", "error"); return Task.CompletedTask; }
+        var accepting = _pendingSummaryResult;
         try
         {
-            var acceptance = await NoteWorkspaceService.AcceptAiSuggestionAsync(
-                _note.NoteId.Value,
-                section: "plan",
-                generatedText: _pendingClinicalSummary,
-                generationType: "ClinicalSummary");
-
-            if (!acceptance.Success)
-            {
-                SetStatusMessage(acceptance.ErrorMessage ?? "Unable to accept AI-generated summary content.", "error", showToast: true, toastTitle: "AI acceptance failed");
-                return;
-            }
-
+            _note.Plan.AcceptedNarrativeProvenance[nameof(PlanVm.ClinicalSummary)] = accepting!.ToProvenance();
             _note.Plan.ClinicalSummary = _pendingClinicalSummary;
             _pendingClinicalSummary = null;
+            _pendingSummaryResult = null;
             MarkUnsaved();
             SetStatusMessage("Clinical summary accepted. Save the note to keep the updated summary.", "success", showToast: true, toastTitle: "AI content accepted");
         }
@@ -1661,6 +1632,7 @@ else
                 _note.NoteId.HasValue);
             SetStatusMessage("Unable to accept AI-generated summary content.", "error", showToast: true, toastTitle: "AI acceptance failed");
         }
+        return Task.CompletedTask;
     }
 
     private Task HandleDiscardPendingSummaryAsync()
@@ -1671,6 +1643,7 @@ else
         }
 
         _pendingClinicalSummary = null;
+        _pendingSummaryResult = null;
         SetStatusMessage("Regenerated clinical summary discarded.", "info");
         return Task.CompletedTask;
     }

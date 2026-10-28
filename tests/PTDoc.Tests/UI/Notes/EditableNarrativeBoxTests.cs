@@ -9,6 +9,23 @@ namespace PTDoc.Tests.UI.Notes;
 public sealed class EditableNarrativeBoxTests : TestContext
 {
     [Fact]
+    public async Task SourceChange_DropsPendingSuggestionWithoutReplacingEditorOrSavingIt()
+    {
+        var changes = new List<string>();
+        var cut = RenderComponent<EditableNarrativeBox>(p => p
+            .Add(c => c.Value, "Accepted original")
+            .Add(c => c.ReviewContextKey, "saved-version-1")
+            .Add(c => c.ValueChanged, EventCallback.Factory.Create<string>(this, v => changes.Add(v))));
+        var editor = cut.Find("textarea");
+        await cut.InvokeAsync(() => cut.Instance.LoadAiSuggestionAsync("Pending suggestion"));
+        cut.SetParametersAndRender(p => p.Add(c => c.ReviewContextKey, "saved-version-2"));
+        Assert.Equal(editor.Id, cut.Find("textarea").Id);
+        Assert.Equal("Accepted original", cut.Find("textarea").GetAttribute("value"));
+        Assert.Empty(cut.FindAll("[data-testid='editable-narrative-box-review-banner']"));
+        Assert.Empty(changes);
+    }
+
+    [Fact]
     public async Task EditableNarrativeBox_PendingSuggestionStaysLocalUntilAccepted()
     {
         var valueChanges = new List<string>();
