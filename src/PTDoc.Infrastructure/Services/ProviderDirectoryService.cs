@@ -97,12 +97,19 @@ public sealed class ProviderDirectoryService(
         return await MapWithDuplicatesAsync(entity, cancellationToken);
     }
 
-    public async Task<ProviderDirectoryEntryDto> UpdateAsync(Guid providerId, UpdateProviderCandidateRequest request, CancellationToken cancellationToken)
+    public Task<ProviderDirectoryEntryDto> UpdateAsync(Guid providerId, UpdateProviderCandidateRequest request, CancellationToken cancellationToken)
+        => UpdateCoreAsync(providerId, request, allowActive: false, cancellationToken);
+
+    public Task<ProviderDirectoryEntryDto> UpdateForAdministrationAsync(Guid providerId, UpdateProviderCandidateRequest request, CancellationToken cancellationToken)
+        => UpdateCoreAsync(providerId, request, allowActive: true, cancellationToken);
+
+    private async Task<ProviderDirectoryEntryDto> UpdateCoreAsync(Guid providerId, UpdateProviderCandidateRequest request, bool allowActive, CancellationToken cancellationToken)
     {
         Validate(request);
         var entity = await db.ProviderDirectoryEntries.FirstOrDefaultAsync(e => e.Id == providerId, cancellationToken)
             ?? throw new KeyNotFoundException("Provider candidate not found.");
-        if (entity.Status != ProviderDirectoryStatus.Pending) throw new InvalidOperationException("Only pending provider candidates can be edited.");
+        if (entity.IsArchived || (entity.Status != ProviderDirectoryStatus.Pending && (!allowActive || entity.Status != ProviderDirectoryStatus.Active)))
+            throw new InvalidOperationException(allowActive ? "Only pending or active providers can be edited." : "Only pending provider candidates can be edited.");
         if (entity.LastModifiedUtc != request.ExpectedLastModifiedUtc) throw new DbUpdateConcurrencyException("The provider candidate changed in another session.");
         var npi = NormalizeNpi(request.Npi);
         if (npi is not null && await db.ProviderDirectoryEntries.AnyAsync(e => e.Id != providerId && e.Npi == npi && !e.IsArchived && e.Status == ProviderDirectoryStatus.Active, cancellationToken))
@@ -110,6 +117,7 @@ public sealed class ProviderDirectoryService(
         Apply(entity, request);
         Touch(entity);
         await db.SaveChangesAsync(cancellationToken);
+        await AuditAsync("ProviderUpdated", entity.Id, identityContext.GetCurrentUserId(), true, cancellationToken);
         return await MapWithDuplicatesAsync(entity, cancellationToken);
     }
 
@@ -117,6 +125,8 @@ public sealed class ProviderDirectoryService(
     {
         var entity = await db.ProviderDirectoryEntries.FirstOrDefaultAsync(e => e.Id == providerId, cancellationToken)
             ?? throw new KeyNotFoundException("Provider candidate not found.");
+        if (request.ExpectedLastModifiedUtc.HasValue && entity.LastModifiedUtc != request.ExpectedLastModifiedUtc.Value)
+            throw new DbUpdateConcurrencyException("The provider changed in another session. Refresh before trying again.");
         if (entity.Status != ProviderDirectoryStatus.Pending) throw new InvalidOperationException("Only pending provider candidates can be approved.");
 
         var possibleDuplicates = await FindPossibleDuplicatesAsync(entity, cancellationToken);
@@ -178,6 +188,8 @@ public sealed class ProviderDirectoryService(
     {
         var entity = await db.ProviderDirectoryEntries.FirstOrDefaultAsync(e => e.Id == providerId, cancellationToken)
             ?? throw new KeyNotFoundException("Provider not found.");
+        if (request.ExpectedLastModifiedUtc.HasValue && entity.LastModifiedUtc != request.ExpectedLastModifiedUtc.Value)
+            throw new DbUpdateConcurrencyException("The provider changed in another session. Refresh before trying again.");
         var userId = identityContext.GetCurrentUserId();
         entity.Status = ProviderDirectoryStatus.Archived;
         entity.IsArchived = true;
@@ -256,6 +268,13 @@ public sealed class ProviderDirectoryService(
         var npi = NormalizeNpi(request.Npi);
         if (npi is not null && (npi.Length != 10 || npi.Any(c => !char.IsDigit(c))))
             throw new ArgumentException("NPI must contain exactly 10 digits.");
+        if (!string.IsNullOrWhiteSpace(request.Fax))
+        {
+            var fax = request.Fax.Trim();
+            var digits = fax.Count(c => c is >= '0' and <= '9');
+            if (fax.Length > 30 || digits is < 7 or > 15 || fax.Any(c => !(c is >= '0' and <= '9' or '+' or '-' or '(' or ')' or '.' or ' ')))
+                throw new ArgumentException("Fax must contain 7 to 15 digits with optional phone-number punctuation.");
+        }
         if (request.PatientRole.HasValue && !request.PatientId.HasValue)
             throw new ArgumentException("A patient role requires a patient identifier.");
         if (!Enum.IsDefined(request.SubmissionSource)

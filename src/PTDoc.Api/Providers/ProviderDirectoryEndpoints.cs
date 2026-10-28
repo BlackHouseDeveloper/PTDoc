@@ -27,6 +27,7 @@ public static class ProviderDirectoryEndpoints
 
         var admin = app.MapGroup("/api/v1/admin/providers").WithTags("Provider Directory Administration").RequireAuthorization(AuthorizationPolicies.ProviderDirectoryAdmin);
         admin.MapGet("/", async ([FromQuery] string? q, [FromQuery] ProviderDirectoryStatus? status, [FromQuery] int? take, IProviderDirectoryService service, CancellationToken ct) => Results.Ok(await service.SearchForAdministrationAsync(q, status, take ?? 25, ct)));
+        admin.MapPut("/{providerId:guid}", async (Guid providerId, UpdateProviderCandidateRequest request, IProviderDirectoryService service, CancellationToken ct) => await Execute(() => service.UpdateForAdministrationAsync(providerId, request, ct)));
         admin.MapPost("/{providerId:guid}/approve", async (Guid providerId, ProviderDecisionRequest request, IProviderDirectoryService service, CancellationToken ct) => await Execute(() => service.ApproveAsync(providerId, request, ct)));
         admin.MapPost("/{providerId:guid}/reject", async (Guid providerId, ProviderDecisionRequest request, IProviderDirectoryService service, CancellationToken ct) => await Execute(() => service.RejectAsync(providerId, request, ct)));
         admin.MapPost("/{providerId:guid}/archive", async (Guid providerId, ProviderDecisionRequest request, IProviderDirectoryService service, CancellationToken ct) => await Execute(async () => { await service.ArchiveAsync(providerId, request, ct); return true; }));

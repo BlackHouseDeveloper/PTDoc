@@ -460,9 +460,11 @@ public sealed class IntakeService : IIntakeService
         target.EmergencyContactPhone = source.EmergencyContactPhone;
         target.PrimaryDoctorName = source.PrimaryDoctorName;
         target.PrimaryDoctorPhone = source.PrimaryDoctorPhone;
+        target.PrimaryDoctorFax = source.PrimaryDoctorFax;
         target.ReferringDoctorName = source.ReferringDoctorName;
         target.ReferringDoctorNpi = source.ReferringDoctorNpi;
         target.ReferringDoctorPhone = source.ReferringDoctorPhone;
+        target.ReferringDoctorFax = source.ReferringDoctorFax;
         target.InsuranceCompanyName = source.InsuranceCompanyName;
         target.MemberOrPolicyNumber = source.MemberOrPolicyNumber;
         target.GroupNumber = source.GroupNumber;

@@ -46,6 +46,29 @@ public sealed class IntakeServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CareTeamFax_RoundTripsDraftSaveAndReload()
+    {
+        var patient = CreatePatient("Synthetic", "Fax");
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var created = await _service.EnsureDraftAsync(patient.Id, new IntakeResponseDraft
+        {
+            PatientId = patient.Id,
+            PrimaryDoctorName = "Primary Provider",
+            PrimaryDoctorFax = "2025550101",
+            ReferringDoctorName = "Referring Provider",
+            ReferringDoctorFax = "2025550102"
+        });
+        var draft = created.Draft!;
+        draft.PrimaryDoctorFax = "2025550199";
+        await _service.SaveDraftAsync(draft);
+        _context.ChangeTracker.Clear();
+        var reloaded = await _service.EnsureDraftAsync(patient.Id);
+        Assert.Equal("2025550199", reloaded.Draft!.PrimaryDoctorFax);
+        Assert.Equal("2025550102", reloaded.Draft.ReferringDoctorFax);
+    }
+
+    [Fact]
     public async Task EnsureDraftAsync_ReturnsExistingUnlockedDraft_WhenPresent()
     {
         var patient = CreatePatient("Avery", "Existing");

@@ -38,6 +38,9 @@ public sealed class ProviderDirectoryApiService(HttpClient httpClient) : IProvid
     public Task<ProviderDirectoryEntryDto> UpdateAsync(Guid id, UpdateProviderCandidateRequest request, CancellationToken ct) =>
         Send<ProviderDirectoryEntryDto>(HttpMethod.Put, $"/api/v1/providers/candidates/{id}", request, ct);
 
+    public Task<ProviderDirectoryEntryDto> UpdateForAdministrationAsync(Guid id, UpdateProviderCandidateRequest request, CancellationToken ct) =>
+        Send<ProviderDirectoryEntryDto>(HttpMethod.Put, $"/api/v1/admin/providers/{id}", request, ct);
+
     public Task<ProviderDirectoryEntryDto> ApproveAsync(Guid id, ProviderDecisionRequest request, CancellationToken ct) =>
         Send<ProviderDirectoryEntryDto>(HttpMethod.Post, $"/api/v1/admin/providers/{id}/approve", request, ct);
 

@@ -128,9 +128,12 @@ public sealed class StructuredIntakeComponentsTests : TestContext
     {
         string? referringName = null;
         string? referringPhone = null;
+        string? referringFax = null;
         var cut = RenderComponent<CareTeamCard>(parameters => parameters
             .Add(component => component.PrimaryDoctorName, "Dr. Taylor Reed")
             .Add(component => component.PrimaryDoctorPhone, "555-0142")
+            .Add(component => component.PrimaryDoctorFax, "2025550101")
+            .Add(component => component.ReferringDoctorFaxChanged, EventCallback.Factory.Create<string?>(this, value => referringFax = value))
             .Add(component => component.ReferringDoctorNameChanged, EventCallback.Factory.Create<string?>(this, value => referringName = value))
             .Add(component => component.ReferringDoctorPhoneChanged, EventCallback.Factory.Create<string?>(this, value => referringPhone = value)));
 
@@ -138,6 +141,7 @@ public sealed class StructuredIntakeComponentsTests : TestContext
 
         Assert.Equal("Dr. Taylor Reed", referringName);
         Assert.Equal("555-0142", referringPhone);
+        Assert.Equal("2025550101", referringFax);
     }
 
     [Fact]
@@ -1017,4 +1021,36 @@ public sealed class StructuredIntakeComponentsTests : TestContext
 
         Assert.True(markedReviewed);
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CareTeamDirectorySelection_CopiesFaxIntoCorrectRole(bool referring)
+    {
+        var provider = new ProviderDirectoryEntryDto { FirstName = "Synthetic", LastName = "Provider", DisplayName = "Synthetic Provider", Fax = "2025550198" };
+        var service = new Mock<IProviderDirectoryService>();
+        service.Setup(x => x.SearchAsync("Synthetic", ProviderDirectoryStatus.Active, 10, default)).ReturnsAsync([provider]);
+        Services.AddSingleton(service.Object);
+        string? primaryFax = null;
+        string? referringFax = null;
+        var cut = RenderComponent<CareTeamCard>(parameters => parameters
+            .Add(c => c.PrimaryDoctorFaxChanged, EventCallback.Factory.Create<string?>(this, value => primaryFax = value))
+            .Add(c => c.ReferringDoctorFaxChanged, EventCallback.Factory.Create<string?>(this, value => referringFax = value)));
+        cut.Find("#intake-provider-directory-search").Input("Synthetic");
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Search directory").Click();
+        cut.WaitForElement(".intake-card__directory-results");
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == (referring ? "Use as referring" : "Use as primary")).Click();
+        Assert.Equal(provider.Fax, referring ? referringFax : primaryFax);
+        Assert.Null(referring ? primaryFax : referringFax);
+        Assert.Empty(cut.FindAll("input[type=email]"));
+    }
+
+    [Fact]
+    public void CareTeamReview_ShowsBothSavedFaxNumbers()
+    {
+        var cut = RenderComponent<ReviewStep>(parameters => parameters.Add(c => c.State,
+            new IntakeWizardState { PrimaryDoctorFax = "2025550101", ReferringDoctorFax = "2025550102" }));
+        Assert.Contains("2025550101", cut.Markup);
+        Assert.Contains("2025550102", cut.Markup);
+    }
+
 }
