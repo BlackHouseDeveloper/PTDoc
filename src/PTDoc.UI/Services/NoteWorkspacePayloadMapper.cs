@@ -459,6 +459,9 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Objective.PrimaryBodyPart = primaryBodyPart;
         if (payload.Objective.Metrics.Any(row => row.MotionMode.HasValue || row.MovementId is not null))
             preservedPayload.Objective.MeasurementSchemaVersion ??= 1;
+        if (payload.Objective.Metrics.Any(row => GradedObservations.IsGraded(row.MetricType) && !string.IsNullOrWhiteSpace(row.MovementId))
+            && preservedPayload.Objective.MeasurementSchemaVersion is null or 1)
+            preservedPayload.Objective.MeasurementSchemaVersion = 2;
         preservedPayload.Objective.Metrics = MergeObjectiveMetrics(
             preservedPayload.Objective.Metrics,
             payload.Objective.Metrics,

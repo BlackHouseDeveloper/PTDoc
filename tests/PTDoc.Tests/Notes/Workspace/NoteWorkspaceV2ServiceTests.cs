@@ -2014,4 +2014,28 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Equal(6, await _context.ObjectiveMetrics.CountAsync(m => m.NoteId == loaded.NoteId));
     }
 
+    [Fact]
+    public async Task SeparateGrades_SqliteRoundTripKeepsKindsAndSidesAndRejectsCrossGrade()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:"); await connection.OpenAsync();
+        using var context = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options);
+        await context.Database.EnsureCreatedAsync(); var service = CreateService(context);
+        var patient = new Patient { FirstName = "Synthetic", LastName = "Grades", ClinicId = Guid.NewGuid() }; context.Clinics.Add(new Clinic { Id = patient.ClinicId!.Value, Name = "Synthetic", Slug = "synthetic-grades" }); context.Patients.Add(patient); await context.SaveChangesAsync();
+        var rom = ObjectiveMetricDimensions.CreateRomRows(BodyPart.Knee, new("knee:flexion", "Flexion", null, "degrees", null, null)).ToList(); rom[0].Value = "105";
+        var mmt = GradedObservations.SeedMmt(rom, []).ToList(); mmt[0].Value = GradedObservations.Grades(MetricType.MMT)[9]; mmt[1].Value = GradedObservations.Grades(MetricType.MMT)[10];
+        var left = GradedObservations.New(BodyPart.Knee, MetricType.JointMobility, "joint:1", "Accessory", "Left"); left.Value = GradedObservations.Grades(MetricType.JointMobility)[2];
+        var right = GradedObservations.New(BodyPart.Knee, MetricType.JointMobility, "joint:1", "Accessory", "Right"); right.Value = GradedObservations.Grades(MetricType.JointMobility)[3];
+        var saved = await service.SaveAsync(new() { PatientId = patient.Id, NoteType = NoteType.Evaluation, DateOfService = new(2026, 3, 1), Payload = new() { Objective = new() { MeasurementSchemaVersion = 2, Metrics = rom.Concat(mmt).Concat([left, right]).ToList() } } });
+        Assert.True(saved.IsValid, string.Join("; ", saved.Errors)); var loaded = await service.LoadAsync(patient.Id, saved.Workspace!.NoteId); Assert.NotNull(loaded);
+        var typed = await context.ObjectiveMetrics.Where(m => m.NoteId == loaded.NoteId).AsNoTracking().ToListAsync(); Assert.Equal(5, typed.Count);
+        Assert.Equal("105", typed.Single(m => m.MetricType == MetricType.ROM).Value);
+        Assert.Equal(left.Value, typed.Single(m => m.MetricType == MetricType.JointMobility && m.Side == "Left").Value);
+        Assert.Equal(right.Value, typed.Single(m => m.MetricType == MetricType.JointMobility && m.Side == "Right").Value);
+        var before = (await context.ClinicalNotes.AsNoTracking().SingleAsync()).ContentJson;
+        loaded.Payload.Objective.Metrics.Single(m => m.MetricType == MetricType.MMT && m.Side == "Left").Value = left.Value;
+        var rejected = await service.SaveAsync(new() { PatientId = patient.Id, NoteId = loaded.NoteId, NoteType = NoteType.Evaluation, DateOfService = loaded.DateOfService, ExpectedLastModifiedUtc = loaded.LastModifiedUtc, Payload = loaded.Payload });
+        Assert.False(rejected.IsValid); Assert.Equal(before, (await context.ClinicalNotes.AsNoTracking().SingleAsync()).ContentJson);
+        Assert.Equal(mmt[0].Value, (await context.ObjectiveMetrics.AsNoTracking().SingleAsync(m => m.MetricType == MetricType.MMT && m.Side == "Left")).Value);
+    }
+
 }

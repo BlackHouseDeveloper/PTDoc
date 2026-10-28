@@ -377,7 +377,7 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
     }
 
     [Fact]
-    public void ObjectiveTab_BlankMmtRowsDefaultToPrimaryBodyPartFallback()
+    public void ObjectiveTab_MmtMovementAddsEmptyPairedGradesWithPinnedRegion()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
         var outcomeRegistry = new Mock<IOutcomeMeasureRegistry>(MockBehavior.Strict);
@@ -390,7 +390,8 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
             .Setup(service => service.GetBodyRegionCatalogAsync(BodyPart.Knee, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BodyRegionCatalog
             {
-                BodyPart = BodyPart.Knee
+                BodyPart = BodyPart.Knee,
+                NormalRangeOfMotionOptions = ["Knee Flexion: 0-135 degrees"]
             });
 
         outcomeRegistry
@@ -408,15 +409,14 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
             .Add(component => component.IsReadOnly, false));
 
         cut.FindAll("button")
-            .First(button => button.TextContent.Contains("+ Add Row", StringComparison.Ordinal))
+            .First(button => button.TextContent.Contains("Add MMT: Knee Flexion", StringComparison.Ordinal))
             .Click();
 
         cut.WaitForAssertion(() =>
         {
-            var metric = Assert.Single(vm.Metrics);
-
-            Assert.Equal(MetricType.MMT, metric.MetricType);
-            Assert.Null(metric.BodyPart);
+            Assert.Equal(2, vm.Metrics.Count);
+            Assert.All(vm.Metrics, metric => { Assert.Equal(MetricType.MMT, metric.MetricType); Assert.Equal("Knee", metric.BodyPart); Assert.Empty(metric.Value); });
+            Assert.Equal(new[] { "Left", "Right" }, vm.Metrics.Select(metric => metric.Side));
         });
 
         workspaceService.VerifyAll();
@@ -424,7 +424,7 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
     }
 
     [Fact]
-    public void ObjectiveTab_RomPinsRegionWhileLegacyMmtRetainsPrimaryFallback()
+    public void ObjectiveTab_RomPinsRegionWhileLegacyMmtRemainsUnclassified()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
         var outcomeRegistry = new Mock<IOutcomeMeasureRegistry>(MockBehavior.Strict);
@@ -476,11 +476,9 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
             var romRow = cut.Find("[data-testid='objective-rom-row']");
             Assert.Contains("Knee", romRow.QuerySelector("legend")!.TextContent);
             Assert.Empty(romRow.QuerySelectorAll("select"));
-            var mmtBodyPartSelect = Assert.IsAssignableFrom<IHtmlSelectElement>(
-                cut.Find("[data-testid='objective-mmt-row'] select.objective-tab__select"));
-
-            Assert.Equal(string.Empty, mmtBodyPartSelect.Value);
-            Assert.Contains("Use primary body part", mmtBodyPartSelect.TextContent, StringComparison.Ordinal);
+            var historical = cut.Find("[data-testid='objective-legacy-grades']");
+            Assert.Contains("4/5", historical.TextContent);
+            Assert.Empty(historical.QuerySelectorAll("input, select"));
         });
 
         workspaceService.VerifyAll();
@@ -544,8 +542,6 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
         Assert.All(romInputs, input => Assert.Null(input.GetAttribute("disabled")));
         Bunit.InputEventDispatchExtensions.Input(romInputs[0], "115");
         Bunit.InputEventDispatchExtensions.Input(cut.FindAll("[data-testid='objective-rom-row'] input:not([type='checkbox'])")[1], "125");
-        Bunit.InputEventDispatchExtensions.Input(FindMetricInputs("objective-mmt-row")[1], "5-/5");
-        Bunit.InputEventDispatchExtensions.Input(FindMetricInputs("objective-mmt-row")[2], "4-/5");
         cut.WaitForAssertion(() =>
         {
             var rom = Assert.Single(vm.Metrics.Where(m => m.MetricType == MetricType.ROM));
@@ -553,17 +549,13 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
             Assert.Equal("135", rom.NormValue);
             Assert.Equal("115", rom.PreviousValue);
             Assert.Equal("125", rom.Value);
-            Assert.Equal("5-/5", mmt.NormValue);
-            Assert.Equal("4-/5", mmt.PreviousValue);
+            Assert.Equal("5/5", mmt.NormValue);
+            Assert.Equal("3/5", mmt.PreviousValue);
         });
 
         workspaceService.VerifyAll();
         outcomeRegistry.VerifyAll();
 
-        List<IHtmlInputElement> FindMetricInputs(string testId) =>
-            cut.Find($"[data-testid='{testId}']")
-                .QuerySelectorAll("input.objective-tab__text-input")
-                .OfType<IHtmlInputElement>()
-                .ToList();
+
     }
 }

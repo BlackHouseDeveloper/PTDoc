@@ -41,83 +41,8 @@
             <RomObservationEditor Rows="@RomMetrics" RowsChanged="HandleRomRowsChanged"
                                   Region="@ParseBodyPart(_vm.SelectedBodyPart)" Catalog="@_catalog" IsReadOnly="@IsReadOnly" />
 
-            <div class="objective-tab__section" data-testid="objective-mmt-section">
-                <div class="objective-tab__section-header">
-                    <h3 class="objective-tab__section-heading">MMT / Joint Mobility</h3>
-                    @if (!IsReadOnly)
-                    {
-                        <button type="button" class="objective-tab__secondary-btn" @onclick="AddBlankMmtMetric">+ Add Row</button>
-                    }
-                </div>
-
-                @if (MmtMetrics.Count == 0)
-                {
-                    <p class="objective-tab__helper">No structured MMT or joint-mobility rows documented yet.</p>
-                }
-                else
-                {
-                    <div class="objective-tab__editor-list">
-                        @foreach (var metric in MmtMetrics)
-                        {
-                            <div class="objective-tab__editor-row" data-testid="objective-mmt-row">
-                                <div class="objective-tab__editor-grid">
-                                    <label>
-                                        <span>Body part</span>
-                                        <select class="objective-tab__select"
-                                                value="@(metric.BodyPart ?? string.Empty)"
-                                                disabled="@IsReadOnly"
-                                                @onchange="e => UpdateMetric(metric, row => row.BodyPart = e.Value?.ToString())">
-                                            <option value="">Use primary body part</option>
-                                            @foreach (var option in _bodyPartOptions)
-                                            {
-                                                <option value="@option" selected="@string.Equals(metric.BodyPart, option, StringComparison.OrdinalIgnoreCase)">@option</option>
-                                            }
-                                        </select>
-                                    </label>
-                                    <label>
-                                        <span>Measurement</span>
-                                        <input class="objective-tab__text-input"
-                                               value="@metric.Name"
-                                               disabled="@IsReadOnly"
-                                               @oninput="e => UpdateMetric(metric, row => row.Name = e.Value?.ToString() ?? string.Empty)" />
-                                    </label>
-                                    <label>
-                                        <span>Value</span>
-                                        <select class="objective-tab__select"
-                                                value="@metric.Value"
-                                                disabled="@IsReadOnly"
-                                                @onchange="e => UpdateMetric(metric, row => row.Value = e.Value?.ToString() ?? string.Empty)">
-                                            <option value="">Select grade ↓</option>
-                                            @foreach (var grade in StrengthGradeOptions)
-                                            {
-                                                <option value="@grade" selected="@string.Equals(metric.Value, grade, StringComparison.OrdinalIgnoreCase)">@grade</option>
-                                            }
-                                        </select>
-                                    </label>
-                                    <label>
-                                        <span>Normal value</span>
-                                        <input class="objective-tab__text-input"
-                                               value="@metric.NormValue"
-                                               disabled="@IsReadOnly"
-                                               @oninput="e => UpdateMetric(metric, row => row.NormValue = e.Value?.ToString())" />
-                                    </label>
-                                    <label>
-                                        <span>Previous value</span>
-                                        <input class="objective-tab__text-input"
-                                               value="@metric.PreviousValue"
-                                               disabled="@IsReadOnly"
-                                               @oninput="e => UpdateMetric(metric, row => row.PreviousValue = e.Value?.ToString())" />
-                                    </label>
-                                    @if (!IsReadOnly)
-                                    {
-                                        <button type="button" class="objective-tab__remove-btn" @onclick="() => RemoveMetric(metric)">Remove</button>
-                                    }
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
+            <GradedObservationEditor Rows="@_vm.Metrics" RowsChanged="HandleGradedRowsChanged"
+                                     Region="@ParseBodyPart(_vm.SelectedBodyPart)" Catalog="@_catalog" IsReadOnly="@IsReadOnly" />
 
             <div class="objective-tab__section" data-testid="objective-outcome-measures-section">
                 <OutcomeMeasurePanel PatientId="@ParsedPatientId"
@@ -598,13 +523,6 @@
         "Limping", "Patient uses assistive device"
     ];
 
-    private List<string> StrengthGradeOptions => _catalog?.MmtGradeOptions
-        .Concat(_catalog?.JointMobilityGradeOptions ?? [])
-        .Where(value => !string.IsNullOrWhiteSpace(value))
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
-        .ToList() ?? [];
-
     private List<string> SpecialTestOptions => _catalog?.SpecialTestsOptions
         .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
         .ToList() ?? [];
@@ -625,11 +543,6 @@
 
     private List<ObjectiveMetricRowEntry> RomMetrics => _vm.Metrics
         .Where(metric => metric.MetricType == MetricType.ROM)
-        .OrderBy(metric => metric.Name, StringComparer.OrdinalIgnoreCase)
-        .ToList();
-
-    private List<ObjectiveMetricRowEntry> MmtMetrics => _vm.Metrics
-        .Where(metric => metric.MetricType == MetricType.MMT || metric.MetricType == MetricType.Other)
         .OrderBy(metric => metric.Name, StringComparer.OrdinalIgnoreCase)
         .ToList();
 
@@ -683,27 +596,10 @@
         return VmChanged.InvokeAsync(_vm);
     }
 
-    private Task AddBlankMmtMetric()
+    private Task HandleGradedRowsChanged(List<ObjectiveMetricRowEntry> rows)
     {
-        _vm.Metrics.Add(new ObjectiveMetricRowEntry
-        {
-            BodyPart = null,
-            MetricType = MetricType.MMT,
-            NormValue = "5/5"
-        });
-
-        return VmChanged.InvokeAsync(_vm);
-    }
-
-    private Task RemoveMetric(ObjectiveMetricRowEntry metric)
-    {
-        _vm.Metrics.Remove(metric);
-        return VmChanged.InvokeAsync(_vm);
-    }
-
-    private Task UpdateMetric(ObjectiveMetricRowEntry metric, Action<ObjectiveMetricRowEntry> update)
-    {
-        update(metric);
+        if (IsReadOnly) return Task.CompletedTask;
+        _vm.Metrics = rows;
         return VmChanged.InvokeAsync(_vm);
     }
 
