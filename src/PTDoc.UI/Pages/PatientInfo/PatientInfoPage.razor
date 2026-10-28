@@ -41,16 +41,24 @@
                 <PatientProviderRelationshipsPanel PatientId="@normalizedPatientId" />
             }
 
+            @if (hasSavedPayerDetails)
+            {
+                <details class="pi-previous-insurance">
+                    <summary>Additional saved insurance details</summary>
+                    <p>These saved patient entries retain their original fields. Policy-specific limits and referrals can be edited together in the policy editor above.</p>
             <PatientPayerInformationPanel
                 Model="@Vm.PatientPayer"
                 ModelChanged="@(m => { Vm.PatientPayer = m; })"
                 ProviderTypeOptions="@ProviderTypeOptions"
                 InsurancePriorityOptions="@InsurancePriorityOptions"
                 YearTypeOptions="@YearTypeOptions"
+                VisitLimits="@Vm.Utilization"
+                VisitLimitsChanged="@(value => Vm.Utilization = value)"
                 FieldErrors="@GetPanelErrors("payer")"
                 OnAnyFieldChanged="HandleFieldChanged" />
 
-            <AdditionalAuthorizationSettingsPanel
+            <PatientInfoSectionPanel Title="Authorization and PCP Referrals">
+            <AdditionalAuthorizationSettingsPanel Embedded="true"
                 Model="@Vm.AdditionalSettings"
                 ModelChanged="@(m => { Vm.AdditionalSettings = m; })"
                 AuthorizationStatusOptions="@AuthorizationStatusOptions"
@@ -58,19 +66,21 @@
                 FieldErrors="@GetPanelErrors("additionalSettings")"
                 OnAnyFieldChanged="HandleFieldChanged" />
 
-            <AuthorizationDetailsPanel
+            <AuthorizationDetailsPanel Embedded="true"
                 Model="@Vm.Authorization"
                 ModelChanged="@(m => { Vm.Authorization = m; })"
                 AuthorizationRequired="@Vm.AdditionalSettings.AuthorizationRequired"
                 FieldErrors="@GetPanelErrors("auth")"
                 OnAnyFieldChanged="HandleFieldChanged" />
 
-            <AuthorizationReferralHistoryPanel
+            <AuthorizationReferralHistoryPanel Embedded="true"
                 Model="@Vm.AuthorizationReferralHistory"
                 ModelChanged="@(m => { Vm.AuthorizationReferralHistory = m; })"
                 FieldErrors="@GetPanelErrors("authHistory")"
                 ValidationMessage="@AuthorizationHistoryValidationMessage"
                 OnAnyFieldChanged="HandleFieldChanged" />
+
+            </PatientInfoSectionPanel>
 
             <VisitTrackingUtilizationPanel
                 Model="@Vm.Utilization"
@@ -78,19 +88,30 @@
                 FieldErrors="@GetPanelErrors("utilization")"
                 OnAnyFieldChanged="HandleFieldChanged" />
 
-            <SupportingDocumentationPanel
-                Model="@Vm.SupportingDocs"
-                ModelChanged="@(m => { Vm.SupportingDocs = m; })"
-                FieldErrors="@GetPanelErrors("supportingDocs")"
-                OnAnyFieldChanged="HandleFieldChanged" />
+            @if (!string.IsNullOrWhiteSpace(Vm.SupportingDocs.CaseManagerAdjusterContactInfo))
+            {
+                <details>
+                    <summary>Previous case manager / adjuster contact details</summary>
+                    <p id="pi-case-manager">@Vm.SupportingDocs.CaseManagerAdjusterContactInfo</p>
+                </details>
+            }
 
-        </div>
-
+        @if (!string.IsNullOrWhiteSpace(saveError))
+        {
+            <p class="pi-save-error" role="alert">@saveError</p>
+        }
+        @if (Vm.IsDirty && !Vm.IsSaving)
+        {
+            <button type="button" class="btn btn-outline" @onclick="LoadPatientAsync">Discard changes and reload</button>
+        }
         <PatientInfoActionRow IsDirty="@Vm.IsDirty"
                               IsSaving="@Vm.IsSaving"
                               HasValidationErrors="@HasPageErrors"
                               OnSave="HandleSave"
                               OnBack="HandleBack" />
+                </details>
+            }
+        </div>
         }
 
     </div>
@@ -102,6 +123,9 @@
     private PatientInfoPageVm Vm { get; set; } = new();
     private IDisposable? _navGuard;
     private PayerInfoStorage? loadedPayerInfo;
+    private DateTime loadedPatientVersion;
+    private string? saveError;
+    private bool hasSavedPayerDetails;
     private bool isPatientUnavailable;
     private string unavailableTitle = "Patient not found";
     private string unavailableMessage = "The selected patient record could not be loaded.";
@@ -168,6 +192,7 @@
 
     private async Task LoadPatientAsync()
     {
+        saveError = null;
         if (string.IsNullOrWhiteSpace(Id))
         {
             Navigation.NavigateTo("/patients", replace: true);
@@ -195,6 +220,8 @@
             catch { /* ignore – treat as empty */ }
         }
         loadedPayerInfo = payer;
+        loadedPatientVersion = patient.LastModifiedUtc;
+        hasSavedPayerDetails = payer is not null && !string.IsNullOrWhiteSpace(patient.PayerInfoJson) && patient.PayerInfoJson.Trim() != "{}";
 
         Vm = new PatientInfoPageVm
         {
@@ -397,12 +424,14 @@
         }
 
         Vm.IsSaving = true;
+        saveError = null;
         StateHasChanged();
 
         try
         {
             var payerInfo = new PayerInfoStorage
             {
+                AdditionalFields = loadedPayerInfo?.AdditionalFields,
                 InsuranceCompanyName = Vm.PatientPayer.InsuranceCompanyName,
                 MemberIdPolicyNumber = Vm.PatientPayer.MemberIdPolicyNumber,
                 GroupNumber = Vm.PatientPayer.GroupNumber,
@@ -451,18 +480,23 @@
 
             var updateRequest = new UpdatePatientRequest
             {
-                PayerInfoJson = JsonSerializer.Serialize(payerInfo, SerializerOptions)
+                PayerInfoJson = JsonSerializer.Serialize(payerInfo, SerializerOptions),
+                ExpectedLastModifiedUtc = loadedPatientVersion
             };
 
-            await PatientService.UpdateAsync(patientGuid, updateRequest);
+            var updatedPatient = await PatientService.UpdateAsync(patientGuid, updateRequest)
+                ?? throw new InvalidOperationException("The patient could not be saved.");
+            loadedPatientVersion = updatedPatient.LastModifiedUtc;
             loadedPayerInfo = payerInfo;
             Vm.IsDirty = false;
             ToastService.ShowSuccess("Patient information saved.");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[PatientInfo] Save failed: {ex.Message}");
-            ToastService.ShowError("Failed to save. Please try again.");
+            saveError = ex is HttpRequestException { StatusCode: System.Net.HttpStatusCode.Conflict }
+                ? "Insurance details changed in another session. Your edits are still here. Discard and reload before trying again."
+                : "Insurance details could not be saved. Your edits are still here.";
+            ToastService.ShowError(saveError);
         }
         finally
         {
@@ -516,6 +550,7 @@
     /// </summary>
     private sealed class PayerInfoStorage
     {
+        [JsonExtensionData] public Dictionary<string, JsonElement>? AdditionalFields { get; set; }
         public string? InsuranceCompanyName { get; set; }
         public string? MemberIdPolicyNumber { get; set; }
         public string? GroupNumber { get; set; }
@@ -596,6 +631,9 @@
                 "providerType",
                 "insurancePriority",
                 "yearType",
+                "visitLimitType",
+                "visitLimitPeriod",
+                "totalVisitLimit",
                 "effectiveStart",
                 "effectiveEnd"
             },

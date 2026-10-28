@@ -327,6 +327,8 @@ public class AuthorizationCoverageTests
 
         // ── Normalized insurance policies ───────────────────────────────────
         new("GET", "/api/v1/patients/{patientId:guid}/insurance-policies/", AuthorizationPolicies.InsurancePolicyRead),
+        new("POST", "/api/v1/patients/{patientId:guid}/insurance-policies/workflow", AuthorizationPolicies.InsurancePolicyWrite),
+        new("PUT", "/api/v1/patients/{patientId:guid}/insurance-policies/{policyId:guid}/workflow", AuthorizationPolicies.InsurancePolicyWrite),
         new("POST", "/api/v1/patients/{patientId:guid}/insurance-policies/", AuthorizationPolicies.InsurancePolicyWrite),
         new("PUT", "/api/v1/patients/{patientId:guid}/insurance-policies/{policyId:guid}", AuthorizationPolicies.InsurancePolicyWrite),
         new("DELETE", "/api/v1/patients/{patientId:guid}/insurance-policies/{policyId:guid}", AuthorizationPolicies.InsurancePolicyWrite),

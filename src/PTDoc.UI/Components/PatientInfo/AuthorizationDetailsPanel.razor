@@ -2,7 +2,7 @@
 @using System.Globalization
 @using PTDoc.UI.Components.PatientInfo.Models
 
-<PatientInfoSectionPanel Title="Authorization / PCP Referral Details">
+<PatientInfoSectionPanel Embedded="@Embedded" Title="Authorization / PCP Referral Details">
     @if (!ShouldShowDetails)
     {
         <div class="pi-auth-details-empty" role="status">
@@ -67,6 +67,7 @@
 </PatientInfoSectionPanel>
 
 @code {
+    [Parameter] public bool Embedded { get; set; }
     [Parameter, EditorRequired] public AuthorizationDetailsVm Model { get; set; } = null!;
     [Parameter] public EventCallback<AuthorizationDetailsVm> ModelChanged { get; set; }
     [Parameter] public string AuthorizationRequired { get; set; } = string.Empty;

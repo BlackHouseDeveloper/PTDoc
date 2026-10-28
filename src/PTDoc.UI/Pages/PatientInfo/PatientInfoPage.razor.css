@@ -56,3 +56,19 @@
         padding: var(--spacing-4) var(--spacing-4);
     }
 }
+
+.pi-previous-insurance {
+    display: block;
+    padding: var(--spacing-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+}
+
+.pi-previous-insurance > summary {
+    cursor: pointer;
+    font-weight: var(--font-weight-semibold);
+}
+
+.pi-save-error {
+    color: var(--destructive);
+}

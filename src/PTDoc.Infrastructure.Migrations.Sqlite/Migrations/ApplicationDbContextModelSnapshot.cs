@@ -2786,6 +2786,14 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<int>("SyncState")
                         .HasColumnType("INTEGER");
 
+                    b.Property<decimal?>("TotalVisitLimit")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VisitLimitType")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ClinicId", "PatientId");
