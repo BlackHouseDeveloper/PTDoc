@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
+using PTDoc.Web.Auth;
 
 namespace PTDoc.Web.Services;
 
@@ -12,7 +13,8 @@ public sealed class ApiAccessTokenForwardingHandler(
     IHttpContextAccessor httpContextAccessor,
     AuthenticationStateProvider authenticationStateProvider,
     IUserService userService,
-    ILogger<ApiAccessTokenForwardingHandler> logger) : DelegatingHandler
+    ILogger<ApiAccessTokenForwardingHandler> logger,
+    WebCircuitSessionState sessionState) : DelegatingHandler
 {
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -21,10 +23,13 @@ public sealed class ApiAccessTokenForwardingHandler(
             return await base.SendAsync(request, cancellationToken);
         }
 
+        if (sessionState.EndedReason is not null) return CreateUnauthorizedResponse(request);
+
         var session = await GetSessionTokenAsync();
+        if (sessionState.EndedReason is not null) return CreateUnauthorizedResponse(request);
         if (session.IsAuthenticated && (session.IsInvalid || string.IsNullOrWhiteSpace(session.AccessToken)))
         {
-            await TriggerLogoutAsync("MissingOrExpiredAccessToken", cancellationToken);
+            await TriggerLogoutAsync("MissingOrExpiredAccessToken", session.PreserveDraft, cancellationToken);
             return CreateUnauthorizedResponse(request);
         }
 
@@ -37,7 +42,7 @@ public sealed class ApiAccessTokenForwardingHandler(
         if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized
             && (session.IsAuthenticated || !string.IsNullOrWhiteSpace(session.AccessToken)))
         {
-            await TriggerLogoutAsync("ApiUnauthorized", cancellationToken);
+            await TriggerLogoutAsync("ApiUnauthorized", session.PreserveDraft, cancellationToken);
         }
 
         return response;
@@ -75,6 +80,7 @@ public sealed class ApiAccessTokenForwardingHandler(
         }
 
         var isAuthenticated = principal?.Identity?.IsAuthenticated == true;
+        var preserveDraft = principal?.FindFirst(WebSessionActivity.SessionIdClaim) is not null;
         var isLocalWebSession = string.Equals(
             principal?.FindFirst(PTDocClaimTypes.AuthenticationType)?.Value,
             "web_cookie",
@@ -90,15 +96,18 @@ public sealed class ApiAccessTokenForwardingHandler(
                     out var expiresAt)
                 || expiresAt <= DateTimeOffset.UtcNow;
         }
+        if (isLocalWebSession && preserveDraft &&
+            (!WebSessionActivity.TryGetDeadline(principal!, out var deadline) || deadline <= DateTimeOffset.UtcNow))
+            isInvalid = true;
 
         if (!string.IsNullOrWhiteSpace(tokenFromClaim))
         {
-            return new SessionToken(tokenFromClaim, isAuthenticated, isInvalid);
+            return new SessionToken(tokenFromClaim, isAuthenticated, isInvalid, preserveDraft);
         }
 
         if (httpContext is null)
         {
-            return new SessionToken(null, isAuthenticated, isInvalid);
+            return new SessionToken(null, isAuthenticated, isInvalid, preserveDraft);
         }
 
         // Fall back to the OIDC access_token saved by SaveTokens = true (Entra External ID flow).
@@ -106,7 +115,7 @@ public sealed class ApiAccessTokenForwardingHandler(
         // they must still flow through the existing missing-token logout path rather than throw.
         if (httpContext.RequestServices is null)
         {
-            return new SessionToken(null, isAuthenticated, isInvalid);
+            return new SessionToken(null, isAuthenticated, isInvalid, preserveDraft);
         }
 
         try
@@ -115,18 +124,21 @@ public sealed class ApiAccessTokenForwardingHandler(
             return new SessionToken(
                 string.IsNullOrWhiteSpace(oidcToken) ? null : oidcToken,
                 isAuthenticated,
-                isInvalid);
+                isInvalid, preserveDraft);
         }
         catch (InvalidOperationException)
         {
-            return new SessionToken(null, isAuthenticated, isInvalid);
+            return new SessionToken(null, isAuthenticated, isInvalid, preserveDraft);
         }
     }
 
-    private async Task TriggerLogoutAsync(string reasonCode, CancellationToken cancellationToken)
+    private async Task TriggerLogoutAsync(string reasonCode, bool preserveDraft, CancellationToken cancellationToken)
     {
         logger.LogInformation("Ending the Web session after authentication validation failed with reason {ReasonCode}.", reasonCode);
-        await userService.LogoutAsync(cancellationToken);
+        if (preserveDraft)
+            sessionState.End("SessionEnded");
+        else
+            await userService.LogoutAsync(cancellationToken);
     }
 
     private static HttpResponseMessage CreateUnauthorizedResponse(HttpRequestMessage request) => new(System.Net.HttpStatusCode.Unauthorized)
@@ -134,5 +146,5 @@ public sealed class ApiAccessTokenForwardingHandler(
         RequestMessage = request
     };
 
-    private sealed record SessionToken(string? AccessToken, bool IsAuthenticated, bool IsInvalid);
+    private sealed record SessionToken(string? AccessToken, bool IsAuthenticated, bool IsInvalid, bool PreserveDraft);
 }

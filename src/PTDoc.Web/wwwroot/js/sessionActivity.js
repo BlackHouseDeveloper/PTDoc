@@ -25,8 +25,8 @@ export function start(sessionId, receiver) {
         signal: controller.signal
       });
       if (!stopped && (response.status === 401 || response.status === 409)) {
-        stopped = true;
         await receiver.invokeMethodAsync("SessionEnded", response.status === 409 ? "SessionChanged" : "SessionEnded");
+        stopped = true;
       }
     } catch {
       // A disconnected network/circuit does not prove the session expired.

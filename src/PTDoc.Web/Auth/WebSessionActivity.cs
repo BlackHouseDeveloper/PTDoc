@@ -2,33 +2,93 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
 using PTDoc.Infrastructure.Identity;
 
 namespace PTDoc.Web.Auth;
 
-/// <summary>Renews the browser ticket for real interactive activity after API session validation.</summary>
+/// <summary>Renews the per-sign-in idle window for real activity after API session validation.</summary>
 internal static class WebSessionActivity
 {
     internal const string Endpoint = "/auth/activity";
     internal const string SessionIdClaim = "ptdoc_web_session_id";
     internal const string StartedAtClaim = "ptdoc_web_session_started_at";
     internal const string SessionHeader = "X-PTDoc-Web-Session";
+    internal const string ActivityTicketClaim = "ptdoc_web_activity_ticket";
+    private const string ActivityCookiePrefix = "__Host-PTDoc.Activity.";
+    private static readonly object PreviousPrincipalKey = new();
 
-    internal static async Task ValidateCookieAsync(CookieValidatePrincipalContext context)
+    internal static Task ValidateCookieAsync(CookieValidatePrincipalContext context)
     {
-        if (!IsLocal(context.Principal)) return;
+        if (!IsLocal(context.Principal)) return Task.CompletedTask;
+        // Retain the cryptographically validated identity for logout/replacement even
+        // when the Web idle window has elapsed. This is never an authorization source.
+        context.HttpContext.Items[PreviousPrincipalKey] = context.Principal;
         var now = context.Options.TimeProvider!.GetUtcNow();
-        if (!TryGetDeadline(context.Principal!, out var deadline) || deadline <= now)
+        if (!TryGetDeadline(context.Principal!, out var deadline) || deadline <= now ||
+            (UsesActivityTicket(context.Principal!) && !HasRecentActivity(context, now)))
         {
             context.RejectPrincipal();
             context.ShouldRenew = false;
-            await context.HttpContext.SignOutAsync(PTDocAuthSchemes.Cookie);
+            // A late denial must not delete a newer sign-in's cookie either.
+        }
+        return Task.CompletedTask;
+    }
+
+    private static bool UsesActivityTicket(ClaimsPrincipal principal) =>
+        principal.FindFirst(ActivityTicketClaim)?.Value == "1";
+
+    private static IDataProtector ActivityProtector(HttpContext context, string sessionId) =>
+        context.RequestServices.GetRequiredService<IDataProtectionProvider>()
+            .CreateProtector("PTDoc.Web.SessionActivity.v1", sessionId);
+
+    private static bool HasRecentActivity(CookieValidatePrincipalContext context, DateTimeOffset now)
+    {
+        var lastActivity = context.Properties.IssuedUtc;
+        var sessionId = context.Principal!.FindFirst(SessionIdClaim)?.Value;
+        if (string.IsNullOrEmpty(sessionId)) return false;
+        if (context.Request.Cookies.TryGetValue(ActivityCookiePrefix + sessionId, out var value))
+        {
+            try
+            {
+                if (DateTimeOffset.TryParse(ActivityProtector(context.HttpContext, sessionId).Unprotect(value),
+                    CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var renewedAt) &&
+                    renewedAt <= now && (lastActivity is null || renewedAt > lastActivity))
+                    lastActivity = renewedAt;
+            }
+            catch (CryptographicException) { }
+        }
+        return lastActivity is not null && lastActivity <= now && lastActivity.Value.AddMinutes(15) > now;
+    }
+
+    internal static async Task<bool> RevokePreviousSessionAsync(HttpContext context, IHttpClientFactory clients)
+    {
+        var principal = context.Items[PreviousPrincipalKey] as ClaimsPrincipal ?? context.User;
+        if (!IsLocal(principal)) return true;
+        var token = principal.FindFirst(PTDocClaimTypes.ApiAccessToken)?.Value;
+        if (string.IsNullOrWhiteSpace(token)) return true;
+        try
+        {
+            using var client = clients.CreateClient("PTDocAuthApi");
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/logout");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using var response = await client.SendAsync(request, context.RequestAborted);
+            // This endpoint revokes opaque sessions idempotently, including expired ones.
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+            return false;
         }
     }
+
+    internal static bool HasPreviousLocalSession(HttpContext context) =>
+        IsLocal(context.Items[PreviousPrincipalKey] as ClaimsPrincipal ?? context.User);
 
     internal static bool IsLocal(ClaimsPrincipal? principal) =>
         principal?.FindFirst(PTDocClaimTypes.AuthenticationType)?.Value == "web_cookie";
@@ -52,6 +112,7 @@ internal static class WebSessionActivity
         var principal = ticket.Principal;
         if (!ticket.Succeeded || principal?.Identity?.IsAuthenticated != true || !IsLocal(principal))
             return Results.Unauthorized();
+        if (!UsesActivityTicket(principal)) return Results.Unauthorized();
         var sessionId = principal.FindFirst(SessionIdClaim)?.Value;
         if (string.IsNullOrEmpty(sessionId) || context.Request.Headers[SessionHeader] != sessionId)
             return Results.Conflict(new { reason = "SessionChanged" });
@@ -85,10 +146,20 @@ internal static class WebSessionActivity
 
         now = clock.GetUtcNow();
         if (deadline <= now) return Results.Unauthorized();
-        var properties = ticket.Properties!;
-        properties.IssuedUtc = now;
-        properties.ExpiresUtc = now.AddMinutes(15) < deadline ? now.AddMinutes(15) : deadline;
-        await context.SignInAsync(PTDocAuthSchemes.Cookie, principal, properties);
+        // Never rewrite the authentication cookie from a renewal response. Responses
+        // can arrive after logout or another sign-in, even after a server-side lock
+        // is released. A per-sign-in idle cookie cannot restore or replace identity.
+        context.Response.Cookies.Append(ActivityCookiePrefix + sessionId,
+            ActivityProtector(context, sessionId).Protect(now.ToString("O", CultureInfo.InvariantCulture)),
+            new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.Strict,
+                Path = "/",
+                IsEssential = true,
+                MaxAge = (now.AddMinutes(15) < deadline ? now.AddMinutes(15) : deadline) - now
+            });
         return Results.NoContent();
     }
 

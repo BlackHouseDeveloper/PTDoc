@@ -68,6 +68,27 @@ test('rapid and in-flight input cannot multiply renewal requests', async () => {
 });
 
 for (const status of [401, 409]) {
+  test(`${status} recovery retries after a disconnected callback`, async () => {
+    const h = harness();
+    h.respond(async () => ({ status }));
+    let callbacks = 0;
+    h.receiver.invokeMethodAsync = async (...args) => {
+      callbacks++;
+      if (callbacks === 1) throw new Error('Synthetic circuit disconnect');
+      h.notices.push(args);
+    };
+    h.monitor.start('session', h.receiver);
+    await h.fire();
+    assert.equal(h.notices.length, 0);
+    h.advance(61_000);
+    await h.fire();
+    assert.deepEqual(h.notices, [['SessionEnded', status === 409 ? 'SessionChanged' : 'SessionEnded']]);
+    h.advance(61_000);
+    await h.fire();
+    assert.equal(h.requests.length, 2);
+    assert.equal(callbacks, 2);
+  });
+
   test(`${status} requests recovery once without navigation or draft mutation`, async () => {
     const h = harness();
     h.respond(async () => ({ status }));

@@ -10,7 +10,7 @@ PTDoc implements enterprise-grade security measures suitable for HIPAA-compliant
 #### Session Timeouts
 - **Inactivity Timeout**: 15 minutes
 - **Absolute Session Expiration**: 8 hours maximum
-- **Sliding Expiration**: Enabled (session extends on activity)
+- **Idle Renewal**: Local sessions extend on validated activity using a separate, protected per-sign-in cookie; the identity cookie never slides. OIDC retains framework sliding expiration.
 
 #### Cookie Security
 - **HttpOnly**: Enabled (prevents JavaScript access)
@@ -25,6 +25,16 @@ options.ExpireTimeSpan = TimeSpan.FromMinutes(15);
 options.SlidingExpiration = true;
 options.Cookie.MaxAge = TimeSpan.FromHours(8);
 ```
+
+For local sign-in, explicit ticket properties cap the identity ticket at the earlier
+API deadline or eight hours and disable refresh. The Web cookie-validation event
+enforces 15 minutes since sign-in or the latest valid activity timestamp. The
+`__Host-PTDoc.Activity.<session-id>` cookie contains only a Data Protection-protected
+timestamp, is bound to the sign-in ID, and uses Secure, HttpOnly, SameSite=Strict,
+Path=/ and a maximum 15-minute lifetime capped by the absolute/API deadline.
+Activity responses never issue or delete the identity cookie. Activity cookies
+cannot authenticate by themselves or renew another sign-in. Old-format cookies
+retain their original expiry; activity renewal requires another sign-in.
 
 ### Mobile Application (JWT Authentication)
 
@@ -286,6 +296,9 @@ The following rules apply across all logging and telemetry:
 - Logout button available in all authenticated pages
 - Logout clears all authentication data (cookies/tokens)
 - Force reload ensures clean authentication state
+- Local logout and replacement sign-in revoke the previous opaque API session before clearing or replacing the identity cookie. API revocation is idempotent. If revocation cannot be confirmed, the Web endpoint returns a retryable 503 without claiming successful logout or changing the identity cookie.
+- Logout accepts an idle-expired, cryptographically validated local ticket solely to revoke its previous API session; this does not authorize clinical access. The logout endpoint accepts anonymous requests so an idle-expired ticket can be revoked. Cross-site requests are denied; requests without a validated ticket redirect without deleting any cookie.
+- Ended/changed circuits block protected API reads and writes and show explicit Sign in/Reload recovery. Automatic expiry handling in an already-ended circuit does not clear a newer browser sign-in. In-memory drafts remain on screen until the user chooses recovery; this does not promise draft persistence across a reload.
 
 ### Token Validation
 - Mobile app validates tokens on startup

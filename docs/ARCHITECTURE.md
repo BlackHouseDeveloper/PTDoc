@@ -282,6 +282,24 @@ builder.Services.AddAuthentication("PTDocAuth")
 - Cookie-based session management
 - HIPAA-compliant session timeouts
 
+Local Web sign-in uses an immutable identity ticket capped by the API deadline and
+eight-hour absolute limit. `WebSessionActivity.ValidateCookieAsync` additionally
+enforces the 15-minute idle window using the ticket's initial issue time or a
+Data Protection-protected activity timestamp bound to that sign-in ID. Real input
+renews only the separate `__Host-PTDoc.Activity.<session-id>` cookie after API
+validation; it never rewrites the identity cookie. Automatic cookie sliding is
+disabled for local sessions, so delayed renewal/denial responses cannot overwrite
+another tab's sign-in or restore a logged-out browser. No Web database or shared
+in-memory ticket store is introduced. OIDC retains its existing cookie behavior.
+
+Local logout and replacement sign-in revoke the prior opaque API session through
+`/api/v1/auth/logout` before changing the identity cookie. A revocation failure
+returns a retryable 503 and keeps the existing identity cookie. A terminal
+activity result or API rejection also ends the circuit's scoped
+`WebCircuitSessionState`; its HTTP forwarding handler rejects subsequent protected
+operations while the monitor offers explicit recovery without navigating away
+from unsaved drafts.
+
 #### 4c. PTDoc.Maui
 
 **Purpose:** Cross-platform mobile/desktop app (iOS, Android, macOS) with offline capability.

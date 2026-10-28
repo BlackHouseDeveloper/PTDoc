@@ -55,6 +55,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
 ### Planning - Client review Plan 01
+### Fixed - PR 156 session review findings
+
+- **`WebLoginEndpointIntegrationTests`** — Corrected the new ticket-expiry assertion to expect ASP.NET Core's whole-second RFC1123 precision while retaining the exact API-expiry claim assertion. Reason: the user-run suite exposed a fractional-second mismatch in the test; production expiry behavior is unchanged.
+- **`WebSessionActivity` / `WebAuthenticationStepFlow`** — Keep local identity cookies immutable and renew a protected, per-sign-in activity cookie instead. Prevent delayed renewal/denial responses from overwriting a newer sign-in or restoring a logged-out browser while preserving 15-minute idle, eight-hour absolute and API deadlines. Existing-format cookies require a new sign-in for activity renewal.
+- **Web logout / `WebCircuitSessionState` / `ApiAccessTokenForwardingHandler`** — Revoke the previous opaque API session before local logout or replacement sign-in; return a retryable 503 if revocation fails. Block protected operations in ended/changed circuits and offer explicit recovery without automatically discarding visible drafts or logging out a newer browser session.
+- **`sessionActivity.js`** — Retry recovery callbacks after a circuit disconnect; stop monitoring only after successful delivery. Added focused .NET cookie/race/revocation/circuit regressions and passing 401/409 JavaScript retry tests. Recorded all four unique review findings, duplicate summary references, the already-fixed CodeQL finding and user-confirmed passing builds/tests (2,314 .NET tests and 9 JavaScript tests), with separate live-browser acceptance still pending, in `docs/client-review/plan-01.md`.
+
 ### Documentation - Client review publication audit
 
 - Reconciled all 36 plan PRs, five dependency stacks, requirement mappings, verified CI heads and separate merge checkpoints. Recorded provider upgrade/downgrade coverage and the remaining clinical, integration and native-platform acceptance gates.

@@ -90,6 +90,7 @@ builder.Services.AddSingleton<IIntakeDraftCanonicalizer, IntakeDraftCanonicalize
 builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationService>();
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<WebCircuitSessionState>();
 builder.Services.AddTransient<ApiAccessTokenForwardingHandler>();
 builder.Services.AddTransient<PublicOriginForwardingHandler>();
 builder.Services.AddHttpClient("PTDocAuthApi", (serviceProvider, client) =>
@@ -484,12 +485,31 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
 
 app.MapWebAuthenticationStepEndpoints();
 
-app.MapGet("/auth/logout", async (HttpContext httpContext) =>
+app.MapGet("/auth/logout", async (HttpContext httpContext, IHttpClientFactory clients) =>
 {
+    httpContext.Response.Headers.CacheControl = "no-store";
+    if (httpContext.Request.Headers["Sec-Fetch-Site"] == "cross-site")
+    {
+        httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return;
+    }
+    // An anonymous/cross-site navigation without a validated ticket must not
+    // emit a deletion cookie that could log out a newer browser identity.
+    if (httpContext.User.Identity?.IsAuthenticated != true && !WebSessionActivity.HasPreviousLocalSession(httpContext))
+    {
+        httpContext.Response.Redirect("/login");
+        return;
+    }
     var requiresExternalProviderSignOut = LogoutSessionClassifier.RequiresExternalProviderSignOut(
         httpContext.User,
         entraExternalIdOptions.Enabled);
 
+    if (!await WebSessionActivity.RevokePreviousSessionAsync(httpContext, clients))
+    {
+        httpContext.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        await httpContext.Response.WriteAsync("Sign-out could not be completed. Please retry.");
+        return;
+    }
     await httpContext.SignOutAsync(PTDocAuthSchemes.Cookie);
 
     if (requiresExternalProviderSignOut)
@@ -505,7 +525,7 @@ app.MapGet("/auth/logout", async (HttpContext httpContext) =>
 
     httpContext.Response.Redirect("/login");
 })
-.RequireAuthorization();
+.AllowAnonymous();
 
 app.MapGet("/diagnostics/runtime", (
     IHostEnvironment environment,
@@ -600,9 +620,9 @@ static void ConfigureCookieOptions(CookieAuthenticationOptions options)
     options.Events.OnValidatePrincipal = WebSessionActivity.ValidateCookieAsync;
     options.Events.OnCheckSlidingExpiration = context =>
     {
-        // Only explicitly renew activity requests after the API has accepted the
-        // same session; failed or mismatched requests must not slide the cookie.
-        if (context.Request.Path == WebSessionActivity.Endpoint) context.ShouldRenew = false;
+        // Local identity cookies are immutable. Only the separate, per-sign-in
+        // activity cookie slides, after API validation. Keep OIDC behavior intact.
+        if (WebSessionActivity.IsLocal(context.Principal)) context.ShouldRenew = false;
         return Task.CompletedTask;
     };
 

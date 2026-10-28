@@ -1,6 +1,6 @@
 # Plan PR 01: Verify and repair active-use and multi-tab sessions
 
-**Implemented** — only the changes and checks listed below are claimed.
+**Review fixes implemented; builds and tests confirmed passing (2026-10-28).** The latest user-run suite passed all 2,314 tests. The original implementation checks below are historical evidence; see the review audit for current verification and separate live acceptance gates.
 
 - Requirements: R003, R005, R048, R061
 - Original plan status: Verification Required
@@ -89,4 +89,104 @@ The reproduced local Web cookie/circuit defect is verified fixed. Hosted integra
 
 ## Publication and merge boundary
 
-No merges, deployments, production-data changes, external messages or review-thread replies/resolutions are authorized. A planning-only PR may be reviewed as documentation; merging it does not complete the feature. Shared subject matter alone does not create a Git stack dependency.
+After confirming all builds and tests pass, the user authorized committing and pushing these review fixes and replying to and resolving the addressed review threads on 2026-10-28. Merges, deployments and production-data changes remain outside this authorization. Shared subject matter alone does not create a Git stack dependency.
+
+## PR 156 review audit — 2026-10-28
+
+Reviewed remote head `28a6e9831cdc0ad4c5f2005a4cc0de3876bd031f` and its history.
+Retrieved the full paginated conversation, review submissions and thread-aware
+feedback through GitHub GraphQL and cross-checked raw REST review bodies and
+CodeQL alert 19. Inventory: **0 conversation comments, 2 reviews, 4 inline
+threads** (3 open/current; 1 resolved/outdated). Neither review body contains
+suppressed comments or a **Previously missed** section. The three issue links in
+the Copilot review summary duplicate the corresponding inline findings; they are
+not additional findings. No hidden body section was omitted from this audit.
+
+| Finding | Classification | Evidence and disposition |
+| --- | --- | --- |
+| [4381845004 — stale renewal overwrites authentication](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381845004) | **Valid — fixed; builds/tests confirmed passing** | At the reviewed head, `WebSessionActivity.RenewAsync` awaits `/api/v1/auth/me`, then calls `SignInAsync` using the request's original principal. `WebAuthenticationStepFlow.CompleteWebSignInAsync` and `/auth/logout` can complete in another tab during that await. The per-tab JavaScript `pending` flag and pre-await session-header comparison cannot order browser responses. Renewal now writes only a protected, per-sign-in activity timestamp; the identity ticket is fixed at sign-in. Local automatic sliding and cookie deletion from failed validation are disabled. Delayed responses cannot alter the replacement identity cookie, even when response delivery is reordered. |
+| [4381845075 — ended circuits retain API access](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381845075) | **Valid — fixed; builds/tests confirmed passing** | At the reviewed head, `WebSessionActivityMonitor.SessionEnded` only sets notice text; `ApiAccessTokenForwardingHandler.GetSessionTokenAsync` can still read the circuit's original token; Web `/auth/logout` only clears the cookie. The existing API `/api/v1/auth/logout` contract invokes `AuthService.LogoutAsync`, which marks the matching opaque session revoked; `ValidateSessionAsync` rejects it. Web logout and replacement local sign-in now invoke that contract. A scoped `WebCircuitSessionState` blocks protected reads/saves after terminal activity results or API rejection, and the monitor observes that state. Automatic recovery does not navigate away or invoke logout against a newer browser identity. `WebUserService.LogoutAsync` also ignores automatic logout requests from an already-ended circuit (the shared Routes navigation-expiry caller); explicit `/logout` remains available. |
+| [4381845135 — failed callback disables recovery](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381845135) | **Valid — fixed; JavaScript regressions pass** | At the reviewed head, `sessionActivity.js` sets `stopped` before awaiting `invokeMethodAsync`. Its catch does not reset the flag, so a disconnected callback prevents all later attempts. `stopped` is now set only after the callback succeeds. Both 401 and 409 cases retry on later trusted input and stop after successful delivery. |
+| [4381841551 — CodeQL user-controlled bypass](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381841551) | **Outdated — no additional fix required** | Commit `e4364ad` changed the cross-site response from a generic 403 to explicit `Results.Unauthorized()`. Current `WebSessionActivity.RenewAsync` denies cross-site requests before `/auth/me` and before issuing any cookie. `CrossSiteActivity_IsRejectedWithoutRenewingCookie` asserts 401, zero API calls and no Set-Cookie. The thread is already resolved/outdated; CodeQL alert 19's most recent instance reports `fixed`, with no dismissal reason. The older 403 also denied access; it did not grant a successful renewal. |
+
+**Totals:** 4 unique findings: 3 valid/actionable, 1 outdated, 0 invalid,
+0 ambiguous. Three review-summary references are duplicates. No suppressed or
+Previously missed items were present in the retrieved feedback. A fresh
+pre-publication retrieval found the same four threads and no additional findings.
+
+### Changes and regression coverage
+
+- `WebSessionActivityIntegrationTests`: delayed `/auth/me` success followed by
+  logout or another user's sign-in; browser cookie application in response order;
+  correct replacement identity and old-circuit 409; protected read/save after API
+  revocation; retryable failed revocation for both logout and replacement sign-in;
+  revocation after Web idle expiry; no cookie deletion/revocation for cross-site or
+  cookie-less logout; protected activity-cookie attributes,
+  tampering, cross-session renaming/replay, idle expiry, absolute/API caps and
+  old-format-cookie rollout. Existing identity, cross-site, API failure and
+  same-browser activity tests remain.
+- `ApiAccessTokenForwardingHandlerTests`: ended/changed circuits reject GET/POST
+  without transport or logout (including explicit Authorization headers); a
+  circuit ending during awaited authentication lookup cannot send its request;
+  API revocation/absolute expiry preserve recovery state and drafts.
+- `WebSessionActivityMonitorTests`: browser callbacks end the shared circuit,
+  API rejection displays the same recovery notice, and navigation occurs only
+  after the user activates recovery.
+- `AuthServiceTests`: repeated logout rejects the old opaque token without
+  revoking a replacement token. This verifies the real service contract behind
+  the integration host's deterministic fake API transport.
+- `WebUserServiceTests`: automatic logout from an already-ended circuit cannot
+  navigate to the browser logout endpoint. `WebLoginEndpointIntegrationTests`
+  checks the new ticket marker, fixed deadline and disabled refresh.
+- `session-activity.test.mjs`: rejected 401/409 callbacks retry and deliver one
+  recovery notice; existing throttling, transient failure and disposal coverage
+  remains.
+
+The new cookie representation does **not** change the 15-minute Web idle limit,
+eight-hour absolute cap, or API-owned clinic policies. Activity responses contain
+no API credential. Old-format tickets require sign-in to gain renewal. OIDC and
+native clients keep their existing authentication paths. Explicit logout and
+replacement local sign-in return a retryable 503 if API revocation fails; they do
+not claim success while the old API session could still be used. No database
+migration, package dependency or Web ticket store is added.
+
+### Verification and handoff
+
+Executed locally: `node --test tests/PTDoc.Web.UiQa/tools/session-activity.test.mjs`
+(**9 passed**), `python3 .github/scripts/scan_secret_policy.py` (**passed**) and
+`git diff --check` (**passed**). The user confirmed all builds and tests pass
+and authorized commit, push and review-thread resolution. The latest terminal
+output independently confirms `dotnet test` completed with **2,314 passed,
+0 failed, 0 skipped**. This supersedes the earlier 2,313/1 and 1,888/1 runs.
+Their sole failure was the new ticket-expiry assertion expecting fractional
+seconds where ASP.NET Core's `AuthenticationProperties.ExpiresUtc` uses
+whole-second RFC1123 format. The assertion now compares the exact expected
+whole-second timestamp; the separate API-expiry claim assertion retains full
+precision. Production code is unchanged by that test correction.
+
+Per AGENTS.md, .NET commands were user-run. The exact observed latest command was
+`dotnet test` from the repository root (Debug). The following commands remain
+available for reproducing the focused Release and formatting gates; the latest
+terminal output does not independently establish a new formatting run or live
+multi-tab acceptance:
+
+```bash
+dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter 'FullyQualifiedName~WebSessionActivityIntegrationTests|FullyQualifiedName~WebSessionActivityMonitorTests|FullyQualifiedName~WebLoginEndpointIntegrationTests|FullyQualifiedName~WebLogoutEndpointIntegrationTests|FullyQualifiedName~ApiAccessTokenForwardingHandlerTests|FullyQualifiedName~WebUserServiceTests|FullyQualifiedName~AuthServiceTests|FullyQualifiedName~LogoutSessionClassifierTests|FullyQualifiedName~RoutesAuthenticationExpirationTests|FullyQualifiedName~LocalBearerSecurityTests' --verbosity normal
+dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --verify-no-changes --verbosity minimal
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter 'Category=CoreCi' --verbosity normal
+node --test tests/PTDoc.Web.UiQa/tools/session-activity.test.mjs
+```
+
+After those checks, exercise active editing beyond 15 minutes and idle expiry in
+separate synthetic browser profiles; in two tabs verify logout, server revocation,
+a different-user sign-in, blocked stale-tab saves, preserved visible drafts and
+explicit recovery. The earlier real-time browser evidence predates these fixes.
+
+Threads **4381845004, 4381845075 and 4381845135** are eligible for
+evidence-backed replies and resolution under the user's explicit authorization
+after the verified fixes are pushed. Thread **4381841551** is already resolved
+and needs no new action. GitHub records the final publication and resolution
+status. Current main integration/merge conflicts and hosted, Entra-provider,
+screen-reader and MAUI release acceptance remain separate gates.
