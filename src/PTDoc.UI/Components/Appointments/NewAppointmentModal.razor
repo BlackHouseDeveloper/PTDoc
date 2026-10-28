@@ -153,6 +153,10 @@
                         aria-required="true"
                         aria-invalid="@AriaInvalid(nameof(DurationMinutes))"
                         aria-describedby="@GetFieldDescriptionId(nameof(DurationMinutes))">
+                        @if (DurationMinutes > 0 && DurationMinutes is not (30 or 45 or 60 or 90))
+                        {
+                            <option value="@DurationMinutes">@DurationMinutes minutes</option>
+                        }
                         <option value="30">30 minutes</option>
                         <option value="45">45 minutes</option>
                         <option value="60">60 minutes</option>

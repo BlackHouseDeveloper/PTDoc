@@ -47,6 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`RolesPermissionsSettings.razor`** — Send the loaded versions for every supported, unlocked target permission when cloning roles, matching the server's optimistic-concurrency contract. Ignore clone attempts while busy or before the target role has loaded. Added component regressions for exact target versions, locked/unsupported exclusions, conflict preservation, and updated versions after success. Reason: the missing request argument blocked all build-dependent CI workflows.
 - **`SettingsAdministrationApiClient.cs`** — Match the nullable kiosk enrollment and check-in parameters declared by `IKioskCheckInService`, removing three compiler warnings without changing server validation.
 
+### Fixed - Client review Plan 04
+
+- Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
+
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 
 - Selected external MFA enforcement from the server-authenticated Entra identity type instead of an issuer-supplied PTDoc marker. Entra normalization replaces duplicate/conflicting application-owned authentication, provider, and subject claims; focused tests cover JWT/OIDC identities, missing/conflicting markers, and repeated transformations.
