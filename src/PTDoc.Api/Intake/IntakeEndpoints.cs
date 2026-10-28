@@ -490,6 +490,9 @@ public static class IntakeEndpoints
         if (!TryNormalizeConsents(intake.Consents, requireHipaaAcknowledgement: true, out var normalizedConsents, out var consentPacket, out var submitValidationProblem))
             return submitValidationProblem!;
 
+        if (!await IntakeDomainProjection.HasCurrentPolicySourcesAsync(db, intake.PatientId, intake.ClinicId, intake.ResponseJson, cancellationToken))
+            return Results.Conflict(new { error = IntakeDomainProjection.StalePolicySourceMessage });
+
         var nowUtc = DateTime.UtcNow;
         intake.Consents = normalizedConsents;
         intake.SubmittedAt = intake.SubmittedAt ?? nowUtc;
@@ -892,7 +895,8 @@ public static class IntakeEndpoints
         var patient = intake.Patient;
 
         var name = TrimOrNull(draft.FullName);
-        if (!string.IsNullOrWhiteSpace(name))
+        if (!string.IsNullOrWhiteSpace(name)
+            && !string.Equals(name, $"{patient.FirstName} {patient.LastName}".Trim(), StringComparison.Ordinal))
         {
             var spaceIndex = name.IndexOf(' ');
             patient.FirstName = spaceIndex > 0 ? name[..spaceIndex].Trim() : name;

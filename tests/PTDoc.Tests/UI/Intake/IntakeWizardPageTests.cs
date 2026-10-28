@@ -62,6 +62,58 @@ public sealed class IntakeWizardPageTests : TestContext
     }
 
     [Fact]
+    public void ProfilePrefill_SelfPayOnlyOfferSurvivesWizardSaveWithIndependentPolicyVersions()
+    {
+        var patientId = Guid.NewGuid();
+        var primaryId = Guid.NewGuid();
+        var secondaryId = Guid.NewGuid();
+        var primaryVersion = DateTime.UtcNow;
+        var secondaryVersion = primaryVersion.AddDays(-1);
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("synthetic-pt");
+        authorization.SetRoles(Roles.PT);
+        var service = CreateIntakeServiceMock(new IntakeResponseDraft
+        {
+            PatientId = patientId,
+            IntakeFlowVersion = 2,
+            CurrentStep = (int)IntakeStep.PainAssessment,
+            FullName = "Mary Jane Smith",
+            SecondaryInsuranceCompanyName = "Existing secondary",
+            PrefilledSecondaryPolicyId = secondaryId,
+            PrefilledSecondaryPolicyModifiedUtc = secondaryVersion,
+            ProfilePrefillSourceModifiedUtc = secondaryVersion,
+            ProfilePrefill = new IntakeProfilePrefill
+            {
+                PayerType = "Self Pay",
+                PrimaryPolicyId = primaryId,
+                PrimaryPolicyModifiedUtc = primaryVersion,
+                SourceModifiedUtc = primaryVersion
+            }
+        });
+        IntakeResponseDraft? saved = null;
+        service.Setup(value => value.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()))
+            .Callback<IntakeResponseDraft, CancellationToken>((draft, _) => saved = draft)
+            .Returns(Task.CompletedTask);
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}");
+        var cut = RenderPage(patientId);
+
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("[data-testid='intake-profile-prefill']")));
+        cut.Find("[data-testid='intake-apply-profile']").Click();
+        Assert.Equal("Self Pay", GetWizardState(cut).PayerType);
+        cut.Find("[data-testid='continue-button']").Click();
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(saved);
+            Assert.Equal("Self Pay", saved.PayerType);
+            Assert.Equal(primaryId, saved.PrefilledPrimaryPolicyId);
+            Assert.Equal(primaryVersion, saved.PrefilledPrimaryPolicyModifiedUtc);
+            Assert.Equal(secondaryId, saved.PrefilledSecondaryPolicyId);
+            Assert.Equal(secondaryVersion, saved.PrefilledSecondaryPolicyModifiedUtc);
+            Assert.Equal("Existing secondary", saved.SecondaryInsuranceCompanyName);
+        });
+    }
+
+    [Fact]
     public void ClinicianBlankIntake_RequiresPatientSelectionBeforeWizardRenders()
     {
         var authorization = this.AddTestAuthorization();

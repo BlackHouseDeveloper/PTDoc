@@ -51,6 +51,17 @@ public static class IntakeProfilePrefillReader
             {
                 legacy.MemberOrPolicyNumber ??= ReadAlias(json.RootElement, "memberIdPolicyNumber");
                 legacy.SecondaryMemberOrPolicyNumber ??= ReadAlias(json.RootElement, "secondaryMemberIdPolicyNumber");
+                legacy.PayerType ??= ReadAlias(json.RootElement, "providerType")?.Trim().ToLowerInvariant() switch
+                {
+                    "commercial" => "Commercial",
+                    "medicare" => "Medicare",
+                    "medicaid" => "Medicaid",
+                    "workers_comp" => "Workers' Compensation",
+                    "motor_vehicle" => "Motor Vehicle",
+                    "liability" => "Liability",
+                    "self_pay" => "Self Pay",
+                    _ => null
+                };
             }
         }
         catch (JsonException) { legacy = new(); }
@@ -60,6 +71,7 @@ public static class IntakeProfilePrefillReader
         {
             var p = primary[0];
             profile.PrimaryPolicyId = p.Id;
+            profile.PrimaryPolicyModifiedUtc = p.LastModifiedUtc;
             profile.InsuranceCompanyName = p.CarrierDisplayName;
             profile.MemberOrPolicyNumber = p.MemberOrPolicyNumber;
             profile.GroupNumber = p.GroupNumber;
@@ -93,6 +105,7 @@ public static class IntakeProfilePrefillReader
         {
             var p = secondary[0];
             profile.SecondaryPolicyId = p.Id;
+            profile.SecondaryPolicyModifiedUtc = p.LastModifiedUtc;
             profile.SecondaryInsuranceCompanyName = p.CarrierDisplayName;
             profile.SecondaryMemberOrPolicyNumber = p.MemberOrPolicyNumber;
             profile.SecondaryGroupNumber = p.GroupNumber;

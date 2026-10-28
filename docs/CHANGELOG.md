@@ -54,6 +54,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - Client review Plan 04
 
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
+### Fixed - PR 162 intake prefill review
+
+- **`IntakeDomainProjection` / intake submission paths** — Reject changed, replaced, reordered, ambiguous, inactive, archived, or incorrectly scoped prefilled policy sources before submission mutates records. Preserve independent primary/secondary policy versions through JSON and wizard saves, and target the accepted policy ID during projection. Older drafts retain their combined-timestamp compatibility check. No schema migration.
+- **`IntakeService` / `IntakeEndpoints`** — Preserve structured compound names when the submitted full name matches the saved name; explicitly edited names retain the existing update behavior.
+- **`IntakeProfilePrefill` / `IntakeProfilePrefillReader`** — Offer Self Pay and other supported policy-only values for explicit blank-field prefill, and translate legacy `providerType` values supported by the intake selector without replacing canonical payer values.
+- Added service, SQLite API/standalone-link, and wizard regressions for policy-source conflicts, unchanged submission, compound names, payer aliases, and prefill persistence. User verification exposed two fixture failures; corrected the policy-reorder setup to stage its swap transactionally through an unused priority, respecting SQLite's active-priority unique index, and asserted both reordered member numbers survive rejection. Verification of this correction is pending; the complete review inventory and remaining TRICARE compatibility decision are recorded in `docs/client-review/plan-07.md`.
+
 ### Changed - Client review Plan 07
 
 - Prefilled new intakes with clinic-scoped patient contact data and coherent primary/secondary policy values through both creation routes. Older editable drafts now offer explicit blank-field prefill; existing answers, submitted records and unknown response fields are retained. Added synthetic service, component and API coverage; no schema migration.

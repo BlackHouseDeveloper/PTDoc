@@ -17,6 +17,7 @@ using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Services;
 
 namespace PTDoc.Api.Intake;
 
@@ -383,6 +384,9 @@ public static class IntakeAccessEndpoints
         {
             return validationProblem!;
         }
+
+        if (!await IntakeDomainProjection.HasCurrentPolicySourcesAsync(db, intake.PatientId, intake.ClinicId, intake.ResponseJson, cancellationToken))
+            return Results.Conflict(new { error = IntakeDomainProjection.StalePolicySourceMessage });
 
         var nowUtc = DateTime.UtcNow;
         intake.Consents = normalizedConsents;

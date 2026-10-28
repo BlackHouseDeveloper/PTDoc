@@ -84,7 +84,62 @@ Accidental stale overwrite or policy duplication. Roll out with mapping comparis
 | dotnet format whitespace tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --include tests/PTDoc.Tests/Intake/IntakeServiceTests.cs tests/PTDoc.Tests/UI/Intake/IntakeWizardPageTests.cs tests/PTDoc.Tests/Integration/IntakeProfilePrefillIntegrationTests.cs --verify-no-changes --verbosity minimal | PASS: changed C# files match repository whitespace formatting. |
 | python3 /private/tmp/ptdoc-client-implementation/workflow.py check 7 | PASS: requirement IDs, required sections, local links, private-path and git diff whitespace checks. |
 
-## Remaining acceptance work
+## PR 162 review verification and local remediation
+
+Reviewed published head `5a2bc16ac7a138f84c05e42ef117eafd4e09ec4c` against base `6276027251609df64ffbbfa883f66e2d83dd57e4`. The local checkout initially matched that head and had no uncommitted changes. Fixes below are local and uncommitted. The earlier 302-test result above belongs to the published head, **not** these follow-up changes.
+
+### Complete feedback inventory and deduplication
+
+Retrieved the review submissions, merged comment timeline, and thread-aware review feedback through the GitHub connector, then independently retrieved GitHub GraphQL connection totals, pagination, full bodies, and minimized status. There is one submitted review, four inline comments in four unresolved/current threads, and zero conversation comments. Every connection, including each review/thread comment connection, reports `hasNextPage: false`. None of the comments is minimized. No outdated/resolved thread, suppressed-comment section, or **Previously missed** finding exists in the returned full payload. The four review-overview bullets link to these same comments and are **duplicates**, requiring no separate implementation or thread action.
+
+There are **four unique valid/actionable findings**, zero outdated findings, zero invalid findings, and zero ambiguous findings among the retrieved review comments. The additional compatibility decision below is distinct from that inventory.
+
+| Finding / thread | Classification and evidence at the reviewed head | Local correction and regression evidence |
+| --- | --- | --- |
+| [Policy identity/freshness, including secondary coverage](https://github.com/BlackHouseDeveloper/PTDoc/pull/162#discussion_r4375624649) — `PRRT_kwDOQt-faM6wMs1y` | **Valid.** `IntakeProfilePrefill.ApplyTo` stored source IDs and one aggregate timestamp, but `IntakeDomainProjection.UpsertPolicyAsync` selected the active row by patient/priority and never read those source fields. `IntakeService.SubmitAsync` and `IntakeEndpoints.SubmitIntake` call that projection after updating patient/intake state. Authorizations remain attached to the selected policy ID, so replacement/reordering can mix old policy data with existing authorizations. The standalone access endpoint also writes legacy payer fields and must reject stale sources. The priority-based writer already existed in the base commit; new automatic prefill makes unchanged submissions reach this failure, so this is not outdated. | Shared `HasCurrentPolicySourcesAsync` checks patient, clinic, unique active priority, ID and freshness before service/API/standalone submission writes. New snapshots retain exact per-policy timestamps; legacy snapshots use their existing combined timestamp without refreshing it for demographic-only acceptance. Projection additionally selects the accepted ID and checks freshness. `IntakeServiceTests.ProfilePrefill_RejectsStalePolicyBeforeMutatingSubmission` covers primary/secondary replacement, reorder, edits (including an edit older than the aggregate profile timestamp), archive/inactive/ambiguity, foreign identity/clinic, and missing/legacy timestamps. `IntakeProfilePrefillIntegrationTests.Submit_ValidatesPolicySourcesBeforeAnyWrites` covers HTTP 409, unchanged patient/intake/authorization evidence, and valid standalone submission. |
+| [Compound first names](https://github.com/BlackHouseDeveloper/PTDoc/pull/162#discussion_r4375624708) — `PRRT_kwDOQt-faM6wMs2d` | **Valid.** `IntakeProfilePrefillReader.ReadAsync` joined structured names, while both `IntakeService.SubmitAsync` and `IntakeEndpoints.ApplySubmittedIntakePatientFields` split at the first space even when the submitted name was unchanged. The latter helper also serves standalone submission. The split predates this PR, but automatic prefill newly exposes saved compound names to it. | Both name writers skip rewriting an exact unchanged trimmed full name. Explicit edits retain existing parsing. `ProfilePrefill_SubmitPreservesCompoundNameAndPolicyIdentity` covers unchanged and edited service submission; `CreatedPatient_ProfileAndBothIntakeCreationRoutesRetainSavedValues` now submits/reloads through both creation routes; the successful standalone case also checks `Mary Jane` / `Smith`. |
+| [Self Pay/policy-only prefill availability](https://github.com/BlackHouseDeveloper/PTDoc/pull/162#discussion_r4375624750) — `PRRT_kwDOQt-faM6wMs24` | **Valid.** `InsurancePolicyService.ValidatePolicy` permits Self Pay without a carrier. `HasValuesForBlankFields` only checked carrier/member for available primary data, while `ApplyTo` also supported payer type, group and adjuster fields. The wizard conditions its confirmation on that availability method. | Availability now includes every supported primary field and the secondary group number, while retaining the existing whole-policy blank check. `ProfilePrefill_OffersEverySupportedPolicyField_WithoutMixingExistingPolicies` covers the omitted fields. `IntakeWizardPageTests.ProfilePrefill_SelfPayOnlyOfferSurvivesWizardSaveWithIndependentPolicyVersions` checks actual confirmation and save, retaining a separately accepted secondary version. Existing apply/dismiss and locked-record tests remain unchanged. |
+| [Legacy providerType alias](https://github.com/BlackHouseDeveloper/PTDoc/pull/162#discussion_r4375624784) — `PRRT_kwDOQt-faM6wMs3N` | **Valid.** `PatientInfoPage.ProviderTypeOptions` and payer serialization use `providerType`, including `workers_comp`, `motor_vehicle` and `self_pay`. The reader only hydrated member-number aliases. `InsurancePayerCard` expects display labels and uses those labels to show adjuster fields. | Case-insensitive alias lookup translates the seven values supported by the intake selector, retaining canonical `payerType` precedence. `ProfilePrefill_LegacyProviderTypeUsesIntakeLabels` covers each label, whitespace/case, adjuster values, and canonical precedence. Existing `InsurancePayerCard_UpdatesSecondaryInsuranceAndAdjusterFields` verifies that the Workers' Compensation label exposes working adjuster controls. |
+
+Supporting source: [prefill mapping](../../src/PTDoc.Application/Intake/IntakeProfilePrefill.cs), [profile reader](../../src/PTDoc.Infrastructure/Services/IntakeProfilePrefillReader.cs), [projection and source validator](../../src/PTDoc.Infrastructure/Services/IntakeDomainProjection.cs), [service submission](../../src/PTDoc.Infrastructure/Services/IntakeService.cs), [authenticated API](../../src/PTDoc.Api/Intake/IntakeEndpoints.cs), [standalone API](../../src/PTDoc.Api/Intake/IntakeAccessEndpoints.cs), [wizard](../../src/PTDoc.UI/Pages/Intake/IntakeWizardPage.razor), [policy validation](../../src/PTDoc.Infrastructure/Services/InsurancePolicyService.cs), [legacy producer](../../src/PTDoc.UI/Pages/PatientInfo/PatientInfoPage.razor), and [payer selector](../../src/PTDoc.UI/Components/Intake/Cards/InsurancePayerCard.razor).
+
+Regression files: [service tests](../../tests/PTDoc.Tests/Intake/IntakeServiceTests.cs), [API round-trip/conflict tests](../../tests/PTDoc.Tests/Integration/IntakeProfilePrefillIntegrationTests.cs), [wizard tests](../../tests/PTDoc.Tests/UI/Intake/IntakeWizardPageTests.cs), and existing [payer component tests](../../tests/PTDoc.Tests/UI/Intake/StructuredIntakeComponentsTests.cs). New cases are marked `CoreCi`, matching the existing test classes. They have not been executed during this session.
+
+### Separate unresolved compatibility decision
+
+**Ambiguous extension, not an additional retrieved review finding:** Patient Info offers `providerType = tricare`, while `InsurancePayerCard` has no TRICARE option and `InsurancePayerType` has no TRICARE member. A product/domain decision is needed on whether to add first-class support or map to an existing payer category. No category was guessed and no schema/enum expansion was made. Existing raw legacy payer JSON remains intact. This does not block the seven supported alias fixes, but the limitation should be disclosed when replying to the alias thread.
+
+### Verification to run from the repository root
+
+User-provided runs reported 353/355 focused tests passing and 1893/1895 CoreCi tests passing. The subsequent attached output reported 2318/2320 passing and identified both failures as `Submit_ValidatesPolicySourcesBeforeAnyWrites` with `change: "reordered"` (authenticated primary and standalone secondary cases). Both threw SQLite Error 19 on `PatientInsurancePolicies.PatientId, PatientInsurancePolicies.CoveragePriority` while saving the fixture, before the submission request. The fixture now swaps priorities in three saves through the unused tertiary slot inside one transaction, preserving policy IDs, timestamps and authorization links. Additional assertions verify the reordered primary/secondary member numbers remain unchanged after HTTP 409. The production fixes are unchanged; these corrected tests still need to be rerun.
+
+First rebuild and rerun the affected integration class:
+
+```bash
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --configuration Debug --filter 'FullyQualifiedName~IntakeProfilePrefillIntegrationTests' --verbosity normal -m:1 -p:BuildInParallel=false
+```
+
+`git diff --check` passes. Per `AGENTS.md`, no build, test, or dotnet formatting command was run automatically. The test project references API, Web, shared UI, Application, Infrastructure and Core, so the following build covers the changed application graph:
+
+```bash
+dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --configuration Debug -m:1 -p:BuildInParallel=false
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --configuration Debug --no-build --filter 'FullyQualifiedName~Intake|FullyQualifiedName~InsurancePolicyServiceTests' --verbosity normal
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --configuration Debug --no-build --filter 'Category=CoreCi' --verbosity normal
+```
+
+Run the changed-project formatting gates as well:
+
+```bash
+dotnet format src/PTDoc.Application/PTDoc.Application.csproj --no-restore --verify-no-changes --verbosity minimal
+dotnet format src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --no-restore --verify-no-changes --verbosity minimal
+dotnet format src/PTDoc.Api/PTDoc.Api.csproj --no-restore --verify-no-changes --verbosity minimal
+dotnet format src/PTDoc.UI/PTDoc.UI.csproj --no-restore --verify-no-changes --verbosity minimal
+dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --verify-no-changes --verbosity minimal
+```
+
+After these checks pass and the user explicitly authorizes publication and GitHub discussion changes, all four listed threads are candidates for a reply describing the fix and verification, followed by resolution. Disclose the TRICARE scope decision in the alias reply. No commit, push, comment reply, thread resolution, PR-level response, or review request was performed.
+
+## Remaining release acceptance work
 
 Optional release acceptance: exercise a synthetic OTP-delivered link in a browser and confirm the existing-theme prompt at mobile and desktop widths. No real delivery was sent. Product may later identify additional deliberately excluded profile fields; clinical history and disputed authorization fields remain excluded.
 

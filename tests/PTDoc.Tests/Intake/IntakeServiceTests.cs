@@ -147,6 +147,220 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.Null(created.MedicalHistoryNotes);
     }
 
+    [Theory]
+    [InlineData("commercial", "Commercial")]
+    [InlineData("medicare", "Medicare")]
+    [InlineData("medicaid", "Medicaid")]
+    [InlineData(" WORKERS_COMP ", "Workers' Compensation")]
+    [InlineData("motor_vehicle", "Motor Vehicle")]
+    [InlineData("liability", "Liability")]
+    [InlineData("self_pay", "Self Pay")]
+    public async Task ProfilePrefill_LegacyProviderTypeUsesIntakeLabels(string providerType, string expected)
+    {
+        var patient = CreatePatient("Synthetic", "Legacy");
+        patient.PayerInfoJson = JsonSerializer.Serialize(new { ProviderType = providerType, AdjusterName = "Saved adjuster" });
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        Assert.Equal(expected, draft.PayerType);
+        Assert.Equal("Saved adjuster", draft.AdjusterName);
+
+        patient.PayerInfoJson = """{"payerType":"Medicare","providerType":"workers_comp"}""";
+        await _context.SaveChangesAsync();
+        var profile = await IntakeProfilePrefillReader.ReadAsync(_context, patient.Id, _clinicId);
+        Assert.Equal("Medicare", profile!.PayerType);
+    }
+
+    [Theory]
+    [InlineData(nameof(IntakeProfilePrefill.PayerType), "Self Pay")]
+    [InlineData(nameof(IntakeProfilePrefill.GroupNumber), "GROUP-7")]
+    [InlineData(nameof(IntakeProfilePrefill.AdjusterName), "Saved adjuster")]
+    [InlineData(nameof(IntakeProfilePrefill.AdjusterPhone), "555-0107")]
+    [InlineData(nameof(IntakeProfilePrefill.AdjusterEmail), "adjuster@example.test")]
+    [InlineData(nameof(IntakeProfilePrefill.AdjusterFax), "555-0108")]
+    [InlineData(nameof(IntakeProfilePrefill.SecondaryGroupNumber), "SECONDARY-GROUP-7")]
+    public void ProfilePrefill_OffersEverySupportedPolicyField_WithoutMixingExistingPolicies(string field, string value)
+    {
+        var profile = new IntakeProfilePrefill();
+        typeof(IntakeProfilePrefill).GetProperty(field)!.SetValue(profile, value);
+        var draft = new IntakeResponseDraft { FullName = "Already populated" };
+
+        Assert.True(profile.HasValuesForBlankFields(draft));
+        profile.ApplyTo(draft, confirmedBlankFields: true);
+        Assert.Equal(value, typeof(IntakeResponseDraft).GetProperty(field)!.GetValue(draft));
+        Assert.False(profile.HasValuesForBlankFields(draft));
+
+        var answered = new IntakeResponseDraft
+        {
+            InsuranceCompanyName = "Patient's primary",
+            SecondaryInsuranceCompanyName = "Patient's secondary"
+        };
+        Assert.False(profile.HasValuesForBlankFields(answered));
+        profile.ApplyTo(answered, confirmedBlankFields: true);
+        Assert.Null(typeof(IntakeResponseDraft).GetProperty(field)!.GetValue(answered));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProfilePrefill_SubmitPreservesCompoundNameAndPolicyIdentity(bool editName)
+    {
+        var patient = CreatePatient("Mary Jane", "Smith");
+        var policy = new PatientInsurancePolicy
+        {
+            PatientId = patient.Id,
+            ClinicId = _clinicId,
+            CoveragePriority = InsuranceCoveragePriority.Primary,
+            CarrierDisplayName = "Saved carrier",
+            MemberOrPolicyNumber = "MEMBER-7",
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        _context.Patients.Add(patient);
+        _context.PatientInsurancePolicies.Add(policy);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        Assert.Equal(policy.LastModifiedUtc, draft.PrefilledPrimaryPolicyModifiedUtc);
+        if (editName) draft.FullName = "Janet Jones";
+
+        await _service.SubmitAsync(draft);
+        _context.ChangeTracker.Clear();
+        var savedPatient = await _context.Patients.SingleAsync();
+        Assert.Equal(editName ? "Janet" : "Mary Jane", savedPatient.FirstName);
+        Assert.Equal(editName ? "Jones" : "Smith", savedPatient.LastName);
+        Assert.Equal(policy.Id, (await _context.PatientInsurancePolicies.SingleAsync()).Id);
+        var submitted = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
+        Assert.True(submitted.IsLocked);
+        Assert.Equal(draft.PrefilledPrimaryPolicyModifiedUtc, submitted.PrefilledPrimaryPolicyModifiedUtc);
+    }
+
+    [Theory]
+    [InlineData(false, "replaced")]
+    [InlineData(true, "replaced")]
+    [InlineData(false, "reordered")]
+    [InlineData(true, "reordered")]
+    [InlineData(false, "changed")]
+    [InlineData(true, "changed")]
+    [InlineData(false, "changed-below-profile-timestamp")]
+    [InlineData(true, "changed-below-profile-timestamp")]
+    [InlineData(false, "archived")]
+    [InlineData(true, "archived")]
+    [InlineData(false, "inactive")]
+    [InlineData(true, "inactive")]
+    [InlineData(false, "ambiguous")]
+    [InlineData(true, "ambiguous")]
+    [InlineData(false, "other-patient")]
+    [InlineData(true, "other-clinic")]
+    [InlineData(false, "legacy-changed")]
+    [InlineData(true, "missing-timestamp")]
+    public async Task ProfilePrefill_RejectsStalePolicyBeforeMutatingSubmission(bool secondary, string change)
+    {
+        var patient = CreatePatient("Mary Jane", "Smith");
+        var priority = secondary ? InsuranceCoveragePriority.Secondary : InsuranceCoveragePriority.Primary;
+        var policy = new PatientInsurancePolicy
+        {
+            PatientId = patient.Id,
+            ClinicId = _clinicId,
+            CoveragePriority = priority,
+            CarrierDisplayName = "Original",
+            MemberOrPolicyNumber = "ORIGINAL",
+            LastModifiedUtc = patient.LastModifiedUtc
+        };
+        var authorization = new PatientInsuranceAuthorization
+        {
+            PatientId = patient.Id,
+            ClinicId = _clinicId,
+            PatientInsurancePolicyId = policy.Id,
+            ReferenceNumber = "KEEP-AUTH"
+        };
+        if (change == "changed-below-profile-timestamp") policy.LastModifiedUtc = patient.LastModifiedUtc.AddHours(-1);
+        _context.Patients.Add(patient);
+        _context.PatientInsurancePolicies.Add(policy);
+        _context.PatientInsuranceAuthorizations.Add(authorization);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        var intake = await _context.IntakeForms.SingleAsync();
+        var originalJson = intake.ResponseJson;
+        var originalPatientVersion = patient.LastModifiedUtc;
+        draft.FullName = "Must Not Change";
+        draft.ReferringDoctorName = "Must Not Create Provider";
+        switch (change)
+        {
+            case "replaced":
+            case "ambiguous":
+                policy.IsArchived = change == "replaced";
+                _context.PatientInsurancePolicies.Add(new PatientInsurancePolicy
+                {
+                    PatientId = patient.Id,
+                    ClinicId = _clinicId,
+                    CoveragePriority = priority,
+                    CarrierDisplayName = "Replacement",
+                    MemberOrPolicyNumber = "REPLACEMENT"
+                });
+                break;
+            case "reordered":
+                policy.CoveragePriority = secondary ? InsuranceCoveragePriority.Primary : InsuranceCoveragePriority.Secondary;
+                break;
+            case "changed":
+            case "legacy-changed":
+                policy.MemberOrPolicyNumber = "CLINICIAN-CORRECTION";
+                policy.LastModifiedUtc = patient.LastModifiedUtc.AddMinutes(1);
+                if (change == "legacy-changed") draft.PrefilledPrimaryPolicyModifiedUtc = null;
+                break;
+            case "archived": policy.IsArchived = true; break;
+            case "inactive": policy.Status = InsurancePolicyStatus.Inactive; break;
+            case "changed-below-profile-timestamp": policy.LastModifiedUtc = policy.LastModifiedUtc.AddMinutes(1); break;
+            case "other-patient": policy.PatientId = Guid.NewGuid(); break;
+            case "other-clinic": policy.ClinicId = Guid.NewGuid(); break;
+            case "missing-timestamp":
+                draft.PrefilledSecondaryPolicyModifiedUtc = null;
+                draft.ProfilePrefillSourceModifiedUtc = null;
+                break;
+        }
+        await _context.SaveChangesAsync();
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SubmitAsync(draft));
+        Assert.Equal(IntakeDomainProjection.StalePolicySourceMessage, error.Message);
+        Assert.False(intake.IsLocked);
+        Assert.Null(intake.SubmittedAt);
+        Assert.Equal(originalJson, intake.ResponseJson);
+        Assert.Equal("Mary Jane", patient.FirstName);
+        Assert.Equal(originalPatientVersion, patient.LastModifiedUtc);
+        Assert.False(_context.ChangeTracker.HasChanges());
+        Assert.Equal("KEEP-AUTH", authorization.ReferenceNumber);
+        Assert.Equal(policy.Id, authorization.PatientInsurancePolicyId);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            IntakeDomainProjection.UpsertAsync(_context, patient, draft, _userId, default));
+        Assert.False(_context.ChangeTracker.HasChanges());
+    }
+
+    [Fact]
+    public void ProfilePrefill_FillingDemographicsDoesNotRefreshAcceptedPolicyVersions()
+    {
+        var original = DateTime.UtcNow.AddHours(-1);
+        var draft = new IntakeResponseDraft
+        {
+            InsuranceCompanyName = "Old primary",
+            SecondaryInsuranceCompanyName = "Old secondary",
+            PrefilledPrimaryPolicyModifiedUtc = original,
+            PrefilledSecondaryPolicyModifiedUtc = original,
+            ProfilePrefillSourceModifiedUtc = original
+        };
+        var profile = new IntakeProfilePrefill
+        {
+            PhoneNumber = "555-0107",
+            SourceModifiedUtc = DateTime.UtcNow,
+            PrimaryPolicyModifiedUtc = DateTime.UtcNow,
+            SecondaryPolicyModifiedUtc = DateTime.UtcNow
+        };
+
+        profile.ApplyTo(draft, confirmedBlankFields: true);
+        Assert.Equal("555-0107", draft.PhoneNumber);
+        Assert.Equal(original, draft.PrefilledPrimaryPolicyModifiedUtc);
+        Assert.Equal(original, draft.PrefilledSecondaryPolicyModifiedUtc);
+        Assert.Equal(original, draft.ProfilePrefillSourceModifiedUtc);
+    }
+
     [Fact]
     public async Task EnsureDraftAsync_ReturnsExistingUnlockedDraft_WhenPresent()
     {

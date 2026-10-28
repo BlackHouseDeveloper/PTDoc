@@ -329,6 +329,12 @@ public sealed class IntakeService : IIntakeService
         if (intake is null)
             return;
 
+        if (!await IntakeDomainProjection.HasCurrentPolicySourcesAsync(
+                _context, patientId, intake.ClinicId, canonicalState, cancellationToken))
+        {
+            throw new InvalidOperationException(IntakeDomainProjection.StalePolicySourceMessage);
+        }
+
         var nowUtc = DateTime.UtcNow;
         var submittedAtUtc = intake.SubmittedAt ?? nowUtc;
 
@@ -358,7 +364,8 @@ public sealed class IntakeService : IIntakeService
         {
             var name = canonicalState.FullName?.Trim() ?? string.Empty;
             var spaceIndex = name.IndexOf(' ');
-            if (!string.IsNullOrWhiteSpace(name))
+            if (!string.IsNullOrWhiteSpace(name)
+                && !string.Equals(name, $"{patient.FirstName} {patient.LastName}".Trim(), StringComparison.Ordinal))
             {
                 patient.FirstName = spaceIndex > 0 ? name[..spaceIndex].Trim() : name;
                 patient.LastName = spaceIndex > 0 ? name[(spaceIndex + 1)..].Trim() : string.Empty;
@@ -433,6 +440,8 @@ public sealed class IntakeService : IIntakeService
         target.IntakeFlowVersion = source.IntakeFlowVersion;
         target.PrefilledPrimaryPolicyId = source.PrefilledPrimaryPolicyId;
         target.PrefilledSecondaryPolicyId = source.PrefilledSecondaryPolicyId;
+        target.PrefilledPrimaryPolicyModifiedUtc = source.PrefilledPrimaryPolicyModifiedUtc;
+        target.PrefilledSecondaryPolicyModifiedUtc = source.PrefilledSecondaryPolicyModifiedUtc;
         target.ProfilePrefillSourceModifiedUtc = source.ProfilePrefillSourceModifiedUtc;
         target.CurrentStep = source.CurrentStep;
         target.ConsentPacket = IntakeDraftPersistence.CloneConsentPacket(source.ConsentPacket);

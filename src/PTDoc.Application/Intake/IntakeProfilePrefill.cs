@@ -10,6 +10,8 @@ public sealed class IntakeProfilePrefill
     public DateTime? DateOfBirth { get; set; }
     public Guid? PrimaryPolicyId { get; set; }
     public Guid? SecondaryPolicyId { get; set; }
+    public DateTime? PrimaryPolicyModifiedUtc { get; set; }
+    public DateTime? SecondaryPolicyModifiedUtc { get; set; }
     public DateTime SourceModifiedUtc { get; set; }
     public string? FullName { get; set; }
     public string? EmailAddress { get; set; }
@@ -49,10 +51,14 @@ public sealed class IntakeProfilePrefill
                 && string.IsNullOrWhiteSpace(draft.GroupNumber) && string.IsNullOrWhiteSpace(draft.PayerType)
                 && string.IsNullOrWhiteSpace(draft.AdjusterName) && string.IsNullOrWhiteSpace(draft.AdjusterPhone)
                 && string.IsNullOrWhiteSpace(draft.AdjusterEmail) && string.IsNullOrWhiteSpace(draft.AdjusterFax)
-                && (!string.IsNullOrWhiteSpace(InsuranceCompanyName) || !string.IsNullOrWhiteSpace(MemberOrPolicyNumber))
+                && (!string.IsNullOrWhiteSpace(InsuranceCompanyName) || !string.IsNullOrWhiteSpace(MemberOrPolicyNumber)
+                    || !string.IsNullOrWhiteSpace(GroupNumber) || !string.IsNullOrWhiteSpace(PayerType)
+                    || !string.IsNullOrWhiteSpace(AdjusterName) || !string.IsNullOrWhiteSpace(AdjusterPhone)
+                    || !string.IsNullOrWhiteSpace(AdjusterEmail) || !string.IsNullOrWhiteSpace(AdjusterFax))
             || string.IsNullOrWhiteSpace(draft.SecondaryInsuranceCompanyName)
                 && string.IsNullOrWhiteSpace(draft.SecondaryMemberOrPolicyNumber) && string.IsNullOrWhiteSpace(draft.SecondaryGroupNumber)
-                && (!string.IsNullOrWhiteSpace(SecondaryInsuranceCompanyName) || !string.IsNullOrWhiteSpace(SecondaryMemberOrPolicyNumber)));
+                && (!string.IsNullOrWhiteSpace(SecondaryInsuranceCompanyName) || !string.IsNullOrWhiteSpace(SecondaryMemberOrPolicyNumber)
+                    || !string.IsNullOrWhiteSpace(SecondaryGroupNumber)));
 
     public string ApplyToNewResponseJson(string? responseJson)
     {
@@ -90,6 +96,8 @@ public sealed class IntakeProfilePrefill
             "adjusterFax",
             "prefilledPrimaryPolicyId",
             "prefilledSecondaryPolicyId",
+            "prefilledPrimaryPolicyModifiedUtc",
+            "prefilledSecondaryPolicyModifiedUtc",
             "profilePrefillSourceModifiedUtc",
         ];
         foreach (var field in fields)
@@ -134,6 +142,7 @@ public sealed class IntakeProfilePrefill
             draft.AdjusterEmail = AdjusterEmail;
             draft.AdjusterFax = AdjusterFax;
             draft.PrefilledPrimaryPolicyId = PrimaryPolicyId;
+            draft.PrefilledPrimaryPolicyModifiedUtc = PrimaryPolicyModifiedUtc;
         }
         if (Empty(draft.SecondaryInsuranceCompanyName) && Empty(draft.SecondaryMemberOrPolicyNumber)
             && Empty(draft.SecondaryGroupNumber))
@@ -142,7 +151,9 @@ public sealed class IntakeProfilePrefill
             draft.SecondaryMemberOrPolicyNumber = SecondaryMemberOrPolicyNumber;
             draft.SecondaryGroupNumber = SecondaryGroupNumber;
             draft.PrefilledSecondaryPolicyId = SecondaryPolicyId;
+            draft.PrefilledSecondaryPolicyModifiedUtc = SecondaryPolicyModifiedUtc;
         }
-        draft.ProfilePrefillSourceModifiedUtc = SourceModifiedUtc;
+        // Do not refresh the fallback timestamp for an already accepted legacy policy source.
+        draft.ProfilePrefillSourceModifiedUtc ??= SourceModifiedUtc;
     }
 }
