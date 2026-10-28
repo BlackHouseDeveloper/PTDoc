@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - beta deployment sign-in retries
+
+- Retry transient HTTP failures during the four seeded-role sign-in checks in `Deploy Beta`, with bounded connection and request timeouts, so a brief App Service restart response does not stop Web deployment after API health checks pass. Invalid credentials still fail immediately.
+
 ### Fixed - PR 154 kiosk recovery and remaining review findings
 
 - Keep successful kiosk enrollment credentials usable in memory when browser storage fails, show a persistent storage warning, and retry persistence without consuming another enrollment code. Handle blocked storage reads without terminating the page; added fresh/replacement enrollment, check-in, and retry regressions.
