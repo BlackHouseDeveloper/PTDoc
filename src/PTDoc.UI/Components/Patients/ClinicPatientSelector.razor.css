@@ -1,0 +1,4 @@
+.clinic-patient-selector { display: grid; gap: var(--spacing-3); min-width: 0; }
+label { display: grid; gap: var(--spacing-2); }
+input, select { width: 100%; min-width: 0; padding: var(--spacing-2); color: var(--foreground); background: var(--background); border: 1px solid var(--border); border-radius: var(--radius-md); }
+nav { display: flex; gap: var(--spacing-2); flex-wrap: wrap; align-items: center; }

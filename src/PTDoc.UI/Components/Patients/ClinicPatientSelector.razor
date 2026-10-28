@@ -1,0 +1,77 @@
+@using PTDoc.Application.DTOs
+@inject IPatientService Patients
+
+<div class="clinic-patient-selector">
+    <label><span>Find patient</span><input @bind="query" @bind:event="oninput" disabled="@Disabled" placeholder="Name, MRN or email" /></label>
+    <button type="button" class="btn btn--secondary" @onclick="SearchAsync" disabled="@(Disabled || loading)">Search</button>
+    @if (error is not null) { <p role="alert">@error</p> }
+    <label><span>Patient</span>
+        <select value="@(Value?.ToString() ?? string.Empty)" @onchange="SelectAsync" disabled="@(Disabled || loading)">
+            <option value="">Select a patient</option>
+            @if (selected is not null && rows.All(item => item.Id != selected.Id))
+            {
+                <option value="@selected.Id">@selected.FirstName @selected.LastName (@(selected.MedicalRecordNumber ?? "No MRN"))</option>
+            }
+            @foreach (var patient in rows)
+            {
+                <option value="@patient.Id">@patient.DisplayName (@(patient.MedicalRecordNumber ?? "No MRN"))</option>
+            }
+        </select>
+    </label>
+    <nav aria-label="Patient result pages">
+        <button type="button" class="btn btn--secondary" disabled="@(Disabled || loading || offset == 0)" @onclick="() => LoadPageAsync(offset - PageSize)">Previous patients</button>
+        <span role="status">@(loading ? "Loading patients…" : $"Page {offset / PageSize + 1} · {rows.Count} patients")</span>
+        <button type="button" class="btn btn--secondary" disabled="@(Disabled || loading || !hasMore)" @onclick="() => LoadPageAsync(offset + PageSize)">Next patients</button>
+    </nav>
+</div>
+
+@code {
+    [Parameter] public Guid? Value { get; set; }
+    [Parameter] public EventCallback<Guid?> ValueChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    private const int PageSize = 25;
+    private string query = string.Empty;
+    private string searchQuery = string.Empty;
+    private IReadOnlyList<PatientListItemResponse> rows = [];
+    private PatientResponse? selected;
+    private int offset;
+    private bool hasMore;
+    private bool loading;
+    private string? error;
+    private int selectionVersion;
+
+    protected override Task OnInitializedAsync() => LoadPageAsync(0);
+    protected override async Task OnParametersSetAsync()
+    {
+        var version = ++selectionVersion;
+        if (!Value.HasValue) { selected = null; return; }
+        if (selected?.Id == Value) return;
+        try
+        {
+            var result = await Patients.GetByIdAsync(Value.Value);
+            if (version == selectionVersion) selected = result;
+        }
+        catch { if (version == selectionVersion) error = "Unable to load the selected patient. Try again."; }
+    }
+    private async Task SearchAsync()
+    {
+        searchQuery = query;
+        await LoadPageAsync(0);
+    }
+    private async Task LoadPageAsync(int nextOffset)
+    {
+        if (loading) return;
+        loading = true;
+        error = null;
+        try
+        {
+            var result = await Patients.SearchPageAsync(searchQuery, PageSize + 1, nextOffset);
+            rows = result.Take(PageSize).ToArray();
+            hasMore = result.Count > PageSize;
+            offset = nextOffset;
+        }
+        catch { error = "Unable to load patients. Search again to retry."; }
+        finally { loading = false; }
+    }
+    private Task SelectAsync(ChangeEventArgs args) => ValueChanged.InvokeAsync(Guid.TryParse(args.Value?.ToString(), out var id) ? id : null);
+}

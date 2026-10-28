@@ -21,6 +21,10 @@ public interface IPatientService
         int take = 100,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Returns a stable, clinic-scoped page for selectors. Results exclude archived patients.</summary>
+    Task<IReadOnlyList<PatientListItemResponse>> SearchPageAsync(
+        string? query, int take, int skip, CancellationToken cancellationToken = default);
+
     /// <summary>Creates a new patient record and returns the full response.</summary>
     Task<PatientResponse> CreateAsync(
         CreatePatientRequest request,
