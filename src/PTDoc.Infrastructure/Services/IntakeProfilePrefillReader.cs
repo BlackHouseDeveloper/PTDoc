@@ -51,8 +51,8 @@ public static class IntakeProfilePrefillReader
             {
                 legacy.MemberOrPolicyNumber ??= ReadAlias(json.RootElement, "memberIdPolicyNumber");
                 legacy.SecondaryMemberOrPolicyNumber ??= ReadAlias(json.RootElement, "secondaryMemberIdPolicyNumber");
-                legacy.PayerType ??= IntakeProfilePrefill.NormalizeProviderType(ReadAlias(json.RootElement, "providerType"));
-                if (string.Equals(legacy.PayerType?.Trim(), "tricare", StringComparison.OrdinalIgnoreCase)) legacy.PayerType = "TRICARE";
+                legacy.PayerType ??= ReadAlias(json.RootElement, "providerType");
+                legacy.PayerType = IntakeProfilePrefill.NormalizeProviderType(legacy.PayerType) ?? legacy.PayerType;
             }
         }
         catch (JsonException) { legacy = new(); }

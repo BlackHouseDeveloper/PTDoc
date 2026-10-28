@@ -311,6 +311,38 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.Null(created.MedicalHistoryNotes);
     }
 
+    [Theory]
+    [InlineData(" commercial ", "Commercial", InsurancePayerType.Commercial)]
+    [InlineData("MEDICARE", "Medicare", InsurancePayerType.Medicare)]
+    [InlineData("medicaid", "Medicaid", InsurancePayerType.Medicaid)]
+    [InlineData("tricare", "TRICARE", InsurancePayerType.Tricare)]
+    [InlineData(" WORKERS_COMP ", "Workers' Compensation", InsurancePayerType.WorkersCompensation)]
+    [InlineData("motor_vehicle", "Motor Vehicle", InsurancePayerType.MotorVehicle)]
+    [InlineData("liability", "Liability", InsurancePayerType.Liability)]
+    [InlineData("self_pay", "Self Pay", InsurancePayerType.SelfPay)]
+    public async Task ProfilePrefill_CanonicalAliasesSurviveReadAndSubmission(string canonical, string label, InsurancePayerType expected)
+    {
+        var patient = CreatePatient("Canonical", "Alias");
+        patient.PayerInfoJson = JsonSerializer.Serialize(new
+        {
+            payerType = canonical,
+            providerType = "motor_vehicle",
+            insuranceCompanyName = "Canonical Carrier",
+            memberOrPolicyNumber = "CANONICAL-001"
+        });
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        Assert.Equal(label, draft.PayerType);
+        // A previously stored intake can submit the alias directly, without passing through the reader again.
+        draft.PayerType = canonical;
+        await _service.SubmitAsync(draft);
+        var policy = await _context.PatientInsurancePolicies.AsNoTracking().SingleAsync();
+        Assert.Equal(expected, policy.PayerType);
+        Assert.Equal("CANONICAL-001", policy.MemberOrPolicyNumber);
+        Assert.Equal(label, (await IntakeProfilePrefillReader.ReadAsync(_context, patient.Id, _clinicId))!.PayerType);
+    }
+
     [Fact]
     public async Task ProfilePrefill_LegacyCanonicalTricareTakesPrecedenceOverAlias()
     {

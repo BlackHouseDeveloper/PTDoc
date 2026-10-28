@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed - beta deployment sign-in retries
+### Fixed - PR 162 canonical payer mapping
+
+- Prefer canonical `payerType` over conflicting legacy `providerType` during policy backfill, including TRICARE. Existing active policies remain untouched by idempotent backfill.
+- Normalize the selected payer value regardless of its source key and reuse normalization in intake/patient projection and backfill. Canonical aliases such as `workers_comp`, `motor_vehicle` and `self_pay` retain their correct category through prefill and submission; supported labels and TRICARE remain supported.
+- Add 16 regression cases for conflicting-key backfill, legacy canonical-alias reads/direct submissions, and HTTP patient-save/intake-submit round trips. Record all 16 review-comment classifications and eligible threads in `docs/client-review/plan-07.md`; new verification awaits user-run builds/tests.
+
 ### Added - TRICARE payer type
 
 - Support TRICARE as a distinct payer type across Patient Info, normalized policy editing/history, intake selection/prefill/submission, legacy import and offline sync. Append `Tricare = 8`, preserving existing persisted enum values; no schema migration or automatic reclassification of existing policies.

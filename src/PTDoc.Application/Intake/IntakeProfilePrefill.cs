@@ -149,10 +149,10 @@ public sealed class IntakeProfilePrefill
         "medicare" => "Medicare",
         "medicaid" => "Medicaid",
         "tricare" => "TRICARE",
-        "workers_comp" => "Workers' Compensation",
-        "motor_vehicle" => "Motor Vehicle",
+        "workers_comp" or "workers compensation" or "workers' compensation" => "Workers' Compensation",
+        "motor_vehicle" or "motor vehicle" => "Motor Vehicle",
         "liability" => "Liability",
-        "self_pay" => "Self Pay",
+        "self_pay" or "self pay" or "self-pay" => "Self Pay",
         _ => null
     };
 

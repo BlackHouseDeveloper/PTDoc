@@ -528,18 +528,29 @@ public sealed class IntakeProfilePrefillIntegrationTests : IClassFixture<PtDocAp
     }
 
     [Theory]
-    [InlineData("commercial", "Commercial", InsurancePayerType.Commercial)]
-    [InlineData("medicare", "Medicare", InsurancePayerType.Medicare)]
-    [InlineData("medicaid", "Medicaid", InsurancePayerType.Medicaid)]
-    [InlineData("tricare", "TRICARE", InsurancePayerType.Tricare)]
-    [InlineData("workers_comp", "Workers' Compensation", InsurancePayerType.WorkersCompensation)]
-    [InlineData("motor_vehicle", "Motor Vehicle", InsurancePayerType.MotorVehicle)]
-    [InlineData("liability", "Liability", InsurancePayerType.Liability)]
-    [InlineData("self_pay", "Self Pay", InsurancePayerType.SelfPay)]
-    public async Task PatientInfoProviderType_NormalizesOnCreateAndUpdateBeforePrefill(string alias, string label, InsurancePayerType expected)
+    [InlineData("commercial", "Commercial", InsurancePayerType.Commercial, false)]
+    [InlineData("medicare", "Medicare", InsurancePayerType.Medicare, false)]
+    [InlineData("medicaid", "Medicaid", InsurancePayerType.Medicaid, false)]
+    [InlineData("tricare", "TRICARE", InsurancePayerType.Tricare, false)]
+    [InlineData("workers_comp", "Workers' Compensation", InsurancePayerType.WorkersCompensation, false)]
+    [InlineData("motor_vehicle", "Motor Vehicle", InsurancePayerType.MotorVehicle, false)]
+    [InlineData("liability", "Liability", InsurancePayerType.Liability, false)]
+    [InlineData("self_pay", "Self Pay", InsurancePayerType.SelfPay, false)]
+    [InlineData(" WORKERS_COMP ", "Workers' Compensation", InsurancePayerType.WorkersCompensation, true)]
+    [InlineData("motor_vehicle", "Motor Vehicle", InsurancePayerType.MotorVehicle, true)]
+    [InlineData("self_pay", "Self Pay", InsurancePayerType.SelfPay, true)]
+    [InlineData("tricare", "TRICARE", InsurancePayerType.Tricare, true)]
+    public async Task PatientInfoProviderType_NormalizesOnCreateAndUpdateBeforePrefill(string alias, string label, InsurancePayerType expected, bool canonicalKey)
     {
         using var client = _factory.CreateClientWithRole(Roles.PT);
-        var payer = JsonSerializer.Serialize(new { insuranceCompanyName = "UI Carrier", providerType = alias, memberIdPolicyNumber = "UI-MEMBER" });
+        var payload = new Dictionary<string, string>
+        {
+            ["insuranceCompanyName"] = "UI Carrier",
+            ["providerType"] = canonicalKey ? "medicare" : alias,
+            ["memberIdPolicyNumber"] = "UI-MEMBER"
+        };
+        if (canonicalKey) payload["payerType"] = alias;
+        var payer = JsonSerializer.Serialize(payload);
         using var created = await client.PostAsJsonAsync("/api/v1/patients", new CreatePatientRequest
         {
             FirstName = "Alias",

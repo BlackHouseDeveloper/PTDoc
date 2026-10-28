@@ -48,5 +48,30 @@ public sealed class InsurancePolicyServiceTests : IDisposable
         Assert.Equal(0, (await service.BackfillLegacyPayerDataAsync(default)).PoliciesCreated);
         Assert.Equal(InsurancePayerType.Tricare, (await db.PatientInsurancePolicies.AsNoTracking().SingleAsync()).PayerType);
     }
+    [Theory]
+    [InlineData(" tricare ", "medicare", InsurancePayerType.Tricare)]
+    [InlineData("Medicare", "tricare", InsurancePayerType.Medicare)]
+    [InlineData("workers_comp", "tricare", InsurancePayerType.WorkersCompensation)]
+    [InlineData("Unrecognized payer", "tricare", InsurancePayerType.Other)]
+    public async Task Backfill_CanonicalPayerTypeWinsOverConflictingAlias(string canonical, string alias, InsurancePayerType expected)
+    {
+        patient.PayerInfoJson = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            payerType = canonical,
+            providerType = alias,
+            insuranceCompanyName = "Primary Carrier",
+            memberIdPolicyNumber = "PRIMARY",
+            secondaryInsuranceCompanyName = "Secondary Carrier",
+            secondaryMemberIdPolicyNumber = "SECONDARY"
+        });
+        await db.SaveChangesAsync();
+        Assert.Equal(2, (await service.BackfillLegacyPayerDataAsync(default)).PoliciesCreated);
+        var policies = await service.ListAsync(patient.Id, default);
+        Assert.Equal(2, policies.Count);
+        Assert.All(policies, policy => Assert.Equal(expected, policy.PayerType));
+        Assert.Contains(policies, policy => policy.CoveragePriority == InsuranceCoveragePriority.Primary && policy.MemberOrPolicyNumber == "PRIMARY");
+        Assert.Contains(policies, policy => policy.CoveragePriority == InsuranceCoveragePriority.Secondary && policy.MemberOrPolicyNumber == "SECONDARY");
+        Assert.Equal(0, (await service.BackfillLegacyPayerDataAsync(default)).PoliciesCreated);
+    }
     public void Dispose() => db.Dispose();
 }

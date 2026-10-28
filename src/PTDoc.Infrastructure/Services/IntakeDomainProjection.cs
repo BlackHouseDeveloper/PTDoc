@@ -194,7 +194,7 @@ public static class IntakeDomainProjection
         }
     }
 
-    private static InsurancePayerType ParsePayerType(string value) => value.Trim().ToLowerInvariant() switch { "commercial" => InsurancePayerType.Commercial, "medicare" => InsurancePayerType.Medicare, "medicaid" => InsurancePayerType.Medicaid, "tricare" => InsurancePayerType.Tricare, "workers' compensation" => InsurancePayerType.WorkersCompensation, "motor vehicle" => InsurancePayerType.MotorVehicle, "liability" => InsurancePayerType.Liability, "self pay" => InsurancePayerType.SelfPay, _ => InsurancePayerType.Other };
+    private static InsurancePayerType ParsePayerType(string value) => (IntakeProfilePrefill.NormalizeProviderType(value) ?? value).Trim().ToLowerInvariant() switch { "commercial" => InsurancePayerType.Commercial, "medicare" => InsurancePayerType.Medicare, "medicaid" => InsurancePayerType.Medicaid, "tricare" => InsurancePayerType.Tricare, "workers' compensation" => InsurancePayerType.WorkersCompensation, "motor vehicle" => InsurancePayerType.MotorVehicle, "liability" => InsurancePayerType.Liability, "self pay" => InsurancePayerType.SelfPay, _ => InsurancePayerType.Other };
     private static void HydrateLegacyPayerAliases(IntakeResponseDraft draft, string? payerInfoJson)
     {
         try
