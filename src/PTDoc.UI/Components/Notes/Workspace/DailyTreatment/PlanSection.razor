@@ -11,6 +11,14 @@
     <div class="daily-grid">
         <div class="daily-col-12">
             <FormSection Title="Plan for next visit">
+                @if (IsProgressNote)
+                {
+<PlanNarrativeField Vm="@_vm" VmChanged="VmChanged" NoteId="NoteId" SourceLastModifiedUtc="SourceLastModifiedUtc"
+                        HasUnsavedChanges="HasUnsavedChanges" IsReadOnly="IsReadOnly" Purpose="NoteNarrativePurpose.NextVisitPlan"
+                        Label="Plan for next visit" TestId="progress-next-visit" ActionText="AI Suggest" />
+                }
+                else
+                {
                 <EditableTextArea Label="Plan for next visit *"
                                   Value="@GetPlanForNextVisitText()"
                                   ValueChanged="UpdatePlanForNextVisit"
@@ -19,11 +27,20 @@
                                   Rows="6"
                                   IsRequired="true"
                                   ShowValidation="@string.IsNullOrWhiteSpace(GetPlanForNextVisitText())" />
+                }
             </FormSection>
         </div>
 
         <div class="daily-col-12">
             <FormSection Title="Clinical Summary (S.O.A.P)" Subtitle="AI-generated comprehensive summary of all SOAP sections">
+                @if (IsProgressNote)
+                {
+<PlanNarrativeField Vm="@_vm" VmChanged="VmChanged" NoteId="NoteId" SourceLastModifiedUtc="SourceLastModifiedUtc"
+                        HasUnsavedChanges="HasUnsavedChanges" IsReadOnly="IsReadOnly" Purpose="NoteNarrativePurpose.SoapSummary"
+                        Label="Clinical Summary (S.O.A.P)" TestId="progress-summary" ActionText="Generate Summary" />
+                }
+                else
+                {
                 <div class="daily-plan__summary-header">
                     <button type="button" disabled="@(IsReadOnly || NoteId == Guid.Empty || !HasConcreteBodyPart(SelectedBodyPart) || _isGeneratingSummary)" @onclick="GenerateSummaryAsync">
                         @(_isGeneratingSummary ? "Generating..." : "Generate Summary")
@@ -53,6 +70,7 @@
                 {
                     <p class="daily-plan__message daily-plan__message--error" role="alert">@_summaryErrorMessage</p>
                 }
+                }
             </FormSection>
         </div>
     </div>
@@ -71,6 +89,9 @@
     [Parameter] public EventCallback<DailyTreatmentVm> DailyTreatmentChanged { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public bool IsDarkMode { get; set; }
+    [Parameter] public bool IsProgressNote { get; set; }
+    [Parameter] public DateTime? SourceLastModifiedUtc { get; set; }
+    [Parameter] public bool HasUnsavedChanges { get; set; }
     [Parameter] public Guid NoteId { get; set; }
     [Parameter] public string? DiagnosisSummary { get; set; }
     [Parameter] public string? AssessmentSummary { get; set; }

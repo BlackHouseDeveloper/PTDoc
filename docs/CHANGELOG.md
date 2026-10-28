@@ -54,6 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - Client review Plan 04
 
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
+### Added - Client review Plan 32
+
+- Rebased onto the Plan 28 CI corrections and aligned test initializer formatting; all 173 focused regressions and the full test-project formatter pass.
+
+- Wire Progress next-visit and SOAP generation, plus Discharge recommendations, follow-up and summary controls, to saved-note purpose contracts. Keep suggestions local until explicit acceptance and the normal versioned save; reject stale responses and preserve manual text on failure. Full discharge vocabulary and clinical output approval remain release gates.
+
 ### Changed - Plan 28 CI formatting
 
 - Completed the API and test-project formatting phases, preserving all narrative behavior.

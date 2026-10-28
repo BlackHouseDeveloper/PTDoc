@@ -1,5 +1,6 @@
 @namespace PTDoc.UI.Components.Notes.Workspace.DischargeNote
 @using PTDoc.UI.Components.Notes.Models
+@using PTDoc.Application.AI
 
 <section class="discharge-plan" data-testid="discharge-plan-section" role="tabpanel" aria-label="Discharge plan section">
     <article class="discharge-plan__card" data-testid="discharge-recommendations-card">
@@ -45,27 +46,13 @@
                       placeholder="Explain the discharge reason when Other is selected..."></textarea>
         }
 
-        <label class="discharge-plan__label" for="discharge-recommendations">Discharge Recommendations &amp; Follow-up Plan *</label>
-        <textarea id="discharge-recommendations"
-                  class="discharge-plan__textarea"
-                  rows="6"
-                  disabled="@IsReadOnly"
-                  aria-required="true"
-                  data-note-field-key="discharge-recommendations"
-                  @bind="Vm.DischargeRecommendations"
-                  @bind:event="oninput"
-                  @bind:after="HandleChangedAsync"
-                  placeholder="Document final functional status, home exercise program provided, follow-up recommendations, return-to-PT criteria, precautions, red flags, or activity modifications..."></textarea>
+<PlanNarrativeField Vm="@Vm" VmChanged="VmChanged" NoteId="NoteId" SourceLastModifiedUtc="SourceLastModifiedUtc"
+                        HasUnsavedChanges="HasUnsavedChanges" IsReadOnly="IsReadOnly" Purpose="NoteNarrativePurpose.DischargeRecommendations"
+                        Label="Discharge Recommendations & Follow-up Plan *" TestId="discharge-recommendations" ActionText="AI Suggest" />
 
-        <label class="discharge-plan__label" for="post-discharge">Post-Discharge Instructions</label>
-        <textarea id="post-discharge"
-                  class="discharge-plan__textarea"
-                  rows="4"
-                  disabled="@IsReadOnly"
-                  @bind="Vm.PostDischargeInstructions"
-                  @bind:event="oninput"
-                  @bind:after="HandleChangedAsync"
-                  placeholder="Follow-up recommendations, home program maintenance, warning signs, when to seek medical attention..."></textarea>
+<PlanNarrativeField Vm="@Vm" VmChanged="VmChanged" NoteId="NoteId" SourceLastModifiedUtc="SourceLastModifiedUtc"
+                        HasUnsavedChanges="HasUnsavedChanges" IsReadOnly="IsReadOnly" Purpose="NoteNarrativePurpose.DischargeFollowUp"
+                        Label="Post-Discharge Instructions" TestId="discharge-follow-up" ActionText="AI Suggest" />
 
         <div class="discharge-plan__tips">
             <p>Documentation Tips:</p>
@@ -81,18 +68,11 @@
     <article class="discharge-plan__card" data-testid="discharge-plan-card">
         <header class="discharge-plan__card-header">
             <h3 class="discharge-plan__card-title">Discharge Summary</h3>
-            <button type="button" class="discharge-plan__action-btn" disabled="@IsReadOnly" @onclick="GenerateFullNote">Generate Full Note</button>
         </header>
 
-        <label class="discharge-plan__label" for="full-discharge-note">Discharge Summary Narrative</label>
-        <textarea class="discharge-plan__textarea"
-                  id="full-discharge-note"
-                  rows="5"
-                  disabled="@IsReadOnly"
-                  @bind="Vm.FullDischargeSummary"
-                  @bind:event="oninput"
-                  @bind:after="HandleChangedAsync"
-                  placeholder="Summarize all clinically relevant discharge documentation. Review and edit before signing."></textarea>
+<PlanNarrativeField Vm="@Vm" VmChanged="VmChanged" NoteId="NoteId" SourceLastModifiedUtc="SourceLastModifiedUtc"
+                        HasUnsavedChanges="HasUnsavedChanges" IsReadOnly="IsReadOnly" Purpose="NoteNarrativePurpose.DischargeSummary"
+                        Label="Discharge Summary Narrative" TestId="discharge-full-summary" ActionText="Generate Full Note" />
     </article>
 
     <article class="discharge-plan__card" data-testid="home-exercise-program-card">
@@ -169,16 +149,11 @@
                 <h3 class="discharge-plan__card-title">Clinical Summary (S.O.A.P)</h3>
                 <p class="discharge-plan__card-subtitle">Comprehensive summary of the finalized discharge SOAP sections</p>
             </div>
-            <button type="button" class="discharge-plan__action-btn" disabled="@IsReadOnly" @onclick="GenerateClinicalSummary">Generate Summary</button>
         </header>
 
-        <textarea class="discharge-plan__textarea"
-                  rows="4"
-                  disabled="@IsReadOnly"
-                  @bind="Vm.ClinicalSummary"
-                  @bind:event="oninput"
-                  @bind:after="HandleChangedAsync"
-                  placeholder="Click 'Generate Summary' to create a comprehensive clinical summary, or type manually..."></textarea>
+<PlanNarrativeField Vm="@Vm" VmChanged="VmChanged" NoteId="NoteId" SourceLastModifiedUtc="SourceLastModifiedUtc"
+                        HasUnsavedChanges="HasUnsavedChanges" IsReadOnly="IsReadOnly" Purpose="NoteNarrativePurpose.SoapSummary"
+                        Label="Clinical Summary (S.O.A.P)" TestId="discharge-soap-summary" ActionText="Generate Summary" />
     </article>
 </section>
 
@@ -186,6 +161,9 @@
     [Parameter, EditorRequired] public PlanVm Vm { get; set; } = new();
     [Parameter, EditorRequired] public EventCallback<PlanVm> VmChanged { get; set; }
     [Parameter] public IReadOnlyList<string> LinkedHepItems { get; set; } = Array.Empty<string>();
+    [Parameter] public Guid NoteId { get; set; }
+    [Parameter] public DateTime? SourceLastModifiedUtc { get; set; }
+    [Parameter] public bool HasUnsavedChanges { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
 
     private readonly List<ChecklistItem> _checklistItems =
@@ -217,16 +195,6 @@
         {
             item.IsComplete = completed.Contains(item.Title);
         }
-    }
-
-    private async Task GenerateFullNote()
-    {
-        await HandleChangedAsync();
-    }
-
-    private async Task GenerateClinicalSummary()
-    {
-        await HandleChangedAsync();
     }
 
     private Task HandleDocumentationModeChangedAsync() => ApplyChangedAsync(preserveExplicitFlag: false);

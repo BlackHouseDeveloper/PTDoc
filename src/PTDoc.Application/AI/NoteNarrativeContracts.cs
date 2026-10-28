@@ -1,4 +1,5 @@
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Core.Models;
 
 namespace PTDoc.Application.AI;
 
@@ -85,6 +86,14 @@ public static class NoteNarrativeContextBuilder
                 AddMany("Prior function", s.PriorFunctionalLevel);
                 Add("Current function", s.CurrentLevelOfFunction);
                 Add("Reported imaging findings", s.Imaging.Findings);
+                if (payload.NoteType == NoteType.Discharge)
+                {
+                    Add("Patient-reported discharge outcome", payload.Discharge.PatientReportedOutcome);
+                    Add("Patient-reported goals status (not clinician attainment)", payload.Discharge.GoalsMetStatus);
+                    Add("Patient-reported remaining difficulty", payload.Discharge.RemainingDifficulty);
+                    if (payload.Discharge.PercentImproved is { } percent)
+                        Add("Patient-reported percent improved", percent.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                }
                 break;
             case NoteNarrativePurpose.ObjectiveSummary:
                 var o = payload.Objective;
@@ -115,13 +124,19 @@ public static class NoteNarrativeContextBuilder
                 Add("Documented next-visit instructions", payload.Plan.FollowUpInstructions);
                 Add("Documented plan", payload.Plan.PlanOfCareNarrative);
                 AddMany("Planned treatment focus", payload.Plan.TreatmentFocuses);
+                Add("Clinician assessment", payload.Assessment.AssessmentNarrative);
+                AddMany("Accepted clinical goals", payload.Assessment.Goals.Select(g => g.Description));
                 break;
             case NoteNarrativePurpose.DischargeRecommendations:
+                Add("Clinician discharge reason", payload.Plan.PrimaryDischargeReason);
+                Add("Patient-reported remaining difficulty", payload.Discharge.RemainingDifficulty);
                 Add("Documented discharge recommendations", payload.Plan.DischargeRecommendations);
                 Add("Documented discharge planning", payload.Plan.DischargePlanningNotes);
                 Add("Documented home program", payload.Plan.HomeExerciseProgramNotes);
                 break;
             case NoteNarrativePurpose.DischargeFollowUp:
+                Add("Clinician discharge reason", payload.Plan.PrimaryDischargeReason);
+                Add("Documented home program", payload.Plan.HomeExerciseProgramNotes);
                 Add("Documented post-discharge instructions", payload.Plan.PostDischargeInstructions);
                 Add("Documented follow-up", payload.Plan.FollowUpInstructions);
                 break;
@@ -140,6 +155,8 @@ public static class NoteNarrativeContextBuilder
         Add("Planned interventions (not evidence of completed treatment)", string.Join("; ", p.GeneralInterventions.Select(i => i.Name)));
         Add("Home program", p.HomeExerciseProgramNotes); Add("Follow-up", p.FollowUpInstructions);
         Add("Discharge planning", p.DischargePlanningNotes); Add("Discharge recommendations", p.DischargeRecommendations);
+        Add("Clinician discharge reason", p.PrimaryDischargeReason); Add("Other discharge reason", p.OtherDischargeReasonExplanation);
+        Add("Post-discharge instructions", p.PostDischargeInstructions);
         // Exclude prior generated ClinicalSummary/FullDischargeSummary to avoid recursive summaries.
     }
 }
