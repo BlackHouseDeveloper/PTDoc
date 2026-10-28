@@ -24,9 +24,6 @@ public static class IntakeDomainProjection
 
     public static async Task<bool> HasCurrentPolicySourcesAsync(ApplicationDbContext db, Guid patientId, Guid? clinicId, IntakeResponseDraft draft, CancellationToken ct)
     {
-        if (draft.PrefilledPrimaryPolicyId is null && draft.PrefilledSecondaryPolicyId is null
-            && draft.ProfilePrefillSourceModifiedUtc is null && draft.PrefilledDemographics is null) return true;
-
         var policies = await db.PatientInsurancePolicies.AsNoTracking()
             .Where(policy => policy.PatientId == patientId && policy.ClinicId == clinicId
                 && !policy.IsArchived && policy.Status == InsurancePolicyStatus.Active)
@@ -65,7 +62,8 @@ public static class IntakeDomainProjection
         if (!string.IsNullOrWhiteSpace(referringProviderName)) draft.ReferringDoctorName = referringProviderName;
         if (!string.IsNullOrWhiteSpace(referringProviderNpi)) draft.ReferringDoctorNpi = referringProviderNpi;
         if (string.IsNullOrWhiteSpace(draft.AuthorizationNumber)) draft.AuthorizationNumber = patient.AuthorizationNumber;
-        await UpsertAsync(db, patient, draft, userId, ct);
+        // Patient Info is an explicit chart edit, not an intake with an accepted source snapshot.
+        await UpsertCoreAsync(db, patient, draft, userId, ct);
         await UpsertAuthorizationHistoryAsync(db, patient, payerInfoJson, userId, ct);
     }
 
@@ -74,6 +72,11 @@ public static class IntakeDomainProjection
         if (!await HasCurrentPolicySourcesAsync(db, patient.Id, patient.ClinicId, draft, ct))
             throw new InvalidOperationException(StalePolicySourceMessage);
 
+        await UpsertCoreAsync(db, patient, draft, userId, ct);
+    }
+
+    private static async Task UpsertCoreAsync(ApplicationDbContext db, Patient patient, IntakeResponseDraft draft, Guid userId, CancellationToken ct)
+    {
         await UpsertProviderAsync(db, patient, draft.PrimaryDoctorName, draft.PrimaryDoctorPhone, null, PatientProviderRole.PrimaryCare, userId, ct);
         await UpsertProviderAsync(db, patient, draft.ReferringDoctorName, draft.ReferringDoctorPhone, draft.ReferringDoctorNpi, PatientProviderRole.Referring, userId, ct);
         if (!draft.OmitPrimaryPolicy) await UpsertPolicyAsync(db, patient, InsuranceCoveragePriority.Primary, draft.InsuranceCompanyName, draft.MemberOrPolicyNumber, draft.GroupNumber, draft.PayerType, draft.AdjusterName, draft.AdjusterPhone, draft.AdjusterEmail, draft.AdjusterFax, userId, ct,
@@ -191,7 +194,7 @@ public static class IntakeDomainProjection
         }
     }
 
-    private static InsurancePayerType ParsePayerType(string value) => value.Trim().ToLowerInvariant() switch { "commercial" => InsurancePayerType.Commercial, "medicare" => InsurancePayerType.Medicare, "medicaid" => InsurancePayerType.Medicaid, "workers' compensation" => InsurancePayerType.WorkersCompensation, "motor vehicle" => InsurancePayerType.MotorVehicle, "liability" => InsurancePayerType.Liability, "self pay" => InsurancePayerType.SelfPay, _ => InsurancePayerType.Other };
+    private static InsurancePayerType ParsePayerType(string value) => value.Trim().ToLowerInvariant() switch { "commercial" => InsurancePayerType.Commercial, "medicare" => InsurancePayerType.Medicare, "medicaid" => InsurancePayerType.Medicaid, "tricare" => InsurancePayerType.Tricare, "workers' compensation" => InsurancePayerType.WorkersCompensation, "motor vehicle" => InsurancePayerType.MotorVehicle, "liability" => InsurancePayerType.Liability, "self pay" => InsurancePayerType.SelfPay, _ => InsurancePayerType.Other };
     private static void HydrateLegacyPayerAliases(IntakeResponseDraft draft, string? payerInfoJson)
     {
         try

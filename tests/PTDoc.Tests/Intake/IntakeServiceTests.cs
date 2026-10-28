@@ -46,15 +46,29 @@ public sealed class IntakeServiceTests : IDisposable
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ProfilePrefill_LegacySourceRejectsNewNormalizedPolicy(bool secondary)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task ProfilePrefill_LegacySourceRejectsNewNormalizedPolicy(bool secondary, bool withoutProvenance)
     {
         var patient = CreatePatient("Legacy", "Source");
         patient.PayerInfoJson = """{"insuranceCompanyName":"Old primary","memberOrPolicyNumber":"OLD-P","secondaryInsuranceCompanyName":"Old secondary","secondaryMemberOrPolicyNumber":"OLD-S"}""";
         _context.Patients.Add(patient);
         await _context.SaveChangesAsync();
         var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        var intake = await _context.IntakeForms.SingleAsync();
+        if (withoutProvenance)
+        {
+            intake.ResponseJson = IntakeProfileProvenance.Preserve(null, intake.ResponseJson);
+            await _context.SaveChangesAsync();
+            var beforeRead = intake.ResponseJson;
+            draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+            Assert.Null(draft.PrefilledDemographics);
+            Assert.Null(draft.ProfilePrefillSourceModifiedUtc);
+            Assert.NotNull(draft.ProfilePrefill);
+            Assert.Equal(beforeRead, intake.ResponseJson);
+        }
         var policy = new PatientInsurancePolicy
         {
             PatientId = patient.Id,
@@ -67,7 +81,16 @@ public sealed class IntakeServiceTests : IDisposable
         await _context.SaveChangesAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SubmitAsync(draft));
         Assert.Equal("CURRENT", policy.MemberOrPolicyNumber);
-        Assert.False((await _context.IntakeForms.SingleAsync()).IsLocked);
+        Assert.False(intake.IsLocked);
+        draft.ProfileUpdate = new IntakeProfileUpdate
+        {
+            Action = secondary ? IntakeProfileAction.UseSecondary : IntakeProfileAction.UsePrimary,
+            ExpectedFingerprint = (await IntakeProfilePrefillReader.ReadAsync(_context, patient.Id, _clinicId))!.Fingerprint
+        };
+        await _service.SaveDraftAsync(draft);
+        await _service.SubmitAsync((await _service.GetLatestByPatientIdAsync(patient.Id))!);
+        Assert.True(intake.IsLocked);
+        Assert.Equal("CURRENT", policy.MemberOrPolicyNumber);
     }
 
     [Theory]
@@ -100,8 +123,10 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.False(intake.IsLocked);
     }
 
-    [Fact]
-    public async Task ProfilePrefill_ServiceSaveAndSubmitPreserveSourceAndNewerDemographics()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProfilePrefill_ServiceSaveAndSubmitPreserveSourceAndNewerDemographics(bool withoutProvenance)
     {
         var patient = CreatePatient("Mary Jane", "Smith");
         patient.Phone = "OLD";
@@ -109,6 +134,11 @@ public sealed class IntakeServiceTests : IDisposable
         _context.Patients.Add(patient);
         await _context.SaveChangesAsync();
         var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        if (withoutProvenance)
+        {
+            var legacy = await _context.IntakeForms.SingleAsync();
+            legacy.ResponseJson = IntakeProfileProvenance.Preserve(null, legacy.ResponseJson);
+        }
         patient.FirstName = "Corrected Compound";
         patient.Phone = "CURRENT";
         patient.AddressLine1 = "CURRENT ADDRESS";
@@ -119,7 +149,7 @@ public sealed class IntakeServiceTests : IDisposable
         draft.ProfilePrefillSourceModifiedUtc = null;
         draft.MedicalHistoryNotes = "Keep this answer";
         await _service.SaveDraftAsync(draft);
-        Assert.NotNull((await _service.GetLatestByPatientIdAsync(patient.Id))!.PrefilledDemographics);
+        Assert.Equal(withoutProvenance, (await _service.GetLatestByPatientIdAsync(patient.Id))!.PrefilledDemographics is null);
         await _service.SubmitAsync(draft);
         Assert.Equal("Corrected Compound", patient.FirstName);
         Assert.Equal("CURRENT", patient.Phone);
@@ -154,6 +184,29 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.Null(saved.ProfileUpdate);
         await _service.SubmitAsync(saved);
         Assert.True((await _context.IntakeForms.SingleAsync()).IsLocked);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("{}")]
+    [InlineData("{\"fullName\":\"Legacy patient\"}")]
+    public void ProfilePrefill_NoStoredProvenanceRemovesAllIncomingProtectedKeys(string? stored)
+    {
+        var incoming = new System.Text.Json.Nodes.JsonObject { ["customAnswer"] = "keep" };
+        string[] fields =
+        [
+            "prefilledPrimaryPolicyId", "prefilledSecondaryPolicyId",
+            "prefilledPrimaryPolicyModifiedUtc", "prefilledSecondaryPolicyModifiedUtc",
+            "profilePrefillSourceModifiedUtc", "prefilledDemographics", "omitPrimaryPolicy", "omitSecondaryPolicy"
+        ];
+        foreach (var field in fields)
+        {
+            incoming[field] = "forged";
+            incoming[field.ToUpperInvariant()] = "also forged";
+        }
+        var saved = IntakeProfileProvenance.Parse(IntakeProfileProvenance.Preserve(stored, incoming.ToJsonString()));
+        Assert.Single(saved);
+        Assert.Equal("keep", saved["customAnswer"]!.GetValue<string>());
     }
 
     [Fact]
@@ -258,10 +311,23 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.Null(created.MedicalHistoryNotes);
     }
 
+    [Fact]
+    public async Task ProfilePrefill_LegacyCanonicalTricareTakesPrecedenceOverAlias()
+    {
+        var patient = CreatePatient("Legacy", "Tricare");
+        patient.PayerInfoJson = """{"payerType":" tricare ","providerType":"medicare","insuranceCompanyName":"Military Plan"}""";
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        Assert.Equal("TRICARE", draft.PayerType);
+        Assert.Equal("Military Plan", draft.InsuranceCompanyName);
+    }
+
     [Theory]
     [InlineData("commercial", "Commercial")]
     [InlineData("medicare", "Medicare")]
     [InlineData("medicaid", "Medicaid")]
+    [InlineData(" TRICARE ", "TRICARE")]
     [InlineData(" WORKERS_COMP ", "Workers' Compensation")]
     [InlineData("motor_vehicle", "Motor Vehicle")]
     [InlineData("liability", "Liability")]
@@ -935,7 +1001,8 @@ public sealed class IntakeServiceTests : IDisposable
         {
             Id = intakeId,
             PatientId = patient.Id,
-            ResponseJson = """{"fullName":"Sam Submit"}""",
+            ResponseJson = new IntakeProfilePrefill { FullName = "Sam Submit", DateOfBirth = patient.DateOfBirth }
+                .ApplyToNewResponseJson("""{"fullName":"Sam Submit"}"""),
             PainMapData = "{}",
             Consents = "{}",
             TemplateVersion = "1.0",
@@ -1030,7 +1097,8 @@ public sealed class IntakeServiceTests : IDisposable
         {
             Id = intakeId,
             PatientId = patient.Id,
-            ResponseJson = """{"fullName":"Pat Payer"}""",
+            ResponseJson = new IntakeProfilePrefill { FullName = "Pat Payer", DateOfBirth = patient.DateOfBirth }
+                .ApplyToNewResponseJson("""{"fullName":"Pat Payer"}"""),
             PainMapData = "{}",
             Consents = "{}",
             TemplateVersion = "1.0",

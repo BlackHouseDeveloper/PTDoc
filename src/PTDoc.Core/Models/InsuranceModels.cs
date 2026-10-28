@@ -64,7 +64,8 @@ public sealed class PatientInsuranceAuthorization : ISyncTrackedEntity
 }
 
 public enum InsuranceCoveragePriority { Primary = 0, Secondary = 1, Tertiary = 2 }
-public enum InsurancePayerType { Commercial = 0, Medicare = 1, Medicaid = 2, WorkersCompensation = 3, MotorVehicle = 4, Liability = 5, SelfPay = 6, Other = 7 }
+// Persisted and synced as integers; append new values without renumbering existing members.
+public enum InsurancePayerType { Commercial = 0, Medicare = 1, Medicaid = 2, WorkersCompensation = 3, MotorVehicle = 4, Liability = 5, SelfPay = 6, Other = 7, Tricare = 8 }
 public enum InsurancePlanYearType { Unspecified = 0, CalendarYear = 1, PlanYear = 2 }
 public enum InsurancePolicyStatus { Active = 0, Inactive = 1, Expired = 2 }
 public enum InsuranceAuthorizationType { Authorization = 0, Referral = 1 }

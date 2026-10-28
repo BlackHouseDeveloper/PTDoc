@@ -52,6 +52,7 @@ public static class IntakeProfilePrefillReader
                 legacy.MemberOrPolicyNumber ??= ReadAlias(json.RootElement, "memberIdPolicyNumber");
                 legacy.SecondaryMemberOrPolicyNumber ??= ReadAlias(json.RootElement, "secondaryMemberIdPolicyNumber");
                 legacy.PayerType ??= IntakeProfilePrefill.NormalizeProviderType(ReadAlias(json.RootElement, "providerType"));
+                if (string.Equals(legacy.PayerType?.Trim(), "tricare", StringComparison.OrdinalIgnoreCase)) legacy.PayerType = "TRICARE";
             }
         }
         catch (JsonException) { legacy = new(); }
@@ -70,6 +71,7 @@ public static class IntakeProfilePrefillReader
                 InsurancePayerType.WorkersCompensation => "Workers' Compensation",
                 InsurancePayerType.MotorVehicle => "Motor Vehicle",
                 InsurancePayerType.SelfPay => "Self Pay",
+                InsurancePayerType.Tricare => "TRICARE",
                 InsurancePayerType.Other => null,
                 _ => p.PayerType.ToString()
             };

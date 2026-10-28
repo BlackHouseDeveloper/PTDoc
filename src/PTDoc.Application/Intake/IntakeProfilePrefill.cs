@@ -68,6 +68,14 @@ public sealed class IntakeProfilePrefill
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var original = string.IsNullOrWhiteSpace(responseJson) ? new JsonObject() : JsonNode.Parse(responseJson) as JsonObject
             ?? throw new JsonException("Intake response must be a JSON object.");
+        // Entity identity, lifecycle state and transient offers are supplied by the server.
+        string[] serverFields =
+        [
+            "intakeId", "patientId", "isLocked", "isSubmitted", "submittedAt",
+            "reviewedAtUtc", "reviewedByUserId", "lastModifiedUtc", "profilePrefill"
+        ];
+        foreach (var key in original.Select(item => item.Key).Where(key => serverFields.Contains(key, StringComparer.OrdinalIgnoreCase)).ToArray())
+            original.Remove(key);
         var draft = original.Deserialize<IntakeResponseDraft>(options) ?? new();
         draft.IsLocked = false;
         draft.IsSubmitted = false;
@@ -76,6 +84,8 @@ public sealed class IntakeProfilePrefill
         var populated = JsonSerializer.SerializeToNode(draft, options)!.AsObject();
         string[] fields =
         [
+            "isLocked",
+            "isSubmitted",
             "prefilledDemographics",
             "omitPrimaryPolicy",
             "omitSecondaryPolicy",
@@ -138,6 +148,7 @@ public sealed class IntakeProfilePrefill
         "commercial" => "Commercial",
         "medicare" => "Medicare",
         "medicaid" => "Medicaid",
+        "tricare" => "TRICARE",
         "workers_comp" => "Workers' Compensation",
         "motor_vehicle" => "Motor Vehicle",
         "liability" => "Liability",

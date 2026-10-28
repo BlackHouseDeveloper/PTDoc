@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed - beta deployment sign-in retries
+### Added - TRICARE payer type
+
+- Support TRICARE as a distinct payer type across Patient Info, normalized policy editing/history, intake selection/prefill/submission, legacy import and offline sync. Append `Tricare = 8`, preserving existing persisted enum values; no schema migration or automatic reclassification of existing policies.
+- Normalize legacy `tricare` values with case/whitespace handling and retain canonical payer precedence. Add regression coverage for patient save through intake submission, legacy import/editing, numeric sync round trips and both payer selectors.
+- Resolve the TRICARE domain decision in `docs/client-review/plan-07.md`. Existing PR 162 remediation remains intact; builds and tests await user execution.
+
+### Fixed - PR 162 legacy draft safeguards
+
+- Strip caller-supplied draft identity, lifecycle/review metadata and transient profile offers from intake creation JSON; persist editable flags while preserving explicit blanks and unknown answer extensions.
+- Preserve chart demographics when an older intake has no original demographic snapshot, and require accepted identity/version or explicit omission before an intake can overwrite an existing normalized policy. Reading a legacy draft remains read-only; ordinary Patient Info edits retain their chart-write contract.
+- Add 17 regression cases covering metadata-free legacy drafts, both submission routes, independent policy reconciliation, creation sanitization and the already-correct removal of forged provenance. Update modern mapping fixtures to carry their original demographic baseline.
+- Record all 14 review-comment classifications and duplicate references in `docs/client-review/plan-07.md`. The terminal shows the previous 2,420-test suite passed; the new changes await user-run verification. No schema migration.
+
 ### Fixed - PR 162 follow-up source validation and reconciliation
 
 - Preserve server-owned intake source metadata across both draft PUT routes, direct service saves/submission and offline sync; record absent policy sources and require exact per-policy versions instead of an aggregate timestamp fallback. Ordinary client payloads cannot erase or forge accepted sources.

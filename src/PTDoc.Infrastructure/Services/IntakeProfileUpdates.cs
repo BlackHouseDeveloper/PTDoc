@@ -95,22 +95,18 @@ public static class IntakeProfileUpdates
     {
         var draft = IntakeDraftPersistence.CreatePersistenceCopy(submitted);
         var source = draft.PrefilledDemographics;
-        // Older prefilled drafts have no field snapshot: preserve the chart rather than guess.
-        if (source is not null || draft.ProfilePrefillSourceModifiedUtc.HasValue
-            || draft.PrefilledPrimaryPolicyId.HasValue || draft.PrefilledSecondaryPolicyId.HasValue)
-        {
-            if (source is null || source.FullName != $"{patient.FirstName} {patient.LastName}".Trim()) draft.FullName = null;
-            if (source is null || source.DateOfBirth != (patient.DateOfBirth == default ? (DateTime?)null : patient.DateOfBirth)) draft.DateOfBirth = null;
-            if (source is null || source.EmailAddress != patient.Email) draft.EmailAddress = null;
-            if (source is null || source.PhoneNumber != patient.Phone) draft.PhoneNumber = null;
-            if (source is null || source.AddressLine1 != patient.AddressLine1) draft.AddressLine1 = null;
-            if (source is null || source.AddressLine2 != patient.AddressLine2) draft.AddressLine2 = null;
-            if (source is null || source.City != patient.City) draft.City = null;
-            if (source is null || source.StateOrProvince != patient.State) draft.StateOrProvince = null;
-            if (source is null || source.PostalCode != patient.ZipCode) draft.PostalCode = null;
-            if (source is null || source.EmergencyContactName != patient.EmergencyContactName) draft.EmergencyContactName = null;
-            if (source is null || source.EmergencyContactPhone != patient.EmergencyContactPhone) draft.EmergencyContactPhone = null;
-        }
+        // Without an original field snapshot, a legacy draft cannot establish that the chart is unchanged.
+        if (source is null || source.FullName != $"{patient.FirstName} {patient.LastName}".Trim()) draft.FullName = null;
+        if (source is null || source.DateOfBirth != (patient.DateOfBirth == default ? (DateTime?)null : patient.DateOfBirth)) draft.DateOfBirth = null;
+        if (source is null || source.EmailAddress != patient.Email) draft.EmailAddress = null;
+        if (source is null || source.PhoneNumber != patient.Phone) draft.PhoneNumber = null;
+        if (source is null || source.AddressLine1 != patient.AddressLine1) draft.AddressLine1 = null;
+        if (source is null || source.AddressLine2 != patient.AddressLine2) draft.AddressLine2 = null;
+        if (source is null || source.City != patient.City) draft.City = null;
+        if (source is null || source.StateOrProvince != patient.State) draft.StateOrProvince = null;
+        if (source is null || source.PostalCode != patient.ZipCode) draft.PostalCode = null;
+        if (source is null || source.EmergencyContactName != patient.EmergencyContactName) draft.EmergencyContactName = null;
+        if (source is null || source.EmergencyContactPhone != patient.EmergencyContactPhone) draft.EmergencyContactPhone = null;
         if (draft.OmitPrimaryPolicy) { ClearPrimary(draft); ClearAuthorization(draft); }
         if (draft.OmitSecondaryPolicy) ClearSecondary(draft);
         return draft;

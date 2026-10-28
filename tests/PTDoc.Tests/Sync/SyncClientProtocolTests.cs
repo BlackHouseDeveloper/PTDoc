@@ -416,6 +416,51 @@ public class SyncClientProtocolTests
     }
 
     [Fact]
+    public async Task ReceiveClientPushAsync_TricarePolicyRetainsTypeInDelta()
+    {
+        await using var context = CreateInMemoryContext();
+        var patient = new Patient { FirstName = "Offline", LastName = "Policy", ClinicId = Guid.NewGuid() };
+        context.Patients.Add(patient);
+        await context.SaveChangesAsync();
+        var engine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var policyId = Guid.NewGuid();
+        var modified = DateTime.UtcNow;
+        var response = await engine.ReceiveClientPushAsync(new ClientSyncPushRequest
+        {
+            Items =
+            [
+                new ClientSyncPushItem
+                {
+                    EntityType = "PatientInsurancePolicy",
+                    ServerId = policyId,
+                    LocalId = 1,
+                    OperationId = Guid.NewGuid(),
+                    Operation = "Create",
+                    LastModifiedUtc = modified,
+                    DataJson = JsonSerializer.Serialize(new
+                    {
+                        patientId = patient.Id,
+                        coveragePriority = InsuranceCoveragePriority.Primary,
+                        payerType = 8,
+                        carrierDisplayName = "TRICARE Carrier",
+                        memberOrPolicyNumber = "TRI-SYNC"
+                    })
+                }
+            ]
+        });
+        Assert.Equal(1, response.AcceptedCount);
+        Assert.Equal("Accepted", Assert.Single(response.Items).Status);
+        var stored = await context.PatientInsurancePolicies.AsNoTracking().SingleAsync();
+        Assert.Equal(InsurancePayerType.Tricare, stored.PayerType);
+        Assert.Equal(patient.ClinicId, stored.ClinicId);
+        var delta = await engine.GetClientDeltaAsync(modified.AddMinutes(-1), ["PatientInsurancePolicy"], userRoles: [Roles.PT]);
+        var item = Assert.Single(delta.Items);
+        Assert.Equal(policyId, item.ServerId);
+        using var json = JsonDocument.Parse(item.DataJson);
+        Assert.Equal(8, json.RootElement.GetProperty("PayerType").GetInt32());
+    }
+
+    [Fact]
     public async Task ReceiveClientPushAsync_AppliesPatientPayload_ToServerDatabase()
     {
         var context = CreateInMemoryContext();
