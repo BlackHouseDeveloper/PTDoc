@@ -357,7 +357,9 @@ public sealed class WebSessionActivityIntegrationTests
         await using var host = new SessionHost();
         using var client = host.CreateClient(new WebApplicationFactoryClientOptions
         {
-            BaseAddress = new Uri("https://localhost"), HandleCookies = false, AllowAutoRedirect = false
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = false,
+            AllowAutoRedirect = false
         });
         using var request = new HttpRequestMessage(HttpMethod.Get, "/auth/logout");
         if (authenticated) request.Headers.Add("Cookie", host.IssueCookie());
@@ -465,9 +467,13 @@ public sealed class WebSessionActivityIntegrationTests
                 {
                     Content = JsonContent.Create(new
                     {
-                        Status = "Success", UserId = NextUserId, Username = "second-user",
-                        Token = "synthetic-new-token", ExpiresAt = Clock.GetUtcNow().AddHours(8).UtcDateTime,
-                        ClinicId, Role = "PT"
+                        Status = "Success",
+                        UserId = NextUserId,
+                        Username = "second-user",
+                        Token = "synthetic-new-token",
+                        ExpiresAt = Clock.GetUtcNow().AddHours(8).UtcDateTime,
+                        ClinicId,
+                        Role = "PT"
                     })
                 };
             Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
@@ -540,7 +546,9 @@ public sealed class WebSessionActivityIntegrationTests
             request.Headers.Add("Cookie", cookie);
             if (signIn) request.Content = new FormUrlEncodedContent(new Dictionary<string, string>
             {
-                ["username"] = "second-user", ["pin"] = "12345678", ["returnUrl"] = "/patients"
+                ["username"] = "second-user",
+                ["pin"] = "12345678",
+                ["returnUrl"] = "/patients"
             });
             return await client.SendAsync(request);
         }

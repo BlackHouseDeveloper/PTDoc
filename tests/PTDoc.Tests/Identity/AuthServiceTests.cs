@@ -105,8 +105,14 @@ public class AuthServiceTests
         var service = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
         context.Users.Add(new User
         {
-            Id = Guid.NewGuid(), Username = "session-review", PinHash = AuthService.HashPin("12345678"),
-            FirstName = "Synthetic", LastName = "User", Role = "PT", IsActive = true, CreatedAt = DateTime.UtcNow
+            Id = Guid.NewGuid(),
+            Username = "session-review",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Synthetic",
+            LastName = "User",
+            Role = "PT",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
         });
         await context.SaveChangesAsync();
         var first = Assert.IsType<AuthResult>(await service.AuthenticateAsync("session-review", "12345678", "127.0.0.1", "TestAgent"));

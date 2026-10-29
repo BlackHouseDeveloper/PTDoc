@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 156 CI formatting
+
+- Format authentication and session-activity regression fixtures with multiline initializers to address the CI formatting failure; test behavior is unchanged.
+
 ### Fixed - beta deployment sign-in retries
 
 - Retry transient HTTP failures during the four seeded-role sign-in checks in `Deploy Beta`, with bounded connection and request timeouts, so a brief App Service restart response does not stop Web deployment after API health checks pass. Invalid credentials still fail immediately.
