@@ -45,6 +45,540 @@ public sealed class IntakeServiceTests : IDisposable
             draftCanonicalizer);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task ProfilePrefill_LegacySourceRejectsNewNormalizedPolicy(bool secondary, bool withoutProvenance)
+    {
+        var patient = CreatePatient("Legacy", "Source");
+        patient.PayerInfoJson = """{"insuranceCompanyName":"Old primary","memberOrPolicyNumber":"OLD-P","secondaryInsuranceCompanyName":"Old secondary","secondaryMemberOrPolicyNumber":"OLD-S"}""";
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        var intake = await _context.IntakeForms.SingleAsync();
+        if (withoutProvenance)
+        {
+            intake.ResponseJson = IntakeProfileProvenance.Preserve(null, intake.ResponseJson);
+            await _context.SaveChangesAsync();
+            var beforeRead = intake.ResponseJson;
+            draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+            Assert.Null(draft.PrefilledDemographics);
+            Assert.Null(draft.ProfilePrefillSourceModifiedUtc);
+            Assert.NotNull(draft.ProfilePrefill);
+            Assert.Equal(beforeRead, intake.ResponseJson);
+        }
+        var policy = new PatientInsurancePolicy
+        {
+            PatientId = patient.Id,
+            ClinicId = _clinicId,
+            CoveragePriority = secondary ? InsuranceCoveragePriority.Secondary : InsuranceCoveragePriority.Primary,
+            CarrierDisplayName = "Clinician policy",
+            MemberOrPolicyNumber = "CURRENT"
+        };
+        _context.PatientInsurancePolicies.Add(policy);
+        await _context.SaveChangesAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SubmitAsync(draft));
+        Assert.Equal("CURRENT", policy.MemberOrPolicyNumber);
+        Assert.False(intake.IsLocked);
+        draft.ProfileUpdate = new IntakeProfileUpdate
+        {
+            Action = secondary ? IntakeProfileAction.UseSecondary : IntakeProfileAction.UsePrimary,
+            ExpectedFingerprint = (await IntakeProfilePrefillReader.ReadAsync(_context, patient.Id, _clinicId))!.Fingerprint
+        };
+        await _service.SaveDraftAsync(draft);
+        await _service.SubmitAsync((await _service.GetLatestByPatientIdAsync(patient.Id))!);
+        Assert.True(intake.IsLocked);
+        Assert.Equal("CURRENT", policy.MemberOrPolicyNumber);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProfilePrefill_MissingExactVersionRejectsDelayedCorrectionBelowAggregate(bool secondary)
+    {
+        var patient = CreatePatient("Legacy", "Timestamp");
+        var policy = new PatientInsurancePolicy
+        {
+            PatientId = patient.Id,
+            ClinicId = _clinicId,
+            CoveragePriority = secondary ? InsuranceCoveragePriority.Secondary : InsuranceCoveragePriority.Primary,
+            CarrierDisplayName = "Original",
+            LastModifiedUtc = patient.LastModifiedUtc.AddHours(-1)
+        };
+        _context.AddRange(patient, policy);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        if (secondary) draft.PrefilledSecondaryPolicyModifiedUtc = null;
+        else draft.PrefilledPrimaryPolicyModifiedUtc = null;
+        var intake = await _context.IntakeForms.SingleAsync();
+        intake.ResponseJson = IntakeDraftPersistence.SerializePersistenceJson(draft);
+        policy.MemberOrPolicyNumber = "DELAYED-CORRECTION";
+        policy.LastModifiedUtc = policy.LastModifiedUtc.AddMinutes(30);
+        await _context.SaveChangesAsync();
+        Assert.True(policy.LastModifiedUtc < draft.ProfilePrefillSourceModifiedUtc);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SubmitAsync(draft));
+        Assert.Equal("DELAYED-CORRECTION", policy.MemberOrPolicyNumber);
+        Assert.False(intake.IsLocked);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProfilePrefill_ServiceSaveAndSubmitPreserveSourceAndNewerDemographics(bool withoutProvenance)
+    {
+        var patient = CreatePatient("Mary Jane", "Smith");
+        patient.Phone = "OLD";
+        patient.AddressLine1 = "OLD ADDRESS";
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        if (withoutProvenance)
+        {
+            var legacy = await _context.IntakeForms.SingleAsync();
+            legacy.ResponseJson = IntakeProfileProvenance.Preserve(null, legacy.ResponseJson);
+        }
+        patient.FirstName = "Corrected Compound";
+        patient.Phone = "CURRENT";
+        patient.AddressLine1 = "CURRENT ADDRESS";
+        // Offline corrections need not have a timestamp newer than the prefill.
+        patient.LastModifiedUtc = patient.LastModifiedUtc.AddMinutes(-1);
+        await _context.SaveChangesAsync();
+        draft.PrefilledDemographics = null;
+        draft.ProfilePrefillSourceModifiedUtc = null;
+        draft.MedicalHistoryNotes = "Keep this answer";
+        await _service.SaveDraftAsync(draft);
+        Assert.Equal(withoutProvenance, (await _service.GetLatestByPatientIdAsync(patient.Id))!.PrefilledDemographics is null);
+        await _service.SubmitAsync(draft);
+        Assert.Equal("Corrected Compound", patient.FirstName);
+        Assert.Equal("CURRENT", patient.Phone);
+        Assert.Equal("CURRENT ADDRESS", patient.AddressLine1);
+        var submitted = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
+        Assert.Equal("Mary Jane Smith", submitted.FullName);
+        Assert.Equal("OLD", submitted.PhoneNumber);
+        Assert.Equal("Keep this answer", submitted.MedicalHistoryNotes);
+    }
+
+    [Fact]
+    public async Task ProfilePrefill_ReconciliationRejectsStaleOfferAndPreservesOtherAnswers()
+    {
+        var patient = CreatePatient("Saved", "Patient");
+        var policy = new PatientInsurancePolicy { PatientId = patient.Id, ClinicId = _clinicId, CarrierDisplayName = "Original" };
+        _context.AddRange(patient, policy);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        draft.MedicalHistoryNotes = "Keep this answer";
+        draft.ProfileUpdate = new IntakeProfileUpdate { Action = IntakeProfileAction.UsePrimary, ExpectedFingerprint = draft.ProfilePrefill!.Fingerprint };
+        policy.MemberOrPolicyNumber = "CURRENT";
+        policy.LastModifiedUtc = policy.LastModifiedUtc.AddMinutes(1);
+        await _context.SaveChangesAsync();
+        var before = (await _context.IntakeForms.SingleAsync()).ResponseJson;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SaveDraftAsync(draft));
+        Assert.Equal(before, (await _context.IntakeForms.SingleAsync()).ResponseJson);
+        draft.ProfileUpdate.ExpectedFingerprint = (await IntakeProfilePrefillReader.ReadAsync(_context, patient.Id, _clinicId))!.Fingerprint;
+        await _service.SaveDraftAsync(draft);
+        var saved = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
+        Assert.Equal("CURRENT", saved.MemberOrPolicyNumber);
+        Assert.Equal("Keep this answer", saved.MedicalHistoryNotes);
+        Assert.Null(saved.ProfileUpdate);
+        await _service.SubmitAsync(saved);
+        Assert.True((await _context.IntakeForms.SingleAsync()).IsLocked);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("{}")]
+    [InlineData("{\"fullName\":\"Legacy patient\"}")]
+    public void ProfilePrefill_NoStoredProvenanceRemovesAllIncomingProtectedKeys(string? stored)
+    {
+        var incoming = new System.Text.Json.Nodes.JsonObject { ["customAnswer"] = "keep" };
+        string[] fields =
+        [
+            "prefilledPrimaryPolicyId", "prefilledSecondaryPolicyId",
+            "prefilledPrimaryPolicyModifiedUtc", "prefilledSecondaryPolicyModifiedUtc",
+            "profilePrefillSourceModifiedUtc", "prefilledDemographics", "omitPrimaryPolicy", "omitSecondaryPolicy"
+        ];
+        foreach (var field in fields)
+        {
+            incoming[field] = "forged";
+            incoming[field.ToUpperInvariant()] = "also forged";
+        }
+        var saved = IntakeProfileProvenance.Parse(IntakeProfileProvenance.Preserve(stored, incoming.ToJsonString()));
+        Assert.Single(saved);
+        Assert.Equal("keep", saved["customAnswer"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void ProfilePrefill_NewJsonPreservesUnknownFieldsAndExplicitBlanks()
+    {
+        var profile = new IntakeProfilePrefill { PhoneNumber = "555-0107", AddressLine1 = "Saved address" };
+        var json = profile.ApplyToNewResponseJson("""{"PhoneNumber":"","customExtension":{"value":"preserved"}}""");
+        using var parsed = JsonDocument.Parse(json);
+        Assert.Equal("", parsed.RootElement.GetProperty("PhoneNumber").GetString());
+        Assert.Equal("Saved address", parsed.RootElement.GetProperty("addressLine1").GetString());
+        Assert.Equal("preserved", parsed.RootElement.GetProperty("customExtension").GetProperty("value").GetString());
+    }
+
+    [Fact]
+    public async Task ProfilePrefill_NewDraftCopiesDemographicsAndOrderedPolicies_AndReloadPreservesClearedAnswers()
+    {
+        var patient = CreatePatient("Synthetic", "Prefill");
+        patient.Phone = "555-0107";
+        patient.AddressLine1 = "100 Fixture Lane";
+        patient.EmergencyContactName = "Fixture Contact";
+        patient.EmergencyContactPhone = "555-0108";
+        var primary = new PatientInsurancePolicy { PatientId = patient.Id, ClinicId = _clinicId, CarrierDisplayName = "Primary Fixture", MemberOrPolicyNumber = "PRIMARY-7", CoveragePriority = InsuranceCoveragePriority.Primary };
+        var secondary = new PatientInsurancePolicy { PatientId = patient.Id, ClinicId = _clinicId, CarrierDisplayName = "Secondary Fixture", MemberOrPolicyNumber = "SECONDARY-7", CoveragePriority = InsuranceCoveragePriority.Secondary };
+        _context.Patients.Add(patient);
+        _context.PatientInsurancePolicies.AddRange(secondary, primary);
+        await _context.SaveChangesAsync();
+
+        var created = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        Assert.Equal(patient.Phone, created.PhoneNumber);
+        Assert.Equal(patient.AddressLine1, created.AddressLine1);
+        Assert.Equal(primary.MemberOrPolicyNumber, created.MemberOrPolicyNumber);
+        Assert.Equal(secondary.MemberOrPolicyNumber, created.SecondaryMemberOrPolicyNumber);
+        Assert.Equal(primary.Id, created.PrefilledPrimaryPolicyId);
+        Assert.Equal(secondary.Id, created.PrefilledSecondaryPolicyId);
+        created.PhoneNumber = ""; // Intentionally cleared, not an uninitialized field.
+        created.AddressLine1 = "Patient correction";
+        await _service.SaveDraftAsync(created);
+        var storedBefore = (await _context.IntakeForms.SingleAsync()).ResponseJson;
+        var reopened = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
+        Assert.Equal("", reopened.PhoneNumber);
+        Assert.Equal("Patient correction", reopened.AddressLine1);
+        Assert.Equal(patient.Phone, reopened.ProfilePrefill!.PhoneNumber);
+        Assert.Equal(storedBefore, (await _context.IntakeForms.SingleAsync()).ResponseJson);
+        reopened.ProfilePrefill.ApplyTo(reopened, confirmedBlankFields: true);
+        Assert.Equal(patient.Phone, reopened.PhoneNumber);
+        Assert.Equal("Patient correction", reopened.AddressLine1);
+    }
+
+    [Fact]
+    public async Task ProfilePrefill_RejectsOtherClinic_AndDoesNotOfferLockedAnswers()
+    {
+        var patient = CreatePatient("Synthetic", "OtherClinic");
+        patient.ClinicId = Guid.NewGuid();
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        Assert.Equal(IntakeEnsureDraftStatus.PatientNotFound, (await _service.EnsureDraftAsync(patient.Id)).Status);
+        Assert.Null(await IntakeProfilePrefillReader.ReadAsync(_context, patient.Id, _clinicId));
+
+        patient.ClinicId = _clinicId;
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        var intake = await _context.IntakeForms.SingleAsync();
+        intake.IsLocked = true;
+        intake.SubmittedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        Assert.Null((await _service.GetLatestByPatientIdAsync(patient.Id))!.ProfilePrefill);
+        var locked = new IntakeResponseDraft { IsLocked = true };
+        new IntakeProfilePrefill { PhoneNumber = "555-0101" }.ApplyTo(locked, true);
+        Assert.Null(locked.PhoneNumber);
+    }
+
+    [Fact]
+    public async Task ProfilePrefill_SkipsAmbiguousAndArchivedPolicies_AndDoesNotMixPolicyAnswers()
+    {
+        var patient = CreatePatient("Synthetic", "Ambiguous");
+        patient.PayerInfoJson = """{"insuranceCompanyName":"Stale legacy"}""";
+        _context.Patients.Add(patient);
+        _context.PatientInsurancePolicies.AddRange(
+            new PatientInsurancePolicy { PatientId = patient.Id, ClinicId = _clinicId, CoveragePriority = InsuranceCoveragePriority.Primary, CarrierDisplayName = "One" },
+            new PatientInsurancePolicy { PatientId = patient.Id, ClinicId = _clinicId, CoveragePriority = InsuranceCoveragePriority.Primary, CarrierDisplayName = "Two" },
+            new PatientInsurancePolicy { PatientId = patient.Id, ClinicId = _clinicId, CoveragePriority = InsuranceCoveragePriority.Secondary, CarrierDisplayName = "Archived", IsArchived = true });
+        await _context.SaveChangesAsync();
+        var profile = (await IntakeProfilePrefillReader.ReadAsync(_context, patient.Id, _clinicId))!;
+        Assert.Null(profile.InsuranceCompanyName);
+        Assert.Null(profile.SecondaryInsuranceCompanyName);
+        var edited = new IntakeResponseDraft { InsuranceCompanyName = "Patient's other policy", PhoneNumber = "" };
+        new IntakeProfilePrefill { InsuranceCompanyName = "Saved carrier", MemberOrPolicyNumber = "DO-NOT-MIX", PhoneNumber = "555-0101" }.ApplyTo(edited);
+        Assert.Null(edited.MemberOrPolicyNumber);
+        Assert.Equal("", edited.PhoneNumber);
+    }
+
+    [Fact]
+    public async Task ProfilePrefill_LegacyAliasesRemainReadable_WithoutImportingClinicalHistory()
+    {
+        var patient = CreatePatient("Synthetic", "Legacy");
+        patient.PayerInfoJson = """{"InsuranceCompanyName":"Legacy primary","MemberIdPolicyNumber":"P7","SecondaryInsuranceCompanyName":"Legacy secondary","SecondaryMemberIdPolicyNumber":"S7","MedicalHistoryNotes":"Do not copy"}""";
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var created = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        Assert.Equal("P7", created.MemberOrPolicyNumber);
+        Assert.Equal("S7", created.SecondaryMemberOrPolicyNumber);
+        Assert.Null(created.MedicalHistoryNotes);
+    }
+
+    [Theory]
+    [InlineData(" commercial ", "Commercial", InsurancePayerType.Commercial)]
+    [InlineData("MEDICARE", "Medicare", InsurancePayerType.Medicare)]
+    [InlineData("medicaid", "Medicaid", InsurancePayerType.Medicaid)]
+    [InlineData("tricare", "TRICARE", InsurancePayerType.Tricare)]
+    [InlineData(" WORKERS_COMP ", "Workers' Compensation", InsurancePayerType.WorkersCompensation)]
+    [InlineData("motor_vehicle", "Motor Vehicle", InsurancePayerType.MotorVehicle)]
+    [InlineData("liability", "Liability", InsurancePayerType.Liability)]
+    [InlineData("self_pay", "Self Pay", InsurancePayerType.SelfPay)]
+    public async Task ProfilePrefill_CanonicalAliasesSurviveReadAndSubmission(string canonical, string label, InsurancePayerType expected)
+    {
+        var patient = CreatePatient("Canonical", "Alias");
+        patient.PayerInfoJson = JsonSerializer.Serialize(new
+        {
+            payerType = canonical,
+            providerType = "motor_vehicle",
+            insuranceCompanyName = "Canonical Carrier",
+            memberOrPolicyNumber = "CANONICAL-001"
+        });
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        Assert.Equal(label, draft.PayerType);
+        // A previously stored intake can submit the alias directly, without passing through the reader again.
+        draft.PayerType = canonical;
+        await _service.SubmitAsync(draft);
+        var policy = await _context.PatientInsurancePolicies.AsNoTracking().SingleAsync();
+        Assert.Equal(expected, policy.PayerType);
+        Assert.Equal("CANONICAL-001", policy.MemberOrPolicyNumber);
+        Assert.Equal(label, (await IntakeProfilePrefillReader.ReadAsync(_context, patient.Id, _clinicId))!.PayerType);
+    }
+
+    [Fact]
+    public async Task ProfilePrefill_LegacyCanonicalTricareTakesPrecedenceOverAlias()
+    {
+        var patient = CreatePatient("Legacy", "Tricare");
+        patient.PayerInfoJson = """{"payerType":" tricare ","providerType":"medicare","insuranceCompanyName":"Military Plan"}""";
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        Assert.Equal("TRICARE", draft.PayerType);
+        Assert.Equal("Military Plan", draft.InsuranceCompanyName);
+    }
+
+    [Theory]
+    [InlineData("commercial", "Commercial")]
+    [InlineData("medicare", "Medicare")]
+    [InlineData("medicaid", "Medicaid")]
+    [InlineData(" TRICARE ", "TRICARE")]
+    [InlineData(" WORKERS_COMP ", "Workers' Compensation")]
+    [InlineData("motor_vehicle", "Motor Vehicle")]
+    [InlineData("liability", "Liability")]
+    [InlineData("self_pay", "Self Pay")]
+    public async Task ProfilePrefill_LegacyProviderTypeUsesIntakeLabels(string providerType, string expected)
+    {
+        var patient = CreatePatient("Synthetic", "Legacy");
+        patient.PayerInfoJson = JsonSerializer.Serialize(new { ProviderType = providerType, AdjusterName = "Saved adjuster" });
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        Assert.Equal(expected, draft.PayerType);
+        Assert.Equal("Saved adjuster", draft.AdjusterName);
+
+        patient.PayerInfoJson = """{"payerType":"Medicare","providerType":"workers_comp"}""";
+        await _context.SaveChangesAsync();
+        var profile = await IntakeProfilePrefillReader.ReadAsync(_context, patient.Id, _clinicId);
+        Assert.Equal("Medicare", profile!.PayerType);
+    }
+
+    [Theory]
+    [InlineData(nameof(IntakeProfilePrefill.PayerType), "Self Pay")]
+    [InlineData(nameof(IntakeProfilePrefill.GroupNumber), "GROUP-7")]
+    [InlineData(nameof(IntakeProfilePrefill.AdjusterName), "Saved adjuster")]
+    [InlineData(nameof(IntakeProfilePrefill.AdjusterPhone), "555-0107")]
+    [InlineData(nameof(IntakeProfilePrefill.AdjusterEmail), "adjuster@example.test")]
+    [InlineData(nameof(IntakeProfilePrefill.AdjusterFax), "555-0108")]
+    [InlineData(nameof(IntakeProfilePrefill.SecondaryGroupNumber), "SECONDARY-GROUP-7")]
+    public void ProfilePrefill_OffersEverySupportedPolicyField_WithoutMixingExistingPolicies(string field, string value)
+    {
+        var profile = new IntakeProfilePrefill();
+        typeof(IntakeProfilePrefill).GetProperty(field)!.SetValue(profile, value);
+        var draft = new IntakeResponseDraft { FullName = "Already populated" };
+
+        Assert.True(profile.HasValuesForBlankFields(draft));
+        profile.ApplyTo(draft, confirmedBlankFields: true);
+        Assert.Equal(value, typeof(IntakeResponseDraft).GetProperty(field)!.GetValue(draft));
+        Assert.False(profile.HasValuesForBlankFields(draft));
+
+        var answered = new IntakeResponseDraft
+        {
+            InsuranceCompanyName = "Patient's primary",
+            SecondaryInsuranceCompanyName = "Patient's secondary"
+        };
+        Assert.False(profile.HasValuesForBlankFields(answered));
+        profile.ApplyTo(answered, confirmedBlankFields: true);
+        Assert.Null(typeof(IntakeResponseDraft).GetProperty(field)!.GetValue(answered));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProfilePrefill_SubmitPreservesCompoundNameAndPolicyIdentity(bool editName)
+    {
+        var patient = CreatePatient("Mary Jane", "Smith");
+        var policy = new PatientInsurancePolicy
+        {
+            PatientId = patient.Id,
+            ClinicId = _clinicId,
+            CoveragePriority = InsuranceCoveragePriority.Primary,
+            CarrierDisplayName = "Saved carrier",
+            MemberOrPolicyNumber = "MEMBER-7",
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        _context.Patients.Add(patient);
+        _context.PatientInsurancePolicies.Add(policy);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        Assert.Equal(policy.LastModifiedUtc, draft.PrefilledPrimaryPolicyModifiedUtc);
+        if (editName) draft.FullName = "Janet Jones";
+
+        await _service.SubmitAsync(draft);
+        _context.ChangeTracker.Clear();
+        var savedPatient = await _context.Patients.SingleAsync();
+        Assert.Equal(editName ? "Janet" : "Mary Jane", savedPatient.FirstName);
+        Assert.Equal(editName ? "Jones" : "Smith", savedPatient.LastName);
+        Assert.Equal(policy.Id, (await _context.PatientInsurancePolicies.SingleAsync()).Id);
+        var submitted = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
+        Assert.True(submitted.IsLocked);
+        Assert.Equal(draft.PrefilledPrimaryPolicyModifiedUtc, submitted.PrefilledPrimaryPolicyModifiedUtc);
+    }
+
+    [Theory]
+    [InlineData(false, "replaced")]
+    [InlineData(true, "replaced")]
+    [InlineData(false, "reordered")]
+    [InlineData(true, "reordered")]
+    [InlineData(false, "changed")]
+    [InlineData(true, "changed")]
+    [InlineData(false, "changed-below-profile-timestamp")]
+    [InlineData(true, "changed-below-profile-timestamp")]
+    [InlineData(false, "archived")]
+    [InlineData(true, "archived")]
+    [InlineData(false, "inactive")]
+    [InlineData(true, "inactive")]
+    [InlineData(false, "ambiguous")]
+    [InlineData(true, "ambiguous")]
+    [InlineData(false, "other-patient")]
+    [InlineData(true, "other-clinic")]
+    [InlineData(false, "legacy-changed")]
+    [InlineData(true, "missing-timestamp")]
+    public async Task ProfilePrefill_RejectsStalePolicyBeforeMutatingSubmission(bool secondary, string change)
+    {
+        var patient = CreatePatient("Mary Jane", "Smith");
+        var priority = secondary ? InsuranceCoveragePriority.Secondary : InsuranceCoveragePriority.Primary;
+        var policy = new PatientInsurancePolicy
+        {
+            PatientId = patient.Id,
+            ClinicId = _clinicId,
+            CoveragePriority = priority,
+            CarrierDisplayName = "Original",
+            MemberOrPolicyNumber = "ORIGINAL",
+            LastModifiedUtc = patient.LastModifiedUtc
+        };
+        var authorization = new PatientInsuranceAuthorization
+        {
+            PatientId = patient.Id,
+            ClinicId = _clinicId,
+            PatientInsurancePolicyId = policy.Id,
+            ReferenceNumber = "KEEP-AUTH"
+        };
+        if (change == "changed-below-profile-timestamp") policy.LastModifiedUtc = patient.LastModifiedUtc.AddHours(-1);
+        _context.Patients.Add(patient);
+        _context.PatientInsurancePolicies.Add(policy);
+        _context.PatientInsuranceAuthorizations.Add(authorization);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        var intake = await _context.IntakeForms.SingleAsync();
+        var originalJson = intake.ResponseJson;
+        var originalPatientVersion = patient.LastModifiedUtc;
+        draft.FullName = "Must Not Change";
+        draft.ReferringDoctorName = "Must Not Create Provider";
+        switch (change)
+        {
+            case "replaced":
+            case "ambiguous":
+                policy.IsArchived = change == "replaced";
+                _context.PatientInsurancePolicies.Add(new PatientInsurancePolicy
+                {
+                    PatientId = patient.Id,
+                    ClinicId = _clinicId,
+                    CoveragePriority = priority,
+                    CarrierDisplayName = "Replacement",
+                    MemberOrPolicyNumber = "REPLACEMENT"
+                });
+                break;
+            case "reordered":
+                policy.CoveragePriority = secondary ? InsuranceCoveragePriority.Primary : InsuranceCoveragePriority.Secondary;
+                break;
+            case "changed":
+            case "legacy-changed":
+                policy.MemberOrPolicyNumber = "CLINICIAN-CORRECTION";
+                policy.LastModifiedUtc = patient.LastModifiedUtc.AddMinutes(1);
+                if (change == "legacy-changed") draft.PrefilledPrimaryPolicyModifiedUtc = null;
+                break;
+            case "archived": policy.IsArchived = true; break;
+            case "inactive": policy.Status = InsurancePolicyStatus.Inactive; break;
+            case "changed-below-profile-timestamp": policy.LastModifiedUtc = policy.LastModifiedUtc.AddMinutes(1); break;
+            case "other-patient": policy.PatientId = Guid.NewGuid(); break;
+            case "other-clinic": policy.ClinicId = Guid.NewGuid(); break;
+            case "missing-timestamp":
+                draft.PrefilledSecondaryPolicyModifiedUtc = null;
+                draft.ProfilePrefillSourceModifiedUtc = null;
+                break;
+        }
+        if (change is "legacy-changed" or "missing-timestamp")
+        {
+            // Model a previously stored legacy draft; client metadata can no longer replace it.
+            var legacy = JsonSerializer.Deserialize<IntakeResponseDraft>(originalJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+            legacy.PrefilledPrimaryPolicyModifiedUtc = draft.PrefilledPrimaryPolicyModifiedUtc;
+            legacy.PrefilledSecondaryPolicyModifiedUtc = draft.PrefilledSecondaryPolicyModifiedUtc;
+            legacy.ProfilePrefillSourceModifiedUtc = draft.ProfilePrefillSourceModifiedUtc;
+            intake.ResponseJson = originalJson = IntakeDraftPersistence.SerializePersistenceJson(legacy);
+        }
+        await _context.SaveChangesAsync();
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SubmitAsync(draft));
+        Assert.Equal(IntakeDomainProjection.StalePolicySourceMessage, error.Message);
+        Assert.False(intake.IsLocked);
+        Assert.Null(intake.SubmittedAt);
+        Assert.Equal(originalJson, intake.ResponseJson);
+        Assert.Equal("Mary Jane", patient.FirstName);
+        Assert.Equal(originalPatientVersion, patient.LastModifiedUtc);
+        Assert.False(_context.ChangeTracker.HasChanges());
+        Assert.Equal("KEEP-AUTH", authorization.ReferenceNumber);
+        Assert.Equal(policy.Id, authorization.PatientInsurancePolicyId);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            IntakeDomainProjection.UpsertAsync(_context, patient, draft, _userId, default));
+        Assert.False(_context.ChangeTracker.HasChanges());
+    }
+
+    [Fact]
+    public void ProfilePrefill_FillingDemographicsDoesNotRefreshAcceptedPolicyVersions()
+    {
+        var original = DateTime.UtcNow.AddHours(-1);
+        var draft = new IntakeResponseDraft
+        {
+            InsuranceCompanyName = "Old primary",
+            SecondaryInsuranceCompanyName = "Old secondary",
+            PrefilledPrimaryPolicyModifiedUtc = original,
+            PrefilledSecondaryPolicyModifiedUtc = original,
+            ProfilePrefillSourceModifiedUtc = original
+        };
+        var profile = new IntakeProfilePrefill
+        {
+            PhoneNumber = "555-0107",
+            SourceModifiedUtc = DateTime.UtcNow,
+            PrimaryPolicyModifiedUtc = DateTime.UtcNow,
+            SecondaryPolicyModifiedUtc = DateTime.UtcNow
+        };
+
+        profile.ApplyTo(draft, confirmedBlankFields: true);
+        Assert.Equal("555-0107", draft.PhoneNumber);
+        Assert.Equal(original, draft.PrefilledPrimaryPolicyModifiedUtc);
+        Assert.Equal(original, draft.PrefilledSecondaryPolicyModifiedUtc);
+        Assert.Equal(original, draft.ProfilePrefillSourceModifiedUtc);
+    }
+
     [Fact]
     public async Task EnsureDraftAsync_ReturnsExistingUnlockedDraft_WhenPresent()
     {
@@ -499,7 +1033,8 @@ public sealed class IntakeServiceTests : IDisposable
         {
             Id = intakeId,
             PatientId = patient.Id,
-            ResponseJson = """{"fullName":"Sam Submit"}""",
+            ResponseJson = new IntakeProfilePrefill { FullName = "Sam Submit", DateOfBirth = patient.DateOfBirth }
+                .ApplyToNewResponseJson("""{"fullName":"Sam Submit"}"""),
             PainMapData = "{}",
             Consents = "{}",
             TemplateVersion = "1.0",
@@ -594,7 +1129,8 @@ public sealed class IntakeServiceTests : IDisposable
         {
             Id = intakeId,
             PatientId = patient.Id,
-            ResponseJson = """{"fullName":"Pat Payer"}""",
+            ResponseJson = new IntakeProfilePrefill { FullName = "Pat Payer", DateOfBirth = patient.DateOfBirth }
+                .ApplyToNewResponseJson("""{"fullName":"Pat Payer"}"""),
             PainMapData = "{}",
             Consents = "{}",
             TemplateVersion = "1.0",

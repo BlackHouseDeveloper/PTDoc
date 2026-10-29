@@ -173,6 +173,20 @@ public static class IntakeEndpoints
             return Results.NotFound(new { error = $"Patient {request.PatientId} not found." });
 
         var clinicId = tenantContext.GetCurrentClinicId();
+        var profile = await IntakeProfilePrefillReader.ReadAsync(db, request.PatientId, clinicId, cancellationToken);
+        if (profile is null) return Results.NotFound();
+        string responseJson;
+        try
+        {
+            responseJson = profile.ApplyToNewResponseJson(request.ResponseJson);
+        }
+        catch (JsonException)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                [nameof(request.ResponseJson)] = ["Intake response must be a valid JSON object."]
+            });
+        }
         var userId = identityContext.GetCurrentUserId();
 
         // Generate a cryptographically secure token and store its SHA-256 hash.
@@ -186,7 +200,7 @@ public static class IntakeEndpoints
             PatientId = request.PatientId,
             PainMapData = painMapData,
             Consents = consents,
-            ResponseJson = string.IsNullOrWhiteSpace(request.ResponseJson) ? "{}" : request.ResponseJson,
+            ResponseJson = responseJson,
             StructuredDataJson = structuredDataJson,
             TemplateVersion = request.TemplateVersion,
             IsLocked = false,
@@ -217,7 +231,7 @@ public static class IntakeEndpoints
         if (intake is null)
             return Results.NotFound(new { error = $"Intake {id} not found." });
 
-        return Results.Ok(ToResponse(intake));
+        return Results.Ok(await ToResponseWithProfileAsync(intake, db, cancellationToken));
     }
 
     // GET /api/v1/intake/patient/{patientId}/draft
@@ -235,7 +249,7 @@ public static class IntakeEndpoints
         if (intake is null)
             return Results.NotFound(new { error = $"No intake draft found for patient {patientId}." });
 
-        return Results.Ok(ToResponse(intake));
+        return Results.Ok(await ToResponseWithProfileAsync(intake, db, cancellationToken));
     }
 
     // GET /api/v1/intake/patient/{patientId}/latest
@@ -255,7 +269,7 @@ public static class IntakeEndpoints
         if (intake is null)
             return Results.NotFound(new { error = $"No intake record found for patient {patientId}." });
 
-        return Results.Ok(ToResponse(intake));
+        return Results.Ok(await ToResponseWithProfileAsync(intake, db, cancellationToken));
     }
 
     // POST /api/v1/intake/drafts/{patientId}
@@ -356,7 +370,7 @@ public static class IntakeEndpoints
             return Results.NotFound(new { error = $"Intake {intakeId.Value} not found." });
         }
 
-        var response = ToResponse(intake);
+        var response = await ToResponseWithProfileAsync(intake, db, cancellationToken);
         return result.Status == IntakeEnsureDraftStatus.Created
             ? Results.Created($"/api/v1/intake/{response.Id}", response)
             : Results.Ok(response);
@@ -410,8 +424,6 @@ public static class IntakeEndpoints
             return updateStructuredDataProblem!;
         }
 
-        intake.PainMapData = painMapData;
-
         if (!TryNormalizeConsents(
                 ResolveConsentJson(request.Consents, request.ConsentPacket),
                 requireHipaaAcknowledgement: false,
@@ -420,8 +432,22 @@ public static class IntakeEndpoints
                 out var updateValidationProblem))
             return updateValidationProblem!;
 
+        string responseJson;
+        try
+        {
+            responseJson = await IntakeProfileUpdates.PrepareAsync(db, intake, request.ResponseJson, cancellationToken);
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest(new { error = "Intake response must be a valid JSON object." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.Conflict(new { error = ex.Message });
+        }
+        intake.PainMapData = painMapData;
         intake.Consents = normalizedConsents;
-        intake.ResponseJson = string.IsNullOrWhiteSpace(request.ResponseJson) ? "{}" : request.ResponseJson;
+        intake.ResponseJson = responseJson;
         if (request.StructuredData is not null)
         {
             intake.StructuredDataJson = structuredDataJson;
@@ -475,6 +501,9 @@ public static class IntakeEndpoints
 
         if (!TryNormalizeConsents(intake.Consents, requireHipaaAcknowledgement: true, out var normalizedConsents, out var consentPacket, out var submitValidationProblem))
             return submitValidationProblem!;
+
+        if (!await IntakeDomainProjection.HasCurrentPolicySourcesAsync(db, intake.PatientId, intake.ClinicId, intake.ResponseJson, cancellationToken))
+            return Results.Conflict(new { error = IntakeDomainProjection.StalePolicySourceMessage });
 
         var nowUtc = DateTime.UtcNow;
         intake.Consents = normalizedConsents;
@@ -838,6 +867,17 @@ public static class IntakeEndpoints
 
     // ─── Mapping helpers ──────────────────────────────────────────────────────
 
+    internal static async Task<IntakeResponse> ToResponseWithProfileAsync(
+        IntakeForm intake, ApplicationDbContext db, CancellationToken cancellationToken)
+    {
+        var response = ToResponse(intake);
+        if (!intake.IsLocked && !intake.SubmittedAt.HasValue)
+        {
+            response.ProfilePrefill = await IntakeProfilePrefillReader.ReadAsync(db, intake.PatientId, intake.ClinicId, cancellationToken);
+        }
+        return response;
+    }
+
     internal static IntakeResponse ToResponse(IntakeForm f) => new()
     {
         Id = f.Id,
@@ -863,11 +903,12 @@ public static class IntakeEndpoints
             return;
         }
 
-        var draft = DeserializeResponseDraft(intake.ResponseJson);
         var patient = intake.Patient;
+        var draft = IntakeProfileUpdates.ForPatientWrite(DeserializeResponseDraft(intake.ResponseJson), patient);
 
         var name = TrimOrNull(draft.FullName);
-        if (!string.IsNullOrWhiteSpace(name))
+        if (!string.IsNullOrWhiteSpace(name)
+            && !string.Equals(name, $"{patient.FirstName} {patient.LastName}".Trim(), StringComparison.Ordinal))
         {
             var spaceIndex = name.IndexOf(' ');
             patient.FirstName = spaceIndex > 0 ? name[..spaceIndex].Trim() : name;
