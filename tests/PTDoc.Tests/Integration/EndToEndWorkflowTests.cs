@@ -3178,6 +3178,12 @@ file sealed class TestRoleAuthHandler : AuthenticationHandler<AuthenticationSche
             new(PTDocClaimTypes.AuthenticationType, "integration-test"),
         };
 
+        if (Request.Headers.TryGetValue("X-Test-Patient-Id", out var patientId)
+            && Guid.TryParse(patientId.ToString(), out var parsedPatientId))
+        {
+            claims.Add(new Claim(HttpPatientContextAccessor.PatientIdClaimType, parsedPatientId.ToString()));
+        }
+
         var identity = new ClaimsIdentity(claims, SchemeName);
         var principal = new ClaimsPrincipal(identity);
         var ticket = new AuthenticationTicket(principal, SchemeName);

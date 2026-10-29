@@ -15,6 +15,59 @@ namespace PTDoc.Tests.Integration;
 public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : IClassFixture<PtDocApiFactory>
 {
     [Fact]
+    public async Task EncounterRead_EnforcesPatientOwnership_AndPreservesStaffAccess()
+    {
+        using var staff = factory.CreateClientWithRole(Roles.PT);
+        var (patientId, noteId, _) = await CreateFixtureAsync(staff);
+        var issued = await IssueAsync(staff, patientId, noteId);
+        var (otherPatientId, otherNoteId, _) = await CreateFixtureAsync(staff);
+        await IssueAsync(staff, otherPatientId, otherNoteId);
+        using var patient = factory.CreateClientWithRole(Roles.Patient);
+        patient.DefaultRequestHeaders.Add("X-Test-Patient-Id", patientId.ToString());
+
+        var own = await patient.GetFromJsonAsync<IntakeResponse>($"/api/v1/intake/patient/{patientId}/note/{noteId}");
+        Assert.Equal(issued.Id, own!.Id);
+        using var rejected = await patient.GetAsync($"/api/v1/intake/patient/{otherPatientId}/note/{otherNoteId}");
+        Assert.Equal(HttpStatusCode.Forbidden, rejected.StatusCode);
+        using var allowed = await staff.GetAsync($"/api/v1/intake/patient/{otherPatientId}/note/{otherNoteId}");
+        Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
+
+        using var unmappedPatient = factory.CreateClientWithRole(Roles.Patient);
+        using var unmapped = await unmappedPatient.GetAsync($"/api/v1/intake/patient/{patientId}/note/{noteId}");
+        Assert.Equal(HttpStatusCode.Forbidden, unmapped.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(Roles.PT, HttpStatusCode.OK)]
+    [InlineData(Roles.PTA, HttpStatusCode.OK)]
+    [InlineData(Roles.Admin, HttpStatusCode.OK)]
+    [InlineData(Roles.Owner, HttpStatusCode.OK)]
+    [InlineData(Roles.Billing, HttpStatusCode.Forbidden)]
+    [InlineData(Roles.FrontDesk, HttpStatusCode.Forbidden)]
+    [InlineData(Roles.Patient, HttpStatusCode.Forbidden)]
+    public async Task EncounterSeed_RequiresBothNoteAndIntakeRead(string role, HttpStatusCode expected)
+    {
+        using var staff = factory.CreateClientWithRole(Roles.PT);
+        var (patientId, noteId, _) = await CreateFixtureAsync(staff);
+        var issued = await IssueAsync(staff, patientId, noteId);
+        using var update = await staff.PutAsJsonAsync($"/api/v1/intake/{issued.Id}", Update(issued.LastModifiedUtc));
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+        var saved = (await update.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        using var submit = await staff.PostAsJsonAsync($"/api/v1/intake/{issued.Id}/submit",
+            new SubmitIntakeRequest { ExpectedLastModifiedUtc = saved.LastModifiedUtc });
+        Assert.Equal(HttpStatusCode.OK, submit.StatusCode);
+
+        using var reader = factory.CreateClientWithRole(role);
+        using var response = await reader.GetAsync($"/api/v2/notes/workspace/{patientId}/{noteId}/intake-seed");
+        Assert.Equal(expected, response.StatusCode);
+        if (role == Roles.Billing)
+        {
+            using var noteRead = await reader.GetAsync($"/api/v2/notes/workspace/{patientId}/{noteId}");
+            Assert.Equal(HttpStatusCode.OK, noteRead.StatusCode);
+        }
+    }
+
+    [Fact]
     public async Task StaffUpdates_RequireIssuedVersion_PreserveAssociation_AndRejectStaleSubmit()
     {
         using var client = factory.CreateClientWithRole(Roles.PT);

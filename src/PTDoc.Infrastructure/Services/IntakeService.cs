@@ -178,6 +178,7 @@ public sealed class IntakeService : IIntakeService
         draft.PatientId = patientId;
         draft.IsLocked = false;
         draft.IsSubmitted = false;
+        profile?.InitializeSource(draft);
         profile?.ApplyTo(draft);
 
         var intake = new IntakeForm
@@ -200,6 +201,8 @@ public sealed class IntakeService : IIntakeService
         await _context.SaveChangesAsync(cancellationToken);
 
         draft.IntakeId = intake.Id;
+        draft.LastModifiedUtc = intake.LastModifiedUtc;
+        draft.ProfilePrefill = profile;
         return IntakeEnsureDraftResult.Created(draft);
     }
 
@@ -292,6 +295,9 @@ public sealed class IntakeService : IIntakeService
         var draft = new IntakeResponseDraft();
         // Copy state properties
         CopyDraftProperties(canonicalState, draft);
+        var initialProfile = JsonSerializer.Deserialize<IntakeProfilePrefill>(SerializeDraft(canonicalState), SerializerOptions)!;
+        initialProfile.SourceModifiedUtc = patient.LastModifiedUtc;
+        initialProfile.InitializeSource(draft);
         draft.PatientId = patient.Id;
 
         var intake = new IntakeForm
@@ -352,6 +358,8 @@ public sealed class IntakeService : IIntakeService
             if (hasLockedIntake)
                 return;
             var clinicId = _tenantContext.GetCurrentClinicId();
+            var profile = await IntakeProfilePrefillReader.ReadAsync(_context, patientId, clinicId, cancellationToken);
+            profile?.InitializeSource(canonicalState);
             intake = new IntakeForm
             {
                 PatientId = patientId,
@@ -372,7 +380,9 @@ public sealed class IntakeService : IIntakeService
         }
         else
         {
-            intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, SerializeDraft(canonicalState));
+            var responseJson = await IntakeProfileUpdates.PrepareAsync(
+                _context, intake, SerializeDraft(canonicalState), cancellationToken);
+            intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, responseJson);
             intake.StructuredDataJson = SerializeStructuredData(canonicalState.StructuredData);
             intake.PainMapData = BuildPainMapJson(canonicalState);
             intake.Consents = BuildConsentsJson(canonicalState);
@@ -411,6 +421,14 @@ public sealed class IntakeService : IIntakeService
         if (!IntakeEncounterRules.HasSupportedResponseVersion(intake, SerializeDraft(canonicalState)))
             throw new InvalidOperationException("The issued questionnaire version must be preserved.");
 
+        canonicalState = JsonSerializer.Deserialize<IntakeResponseDraft>(await IntakeProfileUpdates.PrepareAsync(
+            _context, intake, SerializeDraft(canonicalState), cancellationToken), SerializerOptions)!;
+        if (!await IntakeDomainProjection.HasCurrentPolicySourcesAsync(
+                _context, patientId, intake.ClinicId, canonicalState, cancellationToken))
+        {
+            throw new InvalidOperationException(IntakeDomainProjection.StalePolicySourceMessage);
+        }
+
         var nowUtc = DateTime.UtcNow;
         var submittedAtUtc = intake.SubmittedAt ?? nowUtc;
 
@@ -439,9 +457,11 @@ public sealed class IntakeService : IIntakeService
 
         if (patient is not null)
         {
+            canonicalState = IntakeProfileUpdates.ForPatientWrite(canonicalState, patient);
             var name = canonicalState.FullName?.Trim() ?? string.Empty;
             var spaceIndex = name.IndexOf(' ');
-            if (!string.IsNullOrWhiteSpace(name))
+            if (!string.IsNullOrWhiteSpace(name)
+                && !string.Equals(name, $"{patient.FirstName} {patient.LastName}".Trim(), StringComparison.Ordinal))
             {
                 patient.FirstName = spaceIndex > 0 ? name[..spaceIndex].Trim() : name;
                 patient.LastName = spaceIndex > 0 ? name[(spaceIndex + 1)..].Trim() : string.Empty;
@@ -522,7 +542,12 @@ public sealed class IntakeService : IIntakeService
         target.IntakeFlowVersion = source.IntakeFlowVersion;
         target.PrefilledPrimaryPolicyId = source.PrefilledPrimaryPolicyId;
         target.PrefilledSecondaryPolicyId = source.PrefilledSecondaryPolicyId;
+        target.PrefilledPrimaryPolicyModifiedUtc = source.PrefilledPrimaryPolicyModifiedUtc;
+        target.PrefilledSecondaryPolicyModifiedUtc = source.PrefilledSecondaryPolicyModifiedUtc;
         target.ProfilePrefillSourceModifiedUtc = source.ProfilePrefillSourceModifiedUtc;
+        target.PrefilledDemographics = source.PrefilledDemographics;
+        target.OmitPrimaryPolicy = source.OmitPrimaryPolicy;
+        target.OmitSecondaryPolicy = source.OmitSecondaryPolicy;
         target.CurrentStep = source.CurrentStep;
         target.ConsentPacket = IntakeDraftPersistence.CloneConsentPacket(source.ConsentPacket);
         target.HipaaAcknowledged = source.HipaaAcknowledged;

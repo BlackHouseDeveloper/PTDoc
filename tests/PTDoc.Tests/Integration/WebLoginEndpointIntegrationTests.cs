@@ -468,6 +468,146 @@ public sealed class WebLoginEndpointIntegrationTests
             response.Headers.Location?.OriginalString);
     }
 
+    [Theory]
+    [InlineData("GET")]
+    [InlineData("POST")]
+    public async Task RecoveryCodes_RequiresAuthenticatedWebSession(string method)
+    {
+        var upstream = new RecordingHttpClientFactory(_ => throw new InvalidOperationException("Anonymous requests must not reach the API."));
+        await using var factory = new PTDocWebFactory(upstream);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") });
+        using var request = new HttpRequestMessage(new HttpMethod(method), "/auth/mfa/recovery-codes");
+        using var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Contains("/login", response.Headers.Location!.OriginalString, StringComparison.Ordinal);
+        Assert.Empty(upstream.RequestPayloads);
+    }
+
+    [Fact]
+    public async Task RecoveryCodes_RejectsMissingAntiforgeryTokenBeforeCallingApi()
+    {
+        var upstream = new RecordingHttpClientFactory(_ => SuccessfulLogin());
+        await using var factory = new PTDocWebFactory(upstream);
+        using var client = await CreateRecoveryClientAsync(factory);
+        using var response = await client.PostAsync("/auth/mfa/recovery-codes",
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["code"] = "123456" }));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Single(upstream.RequestPayloads); // Only login.
+    }
+
+    [Theory]
+    [InlineData(200)]
+    [InlineData(409)]
+    [InlineData(401)]
+    [InlineData(0)]
+    public async Task RecoveryCodes_UsesAuthenticatedApiAndOnlyDisplaysSuccessfulReplacement(int apiStatus)
+    {
+        var upstream = new RecordingHttpClientFactory(request =>
+        {
+            if (request.RequestUri!.AbsolutePath == "/api/v1/auth/pin-login") return SuccessfulLogin();
+            Assert.Equal("/api/v1/auth/mfa/recovery-codes/regenerate", request.RequestUri.AbsolutePath);
+            if (apiStatus == 0) throw new HttpRequestException("Offline");
+            return new HttpResponseMessage((HttpStatusCode)apiStatus)
+            {
+                Content = JsonContent.Create(new { RecoveryCodes = new[] { "<replacement-code>" } })
+            };
+        });
+        await using var factory = new PTDocWebFactory(upstream);
+        using var client = await CreateRecoveryClientAsync(factory);
+        using var formResponse = await client.GetAsync("/auth/mfa/recovery-codes?returnUrl=%2F%2Fevil.example");
+        Assert.Equal(HttpStatusCode.OK, formResponse.StatusCode);
+        Assert.True(formResponse.Headers.CacheControl?.NoStore);
+        var document = new AngleSharp.Html.Parser.HtmlParser().ParseDocument(await formResponse.Content.ReadAsStringAsync());
+        var token = document.QuerySelector("input[name='__RequestVerificationToken']")!.GetAttribute("value")!;
+        Assert.Equal("/", document.QuerySelector("input[name='returnUrl']")!.GetAttribute("value"));
+
+        using var response = await client.PostAsync("/auth/mfa/recovery-codes", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = token,
+            ["code"] = "123456",
+            ["userId"] = Guid.NewGuid().ToString(),
+            ["returnUrl"] = "//evil.example"
+        }));
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(response.Headers.CacheControl?.NoStore);
+        Assert.Contains("ServerAPI", upstream.ClientNames);
+        Assert.Equal("{\"code\":\"123456\"}", upstream.RequestPayloads.Last());
+        Assert.DoesNotContain("evil.example", html, StringComparison.Ordinal);
+        if (apiStatus == 200)
+        {
+            Assert.Contains("&lt;replacement-code&gt;", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("<replacement-code>", html, StringComparison.Ordinal);
+            Assert.Contains("previous codes are invalid", html, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.DoesNotContain("replacement-code", html, StringComparison.Ordinal);
+            Assert.Contains("role=\"alert\"", html, StringComparison.Ordinal);
+            Assert.Contains("action=\"/auth/mfa/recovery-codes\"", html, StringComparison.Ordinal);
+        }
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("{\"recoveryCodes\":null}")]
+    [InlineData("{\"recoveryCodes\":[]}")]
+    public async Task RecoveryCodes_MissingOrNullCodesReturnRetryableForm(string payload)
+    {
+        var upstream = new RecordingHttpClientFactory(request =>
+            request.RequestUri!.AbsolutePath == "/api/v1/auth/pin-login"
+                ? SuccessfulLogin()
+                : new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json")
+                });
+        await using var factory = new PTDocWebFactory(upstream);
+        using var client = await CreateRecoveryClientAsync(factory);
+        using var formResponse = await client.GetAsync("/auth/mfa/recovery-codes");
+        var document = new AngleSharp.Html.Parser.HtmlParser().ParseDocument(await formResponse.Content.ReadAsStringAsync());
+        var token = document.QuerySelector("input[name='__RequestVerificationToken']")!.GetAttribute("value")!;
+        using var response = await client.PostAsync("/auth/mfa/recovery-codes", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = token,
+            ["code"] = "123456"
+        }));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(response.Headers.CacheControl?.NoStore);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("response did not include recovery codes", html, StringComparison.Ordinal);
+        Assert.Contains("role=\"alert\"", html, StringComparison.Ordinal);
+        Assert.Contains("action=\"/auth/mfa/recovery-codes\"", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Save your new recovery codes", html, StringComparison.Ordinal);
+    }
+
+    private static HttpResponseMessage SuccessfulLogin() => new(HttpStatusCode.OK)
+    {
+        Content = JsonContent.Create(new
+        {
+            Status = "Succeeded",
+            UserId = Guid.NewGuid(),
+            Username = "recovery-user",
+            Token = "session-token",
+            ExpiresAt = DateTime.UtcNow.AddHours(1),
+            Role = Roles.Admin
+        })
+    };
+
+    private static async Task<HttpClient> CreateRecoveryClientAsync(PTDocWebFactory factory)
+    {
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, BaseAddress = new Uri("https://localhost") });
+        using var response = await client.PostAsync("/auth/login", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["username"] = "recovery-user",
+            ["pin"] = "12345678",
+            ["returnUrl"] = "/settings"
+        }));
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        return client;
+    }
+
     private sealed class PTDocWebFactory(
         RecordingHttpClientFactory recordingHttpClientFactory,
         IReadOnlyDictionary<string, string?>? configuration = null)
@@ -494,9 +634,11 @@ public sealed class WebLoginEndpointIntegrationTests
     private sealed class RecordingHttpClientFactory(Func<HttpRequestMessage, HttpResponseMessage> responder) : IHttpClientFactory
     {
         public List<string> RequestPayloads { get; } = [];
+        public List<string> ClientNames { get; } = [];
 
         public HttpClient CreateClient(string name)
         {
+            ClientNames.Add(name);
             return new HttpClient(new RecordingHandler(RequestPayloads, responder))
             {
                 BaseAddress = new Uri("https://localhost")

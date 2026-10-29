@@ -14,6 +14,85 @@ namespace PTDoc.Tests.UI.Appointments;
 [Trait("Category", "CoreCi")]
 public sealed class AppointmentComponentsTests : TestContext
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AppointmentType_UnavailablePersistedTypeRequiresExplicitReplacement(bool hasActiveCatalog)
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var unavailableId = Guid.NewGuid();
+        var activeId = Guid.NewGuid();
+        NewAppointmentModal.AppointmentFormData? saved = null;
+        var cut = RenderComponent<NewAppointmentModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.AvailableVisitTypes, hasActiveCatalog
+                ? new[] { new NewAppointmentModal.VisitTypeOption { Id = activeId, Name = "Active custom visit", DurationMinutes = 30 } }
+                : Array.Empty<NewAppointmentModal.VisitTypeOption>())
+            .Add(component => component.InitialValues, new NewAppointmentModal.AppointmentFormData
+            {
+                PatientId = "patient-1",
+                ClinicianId = "clinician-1",
+                AppointmentType = "Retired custom visit",
+                VisitTypeId = unavailableId,
+                AppointmentDate = DateTime.Today,
+                AppointmentTime = TimeSpan.FromHours(9),
+                DurationMinutes = 45
+            })
+            .Add(component => component.OnSubmit, data =>
+            {
+                saved = data;
+                return Task.FromResult(false);
+            }));
+
+        var unavailableOption = cut.Find($"#appointmentType option[value='{unavailableId}']");
+        Assert.True(unavailableOption.HasAttribute("disabled"));
+        Assert.Contains("Retired custom visit", unavailableOption.TextContent, StringComparison.Ordinal);
+        cut.Find("form").Submit();
+        Assert.Null(saved);
+        Assert.Contains("Select a replacement before saving", cut.Markup, StringComparison.Ordinal);
+        Assert.Equal("true", cut.Find("#appointmentType").GetAttribute("aria-invalid"));
+
+        cut.Find("#appointmentType").Change(hasActiveCatalog ? activeId.ToString() : "Follow Up");
+        cut.Find("form").Submit();
+        cut.WaitForAssertion(() => Assert.NotNull(saved));
+        Assert.Equal(hasActiveCatalog ? activeId : (Guid?)null, saved!.VisitTypeId);
+        Assert.Equal(hasActiveCatalog ? "Active custom visit" : "Follow Up", saved.AppointmentType);
+    }
+
+    [Theory]
+    [InlineData("Follow Up", "Follow-Up")]
+    [InlineData("Follow-up", "Follow-Up")]
+    [InlineData("Custom visit", "Custom visit")]
+    public void AppointmentType_ResolvesLegacyNamesToPersistedOptions(string legacyName, string catalogName)
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var id = Guid.NewGuid();
+        var cut = RenderComponent<NewAppointmentModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.AvailableVisitTypes, new[]
+            {
+                new NewAppointmentModal.VisitTypeOption { Id = id, Name = catalogName, DurationMinutes = 45 }
+            })
+            .Add(component => component.InitialValues, new NewAppointmentModal.AppointmentFormData { AppointmentType = legacyName }));
+        Assert.Equal(id.ToString(), cut.Find("#appointmentType").GetAttribute("value"));
+    }
+
+    [Fact]
+    public void AppointmentType_PrefersExactCustomNameOverLegacyAlias()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var exactId = Guid.NewGuid();
+        var cut = RenderComponent<NewAppointmentModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.AvailableVisitTypes, new[]
+            {
+                new NewAppointmentModal.VisitTypeOption { Id = Guid.NewGuid(), Name = "Follow-Up", DurationMinutes = 45 },
+                new NewAppointmentModal.VisitTypeOption { Id = exactId, Name = "Follow Up", DurationMinutes = 30 }
+            })
+            .Add(component => component.InitialValues, new NewAppointmentModal.AppointmentFormData { AppointmentType = "Follow Up" }));
+        Assert.Equal(exactId.ToString(), cut.Find("#appointmentType").GetAttribute("value"));
+    }
+
     [Fact]
     public void AppointmentDetailModal_CheckedInAppointment_ShowsEnabledStartVisitOnly()
     {
@@ -433,6 +512,52 @@ public sealed class AppointmentComponentsTests : TestContext
         Assert.Equal("true", cut.Find("#patient").GetAttribute("aria-invalid"));
         Assert.Equal("true", cut.Find("#appointmentType").GetAttribute("aria-invalid"));
         Assert.Equal("true", cut.Find("#clinician").GetAttribute("aria-invalid"));
+    }
+
+    [Theory]
+    [InlineData(35)]
+    [InlineData(5)]
+    [InlineData(120)]
+    public void NewAppointmentModal_CustomVisitDuration_IsVisibleAndSubmitted(int minutes)
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var typeId = Guid.NewGuid();
+        NewAppointmentModal.AppointmentFormData? submitted = null;
+        var cut = RenderComponent<NewAppointmentModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.AvailablePatients, new() { new() { Id = "patient-1", Name = "Synthetic Patient" } })
+            .Add(component => component.AvailableClinicians, new() { new() { Id = "clinician-1", Name = "Synthetic PT" } })
+            .Add(component => component.AvailableVisitTypes, new[]
+            {
+                new NewAppointmentModal.VisitTypeOption { Id = typeId, Name = "Custom visit", DurationMinutes = minutes }
+            })
+            .Add(component => component.OnSubmit, value =>
+            {
+                submitted = value;
+                return Task.FromResult(false);
+            }));
+
+        cut.Find("#patient").Change("patient-1");
+        cut.Find("#clinician").Change("clinician-1");
+        cut.Find("#appointmentType").Change(typeId.ToString());
+        Assert.Equal(minutes.ToString(CultureInfo.InvariantCulture), ((IHtmlSelectElement)cut.Find("#duration")).Value);
+        cut.Find("form").Submit();
+        Assert.NotNull(submitted);
+        Assert.Equal(minutes, submitted.DurationMinutes);
+        Assert.Equal(typeId, submitted.VisitTypeId);
+        Assert.Equal(minutes.ToString(CultureInfo.InvariantCulture), ((IHtmlSelectElement)cut.Find("#duration")).Value);
+    }
+
+    [Fact]
+    public void NewAppointmentModal_HistoricalCustomDuration_RemainsVisibleWithoutActiveType()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var cut = RenderComponent<NewAppointmentModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.InitialValues, new() { DurationMinutes = 37 }));
+        Assert.Equal("37", ((IHtmlSelectElement)cut.Find("#duration")).Value);
+        cut.Find("#duration").Change("60");
+        Assert.Equal("60", ((IHtmlSelectElement)cut.Find("#duration")).Value);
     }
 
     [Fact]

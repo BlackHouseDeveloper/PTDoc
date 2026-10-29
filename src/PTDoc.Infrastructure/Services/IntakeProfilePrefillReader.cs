@@ -51,6 +51,8 @@ public static class IntakeProfilePrefillReader
             {
                 legacy.MemberOrPolicyNumber ??= ReadAlias(json.RootElement, "memberIdPolicyNumber");
                 legacy.SecondaryMemberOrPolicyNumber ??= ReadAlias(json.RootElement, "secondaryMemberIdPolicyNumber");
+                legacy.PayerType ??= ReadAlias(json.RootElement, "providerType");
+                legacy.PayerType = IntakeProfilePrefill.NormalizeProviderType(legacy.PayerType) ?? legacy.PayerType;
             }
         }
         catch (JsonException) { legacy = new(); }
@@ -60,6 +62,7 @@ public static class IntakeProfilePrefillReader
         {
             var p = primary[0];
             profile.PrimaryPolicyId = p.Id;
+            profile.PrimaryPolicyModifiedUtc = p.LastModifiedUtc;
             profile.InsuranceCompanyName = p.CarrierDisplayName;
             profile.MemberOrPolicyNumber = p.MemberOrPolicyNumber;
             profile.GroupNumber = p.GroupNumber;
@@ -68,6 +71,7 @@ public static class IntakeProfilePrefillReader
                 InsurancePayerType.WorkersCompensation => "Workers' Compensation",
                 InsurancePayerType.MotorVehicle => "Motor Vehicle",
                 InsurancePayerType.SelfPay => "Self Pay",
+                InsurancePayerType.Tricare => "TRICARE",
                 InsurancePayerType.Other => null,
                 _ => p.PayerType.ToString()
             };
@@ -93,6 +97,7 @@ public static class IntakeProfilePrefillReader
         {
             var p = secondary[0];
             profile.SecondaryPolicyId = p.Id;
+            profile.SecondaryPolicyModifiedUtc = p.LastModifiedUtc;
             profile.SecondaryInsuranceCompanyName = p.CarrierDisplayName;
             profile.SecondaryMemberOrPolicyNumber = p.MemberOrPolicyNumber;
             profile.SecondaryGroupNumber = p.GroupNumber;
@@ -104,6 +109,10 @@ public static class IntakeProfilePrefillReader
             profile.SecondaryMemberOrPolicyNumber = legacy.SecondaryMemberOrPolicyNumber;
             profile.SecondaryGroupNumber = legacy.SecondaryGroupNumber;
         }
+        profile.PrimaryPolicyAmbiguous = primary.Length > 1;
+        profile.SecondaryPolicyAmbiguous = secondary.Length > 1;
+        profile.Fingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            JsonSerializer.SerializeToUtf8Bytes(profile)));
         return profile;
     }
 

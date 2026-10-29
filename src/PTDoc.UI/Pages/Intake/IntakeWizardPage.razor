@@ -113,10 +113,43 @@
                         <section class="intake-page__notice" data-testid="intake-profile-prefill" aria-label="Saved profile information">
                             <p>Saved contact and insurance information is available. Use it for blank fields only if you want those fields filled. Existing answers will remain unchanged.</p>
                             <button type="button" class="btn btn--secondary" disabled="@IsInteractionLocked"
-                                    data-testid="intake-apply-profile" @onclick="ApplyProfilePrefill">Use saved values for blank fields</button>
+                                    data-testid="intake-apply-profile" @onclick="() => ApplyProfileUpdateAsync(IntakeProfileAction.FillBlankFields)">Use saved values for blank fields</button>
                             <button type="button" class="btn btn--secondary" disabled="@IsInteractionLocked"
                                     data-testid="intake-dismiss-profile" @onclick="() => State.ProfilePrefill = null">Keep my answers</button>
                         </section>
+                    }
+
+                    @if (CanEditDraft)
+                    {
+                        <details class="intake-page__notice" data-testid="intake-insurance-reconciliation">
+                            <summary>Review saved insurance</summary>
+                            <p>Refresh to see current insurance. Using a saved policy replaces that policy's intake answers. Switching primary policies clears authorization answers for the previous policy. Omitting a policy keeps it out of this intake and leaves the chart unchanged.</p>
+                            <button type="button" class="btn btn--secondary" disabled="@IsInteractionLocked" data-testid="intake-refresh-profile" @onclick="RefreshProfileAsync">Refresh saved information</button>
+                            @if (State.ProfilePrefill is { } profile)
+                            {
+                                <p>Primary: @(profile.InsuranceCompanyName ?? profile.PayerType ?? "None") — @(profile.MemberOrPolicyNumber ?? "No member number")</p>
+                                <p>Type: @(profile.PayerType ?? "Unspecified"); group: @(profile.GroupNumber ?? "None"). Adjuster: @(profile.AdjusterName ?? "None"); phone: @(profile.AdjusterPhone ?? "None"); email: @(profile.AdjusterEmail ?? "None"); fax: @(profile.AdjusterFax ?? "None").</p>
+                                @if (profile.PrimaryPolicyAmbiguous)
+                                {
+                                    <p>Multiple primary policies are active. Ask the clinic to reconcile them, or omit primary insurance from this intake.</p>
+                                }
+                                <button type="button" class="btn btn--secondary" disabled="@(IsInteractionLocked || profile.PrimaryPolicyAmbiguous)" data-testid="intake-use-primary" @onclick="() => ApplyProfileUpdateAsync(IntakeProfileAction.UsePrimary)">Use current primary</button>
+                                <button type="button" class="btn btn--secondary" disabled="@IsInteractionLocked" data-testid="intake-omit-primary" @onclick="() => ApplyProfileUpdateAsync(IntakeProfileAction.OmitPrimary)">Omit primary from this intake</button>
+                                <p>Secondary: @(profile.SecondaryInsuranceCompanyName ?? "None") — @(profile.SecondaryMemberOrPolicyNumber ?? "No member number")</p>
+                                <p>Group: @(profile.SecondaryGroupNumber ?? "None").</p>
+                                @if (profile.SecondaryPolicyAmbiguous)
+                                {
+                                    <p>Multiple secondary policies are active. Ask the clinic to reconcile them, or omit secondary insurance from this intake.</p>
+                                }
+                                <button type="button" class="btn btn--secondary" disabled="@(IsInteractionLocked || profile.SecondaryPolicyAmbiguous)" data-testid="intake-use-secondary" @onclick="() => ApplyProfileUpdateAsync(IntakeProfileAction.UseSecondary)">Use current secondary</button>
+                                <button type="button" class="btn btn--secondary" disabled="@IsInteractionLocked" data-testid="intake-omit-secondary" @onclick="() => ApplyProfileUpdateAsync(IntakeProfileAction.OmitSecondary)">Omit secondary from this intake</button>
+                            }
+                            @if (State.OmitPrimaryPolicy || State.OmitSecondaryPolicy)
+                            {
+                                <p>Omitted insurance will not update the chart. Choose “Use current” before entering insurance answers for that policy again.</p>
+                            }
+                            <p>Demographics corrected in the chart after this intake started are kept in the chart. Your answers remain in the submitted intake.</p>
+                        </details>
                     }
 
                     <fieldset class="intake-page__fieldset" disabled="@IsInteractionLocked">
@@ -166,7 +199,7 @@
 
 @if (!State.IsPatientMode && State.EncounterNoteId.HasValue)
 {
-    <SendIntakeModal @bind-IsOpen="_showEncounterInvite"
+    <SendIntakeModal @key="(State.PatientId, State.EncounterNoteId)" @bind-IsOpen="_showEncounterInvite"
                      InitialPatientId="@(State.PatientId?.ToString())"
                      EncounterNoteId="@State.EncounterNoteId"
                      AvailablePatients="@EncounterPatientOptions" />
@@ -480,14 +513,16 @@
         State.CurrentStep = IntakeStep.PainAssessment;
         State.IsDirty = true;
 
+        var savingState = State;
         try
         {
             _isSavingDraft = true;
             await PersistDraftAsync();
-            State.IsDirty = false;
+            if (ReferenceEquals(State, savingState)) savingState.IsDirty = false;
         }
         catch (HttpRequestException ex)
         {
+            if (!ReferenceEquals(State, savingState)) return;
             var message = ToUserFacingApiError(ex);
             _validationMessage = message;
             ToastService.ShowError(message, "Draft save failed");
@@ -643,22 +678,54 @@
 
     private async Task PersistDraftAsync()
     {
+        var savingState = State;
         var draft = ToPersistenceDraft();
         await IntakeService.SaveDraftAsync(draft);
-        State.IntakeId = draft.IntakeId;
-        State.LastModifiedUtc = draft.LastModifiedUtc;
+        if (!ReferenceEquals(State, savingState)) return;
+        savingState.IntakeId = draft.IntakeId;
+        savingState.LastModifiedUtc = draft.LastModifiedUtc;
     }
 
-    private void ApplyProfilePrefill()
+    private async Task RefreshProfileAsync()
     {
-        if (!CanEditDraft || IsInteractionLocked || State.ProfilePrefill is null) return;
-        var patientMode = State.IsPatientMode;
-        var draft = ToDraft(State);
-        State.ProfilePrefill.ApplyTo(draft, confirmedBlankFields: true);
-        draft.ProfilePrefill = null;
-        State = FromDraft(draft);
-        State.IsPatientMode = patientMode;
-        State.IsDirty = true;
+        if (!CanEditDraft || IsInteractionLocked || State.PatientId is null) return;
+        try
+        {
+            _isSavingDraft = true;
+            var current = EffectiveNoteId is { } noteId
+                ? await IntakeService.GetForNoteAsync(State.PatientId.Value, noteId)
+                : await IntakeService.GetLatestByPatientIdAsync(State.PatientId.Value);
+            State.ProfilePrefill = current?.ProfilePrefill;
+        }
+        catch (HttpRequestException ex)
+        {
+            _validationMessage = ToUserFacingApiError(ex);
+        }
+        finally { _isSavingDraft = false; }
+    }
+
+    private async Task ApplyProfileUpdateAsync(IntakeProfileAction action)
+    {
+        if (!CanEditDraft || IsInteractionLocked || State.ProfilePrefill is null || State.PatientId is null) return;
+        try
+        {
+            _isSavingDraft = true;
+            var patientMode = State.IsPatientMode;
+            var draft = ToPersistenceDraft();
+            draft.ProfileUpdate = new IntakeProfileUpdate { Action = action, ExpectedFingerprint = State.ProfilePrefill.Fingerprint };
+            await IntakeService.SaveDraftAsync(draft);
+            var saved = (EffectiveNoteId is { } noteId
+                ? await IntakeService.GetForNoteAsync(State.PatientId.Value, noteId)
+                : await IntakeService.GetLatestByPatientIdAsync(State.PatientId.Value))
+                ?? throw new InvalidOperationException("The saved intake could not be reloaded. Refresh before continuing.");
+            State = FromDraft(saved);
+            State.IsPatientMode = patientMode;
+            State.IsDirty = false;
+            _validationMessage = null;
+        }
+        catch (HttpRequestException ex) { _validationMessage = ToUserFacingApiError(ex); }
+        catch (InvalidOperationException ex) { _validationMessage = ex.Message; }
+        finally { _isSavingDraft = false; }
     }
 
     private Task HandleStateChangedAsync()
@@ -738,13 +805,15 @@
 
         _isSavingDraft = true;
         State.IsDirty = true;
+        var savingState = State;
         try
         {
             await PersistDraftAsync();
-            State.IsDirty = false;
+            if (ReferenceEquals(State, savingState)) savingState.IsDirty = false;
         }
         catch (HttpRequestException ex)
         {
+            if (!ReferenceEquals(State, savingState)) return;
             var message = ToUserFacingApiError(ex);
             _validationMessage = message;
             ToastService.ShowError(message, "Draft save failed");
@@ -845,8 +914,13 @@
             QuestionnaireDefinitionId = state.QuestionnaireDefinitionId,
             EncounterIsReEvaluation = state.EncounterIsReEvaluation,
             ProfilePrefill = state.ProfilePrefill,
+            PrefilledDemographics = state.PrefilledDemographics,
+            OmitPrimaryPolicy = state.OmitPrimaryPolicy,
+            OmitSecondaryPolicy = state.OmitSecondaryPolicy,
             PrefilledPrimaryPolicyId = state.PrefilledPrimaryPolicyId,
             PrefilledSecondaryPolicyId = state.PrefilledSecondaryPolicyId,
+            PrefilledPrimaryPolicyModifiedUtc = state.PrefilledPrimaryPolicyModifiedUtc,
+            PrefilledSecondaryPolicyModifiedUtc = state.PrefilledSecondaryPolicyModifiedUtc,
             ProfilePrefillSourceModifiedUtc = state.ProfilePrefillSourceModifiedUtc,
             PatientId = state.PatientId,
             IntakeFlowVersion = CurrentIntakeFlowVersion,
@@ -978,8 +1052,13 @@
             QuestionnaireDefinitionId = hydratedDraft.QuestionnaireDefinitionId,
             EncounterIsReEvaluation = hydratedDraft.EncounterIsReEvaluation,
             ProfilePrefill = hydratedDraft.ProfilePrefill,
+            PrefilledDemographics = hydratedDraft.PrefilledDemographics,
+            OmitPrimaryPolicy = hydratedDraft.OmitPrimaryPolicy,
+            OmitSecondaryPolicy = hydratedDraft.OmitSecondaryPolicy,
             PrefilledPrimaryPolicyId = hydratedDraft.PrefilledPrimaryPolicyId,
             PrefilledSecondaryPolicyId = hydratedDraft.PrefilledSecondaryPolicyId,
+            PrefilledPrimaryPolicyModifiedUtc = hydratedDraft.PrefilledPrimaryPolicyModifiedUtc,
+            PrefilledSecondaryPolicyModifiedUtc = hydratedDraft.PrefilledSecondaryPolicyModifiedUtc,
             ProfilePrefillSourceModifiedUtc = hydratedDraft.ProfilePrefillSourceModifiedUtc,
             PatientId = hydratedDraft.PatientId,
             CurrentStep = ResolveDraftCurrentStep(hydratedDraft),

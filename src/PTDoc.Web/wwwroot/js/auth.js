@@ -22,6 +22,27 @@ window.ptdocAuth = {
     form.submit();
   },
 
+  postStepUp: async (path, payload) => {
+    let response;
+    try {
+      response = await fetch(path, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload || {})
+      });
+    } catch {
+      return { ok: false, status: 0, body: {} };
+    }
+    let body = {};
+    try {
+      body = await response.json();
+    } catch {
+      body = {};
+    }
+    return { ok: response.ok, status: response.status, body };
+  },
+
   resetLoginFields: () => {
     const syncBlankValue = (input) => {
       if (!input) {

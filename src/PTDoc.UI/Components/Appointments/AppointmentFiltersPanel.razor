@@ -22,7 +22,7 @@
     @if (openDropdown == "appointmentType")
     {
         <div id="appointment-type-filter-options" class="filter-dropdown" role="group" aria-labelledby="appointment-type-filter-label">
-            @foreach (var type in AppointmentTypes)
+            @foreach (var type in EffectiveAppointmentTypes)
             {
                 <label class="filter-option">
                     <input type="checkbox" 
@@ -104,11 +104,16 @@
     [Parameter]
     public EventCallback<AppointmentsFilter> OnFilterChanged { get; set; }
 
+    [Parameter]
+    public IReadOnlyList<string> AppointmentTypes { get; set; } = Array.Empty<string>();
+
     private string? openDropdown = null;
 
-    private static readonly string[] AppointmentTypes = AppointmentTypeCatalog.All
-        .Select(appointmentType => appointmentType.DisplayName)
-        .ToArray();
+    private IReadOnlyList<string> EffectiveAppointmentTypes => AppointmentTypes.Count > 0
+        ? AppointmentTypes
+        : AppointmentTypeCatalog.All
+            .Select(appointmentType => appointmentType.DisplayName)
+            .ToArray();
 
     private List<string> IntakeStatuses => new()
     {

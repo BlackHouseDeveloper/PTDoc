@@ -1,5 +1,6 @@
 using System.Text.Json;
 using PTDoc.Api.Intake;
+using PTDoc.Application.Intake;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 
@@ -61,6 +62,7 @@ public sealed class IntakeEndpointMappingTests
             Patient = patient,
             ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft
             {
+                PrefilledDemographics = new IntakeProfilePrefill { FullName = "Existing Patient", DateOfBirth = patient.DateOfBirth },
                 FullName = "Beta Submitted",
                 DateOfBirth = new DateTime(1990, 2, 3),
                 EmailAddress = "beta.submitted@example.com",
@@ -151,6 +153,7 @@ public sealed class IntakeEndpointMappingTests
             Patient = patient,
             ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft
             {
+                PrefilledDemographics = new IntakeProfilePrefill { FullName = "Existing Payer" },
                 FullName = "Existing Payer",
                 EmailAddress = "payer@example.com",
                 PhoneNumber = "555-0112"

@@ -2,6 +2,7 @@ using Bunit;
 using Bunit.TestDoubles;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using System.Net;
@@ -16,6 +17,7 @@ using PTDoc.Core.Services;
 using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.Infrastructure.Outcomes;
 using PTDoc.Infrastructure.Services;
+using PTDoc.UI.Components;
 using PTDoc.UI.Components.Intake.Models;
 using PTDoc.UI.Pages.Intake;
 using PTDoc.UI.Services;
@@ -37,6 +39,114 @@ public sealed class IntakeWizardPageTests : TestContext
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task PendingSave_EncounterNavigationPreservesNewIdentityVersionAndDirtyState(bool failSave)
+    {
+        var patientId = Guid.NewGuid();
+        var first = EncounterDraft(patientId);
+        var second = EncounterDraft(patientId);
+        var service = ConfigureEncounterDrafts(first, second);
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var saves = new List<(Guid? IntakeId, Guid? NoteId, DateTime? Version)>();
+        service.Setup(value => value.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()))
+            .Returns<IntakeResponseDraft, CancellationToken>(async (draft, _) =>
+            {
+                saves.Add((draft.IntakeId, draft.EncounterNoteId, draft.LastModifiedUtc));
+                if (draft.EncounterNoteId == first.EncounterNoteId)
+                {
+                    await completion.Task;
+                    if (failSave) throw new HttpRequestException("Delayed encounter A error");
+                    draft.LastModifiedUtc = first.LastModifiedUtc!.Value.AddSeconds(1);
+                }
+            });
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        navigation.NavigateTo($"/intake/{patientId}?noteId={first.EncounterNoteId}");
+        var cut = RenderPage(patientId);
+        cut.WaitForAssertion(() => Assert.Equal(first.EncounterNoteId, GetWizardState(cut).EncounterNoteId));
+        var saveTask = cut.Find("[data-testid='continue-button']").ClickAsync(new MouseEventArgs());
+        cut.WaitForAssertion(() => Assert.Single(saves));
+
+        await cut.FindComponent<IntakeWizardPage>().InvokeAsync(() =>
+            navigation.NavigateTo($"/intake/{patientId}?noteId={second.EncounterNoteId}"));
+        cut.WaitForAssertion(() => Assert.Equal(second.EncounterNoteId, GetWizardState(cut).EncounterNoteId));
+        var newState = GetWizardState(cut);
+        newState.IsDirty = true;
+        completion.SetResult();
+        await saveTask;
+
+        Assert.Same(newState, GetWizardState(cut));
+        Assert.Equal(second.IntakeId, newState.IntakeId);
+        Assert.Equal(second.LastModifiedUtc, newState.LastModifiedUtc);
+        Assert.True(newState.IsDirty);
+        Assert.DoesNotContain("Delayed encounter A error", cut.Markup, StringComparison.Ordinal);
+        await cut.Find("[data-testid='continue-button']").ClickAsync(new MouseEventArgs());
+        Assert.Equal((second.IntakeId, second.EncounterNoteId, second.LastModifiedUtc), saves[1]);
+    }
+
+    [Fact]
+    public async Task OpenInvite_EncounterNavigationGeneratesLinkForTheDisplayedEncounter()
+    {
+        var patientId = Guid.NewGuid();
+        var first = EncounterDraft(patientId);
+        var second = EncounterDraft(patientId);
+        ConfigureEncounterDrafts(first, second);
+        var delivery = new Mock<IIntakeDeliveryService>(MockBehavior.Strict);
+        delivery.Setup(value => value.GetDeliveryStatusAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid id, CancellationToken _) => new IntakeDeliveryStatusResponse { IntakeId = id, PatientId = patientId });
+        delivery.Setup(value => value.GetDeliveryBundleAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid id, CancellationToken _) => new IntakeDeliveryBundleResponse
+            {
+                IntakeId = id, PatientId = patientId, InviteUrl = $"https://example.test/intake/{id}", ExpiresAt = DateTimeOffset.UtcNow.AddDays(1)
+            });
+        Services.AddSingleton(delivery.Object);
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        navigation.NavigateTo($"/intake/{patientId}?noteId={first.EncounterNoteId}");
+        var cut = RenderPage(patientId);
+        cut.FindAll("button").Single(button => button.TextContent == "Send intake link").Click();
+        var firstModal = cut.FindComponent<SendIntakeModal>().Instance;
+        cut.FindAll("button").Single(button => button.TextContent.Contains("Generate Link", StringComparison.Ordinal)).Click();
+        cut.WaitForAssertion(() => Assert.Contains(first.IntakeId!.Value.ToString(), cut.Find("#generated-link").GetAttribute("value")));
+
+        await cut.FindComponent<IntakeWizardPage>().InvokeAsync(() =>
+            navigation.NavigateTo($"/intake/{patientId}?noteId={second.EncounterNoteId}"));
+        cut.WaitForAssertion(() => Assert.Equal(second.EncounterNoteId, cut.FindComponent<SendIntakeModal>().Instance.EncounterNoteId));
+        Assert.NotSame(firstModal, cut.FindComponent<SendIntakeModal>().Instance);
+        Assert.Empty(cut.FindAll("#generated-link"));
+        cut.FindAll("button").Single(button => button.TextContent.Contains("Generate Link", StringComparison.Ordinal)).Click();
+        cut.WaitForAssertion(() => Assert.Contains(second.IntakeId!.Value.ToString(), cut.Find("#generated-link").GetAttribute("value")));
+        delivery.Verify(value => value.GetDeliveryBundleAsync(second.IntakeId!.Value, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private static IntakeResponseDraft EncounterDraft(Guid patientId) => new()
+    {
+        PatientId = patientId,
+        IntakeId = Guid.NewGuid(),
+        EncounterNoteId = Guid.NewGuid(),
+        QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.EvaluationFullV1,
+        LastModifiedUtc = DateTime.UtcNow,
+        IntakeFlowVersion = 2,
+        CurrentStep = (int)IntakeStep.PainAssessment,
+        FullName = "Synthetic Encounter"
+    };
+
+    private Mock<IIntakeService> ConfigureEncounterDrafts(params IntakeResponseDraft[] drafts)
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("synthetic-pt");
+        authorization.SetRoles(Roles.PT);
+        Services.AddSingleton(Mock.Of<IIntakeDeliveryService>());
+        var service = CreateIntakeServiceMock(drafts[0]);
+        service.Setup(value => value.GetForNoteAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid patientId, Guid noteId, CancellationToken _) => drafts.Single(draft => draft.PatientId == patientId && draft.EncounterNoteId == noteId));
+        service.Setup(value => value.EnsureDraftAsync(It.IsAny<Guid>(), It.IsAny<IntakeResponseDraft?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid patientId, IntakeResponseDraft? seed, CancellationToken _) =>
+                IntakeEnsureDraftResult.Existing(drafts.Single(draft => draft.PatientId == patientId && draft.EncounterNoteId == seed!.EncounterNoteId)));
+        return service;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void ProfilePrefill_RequiresExplicitChoice_AndRetainsExistingAnswers(bool apply)
     {
         var patientId = Guid.NewGuid();
@@ -44,13 +154,27 @@ public sealed class IntakeWizardPageTests : TestContext
         authorization.SetAuthorized("synthetic-pt");
         authorization.SetRoles(Roles.PT);
         Services.AddSingleton(new Mock<PTDoc.Application.Providers.IProviderDirectoryService>().Object);
-        CreateIntakeServiceMock(new IntakeResponseDraft
+        var initial = new IntakeResponseDraft
         {
             PatientId = patientId,
             FullName = "Patient supplied name",
             PhoneNumber = "",
-            ProfilePrefill = new IntakeProfilePrefill { FullName = "Saved name", PhoneNumber = "555-0107" }
-        });
+            ProfilePrefill = new IntakeProfilePrefill { FullName = "Saved name", PhoneNumber = "555-0107", Fingerprint = "offer" }
+        };
+        var service = CreateIntakeServiceMock(initial);
+        IntakeResponseDraft? accepted = null;
+        service.Setup(value => value.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()))
+            .Callback<IntakeResponseDraft, CancellationToken>((draft, _) =>
+            {
+                Assert.Equal(IntakeProfileAction.FillBlankFields, draft.ProfileUpdate!.Action);
+                Assert.Equal("offer", draft.ProfileUpdate.ExpectedFingerprint);
+                initial.ProfilePrefill!.ApplyTo(draft, confirmedBlankFields: true);
+                draft.ProfileUpdate = null;
+                draft.ProfilePrefill = null;
+                accepted = draft;
+            }).Returns(Task.CompletedTask);
+        service.Setup(value => value.GetLatestByPatientIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => accepted ?? initial);
         Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}");
         var cut = RenderPage(patientId);
         cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("[data-testid='intake-profile-prefill']")));
@@ -59,6 +183,115 @@ public sealed class IntakeWizardPageTests : TestContext
         Assert.Equal(apply ? "555-0107" : "", GetWizardState(cut).PhoneNumber);
         Assert.Equal("Patient supplied name", GetWizardState(cut).FullName);
         Assert.Empty(cut.FindAll("[data-testid='intake-profile-prefill']"));
+    }
+
+    [Fact]
+    public void ProfilePrefill_SelfPayOnlyOfferSurvivesWizardSaveWithIndependentPolicyVersions()
+    {
+        var patientId = Guid.NewGuid();
+        var primaryId = Guid.NewGuid();
+        var secondaryId = Guid.NewGuid();
+        var primaryVersion = DateTime.UtcNow;
+        var secondaryVersion = primaryVersion.AddDays(-1);
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("synthetic-pt");
+        authorization.SetRoles(Roles.PT);
+        var initial = new IntakeResponseDraft
+        {
+            PatientId = patientId,
+            IntakeFlowVersion = 2,
+            CurrentStep = (int)IntakeStep.PainAssessment,
+            FullName = "Mary Jane Smith",
+            SecondaryInsuranceCompanyName = "Existing secondary",
+            PrefilledSecondaryPolicyId = secondaryId,
+            PrefilledSecondaryPolicyModifiedUtc = secondaryVersion,
+            ProfilePrefillSourceModifiedUtc = secondaryVersion,
+            ProfilePrefill = new IntakeProfilePrefill
+            {
+                Fingerprint = "self-pay-offer",
+                PayerType = "Self Pay",
+                PrimaryPolicyId = primaryId,
+                PrimaryPolicyModifiedUtc = primaryVersion,
+                SourceModifiedUtc = primaryVersion
+            }
+        };
+        var service = CreateIntakeServiceMock(initial);
+        IntakeResponseDraft? saved = null;
+        service.Setup(value => value.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()))
+            .Callback<IntakeResponseDraft, CancellationToken>((draft, _) =>
+            {
+                if (draft.ProfileUpdate is not null)
+                {
+                    Assert.Equal("self-pay-offer", draft.ProfileUpdate.ExpectedFingerprint);
+                    initial.ProfilePrefill!.ApplyTo(draft, confirmedBlankFields: true);
+                    draft.ProfileUpdate = null;
+                    draft.ProfilePrefill = null;
+                }
+                saved = draft;
+            })
+            .Returns(Task.CompletedTask);
+        service.Setup(value => value.GetLatestByPatientIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => saved ?? initial);
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}");
+        var cut = RenderPage(patientId);
+
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll("[data-testid='intake-profile-prefill']")));
+        cut.Find("[data-testid='intake-apply-profile']").Click();
+        Assert.Equal("Self Pay", GetWizardState(cut).PayerType);
+        cut.Find("[data-testid='continue-button']").Click();
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(saved);
+            Assert.Equal("Self Pay", saved.PayerType);
+            Assert.Equal(primaryId, saved.PrefilledPrimaryPolicyId);
+            Assert.Equal(primaryVersion, saved.PrefilledPrimaryPolicyModifiedUtc);
+            Assert.Equal(secondaryId, saved.PrefilledSecondaryPolicyId);
+            Assert.Equal(secondaryVersion, saved.PrefilledSecondaryPolicyModifiedUtc);
+            Assert.Equal("Existing secondary", saved.SecondaryInsuranceCompanyName);
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ProfilePrefill_InsuranceRecoverySubmitsExplicitActionAndKeepsOtherAnswers(bool omit)
+    {
+        var patientId = Guid.NewGuid();
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("synthetic-pt");
+        authorization.SetRoles(Roles.PT);
+        var initial = new IntakeResponseDraft
+        {
+            PatientId = patientId,
+            IntakeFlowVersion = 2,
+            CurrentStep = (int)IntakeStep.PainAssessment,
+            InsuranceCompanyName = "Stale",
+            MemberOrPolicyNumber = "OLD",
+            MedicalHistoryNotes = "Keep me",
+            ProfilePrefill = new IntakeProfilePrefill { InsuranceCompanyName = "Current", MemberOrPolicyNumber = "NEW", Fingerprint = "current-offer" }
+        };
+        var service = CreateIntakeServiceMock(initial);
+        IntakeResponseDraft? accepted = null;
+        service.Setup(value => value.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()))
+            .Callback<IntakeResponseDraft, CancellationToken>((draft, _) =>
+            {
+                Assert.Equal(omit ? IntakeProfileAction.OmitPrimary : IntakeProfileAction.UsePrimary, draft.ProfileUpdate!.Action);
+                Assert.Equal("current-offer", draft.ProfileUpdate.ExpectedFingerprint);
+                Assert.Equal("Keep me", draft.MedicalHistoryNotes);
+                draft.InsuranceCompanyName = omit ? null : "Current";
+                draft.MemberOrPolicyNumber = omit ? null : "NEW";
+                draft.OmitPrimaryPolicy = omit;
+                draft.ProfileUpdate = null;
+                accepted = draft;
+            }).Returns(Task.CompletedTask);
+        service.Setup(value => value.GetLatestByPatientIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => accepted ?? initial);
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}");
+        var cut = RenderPage(patientId);
+        cut.Find(omit ? "[data-testid='intake-omit-primary']" : "[data-testid='intake-use-primary']").Click();
+        cut.WaitForAssertion(() => Assert.Equal(omit ? null : "NEW", GetWizardState(cut).MemberOrPolicyNumber));
+        Assert.Equal("Keep me", GetWizardState(cut).MedicalHistoryNotes);
+        Assert.Equal(omit, GetWizardState(cut).OmitPrimaryPolicy);
     }
 
     [Fact]

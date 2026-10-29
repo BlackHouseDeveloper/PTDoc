@@ -7,6 +7,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 163 encounter intake review
+
+- Resolve the 12 conflicts merging the rebased PR head into the local Plan 08 branch, retain the newer Plan 07 provenance/reconciliation safeguards alongside encounter intake, and remove five duplicated intake tests introduced by automatic merging. Integrate the reviewed fixes into the original checkout; the merge remains uncommitted pending user verification.
+- Enforce patient ownership when reading encounter intake and require both note-read and intake-read permission for encounter seed responses.
+- Keep delayed wizard saves from replacing another encounter's intake identity/version, clearing its dirty state or displaying the prior encounter's save error. Recreate the invite modal when its patient/encounter changes.
+- Normalize PostgreSQL encounter intake answer versions to stored microsecond precision while retaining exact stale-write checks and sync-only acknowledgement behavior.
+- Add 12 regression cases covering ownership, seven reader roles, delayed save success/failure, invite switching and real PostgreSQL save/save/submit with a deterministic sub-microsecond clock. Record the complete five-finding classification and duplicate review-summary references in `docs/client-review/plan-08.md`. Builds/tests await user execution; no schema change.
+
+### Fixed - beta deployment sign-in retries
+### Fixed - PR 162 canonical payer mapping
+
+- Prefer canonical `payerType` over conflicting legacy `providerType` during policy backfill, including TRICARE. Existing active policies remain untouched by idempotent backfill.
+- Normalize the selected payer value regardless of its source key and reuse normalization in intake/patient projection and backfill. Canonical aliases such as `workers_comp`, `motor_vehicle` and `self_pay` retain their correct category through prefill and submission; supported labels and TRICARE remain supported.
+- Add 16 regression cases for conflicting-key backfill, legacy canonical-alias reads/direct submissions, and HTTP patient-save/intake-submit round trips. Record all 16 review-comment classifications and eligible threads in `docs/client-review/plan-07.md`; new verification awaits user-run builds/tests.
+
+### Added - TRICARE payer type
+
+- Support TRICARE as a distinct payer type across Patient Info, normalized policy editing/history, intake selection/prefill/submission, legacy import and offline sync. Append `Tricare = 8`, preserving existing persisted enum values; no schema migration or automatic reclassification of existing policies.
+- Normalize legacy `tricare` values with case/whitespace handling and retain canonical payer precedence. Add regression coverage for patient save through intake submission, legacy import/editing, numeric sync round trips and both payer selectors.
+- Resolve the TRICARE domain decision in `docs/client-review/plan-07.md`. Existing PR 162 remediation remains intact; builds and tests await user execution.
+
+### Fixed - PR 162 legacy draft safeguards
+
+- Strip caller-supplied draft identity, lifecycle/review metadata and transient profile offers from intake creation JSON; persist editable flags while preserving explicit blanks and unknown answer extensions.
+- Preserve chart demographics when an older intake has no original demographic snapshot, and require accepted identity/version or explicit omission before an intake can overwrite an existing normalized policy. Reading a legacy draft remains read-only; ordinary Patient Info edits retain their chart-write contract.
+- Add 17 regression cases covering metadata-free legacy drafts, both submission routes, independent policy reconciliation, creation sanitization and the already-correct removal of forged provenance. Update modern mapping fixtures to carry their original demographic baseline.
+- Record all 14 review-comment classifications and duplicate references in `docs/client-review/plan-07.md`. The terminal shows the previous 2,420-test suite passed; the new changes await user-run verification. No schema migration.
+
+### Fixed - PR 162 follow-up source validation and reconciliation
+
+- Preserve server-owned intake source metadata across both draft PUT routes, direct service saves/submission and offline sync; record absent policy sources and require exact per-policy versions instead of an aggregate timestamp fallback. Ordinary client payloads cannot erase or forge accepted sources.
+- Preserve chart demographics corrected after prefill while retaining submitted answers. Older prefilled drafts without field snapshots conservatively keep chart demographics.
+- Add explicit refresh, accept-current and omit-policy controls with server validation of the offered profile. Preserve other answers, reject changed offers and ambiguous policy acceptance, and keep existing authorizations attached to their original policies when primary coverage changes.
+- Normalize supported Patient Info `providerType` aliases before normalized policy creation/update, with canonical payer type taking precedence.
+- Add service, authenticated/standalone SQLite API, wizard, client-transport and sync regressions. The complete refreshed ten-comment classification, duplicate mapping, TRICARE decision, verification commands and eligible threads are recorded in `docs/client-review/plan-07.md`. Builds and tests remain pending user execution; no schema migration.
+- Correct the reconciliation integration test's refresh request to use the patient-scoped latest-intake GET route, matching the production client. User verification reported 2,416/2,420 passing; all four standalone reconciliation cases stopped at an unsupported GET on the PUT-only intake-ID route. Added refresh status, intake/patient identity and profile-offer assertions; rerun after rebuilding is pending.
+
+### Fixed - PR 162 intake prefill review
+
+- **`IntakeDomainProjection` / intake submission paths** — Reject changed, replaced, reordered, ambiguous, inactive, archived, or incorrectly scoped prefilled policy sources before submission mutates records. Preserve independent primary/secondary policy versions through JSON and wizard saves, and target the accepted policy ID during projection. Older drafts retain their combined-timestamp compatibility check. No schema migration.
+- **`IntakeService` / `IntakeEndpoints`** — Preserve structured compound names when the submitted full name matches the saved name; explicitly edited names retain the existing update behavior.
+- **`IntakeProfilePrefill` / `IntakeProfilePrefillReader`** — Offer Self Pay and other supported policy-only values for explicit blank-field prefill, and translate legacy `providerType` values supported by the intake selector without replacing canonical payer values.
+- Added service, SQLite API/standalone-link, and wizard regressions for policy-source conflicts, unchanged submission, compound names, payer aliases, and prefill persistence. User verification exposed two fixture failures; corrected the policy-reorder setup to stage its swap transactionally through an unused priority, respecting SQLite's active-priority unique index, and asserted both reordered member numbers survive rejection. Verification of this correction is pending; the complete review inventory and remaining TRICARE compatibility decision are recorded in `docs/client-review/plan-07.md`.
+
+- Retry transient HTTP failures during the four seeded-role sign-in checks in `Deploy Beta`, with bounded connection and request timeouts, so a brief App Service restart response does not stop Web deployment after API health checks pass. Invalid credentials still fail immediately.
+
+### Fixed - PR 154 kiosk recovery and remaining review findings
+
+- Keep successful kiosk enrollment credentials usable in memory when browser storage fails, show a persistent storage warning, and retry persistence without consuming another enrollment code. Handle blocked storage reads without terminating the page; added fresh/replacement enrollment, check-in, and retry regressions.
+- Disable kiosk administration mutations until stations load successfully, expose Reload Stations, and retain refresh-failure feedback after successful writes. Added initial-load and post-create refresh recovery coverage for the previously missed review finding.
+- Add roving tab focus and Arrow/Home/End navigation to Documentation & Compliance using the existing Settings keyboard helper. Added component navigation/lifecycle coverage and an isolated browser check that preserves native Tab behavior. Corrected the cleanup regression to dispose components through the bUnit renderer so it exercises the component's asynchronous disposal lifecycle.
+- Return the recovery-code error form when a successful API response contains missing, null, or empty recovery codes, with integration coverage for each response shape.
+
+### Fixed - PR 154 follow-up review
+
+- Keep remote Roles/Security and Auto Check-In mutations disabled after either required initial load fails, and provide an explicit reload action. Added failure/retry regressions that verify saves use the loaded policy and permission versions.
+- Register the shared scheduling catalog client in MAUI using its authenticated `ApiClient`, preserving appointment-page dependency resolution and bearer authentication. Added catalog coverage through the MAUI authentication handler.
+- Preserve kiosk credentials while requesting replacement enrollment; only replace them after the API validates an administrator-issued, one-time enrollment code. Invalid codes and Cancel leave the existing station usable, with focused regression coverage.
+- Show unavailable appointment types explicitly when editing and require a replacement before submitting. Added regressions for populated catalogs and legacy fallback choices, including successful replacement payloads.
+
+### Fixed
+
+#### Authentication routing test hang
+
+- **`PTDoc.Tests.csproj` / `QuickAdminSettingsTests`** — Updated bUnit from 1.26.64 to 1.40.0 and use its built-in .NET 8 query-parameter registration in the authentication routing theory. Affects: component-test infrastructure and the existing five redirect cases. Reason: the older navigation manager and renderer form a circular dependency when the query provider is registered, preventing the test run from completing.
+
+- **`NoteWorkspacePageTests`** — Updated all seven affected workspace test fixtures to supply section, note type, appointment, service date, and evaluation-fallback inputs through navigation URLs, retaining their existing assertions. Affects: workspace routing, carry-forward, save concurrency, and cancellation regressions. Reason: the upgraded bUnit requires query-bound parameters to use the actual query-string provider instead of direct component parameters.
+
+### Changed - agent guidance captures focused Settings and auth checks
+
+- **`AGENTS.md`** — Added the existing isolated Settings modal browser and authentication-request JavaScript regression commands, including their host/fixture requirements and the auth tests' inclusion in the harness test glob.
+
+### Fixed - PR 154 complete review follow-up
+
+- Apply the test formatter's required multiline layout to recovery-code integration fixtures after local verification.
+- Correct the review regression fixtures to supply Admin authentication and query-string binding, and dispatch the timeout field's actual input event; also assert that authentication redirects preserve the return destination.
+- **Settings security and permissions** — Preserve the loaded MFA enforcement mode, effective date, and authorization rollout across unrelated saves and Cancel; retain rollout when resetting visible defaults. Render all contract permission levels, including persisted Full values, with keyboard navigation. Added policy-preservation and permission-level regressions.
+- **Scheduling and appointment compatibility** — Preserve clinician scope, weekdays, and effective dates when editing blocks; reconcile committed preferences independently when clinic hours fail to save; disable placeholder catalog mutations and provide reload. Normalize legacy appointment type aliases after exact custom-name matching, and use the SchedulingAccess catalog endpoint for active visit types. Added block, partial-save, retry, alias, and client-route regressions.
+- **Authentication and kiosk recovery** — Replace the query-selected authentication forms and unmapped JSON requests with a compatibility route to the existing server-controlled challenge flow. Add an authenticated, antiforgery-protected Web recovery-code form using the authenticated API client, safe return URLs, encoded output, and non-cacheable responses. Handle fetch transport failures and provide explicit kiosk re-enrollment without clearing credentials on ordinary appointment errors. Added Web authorization/CSRF/error-path, routing, kiosk, and JavaScript regressions. The reviewed CodeQL form-rendering branch is removed without suppressing the scanner or weakening server authentication.
+- **Settings routing, eligible selections, and modal access** — Apply direct administration routes after role resolution, remove hidden ineligible Auto Check-In selections from editable drafts, and connect scheduling and kiosk dialogs to the existing modal helper with Escape, focus containment/restoration, and background isolation. Added deferred-authorization, selection, modal-lifecycle, and isolated browser focus regressions.
+
+### Fixed - PR 154 CI contract alignment
+
+- **`RolesPermissionsSettings.razor`** — Send the loaded versions for every supported, unlocked target permission when cloning roles, matching the server's optimistic-concurrency contract. Ignore clone attempts while busy or before the target role has loaded. Added component regressions for exact target versions, locked/unsupported exclusions, conflict preservation, and updated versions after success. Reason: the missing request argument blocked all build-dependent CI workflows.
+- **`SettingsAdministrationApiClient.cs`** — Match the nullable kiosk enrollment and check-in parameters declared by `IKioskCheckInService`, removing three compiler warnings without changing server validation.
+
+### Fixed - Client review Plan 04
+
+- Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
+### Fixed - PR 162 intake prefill review
+
+- **`IntakeDomainProjection` / intake submission paths** — Reject changed, replaced, reordered, ambiguous, inactive, archived, or incorrectly scoped prefilled policy sources before submission mutates records. Preserve independent primary/secondary policy versions through JSON and wizard saves, and target the accepted policy ID during projection. Older drafts retain their combined-timestamp compatibility check. No schema migration.
+- **`IntakeService` / `IntakeEndpoints`** — Preserve structured compound names when the submitted full name matches the saved name; explicitly edited names retain the existing update behavior.
+- **`IntakeProfilePrefill` / `IntakeProfilePrefillReader`** — Offer Self Pay and other supported policy-only values for explicit blank-field prefill, and translate legacy `providerType` values supported by the intake selector without replacing canonical payer values.
+- Added service, SQLite API/standalone-link, and wizard regressions for policy-source conflicts, unchanged submission, compound names, payer aliases, and prefill persistence. User verification exposed two fixture failures; corrected the policy-reorder setup to stage its swap transactionally through an unused priority, respecting SQLite's active-priority unique index, and asserted both reordered member numbers survive rejection. Verification of this correction is pending; the complete review inventory and remaining TRICARE compatibility decision are recorded in `docs/client-review/plan-07.md`.
 ### Fixed - Plan 08 CI follow-up
 
 - Preserve the existing note-template index when downgrading encounter intake on SQL Server; add provider-operation regressions and correct Infrastructure formatting.
@@ -107,6 +202,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added - Settings services and API layer
 
+- **Connected Settings and authentication UI review slice** — Wired the verified Roles, Security, Scheduling, Documentation, Auto Check-In, and Kiosk surfaces to the administration contracts, added appointment visit-type catalog consumption, and completed Web PIN/MFA step-up interactions with loading, validation, conflict, retry, and read-only states. Reason: presentation behavior and visual assets remain independently reviewable from persistence and server enforcement in the stacked delivery sequence.
+- Rebased the connected Settings UI onto the merged services layer, retaining its stricter PIN validation, clinic-specific reset policy, and hardened Web authentication step flow instead of restoring the earlier inline handlers.
 - **Settings services and API review slice** — Connected the persisted Settings aggregates to clinic-scoped administration services, dynamic authorization, PIN/TOTP step-up authentication, appointment availability, reminders, Auto Check-In, kiosk workflows, API endpoints, and focused server-side regression coverage. Reason: security-sensitive workflow logic is isolated from the generated persistence artifacts so it can be reviewed as a dedicated stacked change.
 
 ### Fixed - Settings services and API review follow-up

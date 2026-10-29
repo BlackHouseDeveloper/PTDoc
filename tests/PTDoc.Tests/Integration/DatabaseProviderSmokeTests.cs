@@ -6,10 +6,17 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Moq;
+using PTDoc.Application.Identity;
+using PTDoc.Application.Intake;
 using PTDoc.Application.Services;
 using PTDoc.Application.Settings;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Data.Interceptors;
+using PTDoc.Infrastructure.Outcomes;
+using PTDoc.Infrastructure.ReferenceData;
+using PTDoc.Infrastructure.Services;
 using Xunit;
 
 namespace PTDoc.Tests.Integration;
@@ -21,6 +28,68 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
     private const string MigrationsAlreadyAppliedVariable = "CI_DB_MIGRATIONS_ALREADY_APPLIED";
     private const string ProviderVariable = "DB_PROVIDER";
     private SqliteConnection? _sqliteConnection;
+
+    [SkippableFact]
+    public async Task PostgresEncounterSaveSaveSubmit_ReturnedVersionsMatchStorage_AndStaleWritesStillFail()
+    {
+        Skip.If(!string.Equals(Environment.GetEnvironmentVariable("DB_PROVIDER"), "postgres", StringComparison.OrdinalIgnoreCase),
+            "Set DB_PROVIDER=postgres and Database__ConnectionString to run this PostgreSQL regression.");
+        var connectionString = Environment.GetEnvironmentVariable("Database__ConnectionString");
+        Assert.False(string.IsNullOrWhiteSpace(connectionString));
+        var identity = new Mock<IIdentityContextAccessor>();
+        identity.Setup(value => value.GetCurrentUserId()).Returns(Guid.NewGuid());
+        var clock = new Mock<TimeProvider>();
+        var now = new DateTimeOffset(2026, 10, 29, 12, 0, 0, TimeSpan.Zero).AddTicks(7);
+        clock.Setup(value => value.GetUtcNow()).Returns(() => now);
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseNpgsql(connectionString, provider => provider.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Postgres"))
+            .AddInterceptors(new SyncMetadataInterceptor(identity.Object, clock.Object)).Options;
+        await using var db = new ApplicationDbContext(options);
+        if (!string.Equals(Environment.GetEnvironmentVariable("CI_DB_MIGRATIONS_ALREADY_APPLIED"), "true", StringComparison.OrdinalIgnoreCase))
+            await db.Database.MigrateAsync();
+        // This test only writes disposable records and rolls them back even on failure.
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var clinic = new Clinic { Name = "Synthetic intake precision", Slug = $"intake-precision-{Guid.NewGuid():N}" };
+        var patient = new Patient { ClinicId = clinic.Id, FirstName = "Synthetic", LastName = "Precision", DateOfBirth = new DateTime(1990, 1, 1, 0, 0, 0, DateTimeKind.Utc) };
+        var note = new ClinicalNote { ClinicId = clinic.Id, PatientId = patient.Id, NoteType = NoteType.Evaluation };
+        db.AddRange(clinic, patient, note);
+        await db.SaveChangesAsync();
+        var tenant = new Mock<ITenantContextAccessor>();
+        tenant.Setup(value => value.GetCurrentClinicId()).Returns(clinic.Id);
+        var catalog = new IntakeReferenceDataCatalogService();
+        var canonicalizer = new IntakeDraftCanonicalizer(new OutcomeMeasureRegistry(), new IntakeBodyPartMapper(catalog), catalog);
+        var service = new IntakeService(db, tenant.Object, identity.Object, catalog, canonicalizer);
+        var draft = (await service.EnsureDraftAsync(patient.Id, new IntakeResponseDraft { PatientId = patient.Id, EncounterNoteId = note.Id })).Draft!;
+        var issuedVersion = draft.LastModifiedUtc;
+
+        for (var save = 0; save < 2; save++)
+        {
+            db.ChangeTracker.Clear(); // Simulate the next request reading the stored version.
+            now = now.AddSeconds(1); // Retain a deliberate sub-microsecond remainder.
+            draft.MedicalHistoryNotes = $"Synthetic answer {save}";
+            await service.SaveDraftAsync(draft);
+            var stored = await db.IntakeForms.AsNoTracking().SingleAsync(form => form.Id == draft.IntakeId);
+            Assert.Equal(draft.LastModifiedUtc, stored.LastModifiedUtc);
+            Assert.Equal(0L, draft.LastModifiedUtc!.Value.Ticks % TimeSpan.TicksPerMicrosecond);
+        }
+
+        var currentVersion = draft.LastModifiedUtc;
+        db.ChangeTracker.Clear();
+        draft.LastModifiedUtc = issuedVersion;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.SaveDraftAsync(draft));
+        draft.LastModifiedUtc = currentVersion;
+        db.ChangeTracker.Clear();
+        now = now.AddSeconds(1);
+        draft.HipaaAcknowledged = true;
+        draft.ConsentToTreatAcknowledged = true;
+        draft.TermsOfServiceAccepted = true;
+        draft.AccuracyConfirmed = true;
+        draft.ConsentPacket = new IntakeConsentPacket { HipaaAcknowledged = true, TreatmentConsentAccepted = true, FinalAttestationAccepted = true };
+        await service.SubmitAsync(draft);
+        var submitted = await db.IntakeForms.AsNoTracking().SingleAsync(form => form.Id == draft.IntakeId);
+        Assert.True(submitted.IsLocked);
+        Assert.Equal(draft.LastModifiedUtc, submitted.LastModifiedUtc);
+    }
 
     [SkippableFact]
     public async Task DatabaseProvider_Migrations_Queryability_AndCrud_Succeed()

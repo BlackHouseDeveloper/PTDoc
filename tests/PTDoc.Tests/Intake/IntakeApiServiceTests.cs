@@ -205,6 +205,7 @@ public sealed class IntakeApiServiceTests
         await service.SaveDraftAsync(new IntakeResponseDraft
         {
             PatientId = patientId,
+            ProfileUpdate = new IntakeProfileUpdate { Action = IntakeProfileAction.UsePrimary, ExpectedFingerprint = "current-source" },
             PhoneNumber = "555-0100",
             EmailAddress = "patient@example.com",
             ConsentPacket = new IntakeConsentPacket
@@ -229,6 +230,9 @@ public sealed class IntakeApiServiceTests
         Assert.True(responseJson.RootElement.GetProperty("consentPacket").GetProperty("treatmentConsentAccepted").GetBoolean());
         Assert.False(responseJson.RootElement.TryGetProperty("hipaaAcknowledged", out _));
         Assert.False(responseJson.RootElement.TryGetProperty("consentToTreatAcknowledged", out _));
+        var profileUpdate = responseJson.RootElement.GetProperty("profileUpdate");
+        Assert.Equal((int)IntakeProfileAction.UsePrimary, profileUpdate.GetProperty("action").GetInt32());
+        Assert.Equal("current-source", profileUpdate.GetProperty("expectedFingerprint").GetString());
     }
 
     [Fact]

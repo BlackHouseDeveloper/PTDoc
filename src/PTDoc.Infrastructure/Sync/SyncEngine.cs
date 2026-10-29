@@ -5,6 +5,7 @@ using PTDoc.Application.BackgroundJobs;
 using PTDoc.Application.Appointments;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Intake;
 using PTDoc.Application.NoteTemplates;
 using PTDoc.Application.Observability;
 using PTDoc.Application.Services;
@@ -2413,6 +2414,7 @@ public class SyncEngine : ISyncEngine
                 {
                     Id = serverId,
                     PatientId = patientId,
+                    ClinicId = clinicId,
                     ResponseJson = TryGetString(root, "responseJson") ?? TryGetString(root, "ResponseJson") ?? "{}",
                     StructuredDataJson = TryGetString(root, "structuredDataJson") ?? TryGetString(root, "StructuredDataJson"),
                     PainMapData = TryGetString(root, "painMapData") ?? TryGetString(root, "PainMapData") ?? "{}",
@@ -2425,6 +2427,14 @@ public class SyncEngine : ISyncEngine
                     ModifiedByUserId = actingUserId,
                     SyncState = SyncState.Synced
                 };
+                var newResponse = IntakeProfileProvenance.Parse(
+                    IntakeProfileProvenance.Preserve(null, form.ResponseJson));
+                foreach (var key in newResponse.Select(p => p.Key).Where(k => string.Equals(k, "profileUpdate", StringComparison.OrdinalIgnoreCase)).ToArray())
+                    newResponse.Remove(key);
+                // An offline source cannot be verified on arrival. Preserve chart demographics and
+                // require explicit reconciliation before writing any existing normalized policies.
+                newResponse["profilePrefillSourceModifiedUtc"] = DateTime.UtcNow;
+                form.ResponseJson = newResponse.ToJsonString();
                 _context.IntakeForms.Add(form);
             }
             else
@@ -2432,7 +2442,12 @@ public class SyncEngine : ISyncEngine
                 // Only update unlocked forms (double-checked; already blocked by CheckEntitySpecificConflictAsync)
                 if (!existing.IsLocked)
                 {
-                    existing.ResponseJson = TryGetString(root, "responseJson") ?? TryGetString(root, "ResponseJson") ?? existing.ResponseJson;
+                    var incomingResponse = TryGetString(root, "responseJson") ?? TryGetString(root, "ResponseJson") ?? existing.ResponseJson;
+                    var protectedResponse = IntakeProfileProvenance.Parse(
+                        IntakeProfileProvenance.Preserve(existing.ResponseJson, incomingResponse));
+                    foreach (var key in protectedResponse.Select(p => p.Key).Where(k => string.Equals(k, "profileUpdate", StringComparison.OrdinalIgnoreCase)).ToArray())
+                        protectedResponse.Remove(key); // Reconciliation requires the authenticated intake save path.
+                    existing.ResponseJson = protectedResponse.ToJsonString();
                     existing.StructuredDataJson = TryGetString(root, "structuredDataJson") ?? TryGetString(root, "StructuredDataJson") ?? existing.StructuredDataJson;
                     existing.PainMapData = TryGetString(root, "painMapData") ?? TryGetString(root, "PainMapData") ?? existing.PainMapData;
                     existing.Consents = TryGetString(root, "consents") ?? TryGetString(root, "Consents") ?? existing.Consents;
