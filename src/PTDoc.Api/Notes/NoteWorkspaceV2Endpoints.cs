@@ -20,7 +20,7 @@ public static class NoteWorkspaceV2Endpoints
             .WithSummary("Load a typed v2 eval/reeval/progress workspace snapshot");
 
         group.MapGet("/{patientId:guid}/{noteId:guid}/intake-seed", GetEncounterEvaluationSeed)
-            .RequireAuthorization(AuthorizationPolicies.NoteRead)
+            .RequireAuthorization(AuthorizationPolicies.NoteRead, AuthorizationPolicies.IntakeRead)
             .WithName("GetEncounterEvaluationSeedWorkspaceV2");
 
         group.MapGet("/{patientId:guid}/evaluation-seed", GetEvaluationSeed)

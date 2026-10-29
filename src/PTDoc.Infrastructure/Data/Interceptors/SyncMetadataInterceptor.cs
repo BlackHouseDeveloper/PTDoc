@@ -12,10 +12,12 @@ namespace PTDoc.Infrastructure.Data.Interceptors;
 public class SyncMetadataInterceptor : SaveChangesInterceptor
 {
     private readonly IIdentityContextAccessor _identityContext;
+    private readonly TimeProvider _timeProvider;
 
-    public SyncMetadataInterceptor(IIdentityContextAccessor identityContext)
+    public SyncMetadataInterceptor(IIdentityContextAccessor identityContext, TimeProvider? timeProvider = null)
     {
         _identityContext = identityContext;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public override InterceptionResult<int> SavingChanges(
@@ -42,7 +44,7 @@ public class SyncMetadataInterceptor : SaveChangesInterceptor
         var entries = context.ChangeTracker.Entries<ISyncTrackedEntity>()
             .Where(e => e.State == EntityState.Added || e.State == EntityState.Modified);
 
-        var now = DateTime.UtcNow;
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
         var currentUserId = _identityContext.GetCurrentUserId();
 
         foreach (var entry in entries)
@@ -57,7 +59,12 @@ public class SyncMetadataInterceptor : SaveChangesInterceptor
             }
 
             // Always update LastModifiedUtc and ModifiedByUserId
-            entry.Entity.LastModifiedUtc = now;
+            // PostgreSQL timestamps store microseconds. Return the same version that
+            // a fresh request will read, without weakening exact concurrency checks.
+            entry.Entity.LastModifiedUtc = entry.Entity is IntakeForm { EncounterNoteId: not null }
+                && context.Database.IsNpgsql()
+                    ? new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMicrosecond, DateTimeKind.Utc)
+                    : now;
             entry.Entity.ModifiedByUserId = currentUserId;
 
             // For new entities, ensure sync state is Pending

@@ -207,7 +207,7 @@
 
 @if (!State.IsPatientMode && State.EncounterNoteId.HasValue)
 {
-    <SendIntakeModal @bind-IsOpen="_showEncounterInvite"
+    <SendIntakeModal @key="(State.PatientId, State.EncounterNoteId)" @bind-IsOpen="_showEncounterInvite"
                      InitialPatientId="@(State.PatientId?.ToString())"
                      EncounterNoteId="@State.EncounterNoteId"
                      AvailablePatients="@EncounterPatientOptions" />
@@ -523,14 +523,16 @@
         State.CurrentStep = IntakeStep.PainAssessment;
         State.IsDirty = true;
 
+        var savingState = State;
         try
         {
             _isSavingDraft = true;
             await PersistDraftAsync();
-            State.IsDirty = false;
+            if (ReferenceEquals(State, savingState)) savingState.IsDirty = false;
         }
         catch (HttpRequestException ex)
         {
+            if (!ReferenceEquals(State, savingState)) return;
             var message = ToUserFacingApiError(ex);
             _validationMessage = message;
             ToastService.ShowError(message, "Draft save failed");
@@ -686,10 +688,12 @@
 
     private async Task PersistDraftAsync()
     {
+        var savingState = State;
         var draft = ToPersistenceDraft();
         await IntakeService.SaveDraftAsync(draft);
-        State.IntakeId = draft.IntakeId;
-        State.LastModifiedUtc = draft.LastModifiedUtc;
+        if (!ReferenceEquals(State, savingState)) return;
+        savingState.IntakeId = draft.IntakeId;
+        savingState.LastModifiedUtc = draft.LastModifiedUtc;
     }
 
     private async Task RefreshProfileAsync()
@@ -830,13 +834,15 @@
 
         _isSavingDraft = true;
         State.IsDirty = true;
+        var savingState = State;
         try
         {
             await PersistDraftAsync();
-            State.IsDirty = false;
+            if (ReferenceEquals(State, savingState)) savingState.IsDirty = false;
         }
         catch (HttpRequestException ex)
         {
+            if (!ReferenceEquals(State, savingState)) return;
             var message = ToUserFacingApiError(ex);
             _validationMessage = message;
             ToastService.ShowError(message, "Draft save failed");

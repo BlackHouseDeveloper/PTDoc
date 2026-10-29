@@ -277,8 +277,16 @@ public static class IntakeEndpoints
     }
 
     private static async Task<IResult> GetForNote(
-        Guid patientId, Guid noteId, ApplicationDbContext db, CancellationToken cancellationToken)
+        Guid patientId, Guid noteId, ApplicationDbContext db,
+        IIdentityContextAccessor identityContext, IPatientContextAccessor patientContext,
+        CancellationToken cancellationToken)
     {
+        if (string.Equals(identityContext.GetCurrentUserRole(), Roles.Patient, StringComparison.Ordinal)
+            && patientContext.GetCurrentPatientId() != patientId)
+        {
+            return Results.Forbid();
+        }
+
         var intake = await db.IntakeForms.AsNoTracking()
             .FirstOrDefaultAsync(form => form.PatientId == patientId && form.EncounterNoteId == noteId, cancellationToken);
         return intake is null ? Results.NotFound() : Results.Ok(await ToResponseWithProfileAsync(intake, db, cancellationToken));

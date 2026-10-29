@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Plan 08 branch synchronization
+
+- Restore a fully linear Plan 08 review stack on current main, replacing the merge-based synchronization that blocked GitHub native stacks. Retain both changelog histories and main's deployment-test scheduling and result-artifact settings; application code, clinical definitions, schema migrations and regression tests are unchanged. Native-stack CI and merge requirements follow the stack base.
+
 ### Fixed - Restore the deployment fix to main after PR 161
 
 - Diagnose Deploy Beta run `42026288423` at `a787e848`: 2,817 tests passed and six unrelated HTTP cases hit the same clustered 100-second timeout. The previously verified deployment fix remained in draft PR 199 and was absent from main; update that PR onto the subscription merge while preserving both changelog histories. The user authorized the complete repair, publication, migration and deployment workflow.
@@ -19,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.github/workflows/deploy-beta.yml`** — Run the complete deployment test suite with xUnit collection parallelism disabled after run `41752480381` failed with clustered 100-second HTTP timeouts in changing test sets (eight failures initially, four on the completed retry). Preserve all tests, assertions, HTTP timeouts and deployment gates; retain the TRX report even when the test step fails.
 - With explicit operator approval, rehearse the committed SQL Server `20261103030000_AddOrganizationMemberships` migration on a temporary Basic-tier database copy, then apply it during a controlled beta stop/start. Verify hashes of existing clinic, user, patient, note, signature, appointment, schedule-block and session data, membership backfill and database constraints. Both rehearsal and live checks passed, and API/Web readiness recovered. Remove the temporary IP-only SQL firewall rule and, after successful deployment verification, delete the recovery copy.
 - **Deploy Beta run `41775391240`** — Successfully deploy source `5ac1e92b04469f594a0b7aa40f9da1102a4b3167` as release `beta-31-1` to both apps. All 2,717 tests passed in 7 minutes 27 seconds, with no failures or skips. API health, all four seeded-role sign-ins, authenticated source/release parity, Web health, shared CSS and WebSockets negotiation passed. Independent live checks confirmed HTTP 200 for both apps' liveness/readiness and shared CSS, plus advertised WebSockets. The fix was committed/pushed with explicit permission before local build/test confirmation; no local .NET build/test commands were run.
+
+### Fixed - PR 163 encounter intake review
+
+- Resolve the 12 conflicts merging the rebased PR head into the local Plan 08 branch, retain the newer Plan 07 provenance/reconciliation safeguards alongside encounter intake, and remove five duplicated intake tests introduced by automatic merging. Integrate the reviewed fixes into the original checkout; the merge remains uncommitted pending user verification.
+- Enforce patient ownership when reading encounter intake and require both note-read and intake-read permission for encounter seed responses.
+- Keep delayed wizard saves from replacing another encounter's intake identity/version, clearing its dirty state or displaying the prior encounter's save error. Recreate the invite modal when its patient/encounter changes.
+- Normalize PostgreSQL encounter intake answer versions to stored microsecond precision while retaining exact stale-write checks and sync-only acknowledgement behavior.
+- Add 12 regression cases covering ownership, seven reader roles, delayed save success/failure, invite switching and real PostgreSQL save/save/submit with a deterministic sub-microsecond clock. Record the complete five-finding classification and duplicate review-summary references in `docs/client-review/plan-08.md`. Builds/tests await user execution; no schema change.
 
 ### Fixed - PR 161 CodeQL webhook size-check finding
 
