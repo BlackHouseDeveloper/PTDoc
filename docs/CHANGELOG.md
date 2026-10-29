@@ -9,11 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed - PR 163 encounter intake review
 
-- Resolve the 12 conflicts merging the rebased PR head into the local Plan 08 branch, retain the newer Plan 07 provenance/reconciliation safeguards alongside encounter intake, and remove five duplicated intake tests introduced by automatic merging. Integrate the reviewed fixes into the original checkout; the merge remains uncommitted pending user verification.
+- Resolve the 12 conflicts merging the rebased PR head into the local Plan 08 branch, retain the newer Plan 07 provenance/reconciliation safeguards alongside encounter intake, and remove five duplicated intake tests introduced by automatic merging. Integrate the reviewed fixes into the original checkout.
 - Enforce patient ownership when reading encounter intake and require both note-read and intake-read permission for encounter seed responses.
 - Keep delayed wizard saves from replacing another encounter's intake identity/version, clearing its dirty state or displaying the prior encounter's save error. Recreate the invite modal when its patient/encounter changes.
 - Normalize PostgreSQL encounter intake answer versions to stored microsecond precision while retaining exact stale-write checks and sync-only acknowledgement behavior.
-- Add 12 regression cases covering ownership, seven reader roles, delayed save success/failure, invite switching and real PostgreSQL save/save/submit with a deterministic sub-microsecond clock. Record the complete five-finding classification and duplicate review-summary references in `docs/client-review/plan-08.md`. Builds/tests await user execution; no schema change.
+- Add 12 regression cases covering ownership, seven reader roles, delayed save success/failure, invite switching and real PostgreSQL save/save/submit with a deterministic sub-microsecond clock. Record the complete five-finding classification and duplicate review-summary references in `docs/client-review/plan-08.md`; no schema change.
+- Refresh the complete review audit against `2a0f8a8`: all five findings are already addressed, all threads are resolved, and no suppressed or Previously missed findings are exposed by GitHub. Mark the earlier pending statuses as historical, retain exact verification commands, and distinguish reported prior test success from this documentation-only refresh, which did not rerun builds/tests.
 
 ### Fixed - beta deployment sign-in retries
 ### Fixed - PR 162 canonical payer mapping
