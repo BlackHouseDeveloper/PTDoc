@@ -106,36 +106,12 @@ builder.Services.AddHttpClient("ServerAPI", (serviceProvider, client) =>
         .GetRequiredService<ApiClusterAddressResolver>()
         .ResolveApiClusterAddress();
 })
-    .AddHttpMessageHandler<PublicOriginForwardingHandler>()
-    .AddHttpMessageHandler<ApiAccessTokenForwardingHandler>();
-
-// Blazor's navigation and authentication-state services belong to the active circuit
-// scope, while IHttpClientFactory creates its own handler scopes. Build the UI-facing
-// outer authentication handler in the circuit scope, and retain the factory-managed
-// transport pipeline underneath it. The named ServerAPI client remains available to
-// request-based Web endpoints that already use it directly.
-builder.Services.AddHttpClient("ServerAPITransport", (serviceProvider, client) =>
-{
-    client.BaseAddress = serviceProvider
-        .GetRequiredService<ApiClusterAddressResolver>()
-        .ResolveApiClusterAddress();
-})
     .AddHttpMessageHandler<PublicOriginForwardingHandler>();
 
-builder.Services.AddScoped(sp =>
-{
-    var handler = sp.GetRequiredService<ApiAccessTokenForwardingHandler>();
-    handler.InnerHandler = sp
-        .GetRequiredService<IHttpMessageHandlerFactory>()
-        .CreateHandler("ServerAPITransport");
-
-    return new HttpClient(handler, disposeHandler: false)
-    {
-        BaseAddress = sp
-            .GetRequiredService<ApiClusterAddressResolver>()
-            .ResolveApiClusterAddress()
-    };
-});
+// Pool transport only; authentication and terminal state belong to the caller's
+// request/circuit scope, including named ServerAPI clients used by Web endpoints.
+builder.Services.AddScoped<IHttpClientFactory, WebScopedHttpClientFactory>();
+builder.Services.AddScoped(sp => sp.GetRequiredService<IHttpClientFactory>().CreateClient("ServerAPI"));
 
 if (entraExternalIdOptions.Enabled)
 {
@@ -485,7 +461,7 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
 
 app.MapWebAuthenticationStepEndpoints();
 
-app.MapGet("/auth/logout", async (HttpContext httpContext, IHttpClientFactory clients) =>
+app.MapGet("/auth/logout", async (HttpContext httpContext, IHttpClientFactory clients, TimeProvider clock) =>
 {
     httpContext.Response.Headers.CacheControl = "no-store";
     if (httpContext.Request.Headers["Sec-Fetch-Site"] == "cross-site")
@@ -510,7 +486,10 @@ app.MapGet("/auth/logout", async (HttpContext httpContext, IHttpClientFactory cl
         await httpContext.Response.WriteAsync("Sign-out could not be completed. Please retry.");
         return;
     }
-    await httpContext.SignOutAsync(PTDocAuthSchemes.Cookie);
+    if (WebSessionActivity.HasPreviousLocalSession(httpContext))
+        WebSessionActivity.MarkPreviousLocalSessionEnded(httpContext, clock);
+    else
+        await httpContext.SignOutAsync(PTDocAuthSchemes.Cookie);
 
     if (requiresExternalProviderSignOut)
     {

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 156 follow-up session isolation review
+
+- Scope local logout invalidation to the original sign-in after API revocation, preventing a delayed logout response from deleting a newer identity cookie. Preserve legacy-ticket logout and retryable revocation failure behavior; add delayed-response and browser-authentication regressions for all three ticket formats.
+- Build named `ServerAPI` authentication handlers in the current request/circuit scope and pool only transport. Add factory-level regressions for rejected then valid users, same-scope blocking, and safe wrapper disposal.
+- Start the activity monitor only for current-format tickets and use a monotonic input throttle. Add previous-version startup and backward-clock regressions. All 10 JavaScript tests pass; new .NET regressions await user-run verification. Record the complete eight-finding audit, duplicates and historical dispositions in `docs/client-review/plan-01.md`.
+
 ### Documentation - PR 156 merge reconciliation
 
 - Reconcile the session review and intake prefill changelog entries after updating PR 156 with main; preserve both histories and remove a duplicate intake entry.

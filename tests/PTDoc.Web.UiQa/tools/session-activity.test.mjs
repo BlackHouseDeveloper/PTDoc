@@ -9,7 +9,8 @@ function harness() {
   const listeners = new Map();
   const requests = [];
   const notices = [];
-  let now = 1_000_000;
+  let now = 0;
+  let wallClock = 1_000_000;
   let respond = async () => ({ status: 204 });
   const document = {
     visibilityState: 'visible',
@@ -19,14 +20,15 @@ function harness() {
     }
   };
   const context = vm.createContext({
-    document, AbortController, Date: { now: () => now },
+    document, AbortController, Date: { now: () => wallClock }, performance: { now: () => now },
     fetch: async (url, options) => { requests.push({ url, options }); return respond(); }
   });
   vm.runInContext(source.replace(/^export /gm, '') + '\nthis.monitor = { start, stop };', context);
   const receiver = { invokeMethodAsync: async (...args) => { notices.push(args); } };
   return {
     monitor: context.monitor, receiver, requests, notices, document, listeners,
-    advance: ms => { now += ms; },
+    advance: ms => { now += ms; wallClock += ms; },
+    adjustWallClock: ms => { wallClock += ms; },
     respond: fn => { respond = fn; },
     fire: (name = 'input', isTrusted = true) => listeners.get(name)?.({ isTrusted })
   };
@@ -132,4 +134,19 @@ test('restart and disposal remove handlers and suppress an old in-flight result'
   assert.equal(h.listeners.size, 5);
   h.monitor.stop();
   assert.equal(h.listeners.size, 0);
+});
+
+
+test('backward wall-clock corrections do not suppress renewal or bypass throttling', async () => {
+  const h = harness();
+  h.monitor.start('session', h.receiver);
+  await h.fire(); // Monotonic clock starts at zero: first input must still renew.
+  assert.equal(h.requests.length, 1);
+  h.adjustWallClock(-60 * 60_000);
+  h.advance(59_999);
+  await h.fire();
+  assert.equal(h.requests.length, 1);
+  h.advance(1);
+  await h.fire();
+  assert.equal(h.requests.length, 2);
 });

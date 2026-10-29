@@ -20,6 +20,7 @@ internal static class WebSessionActivity
     internal const string StartedAtClaim = "ptdoc_web_session_started_at";
     internal const string SessionHeader = "X-PTDoc-Web-Session";
     internal const string ActivityTicketClaim = "ptdoc_web_activity_ticket";
+    private const string LogoutCookiePrefix = "__Host-PTDoc.SignedOut.";
     private const string ActivityCookiePrefix = "__Host-PTDoc.Activity.";
     private static readonly object PreviousPrincipalKey = new();
 
@@ -30,7 +31,8 @@ internal static class WebSessionActivity
         // when the Web idle window has elapsed. This is never an authorization source.
         context.HttpContext.Items[PreviousPrincipalKey] = context.Principal;
         var now = context.Options.TimeProvider!.GetUtcNow();
-        if (!TryGetDeadline(context.Principal!, out var deadline) || deadline <= now ||
+        if (context.Request.Cookies[LogoutCookieName(context.Principal!)] == "1" ||
+            !TryGetDeadline(context.Principal!, out var deadline) || deadline <= now ||
             (UsesActivityTicket(context.Principal!) && !HasRecentActivity(context, now)))
         {
             context.RejectPrincipal();
@@ -40,7 +42,7 @@ internal static class WebSessionActivity
         return Task.CompletedTask;
     }
 
-    private static bool UsesActivityTicket(ClaimsPrincipal principal) =>
+    internal static bool UsesActivityTicket(ClaimsPrincipal principal) =>
         principal.FindFirst(ActivityTicketClaim)?.Value == "1";
 
     private static IDataProtector ActivityProtector(HttpContext context, string sessionId) =>
@@ -64,6 +66,36 @@ internal static class WebSessionActivity
             catch (CryptographicException) { }
         }
         return lastActivity is not null && lastActivity <= now && lastActivity.Value.AddMinutes(15) > now;
+    }
+
+    // The marker affects only the original sign-in, even if this response arrives
+    // after a replacement identity cookie. API revocation remains the access boundary.
+    internal static void MarkPreviousLocalSessionEnded(HttpContext context, TimeProvider clock)
+    {
+        var principal = context.Items[PreviousPrincipalKey] as ClaimsPrincipal ?? context.User;
+        var now = clock.GetUtcNow();
+        if (!TryGetDeadline(principal, out var deadline) || deadline <= now) return;
+        context.Response.Cookies.Append(LogoutCookieName(principal), "1", new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.Strict,
+            Path = "/",
+            IsEssential = true,
+            // Round up so cookie serialization cannot expire the denial marker
+            // a fraction of a second before the identity ticket.
+            MaxAge = TimeSpan.FromSeconds(Math.Ceiling((deadline - now).TotalSeconds))
+        });
+    }
+
+    private static string LogoutCookieName(ClaimsPrincipal principal)
+    {
+        // Pre-activity tickets have no sign-in ID. Hash their high-entropy opaque
+        // token rather than exposing the credential in a cookie name.
+        var id = principal.FindFirst(SessionIdClaim)?.Value ?? Convert.ToHexString(
+            SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
+                principal.FindFirst(PTDocClaimTypes.ApiAccessToken)?.Value ?? "")));
+        return LogoutCookiePrefix + id;
     }
 
     internal static async Task<bool> RevokePreviousSessionAsync(HttpContext context, IHttpClientFactory clients)

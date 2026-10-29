@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -276,6 +277,58 @@ public sealed class WebSessionActivityIntegrationTests
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task DelayedLogout_CannotClearReplacementSignIn(bool legacy, bool previousVersion)
+    {
+        await using var host = new SessionHost();
+        var cookie = host.IssueCookie(legacy: legacy, previousVersion: previousVersion);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var logoutCalls = 0;
+        host.DelayedLogoutResponse = async () =>
+        {
+            if (Interlocked.Increment(ref logoutCalls) == 1)
+            {
+                entered.SetResult();
+                await release.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            return new HttpResponseMessage(HttpStatusCode.NoContent);
+        };
+        var pending = host.ChangeAuthentication(cookie, signIn: false);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        using var signedIn = await host.ChangeAuthentication(cookie, signIn: true);
+        Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
+        var browserCookies = host.ApplyCookies(cookie, signedIn);
+        release.SetResult();
+        using var lateLogout = await pending;
+        Assert.Equal(HttpStatusCode.Redirect, lateLogout.StatusCode);
+        var marker = Assert.Single(lateLogout.Headers.GetValues("Set-Cookie"));
+        Assert.StartsWith("__Host-PTDoc.SignedOut.", marker);
+        Assert.Contains("secure", marker, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("httponly", marker, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("samesite=strict", marker, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("synthetic-server-only-token", marker);
+        browserCookies = host.ApplyCookies(browserCookies, lateLogout);
+        var currentPrincipal = host.ReadTicket(browserCookies).Principal;
+        Assert.Equal(host.NextUserId.ToString(), currentPrincipal.FindFirst(PTDocClaimTypes.InternalUserId)?.Value);
+        using var activity = await host.Activity(browserCookies, currentPrincipal.FindFirst(SessionIdClaim)!.Value);
+        Assert.Equal(HttpStatusCode.NoContent, activity.StatusCode);
+        using var authenticated = await host.AuthenticateBrowser(browserCookies);
+        Assert.Equal(HttpStatusCode.OK, authenticated.StatusCode);
+        Assert.Contains(host.NextUserId.ToString(), await authenticated.Content.ReadAsStringAsync());
+
+        // The same late response must still end A's browser authentication, including
+        // legacy formats which cannot use the activity endpoint even before logout.
+        var oldBrowser = host.ApplyCookies(cookie, lateLogout);
+        using var signedOut = await host.AuthenticateBrowser(oldBrowser);
+        Assert.Equal(HttpStatusCode.Unauthorized, signedOut.StatusCode);
+        Assert.Contains("synthetic-server-only-token", host.RevokedTokens);
+        Assert.DoesNotContain("synthetic-new-token", host.RevokedTokens);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task AuthenticationChange_RevokesOldCircuitBeforeAnotherProtectedReadOrSave(bool signIn)
@@ -436,6 +489,7 @@ public sealed class WebSessionActivityIntegrationTests
         public Func<HttpResponseMessage>? Responder { get; set; }
         public Func<Task<HttpResponseMessage>>? DelayedResponse { get; set; }
         public Func<HttpResponseMessage>? LogoutResponder { get; set; }
+        public Func<Task<HttpResponseMessage>>? DelayedLogoutResponse { get; set; }
         public HashSet<string> RevokedTokens { get; } = new();
         public Guid NextUserId { get; } = Guid.NewGuid();
         public string AuthCookieName => CookieOptions.Cookie.Name!;
@@ -448,6 +502,7 @@ public sealed class WebSessionActivityIntegrationTests
             {
                 services.AddSingleton<TimeProvider>(Clock);
                 services.AddSingleton<IHttpClientFactory>(this);
+                services.AddSingleton<IStartupFilter>(_ => new BrowserAuthenticationProbe());
             });
         }
 
@@ -481,6 +536,12 @@ public sealed class WebSessionActivityIntegrationTests
             if (path == "/api/v1/auth/logout")
             {
                 if (LogoutResponder is not null) return LogoutResponder();
+                if (DelayedLogoutResponse is not null)
+                {
+                    var response = await DelayedLogoutResponse();
+                    if (response.IsSuccessStatusCode) RevokedTokens.Add(token);
+                    return response;
+                }
                 RevokedTokens.Add(token);
                 return new(HttpStatusCode.NoContent);
             }
@@ -553,6 +614,14 @@ public sealed class WebSessionActivityIntegrationTests
             return await client.SendAsync(request);
         }
 
+        public async Task<HttpResponseMessage> AuthenticateBrowser(string cookie)
+        {
+            using var client = CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), HandleCookies = false });
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/test/browser-authentication");
+            request.Headers.Add("Cookie", cookie);
+            return await client.SendAsync(request);
+        }
+
         public async Task<HttpResponseMessage> Activity(string? cookie, string? sessionId = null, bool crossSite = false)
         {
             using var client = CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost"), HandleCookies = false, AllowAutoRedirect = false });
@@ -562,6 +631,26 @@ public sealed class WebSessionActivityIntegrationTests
             if (crossSite) request.Headers.Add("Sec-Fetch-Site", "cross-site");
             return await client.SendAsync(request);
         }
+    }
+
+    private sealed class BrowserAuthenticationProbe : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use(async (context, nextMiddleware) =>
+            {
+                if (context.Request.Path != "/test/browser-authentication")
+                {
+                    await nextMiddleware();
+                    return;
+                }
+                var result = await context.AuthenticateAsync(PTDocAuthSchemes.Cookie);
+                context.Response.StatusCode = result.Succeeded ? 200 : 401;
+                if (result.Succeeded)
+                    await context.Response.WriteAsync(result.Principal!.FindFirst(PTDocClaimTypes.InternalUserId)!.Value);
+            });
+            next(app);
+        };
     }
 
     private sealed class Handler(Func<HttpRequestMessage, Task<HttpResponseMessage>> responder) : HttpMessageHandler

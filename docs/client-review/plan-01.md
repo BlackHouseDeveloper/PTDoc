@@ -1,6 +1,8 @@
 # Plan PR 01: Verify and repair active-use and multi-tab sessions
 
-**Review fixes implemented; builds and tests confirmed passing (2026-10-28).** The latest user-run suite passed all 2,314 tests. The original implementation checks below are historical evidence; see the review audit for current verification and separate live acceptance gates.
+**Follow-up review fixes implemented; .NET verification pending (2026-10-29).**
+The current audit below covers all eight findings at `e645d6f`. Earlier passing
+builds/tests are historical evidence and do not verify the new follow-up changes.
 
 - Requirements: R003, R005, R048, R061
 - Original plan status: Verification Required
@@ -190,3 +192,92 @@ after the verified fixes are pushed. Thread **4381841551** is already resolved
 and needs no new action. GitHub records the final publication and resolution
 status. Current main integration/merge conflicts and hosted, Entra-provider,
 screen-reader and MAUI release acceptance remain separate gates.
+
+
+## PR 156 follow-up review audit — 2026-10-29
+
+### Scope and complete feedback inventory
+
+Verified clean local HEAD and remote PR head both at
+`e645d6f752c814b5aaba03713a2f0afe673ec661`, with base
+`ee9a0066d11b135841e7da33643d53ab954a4a76`. Retrieved current thread-aware feedback,
+full paginated GraphQL conversation/reviews/threads, raw REST review bodies, and
+CodeQL alert 19. There are **0 conversation comments, 6 review submissions,
+8 threads, and 11 inline comments including 3 prior author replies**. Four threads
+are open/current and four are resolved/outdated. All collapsed review sections
+were inspected: **no suppressed findings or Previously missed sections/items are
+present**. The summary bodies contain **10 duplicate references** to the seven
+Copilot findings (three original references, four new references, and three
+resolved-since-last-review references). These are not additional defects. The
+three author replies report prior fixes rather than raising new findings.
+
+The latest user request supersedes the earlier publication authorization:
+**no commit, push, review reply, resolution, PR-level response or review request
+is authorized for this audit**. None has been performed.
+
+### Classification and evidence
+
+| Finding | Classification | Current code, call-site, contract and regression evidence |
+| --- | --- | --- |
+| [4411837564 — delayed logout clears replacement sign-in](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4411837564) | **Valid; fixed locally, .NET verification pending** | `Program.cs` awaited `RevokePreviousSessionAsync` and then deleted the shared identity cookie with `SignOutAsync`. Replacement login in `WebAuthenticationStepFlow.CompleteWebSignInAsync` can finish while that await is pending. Local logout now issues a sign-in-specific denial marker through `WebSessionActivity.MarkPreviousLocalSessionEnded`; `ValidateCookieAsync` rejects only that original sign-in. A marker for a legacy ticket uses a token digest, never the bearer token. API logout still revokes first and failed revocation still returns 503. `DelayedLogout_CannotClearReplacementSignIn` applies B's cookie before A's delayed response, proves B remains authenticated and can renew, proves A's cookie fails real cookie authentication, and verifies only A's token was revoked; three cases cover current, previous-version and legacy tickets. Existing delayed-renewal, revocation-failure, idle-expired and cross-site tests remain applicable. |
+| [4411837629 — pooled auth state propagates 401 across users](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4411837629) | **Valid; fixed locally, .NET verification pending** | `Program.cs` attached `ApiAccessTokenForwardingHandler` to the pooled named `ServerAPI` handler. Its injected `WebCircuitSessionState`, authentication provider and user service belonged to the factory handler scope, unlike the already scoped UI client. Named callers include Web development communications diagnostics and MFA recovery-code regeneration in `WebAuthenticationStepFlow`. `WebScopedHttpClientFactory` now wraps factory-owned transports with a fresh authentication handler resolved in the caller's request/circuit scope. Named options are retained, other client names receive no auth wrapper, and disposing a wrapper does not dispose the pooled transport. `NamedClients_IsolateRejectedUsers_WhileSharingTransport` uses production DI/factory registration in two scopes, exercises both HttpContext and circuit identity sources, proves A's 401 blocks only A, proves B's diagnostics/recovery calls carry B's token and succeed, and checks the single shared transport survives A's client/scope disposal. `AuthApiClient_RemainsUsableForRecoveryInEndedScope` checks that the separately named auth client remains usable without inherited bearer state. |
+| [4411837680 — previous-version cookie starts incompatible monitor](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4411837680) | **Valid; fixed locally, .NET verification pending** | The monitor required a local identity and session ID, while `RenewAsync` additionally requires `ptdoc_web_activity_ticket=1`. Commit `4f45f05` introduced that marker after the earlier session-ID format, so old still-valid tickets could trigger 401 on first input. The monitor now uses the same `UsesActivityTicket` predicate as renewal. `Monitor_StartsOnlyForCurrentActivityTickets` covers missing/incorrect/current markers and verifies old tickets do not import the monitor or end the circuit. Existing `PreviousVersionCookie_KeepsNormalExpiryWithoutAutomaticSliding` and `LegacyCookie_DoesNotGainNewActivityRenewalBeforeNextSignIn` cover server rollout behavior. |
+| [4411837718 — backward wall clock blocks renewal](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4411837718) | **Valid; fixed locally, JavaScript verification passed** | `sessionActivity.js` throttled using `Date.now() - lastAttempt`, which can remain negative after a clock correction. It now uses `performance.now()` with `lastAttempt=-Infinity`, preserving immediate first input and the one-minute throttle. The new regression starts at monotonic zero, moves wall time back one hour, checks suppression at 59,999 ms and renewal at 60,000 ms. All 10 JavaScript tests pass, including existing callback retry, throttling, in-flight and lifecycle checks. |
+| [4381845004 — stale renewal overwrites identity](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381845004) | **Outdated; already fixed, no additional renewal change** | `4f45f05` (rebased form of `e6db945`) removed identity reissuance from `RenewAsync`. Current renewal writes only the protected per-sign-in activity cookie; local automatic sliding is disabled and validation failure emits no identity deletion. `DelayedRenewal_CannotRestoreLogoutOrOverwriteNewSignIn` covers both interleavings and response-cookie application. The new logout finding is a distinct response path, not a duplicate of this fixed renewal path. |
+| [4381845075 — ended circuits retain API access](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381845075) | **Outdated; original circuit/revocation defect already fixed** | `4f45f05` made the monitor end shared circuit state, made the forwarding handler check it before and after authentication lookup, and added server revocation on logout/replacement. `AuthService.LogoutAsync` revokes by opaque token hash; `ValidateSessionAsync` excludes revoked sessions. `AuthenticationChange_RevokesOldCircuitBeforeAnotherProtectedReadOrSave`, `EndedCircuit_BlocksProtectedOperationsWithoutClearingNewCookieOrDraft`, `CircuitEndedDuringAuthenticationLookup_DoesNotSendProtectedRequest`, and `LogoutAsync_RejectsOldOpaqueSessionWithoutRevokingReplacementSession` cover the contract. The new pooled named-client finding addresses a distinct DI scope boundary; it does not require another change to these guard checks. |
+| [4381845135 — rejected callback permanently stops recovery](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381845135) | **Outdated; already fixed, no additional callback change** | `4f45f05` moved `stopped=true` after successful `invokeMethodAsync`. Both 401 and 409 callback-rejection tests still pass and prove later trusted input retries and successful delivery stops further calls. |
+| [4381841551 — CodeQL bypass](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381841551) | **Outdated; already fixed** | `c90d7c1` (rebased form of `e4364ad`) made cross-site renewal denial explicit with `Results.Unauthorized()`. Current `RenewAsync` rejects it before API validation or cookie issuance. `CrossSiteActivity_IsRejectedWithoutRenewingCookie` asserts 401, zero API calls and no Set-Cookie. Alert 19's latest instance is `fixed`; the thread remains resolved/outdated. No suppression was added. |
+| Review overview links (10 references) | **Duplicate** | Each links directly to one of the seven Copilot inline findings above. No distinct body-only finding or additional requested change exists. |
+
+**Totals: 8 unique findings — 4 valid/actionable, 4 outdated, 0 invalid,
+0 ambiguous; 10 duplicate summary references.** No suppressed or Previously
+missed finding was found. No unresolved product decision is needed for these
+fixes. The four new threads remain open pending user verification and explicit
+publication authorization.
+
+The scoped-handler approach follows the framework's documented distinction
+between application scopes and pooled handler scopes:
+[Microsoft IHttpClientFactory guidance](https://learn.microsoft.com/en-us/dotnet/core/extensions/httpclient-factory#message-handler-scopes-in-ihttpclientfactory).
+
+### Changes, limits and verification
+
+Added `src/PTDoc.Web/Services/WebScopedHttpClientFactory.cs` in the existing Web
+composition/services layer and its factory-level tests under
+`tests/PTDoc.Tests/Web/`. No Core/Application dependency, API contract, database
+migration or package change is required. Logout marker cookies are denial-only;
+API revocation remains authoritative even if the browser removes the marker.
+Markers are retained through the original session deadline. External-provider
+logout keeps its existing flow. Web idle/absolute deadlines and clinic API
+policies are unchanged. Updated architecture/security docs describe the behavior.
+
+Checks run for this audit:
+
+- `node --test tests/PTDoc.Web.UiQa/tools/session-activity.test.mjs`: **10 passed**.
+- `git diff --check`: **passed**.
+- `python3 .github/scripts/scan_secret_policy.py`: **passed**, 9 tracked configuration files.
+
+No .NET build, test or format command was run, per AGENTS.md. The user's previous
+passing builds/tests apply to the earlier code, not these new changes. Run from
+the repository root:
+
+```bash
+dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter 'FullyQualifiedName~WebSessionActivityIntegrationTests|FullyQualifiedName~WebScopedHttpClientFactoryTests|FullyQualifiedName~WebSessionActivityMonitorTests|FullyQualifiedName~WebLoginEndpointIntegrationTests|FullyQualifiedName~WebLogoutEndpointIntegrationTests|FullyQualifiedName~ApiAccessTokenForwardingHandlerTests|FullyQualifiedName~WebUserServiceTests|FullyQualifiedName~AuthServiceTests' --verbosity normal
+dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --verify-no-changes --verbosity minimal
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter 'Category=CoreCi' --verbosity normal
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --verbosity normal
+node --test tests/PTDoc.Web.UiQa/tools/session-activity.test.mjs
+```
+
+For browser acceptance, repeat the existing synthetic multi-tab active/idle and
+explicit recovery scenarios. Include logout in A while B signs in, a rejected API
+session alongside a valid independent browser profile, and a previous-version
+cookie upgrade. Hosted integrated-release, Entra-provider, screen-reader and
+native-platform acceptance remain separate.
+
+After these checks pass and the user authorizes GitHub writes, threads
+**4411837564 (`PRRT_kwDOQt-faM6xiDrs`), 4411837629 (`PRRT_kwDOQt-faM6xiDsP`),
+4411837680 (`PRRT_kwDOQt-faM6xiDsw`) and 4411837718 (`PRRT_kwDOQt-faM6xiDtE`)**
+will be eligible for evidence-backed replies and resolution. The four historical
+threads are already resolved and need no additional action.

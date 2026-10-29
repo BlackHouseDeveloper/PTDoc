@@ -293,12 +293,28 @@ another tab's sign-in or restore a logged-out browser. No Web database or shared
 in-memory ticket store is introduced. OIDC retains its existing cookie behavior.
 
 Local logout and replacement sign-in revoke the prior opaque API session through
-`/api/v1/auth/logout` before changing the identity cookie. A revocation failure
-returns a retryable 503 and keeps the existing identity cookie. A terminal
+`/api/v1/auth/logout` before completing the change. Local logout writes an
+HttpOnly/Secure/SameSite=Strict `__Host-PTDoc.SignedOut.<sign-in-id>` marker rather
+than deleting the shared identity cookie. Cookie validation rejects that sign-in;
+a delayed logout response cannot delete a newer sign-in. Pre-activity tickets
+without a sign-in ID use a SHA-256 digest of their opaque token as the marker key.
+Markers contain no credential and expire at the original session deadline. They
+only deny browser authentication; API-side revocation remains authoritative even
+if a browser removes a marker. Replacement sign-in still issues a fresh identity
+ticket. A revocation failure returns a retryable 503 and keeps the existing identity cookie. A terminal
 activity result or API rejection also ends the circuit's scoped
 `WebCircuitSessionState`; its HTTP forwarding handler rejects subsequent protected
 operations while the monitor offers explicit recovery without navigating away
-from unsaved drafts.
+from unsaved drafts. `WebScopedHttpClientFactory` creates the authentication
+wrapper in the caller's request/circuit scope for both named `ServerAPI` clients
+and injected UI clients. Only the transport pipeline is pooled, and disposing a
+wrapper does not dispose that shared transport. Other named clients retain their
+configured transport and options without the authentication wrapper.
+
+The activity monitor starts only for tickets carrying both a sign-in ID and the
+current activity-ticket marker. Previous-version tickets keep normal expiry until
+the next sign-in. Input throttling uses `performance.now()` so a wall-clock
+correction cannot suspend renewal; the first trusted input is eligible immediately.
 
 #### 4c. PTDoc.Maui
 

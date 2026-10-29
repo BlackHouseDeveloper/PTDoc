@@ -45,7 +45,7 @@
         if (!firstRender) return;
         var user = (await Authentication.GetAuthenticationStateAsync()).User;
         var sessionId = user.FindFirst(WebSessionActivity.SessionIdClaim)?.Value;
-        if (_disposed || user.Identity?.IsAuthenticated != true || !WebSessionActivity.IsLocal(user) || string.IsNullOrEmpty(sessionId)) return;
+        if (_disposed || user.Identity?.IsAuthenticated != true || !WebSessionActivity.IsLocal(user) || !WebSessionActivity.UsesActivityTicket(user) || string.IsNullOrEmpty(sessionId)) return;
         try
         {
             _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/sessionActivity.js");

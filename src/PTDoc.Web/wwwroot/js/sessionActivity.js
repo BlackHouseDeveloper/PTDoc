@@ -4,7 +4,7 @@ let stopCurrent = null;
 // circuit to its existing HttpOnly cookie and cannot authenticate a request.
 export function start(sessionId, receiver) {
   stop();
-  let lastAttempt = 0;
+  let lastAttempt = -Infinity;
   let pending = false;
   let stopped = false;
   const controller = new AbortController();
@@ -12,7 +12,7 @@ export function start(sessionId, receiver) {
 
   const activity = async (event) => {
     if (!event.isTrusted || document.visibilityState !== "visible" || stopped || pending) return;
-    const now = Date.now();
+    const now = performance.now();
     if (now - lastAttempt < 60000) return;
     lastAttempt = now;
     pending = true;

@@ -294,11 +294,13 @@ The following rules apply across all logging and telemetry:
 
 ### Secure Logout
 - Logout button available in all authenticated pages
-- Logout clears all authentication data (cookies/tokens)
+- Local logout revokes the API token and invalidates the original browser sign-in; external-provider logout keeps its cookie/provider sign-out flow.
 - Force reload ensures clean authentication state
-- Local logout and replacement sign-in revoke the previous opaque API session before clearing or replacing the identity cookie. API revocation is idempotent. If revocation cannot be confirmed, the Web endpoint returns a retryable 503 without claiming successful logout or changing the identity cookie.
+- Local logout and replacement sign-in revoke the previous opaque API session before completing the change. API revocation is idempotent. Local logout writes a sign-in-specific HttpOnly/Secure/SameSite=Strict denial marker instead of deleting the shared identity cookie, so a delayed response cannot clear a replacement sign-in. Cookie validation rejects the marked sign-in; the marker expires at its session deadline. Pre-activity tickets without an ID use a SHA-256 token digest as the marker key, never the token itself. Removing a marker cannot undo server-side API revocation. If revocation cannot be confirmed, the Web endpoint returns a retryable 503 without claiming successful logout or changing the identity cookie.
 - Logout accepts an idle-expired, cryptographically validated local ticket solely to revoke its previous API session; this does not authorize clinical access. The logout endpoint accepts anonymous requests so an idle-expired ticket can be revoked. Cross-site requests are denied; requests without a validated ticket redirect without deleting any cookie.
 - Ended/changed circuits block protected API reads and writes and show explicit Sign in/Reload recovery. Automatic expiry handling in an already-ended circuit does not clear a newer browser sign-in. In-memory drafts remain on screen until the user chooses recovery; this does not promise draft persistence across a reload.
+
+- Named Web API clients and UI clients use request/circuit-scoped authentication state over a pooled transport. One user's 401 cannot end another user's scope. Previous-version cookies without the activity-ticket marker do not start the renewal monitor; current tickets use monotonic input throttling.
 
 ### Token Validation
 - Mobile app validates tokens on startup
