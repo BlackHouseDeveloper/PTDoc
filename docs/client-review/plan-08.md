@@ -96,7 +96,41 @@ AC1 and the Evaluation/Re-evaluation portions of AC4/AC5 have synthetic service/
 No merges, deployments, production-data changes, external messages or review-thread replies/resolutions are authorized. A planning-only PR may be reviewed as documentation; merging it does not complete the feature. Shared subject matter alone does not create a Git stack dependency.
 
 
-## PR 163 review verification — 2026-10-29
+## Current PR 163 re-verification — 2026-10-29
+
+This section supersedes the open-thread, pending-merge and pending-remediation statuses in the historical review below. Local `HEAD` and the remote PR head both equal `2a0f8a846987d1d4304d11b8aa71bf5a3ba7de78`; the base is `ee9a0066d11b135841e7da33643d53ab954a4a76`. The fixes and regression coverage are already present in that commit. There are no unmerged index entries or active `MERGE_HEAD`, and GitHub reports the PR as mergeable.
+
+### Complete refreshed inventory
+
+Retrieved the current PR, thread-aware feedback and full discussion through the GitHub connector, then independently checked GraphQL review bodies, minimized-comment metadata and every outer/nested pagination boundary. The complete inventory is **5 threads, 10 inline comments (5 findings + 5 closure replies), 6 review submissions and 0 conversation comments**. All five threads are resolved; GitHub marks three as outdated. None of the ten comments is minimized/suppressed. Full review bodies, including collapsed sections, contain **no suppressed or Previously missed findings**. The five later review bodies are empty. This covers feedback exposed by GitHub, not unpublished reviewer output.
+
+Against the current code, **all 5 unique findings are outdated/already addressed**; there are **0 remaining valid/actionable, 0 invalid and 0 ambiguous findings**. This classification reflects implementation evidence, independently of GitHub's outdated flag. The original review's five linked bullets are **duplicate references** to these same five findings; its “5 open issues” label is historical. The five closure replies describe the fixes and introduce no additional findings.
+
+### Current classification and evidence
+
+Paths and line references below refer to the current checkout. Each finding was valid at reviewed head `7b8dc4e7`; comparison with `2a0f8a8` confirms its corrective change. No further implementation change is required.
+
+| Finding / thread | Classification and GitHub state | Current implementation, contract and regression evidence |
+| --- | --- | --- |
+| [4406603000: patient ownership](https://github.com/BlackHouseDeveloper/PTDoc/pull/163#discussion_r4406603000), `PRRT_kwDOQt-faM6xVvv5` | **Outdated — addressed**. Resolved; GitHub outdated=false. | `src/PTDoc.Api/Intake/IntakeEndpoints.cs:279` checks `IPatientContextAccessor.GetCurrentPatientId()` before querying the requested patient/note for a Patient caller. The accessor rejects an unmapped authenticated patient, and `src/PTDoc.Api/Program.cs:710` maps provisioning failures to 403. This closes the ownership gap left by the clinic filter while retaining the `IntakeRead` role contract. `tests/PTDoc.Tests/Integration/EncounterIntakeIntegrationTests.cs:18` covers own-patient access, another actual same-clinic patient, unmapped-patient rejection and staff access. |
+| [4406603059: intake-seed authorization](https://github.com/BlackHouseDeveloper/PTDoc/pull/163#discussion_r4406603059), `PRRT_kwDOQt-faM6xVvwc` | **Outdated — addressed**. Resolved; GitHub outdated=true. | `src/PTDoc.Api/Notes/NoteWorkspaceV2Endpoints.cs:23` requires both `NoteRead` and `IntakeRead` on the reported encounter-seed route. The policies in `src/PTDoc.Application/Services/IRoleService.cs:175` and `:184` permit Billing to read notes but exclude it from source intake. `EncounterIntakeIntegrationTests.cs:48` tests seven roles and confirms ordinary Billing note access remains allowed. |
+| [4406603110: pending-save encounter race](https://github.com/BlackHouseDeveloper/PTDoc/pull/163#discussion_r4406603110), `PRRT_kwDOQt-faM6xVvw1` | **Outdated — addressed**. Resolved; GitHub outdated=true. | `src/PTDoc.UI/Pages/Intake/IntakeWizardPage.razor:681` captures the saving state and rejects returned ID/version assignments after navigation replaces it. Both callers (`:516`, `:808`) guard dirty/error updates. This protects the exact-ID/version write contract used by `IntakeApiService.SaveDraftAsync`. `tests/PTDoc.Tests/UI/Intake/IntakeWizardPageTests.cs:42` covers delayed success and failure, preserves B's identity/version/dirty state, and checks the subsequent save targets B. |
+| [4406603157: PostgreSQL version precision](https://github.com/BlackHouseDeveloper/PTDoc/pull/163#discussion_r4406603157), `PRRT_kwDOQt-faM6xVvxJ` | **Outdated — addressed**. Resolved; GitHub outdated=false. | `src/PTDoc.Infrastructure/Data/Interceptors/SyncMetadataInterceptor.cs:64` truncates only PostgreSQL encounter-intake versions to microseconds before saving and returning tracked values. Production registrations in `src/PTDoc.Api/Program.cs` install the interceptor; both staff and standalone update routes serialize after `SaveChangesAsync`. `IntakeEncounterRules.ValidateWriteAsync` retains exact equality and the interceptor retains its sync-only bypass. `tests/PTDoc.Tests/Integration/DatabaseProviderSmokeTests.cs:33` exercises a real PostgreSQL save → save → submit with a seven-tick remainder, fresh tracking, persisted/returned equality and actual stale-write rejection. `tests/PTDoc.Tests/Intake/EncounterIntakeConcurrencyTests.cs:16` checks sync acknowledgement preserves the version while answer edits advance it. |
+| [4406603185: cached invite target](https://github.com/BlackHouseDeveloper/PTDoc/pull/163#discussion_r4406603185), `PRRT_kwDOQt-faM6xVvxc` | **Outdated — addressed**. Resolved; GitHub outdated=true. | `src/PTDoc.UI/Pages/Intake/IntakeWizardPage.razor:202` keys `SendIntakeModal` by patient and encounter, forcing replacement of the component whose `EnsureIntakeIdAsync` caches `_intakeId`. `tests/PTDoc.Tests/UI/Intake/IntakeWizardPageTests.cs:86` opens A's invite, navigates to B for the same patient, verifies replacement/removal of A's link, and generates B's link. This remains a distinct issue from the save continuation race. |
+
+Duplicate mapping: all five bullets in [review 5690344114](https://github.com/BlackHouseDeveloper/PTDoc/pull/163#pullrequestreview-5690344114) map one-to-one, in order, to comments `4406603000`, `4406603059`, `4406603110`, `4406603157` and `4406603185`; no separate fix or resolution is required. Closure comments `4411813003`, `4411813461`, `4411814180`, `4411815048` and `4411815622` map to those same rows and are confirmations, not new defects. No ambiguous product decision or unresolved review finding remains.
+
+### Changes, verification and thread disposition
+
+This refresh changes documentation only and preserves the pre-existing formatting edit in `IntakeWizardPageTests.cs` byte-for-byte. The current commit already contains the five fixes and 12 regression cases described below; no additional code or tests are needed for these findings. The earlier merge conflicts are resolved and no new conflict work is required. `git diff --check` passes.
+
+No build, formatter or test was run during this refresh, following `AGENTS.md`. The existing closure replies report that the user confirmed successful builds/tests; that is historical reported verification, not independently inspected execution output from this pass. The exact build, focused test, CoreCi, PostgreSQL and formatter commands in the historical verification handoff below remain applicable to this checkout. The PostgreSQL regression requires a disposable database and a non-skipped pass.
+
+All five threads have already been replied to and resolved on GitHub. **No unresolved thread is newly eligible for a reply or resolution**, and duplicate summary references need no action. This refresh made no commit, push, GitHub reply/resolution, PR-level response or review request.
+
+## Historical PR 163 review verification — 2026-10-29
+
+The remainder records the original remediation and conflict-resolution work at `7b8dc4e7`. Its status statements describe that earlier pass; use the current re-verification above for present branch, verification and thread status.
 
 ### Inventory and branch boundary
 

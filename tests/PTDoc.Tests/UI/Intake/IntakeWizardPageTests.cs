@@ -95,7 +95,10 @@ public sealed class IntakeWizardPageTests : TestContext
         delivery.Setup(value => value.GetDeliveryBundleAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid id, CancellationToken _) => new IntakeDeliveryBundleResponse
             {
-                IntakeId = id, PatientId = patientId, InviteUrl = $"https://example.test/intake/{id}", ExpiresAt = DateTimeOffset.UtcNow.AddDays(1)
+                IntakeId = id,
+                PatientId = patientId,
+                InviteUrl = $"https://example.test/intake/{id}",
+                ExpiresAt = DateTimeOffset.UtcNow.AddDays(1)
             });
         Services.AddSingleton(delivery.Object);
         var navigation = Services.GetRequiredService<NavigationManager>();
