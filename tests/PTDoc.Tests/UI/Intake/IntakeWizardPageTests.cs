@@ -2,6 +2,7 @@ using Bunit;
 using Bunit.TestDoubles;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using System.Net;
@@ -16,6 +17,7 @@ using PTDoc.Core.Services;
 using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.Infrastructure.Outcomes;
 using PTDoc.Infrastructure.Services;
+using PTDoc.UI.Components;
 using PTDoc.UI.Components.Intake.Models;
 using PTDoc.UI.Pages.Intake;
 using PTDoc.UI.Services;
@@ -32,6 +34,117 @@ public sealed class IntakeWizardPageTests : TestContext
         Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
         Services.AddSingleton<IIntakeBodyPartMapper>(new IntakeBodyPartMapper(new IntakeReferenceDataCatalogService()));
         Services.AddSingleton<IOutcomeMeasureRegistry, OutcomeMeasureRegistry>();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PendingSave_EncounterNavigationPreservesNewIdentityVersionAndDirtyState(bool failSave)
+    {
+        var patientId = Guid.NewGuid();
+        var first = EncounterDraft(patientId);
+        var second = EncounterDraft(patientId);
+        var service = ConfigureEncounterDrafts(first, second);
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var saves = new List<(Guid? IntakeId, Guid? NoteId, DateTime? Version)>();
+        service.Setup(value => value.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()))
+            .Returns<IntakeResponseDraft, CancellationToken>(async (draft, _) =>
+            {
+                saves.Add((draft.IntakeId, draft.EncounterNoteId, draft.LastModifiedUtc));
+                if (draft.EncounterNoteId == first.EncounterNoteId)
+                {
+                    await completion.Task;
+                    if (failSave) throw new HttpRequestException("Delayed encounter A error");
+                    draft.LastModifiedUtc = first.LastModifiedUtc!.Value.AddSeconds(1);
+                }
+            });
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        navigation.NavigateTo($"/intake/{patientId}?noteId={first.EncounterNoteId}");
+        var cut = RenderPage(patientId);
+        cut.WaitForAssertion(() => Assert.Equal(first.EncounterNoteId, GetWizardState(cut).EncounterNoteId));
+        var saveTask = cut.Find("[data-testid='continue-button']").ClickAsync(new MouseEventArgs());
+        cut.WaitForAssertion(() => Assert.Single(saves));
+
+        await cut.FindComponent<IntakeWizardPage>().InvokeAsync(() =>
+            navigation.NavigateTo($"/intake/{patientId}?noteId={second.EncounterNoteId}"));
+        cut.WaitForAssertion(() => Assert.Equal(second.EncounterNoteId, GetWizardState(cut).EncounterNoteId));
+        var newState = GetWizardState(cut);
+        newState.IsDirty = true;
+        completion.SetResult();
+        await saveTask;
+
+        Assert.Same(newState, GetWizardState(cut));
+        Assert.Equal(second.IntakeId, newState.IntakeId);
+        Assert.Equal(second.LastModifiedUtc, newState.LastModifiedUtc);
+        Assert.True(newState.IsDirty);
+        Assert.DoesNotContain("Delayed encounter A error", cut.Markup, StringComparison.Ordinal);
+        await cut.Find("[data-testid='continue-button']").ClickAsync(new MouseEventArgs());
+        Assert.Equal((second.IntakeId, second.EncounterNoteId, second.LastModifiedUtc), saves[1]);
+    }
+
+    [Fact]
+    public async Task OpenInvite_EncounterNavigationGeneratesLinkForTheDisplayedEncounter()
+    {
+        var patientId = Guid.NewGuid();
+        var first = EncounterDraft(patientId);
+        var second = EncounterDraft(patientId);
+        ConfigureEncounterDrafts(first, second);
+        var delivery = new Mock<IIntakeDeliveryService>(MockBehavior.Strict);
+        delivery.Setup(value => value.GetDeliveryStatusAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid id, CancellationToken _) => new IntakeDeliveryStatusResponse { IntakeId = id, PatientId = patientId });
+        delivery.Setup(value => value.GetDeliveryBundleAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid id, CancellationToken _) => new IntakeDeliveryBundleResponse
+            {
+                IntakeId = id,
+                PatientId = patientId,
+                InviteUrl = $"https://example.test/intake/{id}",
+                ExpiresAt = DateTimeOffset.UtcNow.AddDays(1)
+            });
+        Services.AddSingleton(delivery.Object);
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        navigation.NavigateTo($"/intake/{patientId}?noteId={first.EncounterNoteId}");
+        var cut = RenderPage(patientId);
+        cut.FindAll("button").Single(button => button.TextContent == "Send intake link").Click();
+        var firstModal = cut.FindComponent<SendIntakeModal>().Instance;
+        cut.FindAll("button").Single(button => button.TextContent.Contains("Generate Link", StringComparison.Ordinal)).Click();
+        cut.WaitForAssertion(() => Assert.Contains(first.IntakeId!.Value.ToString(), cut.Find("#generated-link").GetAttribute("value")));
+
+        await cut.FindComponent<IntakeWizardPage>().InvokeAsync(() =>
+            navigation.NavigateTo($"/intake/{patientId}?noteId={second.EncounterNoteId}"));
+        cut.WaitForAssertion(() => Assert.Equal(second.EncounterNoteId, cut.FindComponent<SendIntakeModal>().Instance.EncounterNoteId));
+        Assert.NotSame(firstModal, cut.FindComponent<SendIntakeModal>().Instance);
+        Assert.Empty(cut.FindAll("#generated-link"));
+        cut.FindAll("button").Single(button => button.TextContent.Contains("Generate Link", StringComparison.Ordinal)).Click();
+        cut.WaitForAssertion(() => Assert.Contains(second.IntakeId!.Value.ToString(), cut.Find("#generated-link").GetAttribute("value")));
+        delivery.Verify(value => value.GetDeliveryBundleAsync(second.IntakeId!.Value, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private static IntakeResponseDraft EncounterDraft(Guid patientId) => new()
+    {
+        PatientId = patientId,
+        IntakeId = Guid.NewGuid(),
+        EncounterNoteId = Guid.NewGuid(),
+        QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.EvaluationFullV1,
+        LastModifiedUtc = DateTime.UtcNow,
+        IntakeFlowVersion = 2,
+        CurrentStep = (int)IntakeStep.PainAssessment,
+        FullName = "Synthetic Encounter"
+    };
+
+    private Mock<IIntakeService> ConfigureEncounterDrafts(params IntakeResponseDraft[] drafts)
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("synthetic-pt");
+        authorization.SetRoles(Roles.PT);
+        Services.AddSingleton(Mock.Of<IIntakeDeliveryService>());
+        var service = CreateIntakeServiceMock(drafts[0]);
+        service.Setup(value => value.GetForNoteAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid patientId, Guid noteId, CancellationToken _) => drafts.Single(draft => draft.PatientId == patientId && draft.EncounterNoteId == noteId));
+        service.Setup(value => value.EnsureDraftAsync(It.IsAny<Guid>(), It.IsAny<IntakeResponseDraft?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid patientId, IntakeResponseDraft? seed, CancellationToken _) =>
+                IntakeEnsureDraftResult.Existing(drafts.Single(draft => draft.PatientId == patientId && draft.EncounterNoteId == seed!.EncounterNoteId)));
+        return service;
     }
 
     [Theory]

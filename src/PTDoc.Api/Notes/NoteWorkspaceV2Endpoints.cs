@@ -19,6 +19,10 @@ public static class NoteWorkspaceV2Endpoints
             .WithName("LoadNoteWorkspaceV2")
             .WithSummary("Load a typed v2 eval/reeval/progress workspace snapshot");
 
+        group.MapGet("/{patientId:guid}/{noteId:guid}/intake-seed", GetEncounterEvaluationSeed)
+            .RequireAuthorization(AuthorizationPolicies.NoteRead, AuthorizationPolicies.IntakeRead)
+            .WithName("GetEncounterEvaluationSeedWorkspaceV2");
+
         group.MapGet("/{patientId:guid}/evaluation-seed", GetEvaluationSeed)
             .RequireAuthorization(AuthorizationPolicies.NoteRead)
             .WithName("GetEvaluationSeedWorkspaceV2")
@@ -67,6 +71,13 @@ public static class NoteWorkspaceV2Endpoints
         return workspace is null
             ? Results.NotFound(new { error = $"Workspace note {noteId} was not found for patient {patientId}." })
             : Results.Ok(workspace);
+    }
+
+    private static async Task<IResult> GetEncounterEvaluationSeed(
+        Guid patientId, Guid noteId, INoteWorkspaceV2Service service, CancellationToken cancellationToken)
+    {
+        var seed = await service.GetEncounterEvaluationSeedAsync(patientId, noteId, cancellationToken);
+        return seed is null ? Results.NotFound() : Results.Ok(seed);
     }
 
     private static async Task<IResult> GetEvaluationSeed(

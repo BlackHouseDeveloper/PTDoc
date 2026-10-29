@@ -238,6 +238,11 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<IntakeForm>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.EncounterNoteId).IsUnique();
+            entity.HasOne<ClinicalNote>().WithMany().HasForeignKey(e => e.EncounterNoteId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(e => e.QuestionnaireDefinitionId).HasMaxLength(50);
+            entity.Property(e => e.EncounterIsReEvaluation).HasDefaultValue(false);
+            entity.Property(e => e.LastModifiedUtc).IsConcurrencyToken();
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => e.AccessToken).IsUnique();
             entity.HasIndex(e => e.LastModifiedUtc);

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 163 encounter intake review
+
+- Resolve the 12 conflicts merging the rebased PR head into the local Plan 08 branch, retain the newer Plan 07 provenance/reconciliation safeguards alongside encounter intake, and remove five duplicated intake tests introduced by automatic merging. Integrate the reviewed fixes into the original checkout.
+- Enforce patient ownership when reading encounter intake and require both note-read and intake-read permission for encounter seed responses.
+- Keep delayed wizard saves from replacing another encounter's intake identity/version, clearing its dirty state or displaying the prior encounter's save error. Recreate the invite modal when its patient/encounter changes.
+- Normalize PostgreSQL encounter intake answer versions to stored microsecond precision while retaining exact stale-write checks and sync-only acknowledgement behavior.
+- Add 12 regression cases covering ownership, seven reader roles, delayed save success/failure, invite switching and real PostgreSQL save/save/submit with a deterministic sub-microsecond clock. Record the complete five-finding classification and duplicate review-summary references in `docs/client-review/plan-08.md`; no schema change.
+- Refresh the complete review audit against `2a0f8a8`: all five findings are already addressed, all threads are resolved, and no suppressed or Previously missed findings are exposed by GitHub. Mark the earlier pending statuses as historical, retain exact verification commands, and distinguish reported prior test success from this documentation-only refresh, which did not rerun builds/tests.
+
 ### Fixed - beta deployment sign-in retries
 ### Fixed - PR 162 canonical payer mapping
 
@@ -94,10 +103,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`IntakeService` / `IntakeEndpoints`** — Preserve structured compound names when the submitted full name matches the saved name; explicitly edited names retain the existing update behavior.
 - **`IntakeProfilePrefill` / `IntakeProfilePrefillReader`** — Offer Self Pay and other supported policy-only values for explicit blank-field prefill, and translate legacy `providerType` values supported by the intake selector without replacing canonical payer values.
 - Added service, SQLite API/standalone-link, and wizard regressions for policy-source conflicts, unchanged submission, compound names, payer aliases, and prefill persistence. User verification exposed two fixture failures; corrected the policy-reorder setup to stage its swap transactionally through an unused priority, respecting SQLite's active-priority unique index, and asserted both reordered member numbers survive rejection. Verification of this correction is pending; the complete review inventory and remaining TRICARE compatibility decision are recorded in `docs/client-review/plan-07.md`.
+### Fixed - Plan 08 CI follow-up
+
+- Preserve the existing note-template index when downgrading encounter intake on SQL Server; add provider-operation regressions and correct Infrastructure formatting.
 
 ### Changed - Client review Plan 07
 
 - Prefilled new intakes with clinic-scoped patient contact data and coherent primary/secondary policy values through both creation routes. Older editable drafts now offer explicit blank-field prefill; existing answers, submitted records and unknown response fields are retained. Added synthetic service, component and API coverage; no schema migration.
+### Changed - Client review Plan 08
+
+- Added note-bound Evaluation/Re-evaluation intake with fresh profile-only seeds, immutable definition and optimistic concurrency, exact-record patient links, explicit matching-note subjective copy, and additive three-provider migrations. Prevented sync-only acknowledgements from invalidating answer versions. Daily, Progress and Discharge integration remain draft dependency/content work.
 
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 
