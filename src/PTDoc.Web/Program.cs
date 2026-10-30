@@ -91,6 +91,8 @@ builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationServi
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<WebCircuitSessionState>();
+builder.Services.AddScoped<Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider, WebCircuitAuthenticationStateProvider>();
+builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler, WebSessionCircuitHandler>();
 builder.Services.AddTransient<ApiAccessTokenForwardingHandler>();
 builder.Services.AddTransient<PublicOriginForwardingHandler>();
 builder.Services.AddHttpClient("PTDocAuthApi", (serviceProvider, client) =>

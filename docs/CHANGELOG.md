@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 156 retained-circuit identity boundary
+
+- Bind current local circuits to their opening sign-in so reconnecting with a replacement or anonymous identity cannot forward credentials from a retained draft. Observe authentication changes for recovery alerts and independently check circuit identity before protected requests, including when the handshake HttpContext is stale.
+- Preserve the terminated circuit's original UI authentication snapshot so authorization views cannot discard its editor on an anonymous/changed reconnect; protected API operations remain blocked. Add twelve composed regression cases and seven isolated browser cases covering activity 401/409, API 401 versus business conflict/transient failure, draft retention, blocked transport, and reconnect. Record the source-level assessment and pending .NET/browser verification; retain the complete review inventory and historical findings.
+
 ### Fixed - PR 156 CodeQL test-probe routing
 
 - Register the integration-only browser authentication probe as an explicit mapped route instead of conditionally bypassing middleware based on the request path. Retain cookie validation and the existing three-format delayed-logout regressions; production authentication is unchanged. Record CodeQL alert 20 and its duplicate review comment in the refreshed PR 156 audit; .NET and CodeQL verification remain pending.

@@ -18,6 +18,8 @@ import {
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const qaRoot = path.resolve(currentDirectory, '..');
 const repoRoot = path.resolve(qaRoot, '..', '..');
+const sessionBoundary = process.argv.includes('--session-boundary');
+const playwrightArgs = process.argv.slice(2).filter(argument => argument !== '--session-boundary');
 const sourceDatabase = path.resolve(repoRoot, process.env.PTDOC_LIVE_SOURCE_DB ?? 'src/PTDoc.Api/PTDoc.db');
 const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
 const runId = process.env.PTDOC_UI_QA_LIVE_RUN_ID ?? `localhost-unblock-${timestamp}`;
@@ -107,7 +109,8 @@ try {
   }, null, 2));
 
   const playwright = startProcess('npx', [
-    'playwright', 'test', 'tests/branch-live-unblock.spec.ts', '--workers=1', ...process.argv.slice(2)
+    'playwright', 'test', sessionBoundary ? 'tests/session-circuit-boundary.spec.ts' : 'tests/branch-live-unblock.spec.ts',
+    '--workers=1', ...playwrightArgs
   ], {
     cwd: qaRoot,
     env: {

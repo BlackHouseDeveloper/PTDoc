@@ -301,6 +301,8 @@ The following rules apply across all logging and telemetry:
 - Ended/changed circuits block protected API reads and writes and show explicit Sign in/Reload recovery. Automatic expiry handling in an already-ended circuit does not clear a newer browser sign-in. In-memory drafts remain on screen until the user chooses recovery; this does not promise draft persistence across a reload.
 
 - Named Web API clients and UI clients use request/circuit-scoped authentication state over a pooled transport. One user's 401 cannot end another user's scope. Previous-version cookies without the activity-ticket marker do not start the renewal monitor; current tickets use monotonic input throttling.
+- A current local circuit retains its original sign-in ID across reconnects. A new authenticated sign-in or anonymous reconnect ends the retained circuit before another protected request can forward credentials; the monitor offers Reload or Sign in without automatically discarding its draft. The forwarding handler rechecks the circuit principal even when an authentication-state notification has not arrived and does not trust a stale handshake HttpContext. An already-dispatched API operation remains subject to API authorization and revocation; this guard does not retroactively cancel it.
+- The bound circuit's authentication provider retains the original UI snapshot after termination, preventing authorization-driven editor removal or redirect on an anonymous/changed reconnect. This preserves already-rendered content only; the shared terminal state denies protected API operations until a fresh circuit is established through explicit recovery.
 
 ### Token Validation
 - Mobile app validates tokens on startup

@@ -1,9 +1,9 @@
 # Plan PR 01: Verify and repair active-use and multi-tab sessions
 
-**Latest audit: CodeQL test-probe routing fixed locally; verification pending.**
-The audit at the end covers all ten current review threads against `d102f0d`.
-The user confirmed required builds/tests passed before that commit; the small
-subsequent test-route change still needs .NET and CodeQL verification.
+**Latest assessment (2026-10-30): retained-circuit reconnect defect identified and fixed locally; .NET/browser verification pending.**
+The final assessment below develops the earlier summary-only concern into a
+concrete identity-transition failure. The nine earlier findings remain fixed at
+`81f565c`. Passing verification for that commit does not verify these new changes.
 
 - Requirements: R003, R005, R048, R061
 - Original plan status: Verification Required
@@ -359,3 +359,268 @@ After .NET and fresh CodeQL verification pass, **4412062637
 with explicit user authorization. The other eight threads are already resolved
 and need no new replies. No ambiguous product decision remains; pending work is
 verification and publication authorization, not an inferred security-policy change.
+
+## PR 156 post-publication review audit — 2026-10-30
+
+### Inventory and classification
+
+Local HEAD and fetched remote PR head both equal
+`81f565cea078106152bd5d9f4751bbd9c1bce124`; PR base remains
+`ee9a0066d11b135841e7da33643d53ab954a4a76`. The initial working tree was clean.
+Retrieved the complete paginated conversation, reviews and threads using the
+review-fetch script, cross-checked the connector timeline and thread metadata,
+and read all review bodies, including collapsed sections. Inventory: **0 conversation
+comments, 15 reviews, 10 threads, 19 inline comments (9 author replies)**.
+All ten threads are resolved; eight have GitHub's outdated flag. Classification
+uses current code rather than that flag. No suppressed or **Previously missed**
+sections/items were returned. The latest summary contains an unthreaded concern
+even though it also says there are no open issues; that concern is included below.
+
+After deduplication: **10 unique findings: 9 outdated/already fixed, 1 ambiguous,
+0 verified valid/actionable, 0 invalid**. One inline comment and sixteen review
+summary links are duplicate references. Prior author replies are verification
+records, not additional findings.
+
+Paths below are repository-relative; test method names identify the assertions
+rechecked in this pass. No implementation or regression change is needed for the
+already-fixed items.
+
+| Finding | Classification | Current evidence / why no new change |
+| --- | --- | --- |
+| [4381841551: CodeQL 19](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381841551) | Outdated | `WebSessionActivity.RenewAsync` in `src/PTDoc.Web/Auth/WebSessionActivity.cs` returns explicit Unauthorized for cross-site input before contacting the API or writing cookies. `CrossSiteActivity_IsRejectedWithoutRenewingCookie` in `tests/PTDoc.Tests/Integration/WebSessionActivityIntegrationTests.cs` asserts 401, zero API calls and no Set-Cookie. Introduced by `c90d7c1`; the current alert instance is fixed. |
+| [4381845004: stale renewal replaces identity](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381845004) | Outdated | `RenewAsync` writes only the sign-in-specific protected activity cookie; local sliding renewal is disabled in `src/PTDoc.Web/Program.cs`, and rejected cookie validation emits no deletion. `DelayedRenewal_CannotRestoreLogoutOrOverwriteNewSignIn` checks both response-ordering cases, unchanged B identity, rejected A, and absence of identity-cookie writes. Fixed by `4f45f05`. |
+| [4381845075: ended circuit retains API access](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381845075) | Outdated as the concrete original finding | `WebSessionActivityMonitor.SessionEnded` now ends scoped state. `src/PTDoc.Web/Services/ApiAccessTokenForwardingHandler.cs` checks that state before and after token lookup, and API rejection ends monitored state. `RevokePreviousSessionAsync` is called on logout/replacement. `src/PTDoc.Infrastructure/Identity/AuthService.cs` revokes the exact token hash and excludes revoked sessions from validation. `EndedCircuit_BlocksProtectedOperationsWithoutClearingNewCookieOrDraft`, `CircuitEndedDuringAuthenticationLookup_DoesNotSendProtectedRequest`, `AuthenticationChange_RevokesOldCircuitBeforeAnotherProtectedReadOrSave`, and `LogoutAsync_RejectsOldOpaqueSessionWithoutRevokingReplacementSession` cover those contracts. Fixed by `4f45f05`; the new unspecified integration concern is tracked separately below. |
+| [4381845135: failed callback disables recovery](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381845135) | Outdated | `src/PTDoc.Web/wwwroot/js/sessionActivity.js` sets `stopped` only after successful callback delivery. Separate 401 and 409 disconnected-callback regressions in `tests/PTDoc.Web.UiQa/tools/session-activity.test.mjs` verify later trusted input retries. Fixed by `4f45f05`. |
+| [4411837564: delayed logout deletes B's cookie](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4411837564) | Outdated | Local logout calls `MarkPreviousLocalSessionEnded` after confirmed revocation instead of deleting the shared identity cookie. `ValidateCookieAsync` rejects only the marked sign-in. `DelayedLogout_CannotClearReplacementSignIn` delivers B's cookie before A's response and checks B's identity/renewal, A's 401 and token-specific revocation for current, previous-version and legacy formats. Fixed by `d102f0d`; `81f565c` retains these assertions with the mapped test probe. |
+| [4411837629: pooled auth state crosses users](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4411837629) | Outdated | `Program.cs` registers scoped `WebScopedHttpClientFactory`, scoped state, and transient auth wrappers; `CreateClient("ServerAPI")` resolves the wrapper from its caller scope and borrows only pooled transport. The same path supplies injected UI HttpClient, diagnostics and MFA recovery-code calls. `NamedClients_IsolateRejectedUsers_WhileSharingTransport` covers request and circuit principals, A's rejection, B's success, same-scope blocking and disposal isolation. `AuthApiClient_RemainsUsableForRecoveryInEndedScope` checks the recovery client. Fixed by `d102f0d`. |
+| [4411837680: previous-version monitor startup](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4411837680) | Outdated | Monitor startup requires `UsesActivityTicket`, matching renewal eligibility. `Monitor_StartsOnlyForCurrentActivityTickets` covers absent, incorrect and current markers; integration tests `PreviousVersionCookie_KeepsNormalExpiryWithoutAutomaticSliding` and `LegacyCookie_DoesNotGainNewActivityRenewalBeforeNextSignIn` cover old-ticket behavior. Fixed by `d102f0d`. |
+| [4411837718: backward clock suppresses renewal](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4411837718) | Outdated | JavaScript uses `performance.now()` and starts with `lastAttempt = -Infinity`. The backward-clock regression shifts wall time back one hour and checks the 59,999/60,000 ms threshold. Fixed by `d102f0d`. |
+| [4412062637: CodeQL 20 test probe](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4412062637) | Outdated | `BrowserAuthenticationProbe` now uses `app.Map`/`Run`, still calls real cookie authentication, and is registered only in the nested test host. The three delayed-logout cases check valid B returns 200 and signed-out A returns 401. Fixed by `81f565c`; fresh CodeQL run 41050698530 passed and alert 20 is fixed. |
+| [4418418883: explicit test route](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4418418883) | Duplicate | Same probe and requested remedy as CodeQL 20; already handled by `81f565c`. No independent implementation needed. |
+| [5711868930: interactive-circuit boundary summary](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#pullrequestreview-5711868930) | Ambiguous | Claims token forwarding and unauthorized/conflict alerts could diverge, but supplies no affected path, event ordering, separate scope, failing assertion or reproduction. Current scope wiring and framework behavior do not establish a defect. Existing tests cover the constituent paths, but are not a composed live-browser test of the actual render roots. See investigation and missing evidence below. |
+| Sixteen review-summary links | Duplicate | Each links to a concrete inline item above. The summary-only concern is separately counted, not discarded as a duplicate or hidden behind the resolved-thread count. |
+
+### Circuit-boundary investigation and remaining uncertainty
+
+`src/PTDoc.Web/Components/App.razor:19` mounts the monitor as an InteractiveServer
+root beside `AppRoot`; `src/PTDoc.UI/Components/AppRoot.razor:2` also declares
+InteractiveServer and wraps routes in cascading authentication. Both use the same
+Web server runtime. Separate render roots are not evidence of separate circuits:
+the .NET 8 [server bootstrap](https://github.com/dotnet/aspnetcore/blob/v8.0.21/src/Components/Web.JS/src/Boot.Server.Common.ts)
+maintains one circuit manager for the server root-component manager, including
+root updates. [CircuitFactory](https://github.com/dotnet/aspnetcore/blob/v8.0.21/src/Components/Server/src/Circuits/CircuitFactory.cs)
+creates one service scope and passes it to the remote renderer and circuit host.
+This is framework-source evidence, not a newly executed browser test.
+
+`Program.cs:93` registers `WebCircuitSessionState` scoped. The scoped factory at
+line 113 resolves auth wrappers in that scope, and the injected HttpClient at line
+114 uses the same factory. For example, `NoteWorkspaceApiService` takes that
+HttpClient and uses it for workspace reads and writes. The monitor subscribes to
+the state's Changed event; `SessionEnded` calls End on that injected state.
+The forwarding handler blocks terminal state and publishes API 401 termination
+through it. Browser activity 409 is translated to SessionChanged by the JavaScript
+callback; ordinary API conflict responses are not automatically session changes.
+No extra scope is created by these component or client paths. API revocation is
+also independently enforced by the server token-validation contract.
+
+`WebSessionActivityMonitorTests` checks both callback reasons, notices, preserved
+navigation and state-change notification. `ApiAccessTokenForwardingHandlerTests`
+checks blocked reads/writes and API rejection. `WebScopedHttpClientFactoryTests`
+uses production host registration but manually creates scopes and test principals.
+The JavaScript tests use a mocked callback. These are useful regression boundaries,
+but none alone proves the entire browser/SignalR/render-root integration. No
+committed Playwright session-boundary test was found in `tests/PTDoc.Web.UiQa/tests`.
+
+To turn the summary into an actionable defect, the missing information is a
+concrete failing scenario: route/component, initial identity, whether the trigger
+is activity 401/409 or API 401, disconnect/reconnect or sign-in ordering, and the
+observed request/alert behavior. A live reproduction should record whether both
+roots and the forwarding handler use the same circuit/state instance and whether
+the callback completed. Without that evidence, neither a critical bypass nor a
+required rendering redesign is established. No product-policy decision is inferred,
+and the concern is not marked invalid or resolved.
+
+### Changes, verification and thread disposition
+
+Only this audit and `docs/CHANGELOG.md` changed. No production or test changes were
+made: there are no newly verified actionable defects, and adding a speculative
+regression for an unspecified scenario would not establish the missing integration
+evidence. Existing coverage is identified above. No builds/tests were rerun, per
+AGENTS.md; the user-confirmed builds/tests and successful post-push checks apply to
+`81f565c`. `git diff --check` and `git diff --cached --check` passed for this pass.
+
+No new build or test is required for these documentation-only changes. To repeat
+the relevant regression verification from the repository root:
+
+```bash
+dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter 'FullyQualifiedName~WebSessionActivityIntegrationTests|FullyQualifiedName~WebSessionActivityMonitorTests|FullyQualifiedName~WebScopedHttpClientFactoryTests|FullyQualifiedName~ApiAccessTokenForwardingHandlerTests|FullyQualifiedName~AuthServiceTests' --verbosity normal
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter 'Category=CoreCi' --verbosity normal
+node --test tests/PTDoc.Web.UiQa/tools/session-activity.test.mjs
+```
+
+These commands do not replace live-browser evidence for the ambiguous concern.
+**No threads become newly eligible for reply or resolution:** all ten are already
+resolved and the new summary has no resolvable inline thread. No suppressed item
+was individually resolved. No commit, push, comment, resolution, PR-level response
+or review request was made during this pass.
+
+## Comprehensive circuit-boundary assessment — 2026-10-30
+
+### Finding and scope
+
+The deeper assessment identifies a **valid, actionable reconnect identity defect**
+within the concern raised by review
+[5711868930](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#pullrequestreview-5711868930).
+This supersedes the preceding ambiguous classification for that concern. It is
+source-established, with regression coverage added; it has **not yet been
+reproduced or verified by executing the new .NET/browser suites**.
+The fresh review still contains ten resolved inline threads and the same summary;
+no new suppressed or Previously missed item was returned. The nine concrete older
+findings and their duplicate references retain the dispositions above. Overall:
+**9 outdated/already fixed, 1 valid/fixed locally pending verification, 0 remaining
+ambiguous findings in the retrieved inventory**. The summary's exact intended
+scenario is unknown, so this does not claim every possible circuit failure is solved.
+
+The issue is not separate service scopes for sibling InteractiveServer roots.
+It is a principal transition inside the **same retained circuit**:
+
+1. A current local sign-in opens a circuit and a component retains an unsaved draft.
+2. The circuit disconnects. The browser establishes a new sign-in, possibly for the
+   same account, with a different sign-in ID.
+3. The .NET 8 [ComponentHub.ConnectCircuit implementation](https://github.com/dotnet/aspnetcore/blob/v8.0.21/src/Components/Server/src/ComponentHub.cs#L172-L192)
+   reconnects the existing circuit and calls `SetCircuitUser(Context.User)`.
+   Its [CircuitHost](https://github.com/dotnet/aspnetcore/blob/v8.0.21/src/Components/Server/src/Circuits/CircuitHost.cs)
+   updates the circuit authentication provider; the existing components survive.
+4. Previously, `ApiAccessTokenForwardingHandler` accepted whichever token was now
+   available from HttpContext or the circuit provider. `WebCircuitSessionState`
+   retained only a terminal reason, not the opening sign-in. The monitor's JavaScript
+   still held its original sign-in ID from its first render, and its next activity
+   callback could be throttled or disconnected.
+5. A component could therefore issue a protected operation with the replacement
+   identity before the old activity callback established SessionChanged. This is an
+   identity/draft attribution boundary failure, not evidence that API RBAC or
+   tenant checks are bypassed. API revocation of A alone does not reject B's valid token.
+
+The same principal-transition boundary also affects UI authorization: `AppRoot`
+uses CascadingAuthenticationState and `Routes` uses AuthorizeRouteView with an
+anonymous RedirectToLogin branch. Publishing an anonymous reconnect principal
+could remove the editor before recovery. A changed-role principal could likewise
+replace authorized content. Blocking HTTP alone does not protect that draft.
+
+### Minimal correction and limits
+
+- New Web-only `WebSessionCircuitHandler`, registered through production DI, binds
+  the opening sign-in ID before interactive components initialize. It observes
+  authentication-state changes and unsubscribes on disposal.
+- `WebCircuitSessionState` validates the current principal against that binding.
+  A replacement sign-in yields SessionChanged; anonymous or failed authentication
+  yields SessionEnded. Existing terminal state remains terminal, preserving the
+  first reason and the explicit recovery requirement.
+- The forwarding handler independently reads and validates the current circuit
+  authentication state before forwarding a protected request. A stale handshake
+  HttpContext cannot override that state, and a delayed/missing notification cannot
+  allow the next request to adopt B's identity. The existing post-lookup terminal
+  check remains in place.
+- Both paths use the existing Changed event and monitor; no rendering redesign,
+  cookie mutation, shared user state, automatic navigation or draft clearing was added.
+  Binding is limited to current local activity tickets. Request-only clients,
+  previous-version/OIDC flows and the explicit public intake-access exception keep
+  their prior behavior. Already-dispatched requests are not retroactively cancelled;
+  API authorization/revocation still governs them.
+- `WebCircuitAuthenticationStateProvider` implements the framework's host
+  authentication-state contract. Once the local circuit is bound, it validates
+  incoming host principal updates before publishing them. Changed/anonymous
+  identities terminate the shared state while preserving the original UI snapshot,
+  preventing authorization-driven editor removal. That snapshot grants no new API
+  access because the forwarding handler rejects terminal state. Normal same-sign-in
+  updates and unbound prerender/request updates retain their normal behavior.
+
+### Integration coverage
+
+Twelve new theory cases in `tests/PTDoc.Tests/Web/WebScopedHttpClientFactoryTests.cs`
+use the real Web host's service registrations, resolve its registered circuit
+handler, invoke its opening lifecycle, and render the actual monitor alongside a
+draft component that consumes the production scoped HttpClient. The transport is
+a controlled test double; nine cases control authentication notifications with a
+test provider, while three exercise the production host authentication provider
+and AuthorizeView together. They cover:
+
+| Boundary | Assertions |
+| --- | --- |
+| Activity callback: SessionEnded / SessionChanged | Sibling component reads and saves plus named-client reads receive 401 without transport; correct recovery action appears; draft and navigation remain; a separate circuit still forwards successfully. |
+| Component API 401 | Real forwarding wrapper ends state and updates the sibling monitor; later reads never reach transport. |
+| Component API 409 / 503 | Ordinary conflict/transient failure does not end the circuit; subsequent reads still forward. Activity 409 remains a distinct sign-in-change signal. |
+| Replacement principal with notification | Recovery appears before a protected operation; retained draft cannot forward the new token. |
+| Replacement principal without notification | Outbound guard detects changed identity even when HttpContext still contains A; transport remains untouched. |
+| Anonymous reconnect | Sign in recovery, no forwarded request, retained draft. |
+| Same-sign-in reconnect | Request forwards normally with the original token and no false recovery alert. |
+| Production host authentication provider and AuthorizeView (3 cases) | Replacement/anonymous updates preserve the exact editor instance and draft while blocking writes and displaying recovery; unchanged identity remains authorized and usable. |
+
+These tests intentionally emulate the circuit lifecycle and JS callback; they do
+not claim to run SignalR. The complementary new
+`tests/PTDoc.Web.UiQa/tests/session-circuit-boundary.spec.ts` supplies **seven actual
+browser cases** through the existing disposable localhost harness:
+
+- Activity 401 and 409 drive the unmodified JavaScript callback into the real
+  monitor and sibling Settings provider editor, preserving a synthetic draft.
+- API POST 401 versus 409/503 drives the actual server-side client and verifies
+  the correct recovery behavior.
+- A real SignalR disconnect, replacement browser sign-in and `Blazor.reconnect()`
+  retain the original page/draft and must raise Reload recovery without relying on
+  an activity failure. A new tab's fresh circuit remains usable.
+- An anonymous reconnect must similarly retain the actual authorized editor and
+  display Sign in without a router redirect; its protected reads/saves stay blocked.
+- Unconsumed, exact-path fault rules prove denied reads/saves do not reach the
+  API proxy; the rules also prevent a faulty implementation from persisting the
+  synthetic provider. Distinct local-validation/error transitions ensure stale
+  UI messages cannot satisfy the assertions before the server callback completes.
+
+The browser suite uses the actual Web composition and a copied database, not a
+test-only production endpoint. Its reconnect control uses .NET 8's internal
+disconnect hook to stop the connection without disposing the retained circuit;
+this harness dependency should be revisited when upgrading Blazor. Authentication
+credentials come only from the existing out-of-band local fixture environment.
+
+### Verification and handoff
+
+Passed: ten activity JavaScript regressions, two fault-proxy infrastructure tests,
+JavaScript harness syntax check, seven-case Playwright discovery, and both git diff
+whitespace checks. The fault-proxy tests initially could not bind a loopback socket
+inside the sandbox; both passed when rerun with loopback permission. Discovery is
+not browser execution. No .NET build/test or full browser run was performed, in
+accordance with AGENTS.md; their results are required before claiming the fix verified.
+
+Run from the repository root:
+
+```bash
+dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter 'FullyQualifiedName~WebScopedHttpClientFactoryTests|FullyQualifiedName~WebSessionActivityMonitorTests|FullyQualifiedName~ApiAccessTokenForwardingHandlerTests|FullyQualifiedName~WebSessionActivityIntegrationTests' --verbosity normal
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter 'Category=CoreCi' --verbosity normal
+dotnet format src/PTDoc.Web/PTDoc.Web.csproj --verify-no-changes --verbosity minimal
+dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity minimal
+```
+
+The existing localhost harness launches **Debug** artifacts with `--no-build`.
+Build both hosts in that configuration before running it:
+
+```bash
+dotnet build src/PTDoc.Api/PTDoc.Api.csproj --configuration Debug
+dotnet build src/PTDoc.Web/PTDoc.Web.csproj --configuration Debug
+cd tests/PTDoc.Web.UiQa
+PTDOC_UI_QA_REQUIRE_FULL_FIXTURES=false PTDOC_UI_QA_PIN=<local-seeded-pin> npm run test:branch-live-unblock -- --session-boundary --headed
+```
+
+Use the existing seeded SQLite source database and installed Playwright Chromium;
+set the existing admin credential overrides if the local fixture differs. Do not
+use hosted-beta credentials or hosts for this suite. The harness creates its own
+loopback hosts/proxy and disposable database copy. Reports remain ignored output.
+
+Architecture/security documentation and CHANGELOG now describe the reconnect
+guard. The preceding review-audit edits were preserved as historical evidence.
+No commit, push, GitHub reply/resolution or review request was made. The concern
+has no inline thread to resolve; after all verification passes, an evidence-backed
+summary response would require separate user authorization. Existing resolved
+threads need no duplicate replies.

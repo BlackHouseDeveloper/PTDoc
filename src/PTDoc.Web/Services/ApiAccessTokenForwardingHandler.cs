@@ -60,6 +60,24 @@ public sealed class ApiAccessTokenForwardingHandler(
         var httpContext = httpContextAccessor.HttpContext;
         var principal = httpContext?.User;
 
+        // A reconnect can replace the circuit principal while retaining old components.
+        // In an established local circuit, use its current authentication state rather
+        // than a captured handshake HttpContext, and reject a replacement sign-in.
+        if (sessionState.IsBoundToLocalCircuit)
+        {
+            try
+            {
+                principal = (await authenticationStateProvider.GetAuthenticationStateAsync()).User;
+                sessionState.ValidateCircuit(principal);
+            }
+            catch
+            {
+                sessionState.End("SessionEnded");
+            }
+            if (sessionState.EndedReason is not null)
+                return new SessionToken(null, true, true, true);
+        }
+
         // Prefer the API access token claim added during local sign-in. In Blazor Server
         // interactive callbacks there may be no current HttpContext, so fall back to the
         // circuit authentication state before giving up on forwarding auth.

@@ -311,6 +311,21 @@ and injected UI clients. Only the transport pipeline is pooled, and disposing a
 wrapper does not dispose that shared transport. Other named clients retain their
 configured transport and options without the authentication wrapper.
 
+For current local activity tickets, `WebSessionCircuitHandler` binds the circuit
+to the sign-in ID present when it opens. Blazor can replace the authenticated
+principal on reconnect while preserving component state. A changed sign-in ends
+the retained circuit with Reload recovery; an anonymous principal ends it with
+Sign in recovery. Authentication-state notifications update the shared monitor,
+and the forwarding handler independently validates the current circuit principal
+before using a token, ignoring a stale handshake HttpContext in a bound circuit.
+This prevents retained drafts from being submitted using a replacement identity.
+`WebCircuitAuthenticationStateProvider` keeps the original UI snapshot for an
+ended bound circuit so authorization views do not replace its editor or redirect
+before explicit recovery. That snapshot cannot authorize API operations: the
+shared terminal state blocks forwarding. Unbound prerender/request state still
+accepts normal host authentication updates.
+Request-only clients, previous-version tickets and OIDC keep their existing paths.
+
 The activity monitor starts only for tickets carrying both a sign-in ID and the
 current activity-ticket marker. Previous-version tickets keep normal expiry until
 the next sign-in. Input throttling uses `performance.now()` so a wall-clock
