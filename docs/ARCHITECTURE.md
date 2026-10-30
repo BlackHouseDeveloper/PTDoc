@@ -282,6 +282,55 @@ builder.Services.AddAuthentication("PTDocAuth")
 - Cookie-based session management
 - HIPAA-compliant session timeouts
 
+Local Web sign-in uses an immutable identity ticket capped by the API deadline and
+eight-hour absolute limit. `WebSessionActivity.ValidateCookieAsync` additionally
+enforces the 15-minute idle window using the ticket's initial issue time or a
+Data Protection-protected activity timestamp bound to that sign-in ID. Real input
+renews only the separate `__Host-PTDoc.Activity.<session-id>` cookie after API
+validation; it never rewrites the identity cookie. Automatic cookie sliding is
+disabled for local sessions, so delayed renewal/denial responses cannot overwrite
+another tab's sign-in or restore a logged-out browser. No Web database or shared
+in-memory ticket store is introduced. OIDC retains its existing cookie behavior.
+
+Local logout and replacement sign-in revoke the prior opaque API session through
+`/api/v1/auth/logout` before completing the change. Local logout writes an
+HttpOnly/Secure/SameSite=Strict `__Host-PTDoc.SignedOut.<sign-in-id>` marker rather
+than deleting the shared identity cookie. Cookie validation rejects that sign-in;
+a delayed logout response cannot delete a newer sign-in. Pre-activity tickets
+without a sign-in ID use a SHA-256 digest of their opaque token as the marker key.
+Markers contain no credential and expire at the original session deadline. They
+only deny browser authentication; API-side revocation remains authoritative even
+if a browser removes a marker. Replacement sign-in still issues a fresh identity
+ticket. A revocation failure returns a retryable 503 and keeps the existing identity cookie. A terminal
+activity result or API rejection also ends the circuit's scoped
+`WebCircuitSessionState`; its HTTP forwarding handler rejects subsequent protected
+operations while the monitor offers explicit recovery without navigating away
+from unsaved drafts. `WebScopedHttpClientFactory` creates the authentication
+wrapper in the caller's request/circuit scope for both named `ServerAPI` clients
+and injected UI clients. Only the transport pipeline is pooled, and disposing a
+wrapper does not dispose that shared transport. Other named clients retain their
+configured transport and options without the authentication wrapper.
+
+For current local activity tickets, `WebSessionCircuitHandler` binds the circuit
+to the sign-in ID present when it opens. Blazor can replace the authenticated
+principal on reconnect while preserving component state. A changed sign-in ends
+the retained circuit with Reload recovery; an anonymous principal ends it with
+Sign in recovery. Authentication-state notifications update the shared monitor,
+and the forwarding handler independently validates the current circuit principal
+before using a token, ignoring a stale handshake HttpContext in a bound circuit.
+This prevents retained drafts from being submitted using a replacement identity.
+`WebCircuitAuthenticationStateProvider` keeps the original UI snapshot for an
+ended bound circuit so authorization views do not replace its editor or redirect
+before explicit recovery. That snapshot cannot authorize API operations: the
+shared terminal state blocks forwarding. Unbound prerender/request state still
+accepts normal host authentication updates.
+Request-only clients, previous-version tickets and OIDC keep their existing paths.
+
+The activity monitor starts only for tickets carrying both a sign-in ID and the
+current activity-ticket marker. Previous-version tickets keep normal expiry until
+the next sign-in. Input throttling uses `performance.now()` so a wall-clock
+correction cannot suspend renewal; the first trusted input is eligible immediately.
+
 #### 4c. PTDoc.Maui
 
 **Purpose:** Cross-platform mobile/desktop app (iOS, Android, macOS) with offline capability.

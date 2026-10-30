@@ -99,6 +99,39 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task LogoutAsync_RejectsOldOpaqueSessionWithoutRevokingReplacementSession()
+    {
+        await using var context = CreateInMemoryContext();
+        var service = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
+        context.Users.Add(new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "session-review",
+            PinHash = AuthService.HashPin("12345678"),
+            FirstName = "Synthetic",
+            LastName = "User",
+            Role = "PT",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+        var first = Assert.IsType<AuthResult>(await service.AuthenticateAsync("session-review", "12345678", "127.0.0.1", "TestAgent"));
+        var replacement = Assert.IsType<AuthResult>(await service.AuthenticateAsync("session-review", "12345678", "127.0.0.1", "TestAgent"));
+        var oldToken = Assert.IsType<string>(first.Token);
+        var newToken = Assert.IsType<string>(replacement.Token);
+        Assert.NotNull(await service.ValidateSessionAsync(oldToken));
+
+        await service.LogoutAsync(oldToken);
+        await service.LogoutAsync(oldToken); // Explicit logout is idempotent.
+
+        Assert.Null(await service.ValidateSessionAsync(oldToken));
+        Assert.Null(await service.GetCurrentUserAsync(oldToken));
+        Assert.NotNull(await service.ValidateSessionAsync(newToken));
+        Assert.Equal(1, await context.Sessions.CountAsync(session => session.IsRevoked));
+        Assert.Equal(1, await context.Sessions.CountAsync(session => !session.IsRevoked));
+    }
+
+    [Fact]
     public async Task AuthenticateAsync_IdentityOnlySuccessDoesNotCreateStatefulSession()
     {
         await using var context = CreateInMemoryContext();

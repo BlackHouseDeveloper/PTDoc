@@ -38,6 +38,7 @@ var entraExternalIdOptions = builder.Configuration.GetSection(EntraExternalIdOpt
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IUserService, WebUserService>();
 builder.Services.AddScoped<SignupApiClient>();
 builder.Services.AddScoped<PasswordResetApiClient>();
@@ -89,6 +90,9 @@ builder.Services.AddSingleton<IIntakeDraftCanonicalizer, IntakeDraftCanonicalize
 builder.Services.AddScoped<IHeaderConfigurationService, HeaderConfigurationService>();
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<WebCircuitSessionState>();
+builder.Services.AddScoped<Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider, WebCircuitAuthenticationStateProvider>();
+builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler, WebSessionCircuitHandler>();
 builder.Services.AddTransient<ApiAccessTokenForwardingHandler>();
 builder.Services.AddTransient<PublicOriginForwardingHandler>();
 builder.Services.AddHttpClient("PTDocAuthApi", (serviceProvider, client) =>
@@ -104,36 +108,12 @@ builder.Services.AddHttpClient("ServerAPI", (serviceProvider, client) =>
         .GetRequiredService<ApiClusterAddressResolver>()
         .ResolveApiClusterAddress();
 })
-    .AddHttpMessageHandler<PublicOriginForwardingHandler>()
-    .AddHttpMessageHandler<ApiAccessTokenForwardingHandler>();
-
-// Blazor's navigation and authentication-state services belong to the active circuit
-// scope, while IHttpClientFactory creates its own handler scopes. Build the UI-facing
-// outer authentication handler in the circuit scope, and retain the factory-managed
-// transport pipeline underneath it. The named ServerAPI client remains available to
-// request-based Web endpoints that already use it directly.
-builder.Services.AddHttpClient("ServerAPITransport", (serviceProvider, client) =>
-{
-    client.BaseAddress = serviceProvider
-        .GetRequiredService<ApiClusterAddressResolver>()
-        .ResolveApiClusterAddress();
-})
     .AddHttpMessageHandler<PublicOriginForwardingHandler>();
 
-builder.Services.AddScoped(sp =>
-{
-    var handler = sp.GetRequiredService<ApiAccessTokenForwardingHandler>();
-    handler.InnerHandler = sp
-        .GetRequiredService<IHttpMessageHandlerFactory>()
-        .CreateHandler("ServerAPITransport");
-
-    return new HttpClient(handler, disposeHandler: false)
-    {
-        BaseAddress = sp
-            .GetRequiredService<ApiClusterAddressResolver>()
-            .ResolveApiClusterAddress()
-    };
-});
+// Pool transport only; authentication and terminal state belong to the caller's
+// request/circuit scope, including named ServerAPI clients used by Web endpoints.
+builder.Services.AddScoped<IHttpClientFactory, WebScopedHttpClientFactory>();
+builder.Services.AddScoped(sp => sp.GetRequiredService<IHttpClientFactory>().CreateClient("ServerAPI"));
 
 if (entraExternalIdOptions.Enabled)
 {
@@ -224,6 +204,8 @@ else
         .AddCookie(PTDocAuthSchemes.Cookie, ConfigureCookieOptions);
 }
 
+builder.Services.AddOptions<CookieAuthenticationOptions>(PTDocAuthSchemes.Cookie)
+    .Configure<TimeProvider>((options, clock) => options.TimeProvider = clock);
 builder.Services.AddAuthorization(options => options.AddPTDocAuthorizationPolicies());
 builder.Services.AddSingleton<Microsoft.AspNetCore.Authorization.IAuthorizationHandler,
     ClientStaticCapabilityAuthorizationHandler>();
@@ -387,6 +369,8 @@ if (entraExternalIdOptions.Enabled)
 app.MapGet("/auth/login", () => Results.Redirect("/login"))
     .AllowAnonymous();
 
+app.MapPost(WebSessionActivity.Endpoint, WebSessionActivity.RenewAsync).AllowAnonymous();
+
 app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory httpClientFactory) =>
 {
     var logger = httpContext.RequestServices.GetRequiredService<ILogger<Program>>();
@@ -479,13 +463,35 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
 
 app.MapWebAuthenticationStepEndpoints();
 
-app.MapGet("/auth/logout", async (HttpContext httpContext) =>
+app.MapGet("/auth/logout", async (HttpContext httpContext, IHttpClientFactory clients, TimeProvider clock) =>
 {
+    httpContext.Response.Headers.CacheControl = "no-store";
+    if (httpContext.Request.Headers["Sec-Fetch-Site"] == "cross-site")
+    {
+        httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return;
+    }
+    // An anonymous/cross-site navigation without a validated ticket must not
+    // emit a deletion cookie that could log out a newer browser identity.
+    if (httpContext.User.Identity?.IsAuthenticated != true && !WebSessionActivity.HasPreviousLocalSession(httpContext))
+    {
+        httpContext.Response.Redirect("/login");
+        return;
+    }
     var requiresExternalProviderSignOut = LogoutSessionClassifier.RequiresExternalProviderSignOut(
         httpContext.User,
         entraExternalIdOptions.Enabled);
 
-    await httpContext.SignOutAsync(PTDocAuthSchemes.Cookie);
+    if (!await WebSessionActivity.RevokePreviousSessionAsync(httpContext, clients))
+    {
+        httpContext.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        await httpContext.Response.WriteAsync("Sign-out could not be completed. Please retry.");
+        return;
+    }
+    if (WebSessionActivity.HasPreviousLocalSession(httpContext))
+        WebSessionActivity.MarkPreviousLocalSessionEnded(httpContext, clock);
+    else
+        await httpContext.SignOutAsync(PTDocAuthSchemes.Cookie);
 
     if (requiresExternalProviderSignOut)
     {
@@ -500,7 +506,7 @@ app.MapGet("/auth/logout", async (HttpContext httpContext) =>
 
     httpContext.Response.Redirect("/login");
 })
-.RequireAuthorization();
+.AllowAnonymous();
 
 app.MapGet("/diagnostics/runtime", (
     IHostEnvironment environment,
@@ -592,7 +598,16 @@ static void ConfigureCookieOptions(CookieAuthenticationOptions options)
     options.ExpireTimeSpan = TimeSpan.FromMinutes(15);
     options.SlidingExpiration = true;
 
-    // HIPAA compliance: Force absolute expiration after 8 hours
+    options.Events.OnValidatePrincipal = WebSessionActivity.ValidateCookieAsync;
+    options.Events.OnCheckSlidingExpiration = context =>
+    {
+        // Local identity cookies are immutable. Only the separate, per-sign-in
+        // activity cookie slides, after API validation. Keep OIDC behavior intact.
+        if (WebSessionActivity.IsLocal(context.Principal)) context.ShouldRenew = false;
+        return Task.CompletedTask;
+    };
+
+    // The protected session-start claim and API deadline enforce the absolute cap.
     options.Cookie.MaxAge = TimeSpan.FromHours(8);
 
     // Security best practices

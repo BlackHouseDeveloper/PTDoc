@@ -379,6 +379,13 @@ internal static class WebAuthenticationStepFlow
             return Results.Redirect("/login?error=1");
         }
 
+        if (!await WebSessionActivity.RevokePreviousSessionAsync(context,
+            context.RequestServices.GetRequiredService<IHttpClientFactory>()))
+            return Results.Problem("The previous session could not be ended. Please retry sign-in.", statusCode: 503);
+
+        var now = context.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow();
+        var apiDeadline = new DateTimeOffset(DateTime.SpecifyKind(auth.ExpiresAt.Value, DateTimeKind.Utc));
+        var deadline = apiDeadline < now.AddHours(8) ? apiDeadline : now.AddHours(8);
         var claims = new List<Claim>
         {
             new(PTDocClaimTypes.InternalUserId, auth.UserId.Value.ToString()),
@@ -386,6 +393,9 @@ internal static class WebAuthenticationStepFlow
             new(ClaimTypes.Name, auth.Username),
             new(ClaimTypes.Role, auth.Role),
             new(PTDocClaimTypes.AuthenticationType, "web_cookie"),
+            new(WebSessionActivity.SessionIdClaim, Guid.NewGuid().ToString("N")),
+            new(WebSessionActivity.StartedAtClaim, now.ToString("O")),
+            new(WebSessionActivity.ActivityTicketClaim, "1"),
             new(PTDocClaimTypes.ApiAccessToken, auth.Token),
             new(PTDocClaimTypes.ApiAccessTokenExpiresAt,
                 new DateTimeOffset(DateTime.SpecifyKind(auth.ExpiresAt.Value, DateTimeKind.Utc)).ToString("O"))
@@ -397,7 +407,8 @@ internal static class WebAuthenticationStepFlow
 
         await context.SignInAsync(
             PTDocAuthSchemes.Cookie,
-            new ClaimsPrincipal(new ClaimsIdentity(claims, PTDocAuthSchemes.Cookie)));
+            new ClaimsPrincipal(new ClaimsIdentity(claims, PTDocAuthSchemes.Cookie)),
+            new AuthenticationProperties { IssuedUtc = now, ExpiresUtc = deadline, AllowRefresh = false });
         return Results.Redirect(ResolvePostLoginRedirect(auth.Role, returnUrl));
     }
 

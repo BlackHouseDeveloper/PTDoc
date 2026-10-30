@@ -10,7 +10,7 @@ PTDoc implements enterprise-grade security measures suitable for HIPAA-compliant
 #### Session Timeouts
 - **Inactivity Timeout**: 15 minutes
 - **Absolute Session Expiration**: 8 hours maximum
-- **Sliding Expiration**: Enabled (session extends on activity)
+- **Idle Renewal**: Local sessions extend on validated activity using a separate, protected per-sign-in cookie; the identity cookie never slides. OIDC retains framework sliding expiration.
 
 #### Cookie Security
 - **HttpOnly**: Enabled (prevents JavaScript access)
@@ -25,6 +25,16 @@ options.ExpireTimeSpan = TimeSpan.FromMinutes(15);
 options.SlidingExpiration = true;
 options.Cookie.MaxAge = TimeSpan.FromHours(8);
 ```
+
+For local sign-in, explicit ticket properties cap the identity ticket at the earlier
+API deadline or eight hours and disable refresh. The Web cookie-validation event
+enforces 15 minutes since sign-in or the latest valid activity timestamp. The
+`__Host-PTDoc.Activity.<session-id>` cookie contains only a Data Protection-protected
+timestamp, is bound to the sign-in ID, and uses Secure, HttpOnly, SameSite=Strict,
+Path=/ and a maximum 15-minute lifetime capped by the absolute/API deadline.
+Activity responses never issue or delete the identity cookie. Activity cookies
+cannot authenticate by themselves or renew another sign-in. Old-format cookies
+retain their original expiry; activity renewal requires another sign-in.
 
 ### Mobile Application (JWT Authentication)
 
@@ -284,8 +294,15 @@ The following rules apply across all logging and telemetry:
 
 ### Secure Logout
 - Logout button available in all authenticated pages
-- Logout clears all authentication data (cookies/tokens)
+- Local logout revokes the API token and invalidates the original browser sign-in; external-provider logout keeps its cookie/provider sign-out flow.
 - Force reload ensures clean authentication state
+- Local logout and replacement sign-in revoke the previous opaque API session before completing the change. API revocation is idempotent. Local logout writes a sign-in-specific HttpOnly/Secure/SameSite=Strict denial marker instead of deleting the shared identity cookie, so a delayed response cannot clear a replacement sign-in. Cookie validation rejects the marked sign-in; the marker expires at its session deadline. Pre-activity tickets without an ID use a SHA-256 token digest as the marker key, never the token itself. Removing a marker cannot undo server-side API revocation. If revocation cannot be confirmed, the Web endpoint returns a retryable 503 without claiming successful logout or changing the identity cookie.
+- Logout accepts an idle-expired, cryptographically validated local ticket solely to revoke its previous API session; this does not authorize clinical access. The logout endpoint accepts anonymous requests so an idle-expired ticket can be revoked. Cross-site requests are denied; requests without a validated ticket redirect without deleting any cookie.
+- Ended/changed circuits block protected API reads and writes and show explicit Sign in/Reload recovery. Automatic expiry handling in an already-ended circuit does not clear a newer browser sign-in. In-memory drafts remain on screen until the user chooses recovery; this does not promise draft persistence across a reload.
+
+- Named Web API clients and UI clients use request/circuit-scoped authentication state over a pooled transport. One user's 401 cannot end another user's scope. Previous-version cookies without the activity-ticket marker do not start the renewal monitor; current tickets use monotonic input throttling.
+- A current local circuit retains its original sign-in ID across reconnects. A new authenticated sign-in or anonymous reconnect ends the retained circuit before another protected request can forward credentials; the monitor offers Reload or Sign in without automatically discarding its draft. The forwarding handler rechecks the circuit principal even when an authentication-state notification has not arrived and does not trust a stale handshake HttpContext. An already-dispatched API operation remains subject to API authorization and revocation; this guard does not retroactively cancel it.
+- The bound circuit's authentication provider retains the original UI snapshot after termination, preventing authorization-driven editor removal or redirect on an anonymous/changed reconnect. This preserves already-rendered content only; the shared terminal state denies protected API operations until a fresh circuit is established through explicit recovery.
 
 ### Token Validation
 - Mobile app validates tokens on startup

@@ -7,7 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed - beta deployment sign-in retries
+### Fixed - PR 156 retained-circuit identity boundary
+
+- Bind current local circuits to their opening sign-in so reconnecting with a replacement or anonymous identity cannot forward credentials from a retained draft. Observe authentication changes for recovery alerts and independently check circuit identity before protected requests, including when the handshake HttpContext is stale.
+- Preserve the terminated circuit's original UI authentication snapshot so authorization views cannot discard its editor on an anonymous/changed reconnect; protected API operations remain blocked. Add twelve composed regression cases and seven isolated browser cases covering activity 401/409, API 401 versus business conflict/transient failure, draft retention, blocked transport, and reconnect. Record the source-level assessment and pending .NET/browser verification; retain the complete review inventory and historical findings.
+
+### Fixed - PR 156 CodeQL test-probe routing
+
+- Register the integration-only browser authentication probe as an explicit mapped route instead of conditionally bypassing middleware based on the request path. Retain cookie validation and the existing three-format delayed-logout regressions; production authentication is unchanged. Record CodeQL alert 20 and its duplicate review comment in the refreshed PR 156 audit; .NET and CodeQL verification remain pending.
+
+### Fixed - PR 156 follow-up session isolation review
+
+- Scope local logout invalidation to the original sign-in after API revocation, preventing a delayed logout response from deleting a newer identity cookie. Preserve legacy-ticket logout and retryable revocation failure behavior; add delayed-response and browser-authentication regressions for all three ticket formats.
+- Build named `ServerAPI` authentication handlers in the current request/circuit scope and pool only transport. Add factory-level regressions for rejected then valid users, same-scope blocking, and safe wrapper disposal.
+- Start the activity monitor only for current-format tickets and use a monotonic input throttle. Add previous-version startup and backward-clock regressions. All 10 JavaScript tests pass; new .NET regressions await user-run verification. Record the complete eight-finding audit, duplicates and historical dispositions in `docs/client-review/plan-01.md`.
+
+### Documentation - PR 156 merge reconciliation
+
+- Reconcile the session review and intake prefill changelog entries after updating PR 156 with main; preserve both histories and remove a duplicate intake entry.
+
+### Fixed - PR 156 CI formatting
+
+- Format authentication and session-activity regression fixtures with multiline initializers to address the CI formatting failure; test behavior is unchanged.
+
 ### Fixed - PR 162 canonical payer mapping
 
 - Prefer canonical `payerType` over conflicting legacy `providerType` during policy backfill, including TRICARE. Existing active policies remain untouched by idempotent backfill.
@@ -42,6 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`IntakeService` / `IntakeEndpoints`** — Preserve structured compound names when the submitted full name matches the saved name; explicitly edited names retain the existing update behavior.
 - **`IntakeProfilePrefill` / `IntakeProfilePrefillReader`** — Offer Self Pay and other supported policy-only values for explicit blank-field prefill, and translate legacy `providerType` values supported by the intake selector without replacing canonical payer values.
 - Added service, SQLite API/standalone-link, and wizard regressions for policy-source conflicts, unchanged submission, compound names, payer aliases, and prefill persistence. User verification exposed two fixture failures; corrected the policy-reorder setup to stage its swap transactionally through an unused priority, respecting SQLite's active-priority unique index, and asserted both reordered member numbers survive rejection. Verification of this correction is pending; the complete review inventory and remaining TRICARE compatibility decision are recorded in `docs/client-review/plan-07.md`.
+
+### Fixed - beta deployment sign-in retries
 
 - Retry transient HTTP failures during the four seeded-role sign-in checks in `Deploy Beta`, with bounded connection and request timeouts, so a brief App Service restart response does not stop Web deployment after API health checks pass. Invalid credentials still fail immediately.
 
@@ -88,12 +112,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - Client review Plan 04
 
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
-### Fixed - PR 162 intake prefill review
 
-- **`IntakeDomainProjection` / intake submission paths** — Reject changed, replaced, reordered, ambiguous, inactive, archived, or incorrectly scoped prefilled policy sources before submission mutates records. Preserve independent primary/secondary policy versions through JSON and wizard saves, and target the accepted policy ID during projection. Older drafts retain their combined-timestamp compatibility check. No schema migration.
-- **`IntakeService` / `IntakeEndpoints`** — Preserve structured compound names when the submitted full name matches the saved name; explicitly edited names retain the existing update behavior.
-- **`IntakeProfilePrefill` / `IntakeProfilePrefillReader`** — Offer Self Pay and other supported policy-only values for explicit blank-field prefill, and translate legacy `providerType` values supported by the intake selector without replacing canonical payer values.
-- Added service, SQLite API/standalone-link, and wizard regressions for policy-source conflicts, unchanged submission, compound names, payer aliases, and prefill persistence. User verification exposed two fixture failures; corrected the policy-reorder setup to stage its swap transactionally through an unused priority, respecting SQLite's active-priority unique index, and asserted both reordered member numbers survive rejection. Verification of this correction is pending; the complete review inventory and remaining TRICARE compatibility decision are recorded in `docs/client-review/plan-07.md`.
+### Fixed - PR 156 session review findings
+
+- **`WebLoginEndpointIntegrationTests`** — Corrected the new ticket-expiry assertion to expect ASP.NET Core's whole-second RFC1123 precision while retaining the exact API-expiry claim assertion. Reason: the user-run suite exposed a fractional-second mismatch in the test; production expiry behavior is unchanged.
+- **`WebSessionActivity` / `WebAuthenticationStepFlow`** — Keep local identity cookies immutable and renew a protected, per-sign-in activity cookie instead. Prevent delayed renewal/denial responses from overwriting a newer sign-in or restoring a logged-out browser while preserving 15-minute idle, eight-hour absolute and API deadlines. Existing-format cookies require a new sign-in for activity renewal.
+- **Web logout / `WebCircuitSessionState` / `ApiAccessTokenForwardingHandler`** — Revoke the previous opaque API session before local logout or replacement sign-in; return a retryable 503 if revocation fails. Block protected operations in ended/changed circuits and offer explicit recovery without automatically discarding visible drafts or logging out a newer browser session.
+- **`sessionActivity.js`** — Retry recovery callbacks after a circuit disconnect; stop monitoring only after successful delivery. Added focused .NET cookie/race/revocation/circuit regressions and passing 401/409 JavaScript retry tests. Recorded all four unique review findings, duplicate summary references, the already-fixed CodeQL finding and user-confirmed passing builds/tests (2,314 .NET tests and 9 JavaScript tests), with separate live-browser acceptance still pending, in `docs/client-review/plan-01.md`.
+
+### Documentation - Client review publication audit
+
+- Reconciled all 36 plan PRs, five dependency stacks, requirement mappings, verified CI heads and separate merge checkpoints. Recorded provider upgrade/downgrade coverage and the remaining clinical, integration and native-platform acceptance gates.
+
+### Fixed - Client review Plan 01
+
+- Return an explicit authentication denial for cross-site renewal requests, retaining the no-renewal/no-API-call guard and matching other session denials.
+
+- Repaired the reproduced active Web-session renewal gap with trusted-input renewal, current API session/identity validation, protected idle/absolute expiry, changed-user protection and explicit recovery notices. Added controlled-clock and browser-event regressions; updated the 36-PR tracker with actual branches, stacks, verification and merge checkpoints. Archived source Markdown hard breaks were normalized without changing requirements.
 
 ### Changed - Client review Plan 07
 
