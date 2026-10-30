@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 156 CodeQL test-probe routing
+
+- Register the integration-only browser authentication probe as an explicit mapped route instead of conditionally bypassing middleware based on the request path. Retain cookie validation and the existing three-format delayed-logout regressions; production authentication is unchanged. Record CodeQL alert 20 and its duplicate review comment in the refreshed PR 156 audit; .NET and CodeQL verification remain pending.
+
 ### Fixed - PR 156 follow-up session isolation review
 
 - Scope local logout invalidation to the original sign-in after API revocation, preventing a delayed logout response from deleting a newer identity cookie. Preserve legacy-ticket logout and retryable revocation failure behavior; add delayed-response and browser-authentication regressions for all three ticket formats.

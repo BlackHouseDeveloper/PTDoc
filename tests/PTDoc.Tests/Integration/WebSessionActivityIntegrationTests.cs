@@ -637,18 +637,14 @@ public sealed class WebSessionActivityIntegrationTests
     {
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
         {
-            app.Use(async (context, nextMiddleware) =>
-            {
-                if (context.Request.Path != "/test/browser-authentication")
+            app.Map("/test/browser-authentication", probe =>
+                probe.Run(async context =>
                 {
-                    await nextMiddleware();
-                    return;
-                }
-                var result = await context.AuthenticateAsync(PTDocAuthSchemes.Cookie);
-                context.Response.StatusCode = result.Succeeded ? 200 : 401;
-                if (result.Succeeded)
-                    await context.Response.WriteAsync(result.Principal!.FindFirst(PTDocClaimTypes.InternalUserId)!.Value);
-            });
+                    var result = await context.AuthenticateAsync(PTDocAuthSchemes.Cookie);
+                    context.Response.StatusCode = result.Succeeded ? 200 : 401;
+                    if (result.Succeeded)
+                        await context.Response.WriteAsync(result.Principal!.FindFirst(PTDocClaimTypes.InternalUserId)!.Value);
+                }));
             next(app);
         };
     }

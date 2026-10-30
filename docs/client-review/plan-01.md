@@ -1,8 +1,9 @@
 # Plan PR 01: Verify and repair active-use and multi-tab sessions
 
-**Follow-up review fixes implemented; .NET verification pending (2026-10-29).**
-The current audit below covers all eight findings at `e645d6f`. Earlier passing
-builds/tests are historical evidence and do not verify the new follow-up changes.
+**Latest audit: CodeQL test-probe routing fixed locally; verification pending.**
+The audit at the end covers all ten current review threads against `d102f0d`.
+The user confirmed required builds/tests passed before that commit; the small
+subsequent test-route change still needs .NET and CodeQL verification.
 
 - Requirements: R003, R005, R048, R061
 - Original plan status: Verification Required
@@ -281,3 +282,80 @@ After these checks pass and the user authorizes GitHub writes, threads
 4411837680 (`PRRT_kwDOQt-faM6xiDsw`) and 4411837718 (`PRRT_kwDOQt-faM6xiDtE`)**
 will be eligible for evidence-backed replies and resolution. The four historical
 threads are already resolved and need no additional action.
+
+
+## PR 156 CodeQL test-probe review audit
+
+### Inventory and scope
+
+Local HEAD and fetched remote PR head are both
+`d102f0dd25d76791041c3444f66f16f1cb7a4305`; base is
+`ee9a0066d11b135841e7da33643d53ab954a4a76`. The worktree was clean at the start.
+Retrieved full paginated GraphQL conversation/review/thread data, cross-checked
+REST review bodies and connector thread/timeline results, and inspected CodeQL
+alerts 19 and 20 directly. Inventory: **0 conversation comments, 12 reviews,
+10 inline threads and 17 inline comments (including 7 earlier author replies)**.
+Eight threads are resolved; two are open. GitHub marks two resolved threads as
+current rather than outdated, so their disposition below is based on current code,
+not the GitHub outdated flag.
+
+All collapsed review sections and complete bodies were inspected. **No suppressed
+findings or Previously missed sections/items are present.** The three Copilot
+summaries contain **15 duplicate finding references**. The latest Copilot inline
+comment duplicates CodeQL alert 20, leaving **9 unique findings: 1 valid/actionable
+and 8 outdated/already fixed; 0 invalid and 0 ambiguous**. The seven author replies
+record earlier verification and are not new findings.
+
+The current user instruction prohibits commit, push, replies, resolutions,
+PR-level responses and new review requests. None was performed in this pass.
+
+### Complete classification
+
+| Comment / finding | Classification | Evidence from current code, tests, contracts and history |
+| --- | --- | --- |
+| [4412062637 — CodeQL alert 20](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4412062637) | **Valid actionable test-harness/scanner finding; fixed locally, verification pending** | Alert 20 is open and classified `test`; its source is `WebSessionActivityIntegrationTests.cs`'s path condition guarding `AuthenticateAsync`. `BrowserAuthenticationProbe` is private to the test class and registered only by `SessionHost.ConfigureTestServices`; there is no production registration or demonstrated production authorization bypass. The ad-hoc `app.Use` path branch introduced by `d102f0d` has been replaced with `app.Map("/test/browser-authentication", ...)` and a terminal `Run` delegate. Every request entering that branch still calls the real cookie authentication scheme before returning 200 or 401. Other paths use the normal application pipeline. No scanner suppression, production code change or authentication relaxation was added. Existing `DelayedLogout_CannotClearReplacementSignIn` has three ticket-format cases, each asserting B's valid cookie yields 200 and A's signed-out cookie yields 401 through this probe. |
+| [4418418883 — explicit test probe route](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4418418883) | **Duplicate of 4412062637** | Names CodeQL 20 and the same path branch, and requests the mapped-route remedy above. One code change handles both threads; no second implementation is required. |
+| [4411837564 — delayed logout deletes replacement cookie](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4411837564) | **Outdated; already fixed, no new change** | `d102f0d` changed local logout in `Program.cs` to revoke A's API token and call `MarkPreviousLocalSessionEnded`, which writes only A's denial marker. `ValidateCookieAsync` rejects that marker. `DelayedLogout_CannotClearReplacementSignIn` applies B's identity cookie before A's delayed response and checks B's identity/renewal, A's rejection, and token-specific revocation across current, previous-version and legacy formats. The probe routing correction preserves those assertions. |
+| [4411837629 — pooled authentication state crosses users](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4411837629) | **Outdated; already fixed, no new change** | `d102f0d` registers scoped `WebScopedHttpClientFactory`; named `ServerAPI` calls from diagnostics and MFA recovery-code regeneration receive auth wrappers from the caller scope. Only transport is shared. `NamedClients_IsolateRejectedUsers_WhileSharingTransport` covers request and circuit principals, A's rejection, B's success, same-scope blocking and transport survival after disposal. `AuthApiClient_RemainsUsableForRecoveryInEndedScope` covers the separate auth client contract. |
+| [4411837680 — previous-version monitor startup](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4411837680) | **Outdated; already fixed, no new change** | `d102f0d` makes `WebSessionActivityMonitor` require `UsesActivityTicket`, matching `RenewAsync`. `Monitor_StartsOnlyForCurrentActivityTickets` covers missing, incorrect and current markers. `PreviousVersionCookie_KeepsNormalExpiryWithoutAutomaticSliding` and the legacy renewal test cover normal old-ticket expiry. |
+| [4411837718 — backward clock stops renewal](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4411837718) | **Outdated; already fixed, no new change** | `d102f0d` uses `performance.now()` and an initially eligible `lastAttempt`. The JavaScript backward-clock regression shifts wall time by an hour and checks the 59,999/60,000 ms throttle boundary. No JavaScript changed in this pass. |
+| [4381845004 — stale renewal overwrites identity](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381845004) | **Outdated; already fixed, no new change** | `4f45f05` removed identity reissuance from renewal. `RenewAsync` writes only the per-sign-in protected activity cookie; `Program.cs` disables local sliding and rejected cookie validation emits no deletion. `DelayedRenewal_CannotRestoreLogoutOrOverwriteNewSignIn` tests both response-ordering interleavings. |
+| [4381845075 — ended circuit retains API access](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381845075) | **Outdated; already fixed, no new change** | `4f45f05` connected the monitor to terminal circuit state and checks it before/after token lookup in the forwarding handler. Logout/replacement call the existing API revoke contract. `AuthService.LogoutAsync` revokes the exact opaque token hash; `ValidateSessionAsync` excludes revoked sessions. Existing blocked read/save, termination-during-lookup, and `LogoutAsync_RejectsOldOpaqueSessionWithoutRevokingReplacementSession` tests cover these boundaries; `d102f0d` additionally fixed named-client scope isolation. |
+| [4381845135 — callback rejection disables recovery](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381845135) | **Outdated; already fixed, no new change** | `4f45f05` sets `stopped=true` only after successful callback delivery. Both 401 and 409 JavaScript callback-retry regressions remain present and were previously verified. |
+| [4381841551 — CodeQL alert 19](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381841551) | **Outdated; already fixed, no new change** | `c90d7c1` makes cross-site renewal return explicit `Results.Unauthorized()` before API calls and cookie writes. `CrossSiteActivity_IsRejectedWithoutRenewingCookie` asserts that contract. Alert 19's current most-recent instance is `fixed`. |
+| Fifteen review-summary links | **Duplicate references** | Each links to one of the inline findings above. No distinct body-only finding exists. |
+
+### Change and verification handoff
+
+Only the test probe registration, this audit and `docs/CHANGELOG.md` changed.
+The existing three delayed-logout cases already exercise the changed probe with
+both authenticated and signed-out cookies, so no duplicate test was added for
+the route-registration syntax. Their requests to login, logout and activity also
+exercise the ordinary pipeline outside the probe branch.
+
+`git diff --check` passed. No .NET build/test/format or CodeQL analysis was run,
+consistent with AGENTS.md. Previous user-confirmed passing builds/tests apply to
+`d102f0d`, not this new test-route edit. CodeQL alert 20 remains open remotely;
+removing the flagged condition is not evidence that a fresh analysis has passed.
+
+Run from the repository root:
+
+```bash
+dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --verify-no-changes --verbosity minimal
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter 'FullyQualifiedName~WebSessionActivityIntegrationTests' --verbosity normal
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter 'Category=CoreCi' --verbosity normal
+```
+
+After an explicitly authorized publication, the existing `.github/workflows/codeql.yml`
+**Analyze (C#)** job must run on the updated PR and confirm alert 20 is fixed.
+It analyzes the non-MAUI build graph including the tests; local .NET success alone
+does not close a CodeQL alert. No workflow dispatch or review request was made.
+
+After .NET and fresh CodeQL verification pass, **4412062637
+(`PRRT_kwDOQt-faM6ximHf`)** and its duplicate **4418418883
+(`PRRT_kwDOQt-faM6xxelU`)** are eligible for evidence-based replies/resolution
+with explicit user authorization. The other eight threads are already resolved
+and need no new replies. No ambiguous product decision remains; pending work is
+verification and publication authorization, not an inferred security-policy change.
