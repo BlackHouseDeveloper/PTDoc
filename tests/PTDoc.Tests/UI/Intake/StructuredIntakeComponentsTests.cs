@@ -112,6 +112,20 @@ public sealed class StructuredIntakeComponentsTests : TestContext
     }
 
     [Fact]
+    public void InsurancePayerCard_TricareCanBeSelectedAndReloaded()
+    {
+        string? selected = null;
+        var cut = RenderComponent<InsurancePayerCard>(parameters => parameters
+            .Add(component => component.PayerTypeChanged, EventCallback.Factory.Create<string?>(this, value => selected = value)));
+        Assert.Contains(cut.FindAll("#intake-payer-type option"), option => option.TextContent == "TRICARE");
+        cut.Find("#intake-payer-type").Change("TRICARE");
+        Assert.Equal("TRICARE", selected);
+        cut.SetParametersAndRender(parameters => parameters.Add(component => component.PayerType, selected));
+        Assert.Equal("TRICARE", cut.Find("#intake-payer-type").GetAttribute("value"));
+        Assert.Empty(cut.FindAll("#intake-adjuster-name"));
+    }
+
+    [Fact]
     public void InsurancePayerCard_ProvidesReusableCarrierSuggestionsForPrimaryAndSecondaryPolicies()
     {
         var cut = RenderComponent<InsurancePayerCard>();

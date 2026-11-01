@@ -97,6 +97,7 @@ public sealed class RevokeIntakeConsentRequest
 /// <summary>Response DTO for an intake form (aligned with TDD IntakeResponse contract).</summary>
 public sealed class IntakeResponse
 {
+    public IntakeProfilePrefill? ProfilePrefill { get; set; }
     public Guid Id { get; set; }
     public Guid PatientId { get; set; }
     public string PainMapData { get; set; } = "{}";

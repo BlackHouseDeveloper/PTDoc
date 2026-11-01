@@ -6,6 +6,16 @@ public sealed class IntakeResponseDraft
 {
     public Guid? IntakeId { get; set; }
     public Guid? PatientId { get; set; }
+    public IntakeProfilePrefill? ProfilePrefill { get; set; }
+    public IntakeProfilePrefill? PrefilledDemographics { get; set; }
+    public bool OmitPrimaryPolicy { get; set; }
+    public bool OmitSecondaryPolicy { get; set; }
+    public IntakeProfileUpdate? ProfileUpdate { get; set; }
+    public Guid? PrefilledPrimaryPolicyId { get; set; }
+    public Guid? PrefilledSecondaryPolicyId { get; set; }
+    public DateTime? PrefilledPrimaryPolicyModifiedUtc { get; set; }
+    public DateTime? PrefilledSecondaryPolicyModifiedUtc { get; set; }
+    public DateTime? ProfilePrefillSourceModifiedUtc { get; set; }
     public int IntakeFlowVersion { get; set; }
     public int CurrentStep { get; set; }
     public IntakeConsentPacket? ConsentPacket { get; set; }

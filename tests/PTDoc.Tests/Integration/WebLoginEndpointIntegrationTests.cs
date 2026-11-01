@@ -145,6 +145,14 @@ public sealed class WebLoginEndpointIntegrationTests
         var ticket = cookieOptions.TicketDataFormat.Unprotect(Uri.UnescapeDataString(protectedTicket));
 
         Assert.NotNull(ticket);
+        Assert.True(Guid.TryParseExact(ticket.Principal.FindFirst("ptdoc_web_session_id")?.Value, "N", out _));
+        Assert.True(DateTimeOffset.TryParse(ticket.Principal.FindFirst("ptdoc_web_session_started_at")?.Value, out _));
+        Assert.Equal("1", ticket.Principal.FindFirst("ptdoc_web_activity_ticket")?.Value);
+        Assert.False(ticket.Properties.AllowRefresh);
+        // AuthenticationProperties stores ticket timestamps in RFC1123 format,
+        // which truncates fractional seconds; the API expiry claim remains exact.
+        var expectedTicketExpiry = DateTimeOffset.FromUnixTimeSeconds(new DateTimeOffset(expiresAt).ToUnixTimeSeconds());
+        Assert.Equal(expectedTicketExpiry, ticket.Properties.ExpiresUtc);
         var expiryClaim = ticket.Principal.FindFirst(PTDocClaimTypes.ApiAccessTokenExpiresAt)?.Value;
         Assert.True(DateTimeOffset.TryParse(expiryClaim, out var cookieExpiry));
         Assert.Equal(new DateTimeOffset(expiresAt), cookieExpiry);

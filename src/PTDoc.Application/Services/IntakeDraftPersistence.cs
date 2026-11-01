@@ -47,6 +47,7 @@ public static class IntakeDraftPersistence
     public static string SerializePersistenceJson(IntakeResponseDraft draft)
     {
         var copy = CreatePersistenceCopy(draft);
+        copy.ProfilePrefill = null; // Offers are refreshed from the authorized profile, not stored as answers.
         var json = JsonSerializer.Serialize(copy, SerializerOptions);
         if (copy.ConsentPacket is null)
         {

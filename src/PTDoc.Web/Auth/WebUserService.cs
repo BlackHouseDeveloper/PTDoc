@@ -18,6 +18,7 @@ public sealed class WebUserService : IUserService
     private readonly EntraExternalIdOptions entraExternalIdOptions;
     private readonly SignupApiClient signupApiClient;
     private readonly PasswordResetApiClient passwordResetApiClient;
+    private readonly WebCircuitSessionState sessionState;
     private int logoutTriggered;
 
     public WebUserService(
@@ -26,7 +27,8 @@ public sealed class WebUserService : IUserService
         NavigationManager navigationManager,
         SignupApiClient signupApiClient,
         PasswordResetApiClient passwordResetApiClient,
-        IOptions<EntraExternalIdOptions> entraExternalIdOptions)
+        IOptions<EntraExternalIdOptions> entraExternalIdOptions,
+        WebCircuitSessionState sessionState)
     {
         this.jsRuntime = jsRuntime;
         this.logger = logger;
@@ -34,6 +36,7 @@ public sealed class WebUserService : IUserService
         this.signupApiClient = signupApiClient;
         this.passwordResetApiClient = passwordResetApiClient;
         this.entraExternalIdOptions = entraExternalIdOptions.Value;
+        this.sessionState = sessionState;
     }
 
     public bool IsAuthenticated => false;
@@ -201,6 +204,9 @@ public sealed class WebUserService : IUserService
 
     public Task LogoutAsync(CancellationToken cancellationToken = default)
     {
+        // Navigation-time expiry checks in an ended circuit must not log out a
+        // newer browser session. Explicit user logout still uses /logout directly.
+        if (sessionState.EndedReason is not null) return Task.CompletedTask;
         if (Interlocked.Exchange(ref logoutTriggered, 1) != 0)
         {
             return Task.CompletedTask;

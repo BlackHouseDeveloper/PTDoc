@@ -7,6 +7,7 @@ using Moq;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
 using PTDoc.Web.Services;
+using PTDoc.Web.Auth;
 
 namespace PTDoc.Tests.Web;
 
@@ -167,15 +168,83 @@ public sealed class ApiAccessTokenForwardingHandlerTests
         userService.Verify(service => service.LogoutAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Theory]
+    [InlineData("SessionEnded", "GET")]
+    [InlineData("SessionEnded", "POST")]
+    [InlineData("SessionChanged", "GET")]
+    [InlineData("SessionChanged", "POST")]
+    public async Task EndedCircuit_BlocksProtectedOperationsWithoutClearingNewCookieOrDraft(string reason, string method)
+    {
+        var context = CreateAuthenticatedContext("old-token", DateTimeOffset.UtcNow.AddHours(1));
+        var capture = new CaptureHandler();
+        var userService = new Mock<IUserService>(MockBehavior.Strict);
+        var state = new WebCircuitSessionState();
+        using var handler = CreateHandler(new HttpContextAccessor { HttpContext = context },
+            new ThrowingAuthenticationStateProvider(), userService.Object, capture, state);
+        using var client = new HttpClient(handler);
+        state.End(reason);
+        using var request = new HttpRequestMessage(new HttpMethod(method), "https://ptdoc.test/api/v1/notes");
+        // A caller-supplied credential must not bypass a terminal circuit either.
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "explicit-token");
+        using var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(0, capture.CallCount);
+        Assert.Equal(reason, state.EndedReason);
+        userService.Verify(value => value.LogoutAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task MonitoredCircuit_PreservesDraftOnApiRevocationOrAbsoluteExpiry(bool absoluteExpiry)
+    {
+        var context = CreateAuthenticatedContext("old-token", DateTimeOffset.UtcNow.AddHours(1));
+        var identity = (ClaimsIdentity)context.User.Identity!;
+        identity.AddClaim(new Claim("ptdoc_web_session_id", "session"));
+        identity.AddClaim(new Claim("ptdoc_web_session_started_at", DateTimeOffset.UtcNow.AddHours(absoluteExpiry ? -9 : -1).ToString("O")));
+        var capture = new CaptureHandler(HttpStatusCode.Unauthorized);
+        var userService = new Mock<IUserService>(MockBehavior.Strict);
+        var state = new WebCircuitSessionState();
+        using var handler = CreateHandler(new HttpContextAccessor { HttpContext = context },
+            new ThrowingAuthenticationStateProvider(), userService.Object, capture, state);
+        using var client = new HttpClient(handler);
+        using var response = await client.GetAsync("https://ptdoc.test/api/v1/notes");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(absoluteExpiry ? 0 : 1, capture.CallCount);
+        Assert.Equal("SessionEnded", state.EndedReason);
+        userService.Verify(value => value.LogoutAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CircuitEndedDuringAuthenticationLookup_DoesNotSendProtectedRequest()
+    {
+        var completion = new TaskCompletionSource<AuthenticationState>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var authentication = new Mock<AuthenticationStateProvider>();
+        authentication.Setup(value => value.GetAuthenticationStateAsync()).Returns(completion.Task);
+        var capture = new CaptureHandler();
+        var state = new WebCircuitSessionState();
+        using var handler = CreateHandler(new HttpContextAccessor(), authentication.Object,
+            Mock.Of<IUserService>(), capture, state);
+        using var client = new HttpClient(handler);
+        var pending = client.GetAsync("https://ptdoc.test/api/v1/notes");
+        state.End("SessionChanged");
+        completion.SetResult(new AuthenticationState(CreateAuthenticatedContext("old-token", DateTimeOffset.UtcNow.AddHours(1)).User));
+        using var response = await pending;
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(0, capture.CallCount);
+    }
+
     private static ApiAccessTokenForwardingHandler CreateHandler(
         IHttpContextAccessor contextAccessor,
         AuthenticationStateProvider authenticationStateProvider,
         IUserService userService,
-        HttpMessageHandler innerHandler) => new(
+        HttpMessageHandler innerHandler,
+        WebCircuitSessionState? sessionState = null) => new(
             contextAccessor,
             authenticationStateProvider,
             userService,
-            NullLogger<ApiAccessTokenForwardingHandler>.Instance)
+            NullLogger<ApiAccessTokenForwardingHandler>.Instance,
+            sessionState ?? new WebCircuitSessionState())
         {
             InnerHandler = innerHandler
         };
