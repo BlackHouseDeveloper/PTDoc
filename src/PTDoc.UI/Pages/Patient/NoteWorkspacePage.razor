@@ -623,6 +623,7 @@ else
     ];
 
     private readonly SemaphoreSlim _persistGate = new(1, 1);
+    private CancellationTokenSource _workspacePersistenceCts = new();
     private readonly string _beforeUnloadGuardKey = $"note-workspace-{Guid.NewGuid():N}";
     private static readonly IReadOnlyList<SoapSection> DefaultSoapSections =
     [
@@ -1881,10 +1882,18 @@ else
             return false;
         }
 
-        await _persistGate.WaitAsync(cancellationToken);
+        var workspacePersistenceCts = _workspacePersistenceCts;
+        using var persistenceCts = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            workspacePersistenceCts.Token);
+        var persistenceToken = persistenceCts.Token;
+        var enteredPersistGate = false;
         DateTimeOffset? savingStateStartedAt = null;
         try
         {
+            await _persistGate.WaitAsync(persistenceToken);
+            enteredPersistGate = true;
+
             if (!_patientGuid.HasValue || !CanPersistDraft)
             {
                 return false;
@@ -1899,8 +1908,8 @@ else
 
             var saveResult = await NoteWorkspaceService.SaveDraftAsync(
                 BuildDraft(_patientGuid.Value, overrideSubmission),
-                cancellationToken);
-            await EnsureMinimumVisibleSavingStateAsync(savingStateStartedAt.Value, cancellationToken);
+                persistenceToken);
+            await EnsureMinimumVisibleSavingStateAsync(savingStateStartedAt.Value, persistenceToken);
             ApplyValidationDetails(
                 saveResult.Errors,
                 saveResult.Warnings,
@@ -1995,6 +2004,11 @@ else
 
             return true;
         }
+        catch (OperationCanceledException) when (workspacePersistenceCts.IsCancellationRequested)
+        {
+            // Explicit discard cancels every workspace-owned persistence path before navigation.
+            return false;
+        }
         catch (OperationCanceledException)
         {
             throw;
@@ -2003,7 +2017,7 @@ else
         {
             if (savingStateStartedAt.HasValue)
             {
-                await EnsureMinimumVisibleSavingStateAsync(savingStateStartedAt.Value, cancellationToken);
+                await EnsureMinimumVisibleSavingStateAsync(savingStateStartedAt.Value, persistenceToken);
             }
 
             _note.MarkSaveError();
@@ -2014,8 +2028,11 @@ else
         }
         finally
         {
-            await InvokeAsync(StateHasChanged);
-            _persistGate.Release();
+            if (enteredPersistGate)
+            {
+                await InvokeAsync(StateHasChanged);
+                _persistGate.Release();
+            }
         }
     }
 
@@ -3615,6 +3632,12 @@ else
             return;
         }
 
+        // Stay can dismiss recovery while a retry is still awaiting its save.
+        if (!string.Equals(_failedSaveNavigationTarget, target, StringComparison.Ordinal))
+        {
+            return;
+        }
+
         _failedSaveNavigationTarget = null;
         _allowedNavigationTarget = target;
         await NavigateAfterGuardAsync(target);
@@ -3629,24 +3652,50 @@ else
         }
 
         _discardingFailedSave = true;
+        _workspacePersistenceCts.Cancel();
         await DraftAutosaveService.DiscardPendingChangesAsync();
+        await DrainWorkspacePersistenceAsync();
         _note.IsDirty = false;
         _failedSaveNavigationTarget = null;
         _allowedNavigationTarget = target;
         await UpdateBeforeUnloadGuardAsync();
-        await NavigateAfterGuardAsync(target);
+        if (!await NavigateAfterGuardAsync(target))
+        {
+            await RestoreWorkspaceAfterInterruptedDiscardNavigationAsync();
+        }
     }
 
-    private async Task NavigateAfterGuardAsync(string target)
+    private async Task DrainWorkspacePersistenceAsync()
+    {
+        await _persistGate.WaitAsync();
+        _persistGate.Release();
+    }
+
+    private async Task RestoreWorkspaceAfterInterruptedDiscardNavigationAsync()
+    {
+        _workspacePersistenceCts.Dispose();
+        _workspacePersistenceCts = new CancellationTokenSource();
+        _discardingFailedSave = false;
+        await LoadWorkspaceAsync();
+        SetStatusMessage(
+            "Navigation did not complete. The last saved draft was reloaded so you can continue safely.",
+            "info",
+            showToast: true,
+            toastTitle: "Navigation interrupted");
+    }
+
+    private async Task<bool> NavigateAfterGuardAsync(string target)
     {
         try
         {
             await InvokeAsync(() => NavigationManager.NavigateTo(target));
+            return true;
         }
         catch (Exception ex) when (IsExpectedNavigationInterruption(ex))
         {
             _allowedNavigationTarget = null;
             Logger.LogDebug(ex, "Guarded note navigation was interrupted while changing location to {Target}.", target);
+            return false;
         }
     }
 
@@ -3718,6 +3767,9 @@ else
         }
 
         await DraftAutosaveService.DisposeAsync();
+        _workspacePersistenceCts.Cancel();
+        await DrainWorkspacePersistenceAsync();
+        _workspacePersistenceCts.Dispose();
         _persistGate.Dispose();
     }
 }

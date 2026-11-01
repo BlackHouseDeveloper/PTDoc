@@ -66,4 +66,18 @@ public sealed class IncompleteNoteNavigationModalTests : TestContext
         Assert.NotEqual(module.Invocations["registerEscapeHandler"][0].Arguments[0],
             module.Invocations["registerEscapeHandler"][2].Arguments[0]);
     }
+
+    [Fact]
+    public void Registration_DisablesDefaultAutofocus_WhenCancelOwnsInitialFocus()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var module = JSInterop.SetupModule("./_content/PTDoc.UI/js/modal.js");
+        var cut = RenderComponent<IncompleteNoteNavigationModal>(parameters => parameters
+            .Add(component => component.IsOpen, true)
+            .Add(component => component.CompletionState, Missing));
+
+        cut.WaitForAssertion(() => Assert.Single(module.Invocations["registerEscapeHandler"]));
+        var invocation = module.Invocations["registerEscapeHandler"].Single();
+        Assert.Equal(false, invocation.Arguments[2]);
+    }
 }

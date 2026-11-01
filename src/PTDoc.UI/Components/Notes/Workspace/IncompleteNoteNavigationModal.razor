@@ -86,7 +86,7 @@
             _dotNetReference ??= DotNetObjectReference.Create(this);
             // Track ownership before yielding: close/dispose can run while interop is pending.
             _registered = true;
-            await _modalModule.InvokeVoidAsync("registerEscapeHandler", ModalId, _dotNetReference);
+            await _modalModule.InvokeVoidAsync("registerEscapeHandler", ModalId, _dotNetReference, false);
             if (!CanRegister || generation != _generation)
             {
                 await UnregisterAsync();

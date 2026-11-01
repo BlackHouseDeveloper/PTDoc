@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 157 failed-save recovery races
+
+- Cancel and drain every note-workspace persistence path before explicit discard navigates, including direct/override saves, and retain the persistence gate until all cancelled work has completed. Retry now rechecks that its recovery target remains current after saving, so Stay cannot be overridden by a late navigation.
+- Reload the saved workspace if discard navigation is interrupted, restoring a usable autosave lifecycle instead of leaving editable controls with persistence disabled. Disable the modal helper's default autofocus where the incomplete-note dialog deliberately focuses Cancel, preventing a delayed focus switch to Continue. Added focused delayed-save and modal-registration regression coverage; verification remains pending user-run tests.
+
 ### Fixed - PR 156 monitor startup and regression verification
 
 - Retry interrupted activity-monitor initialization when the retained circuit reconnects, coalescing concurrent retries and preserving an already-running JavaScript monitor after a lost acknowledgement. Add eight .NET lifecycle cases and two JavaScript regressions.
