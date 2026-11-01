@@ -126,7 +126,7 @@ async function expectBlockedOperations(page: Page) {
   // error cannot satisfy the assertion before its SignalR event has completed.
   await requireLocalValidation(page);
   await page.getByRole('button', { name: 'Search', exact: true }).click();
-  await expect(page.locator('.provider-admin__state--error')).toHaveText('Your session is missing or expired. Sign in again.');
+  await expect(page.locator('.provider-admin__state--error')).toHaveText('Response status code does not indicate success: 401 (Unauthorized).');
   await requireLocalValidation(page);
   await page.getByRole('button', { name: 'Submit for approval', exact: true }).click();
   await expect(page.locator('.provider-admin__state--error')).toHaveText('Your session is missing or expired. Sign in again.');

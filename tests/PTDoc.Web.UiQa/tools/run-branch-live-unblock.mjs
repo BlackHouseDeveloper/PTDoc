@@ -110,6 +110,7 @@ try {
 
   const playwright = startProcess('npx', [
     'playwright', 'test', sessionBoundary ? 'tests/session-circuit-boundary.spec.ts' : 'tests/branch-live-unblock.spec.ts',
+    ...(sessionBoundary ? ['--config', 'playwright.session-boundary.config.ts'] : []),
     '--workers=1', ...playwrightArgs
   ], {
     cwd: qaRoot,

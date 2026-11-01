@@ -3,6 +3,7 @@ using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
 using Moq;
 using PTDoc.Application.Identity;
 using PTDoc.Web.Auth;
@@ -81,5 +82,109 @@ public sealed class WebSessionActivityMonitorTests : TestContext
 
         cut.WaitForAssertion(() => Assert.Contains("Sign in", cut.Find("button").TextContent));
         Assert.Equal(originalUri, navigation.Uri);
+    }
+
+    [Theory]
+    [InlineData("import", false)]
+    [InlineData("start", false)]
+    [InlineData("import", true)]
+    [InlineData("start", true)]
+    public async Task FailedStartup_RetriesOnConnectionUp_WithoutRestartingSuccessfulMonitor(string phase, bool canceled)
+    {
+        var runtime = new StartupRuntime();
+        var failures = 0;
+        runtime.BeforeInvoke = identifier => identifier == phase && failures++ == 0
+            ? Task.FromException(canceled ? new TaskCanceledException() : new JSDisconnectedException("Disconnected"))
+            : Task.CompletedTask;
+        Services.AddSingleton<IJSRuntime>(runtime);
+        using var handler = new WebSessionCircuitHandler(_authentication.Object, Services.GetRequiredService<WebCircuitSessionState>());
+        var cut = RenderComponent<WebSessionActivityMonitor>();
+        cut.WaitForAssertion(() => Assert.Equal(1, failures));
+        Assert.Equal(0, runtime.SuccessfulStarts);
+
+        await cut.InvokeAsync(() => handler.OnConnectionUpAsync(null!, CancellationToken.None));
+        cut.WaitForAssertion(() => Assert.Equal(1, runtime.SuccessfulStarts));
+        var calls = runtime.Calls.Count;
+        await cut.InvokeAsync(() => handler.OnConnectionUpAsync(null!, CancellationToken.None));
+        cut.Render();
+        Assert.Equal(calls, runtime.Calls.Count);
+        Assert.Null(Services.GetRequiredService<WebCircuitSessionState>().EndedReason);
+        if (phase == "start")
+        {
+            var starts = runtime.Calls.Where(call => call.Identifier == "start").ToArray();
+            Assert.Equal(2, starts.Length);
+            Assert.Same(starts[0].Arguments![1], starts[1].Arguments![1]);
+            Assert.Equal(starts[0].Arguments![2], starts[1].Arguments![2]);
+        }
+    }
+
+    [Theory]
+    [InlineData("import")]
+    [InlineData("start")]
+    public async Task ReconnectDuringPendingStartup_RetriesAfterFailure_WithoutConcurrentStart(string phase)
+    {
+        var pending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runtime = new StartupRuntime();
+        var attempts = 0;
+        runtime.BeforeInvoke = identifier => identifier == phase && attempts++ == 0 ? pending.Task : Task.CompletedTask;
+        Services.AddSingleton<IJSRuntime>(runtime);
+        using var handler = new WebSessionCircuitHandler(_authentication.Object, Services.GetRequiredService<WebCircuitSessionState>());
+        var cut = RenderComponent<WebSessionActivityMonitor>();
+        cut.WaitForAssertion(() => Assert.Equal(1, attempts));
+        await cut.InvokeAsync(() => handler.OnConnectionUpAsync(null!, CancellationToken.None));
+        await cut.InvokeAsync(() => handler.OnConnectionUpAsync(null!, CancellationToken.None));
+        Assert.Equal(1, attempts);
+
+        pending.SetException(new JSDisconnectedException("Lost startup acknowledgement"));
+
+        cut.WaitForAssertion(() => Assert.Equal(1, runtime.SuccessfulStarts));
+        Assert.Equal(2, attempts);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedStartup_DoesNotRetryAfterTerminationOrDisposal(bool dispose)
+    {
+        var runtime = new StartupRuntime { BeforeInvoke = _ => Task.FromException(new JSDisconnectedException("Disconnected")) };
+        Services.AddSingleton<IJSRuntime>(runtime);
+        var state = Services.GetRequiredService<WebCircuitSessionState>();
+        using var handler = new WebSessionCircuitHandler(_authentication.Object, state);
+        var cut = RenderComponent<WebSessionActivityMonitor>();
+        cut.WaitForAssertion(() => Assert.Single(runtime.Calls));
+        if (dispose)
+        {
+            // Dispose the component through the renderer, not only its bUnit wrapper.
+            await cut.InvokeAsync(DisposeComponents);
+            Assert.True(cut.IsDisposed);
+        }
+        else await cut.InvokeAsync(() => state.End("SessionEnded"));
+
+        if (dispose) await handler.OnConnectionUpAsync(null!, CancellationToken.None);
+        else await cut.InvokeAsync(() => handler.OnConnectionUpAsync(null!, CancellationToken.None));
+
+        Assert.Single(runtime.Calls);
+        Assert.Equal(0, runtime.SuccessfulStarts);
+    }
+
+    private sealed class StartupRuntime : IJSRuntime, IJSObjectReference
+    {
+        public List<(string Identifier, object?[]? Arguments)> Calls { get; } = [];
+        public Func<string, Task> BeforeInvoke { get; set; } = _ => Task.CompletedTask;
+        public int SuccessfulStarts { get; private set; }
+
+        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) =>
+            InvokeAsync<TValue>(identifier, CancellationToken.None, args);
+
+        public async ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+        {
+            Calls.Add((identifier, args));
+            await BeforeInvoke(identifier);
+            if (identifier == "import") return (TValue)(object)this;
+            if (identifier == "start") SuccessfulStarts++;
+            return default!;
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

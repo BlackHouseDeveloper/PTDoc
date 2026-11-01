@@ -9,6 +9,9 @@ public sealed class WebCircuitSessionState
     internal bool IsBoundToLocalCircuit => _originalSignIn is not null;
     public string? EndedReason { get; private set; }
     public event Action? Changed;
+    public event Action? ConnectionUp;
+
+    internal void NotifyConnectionUp() => ConnectionUp?.Invoke();
 
     internal void BindCircuit(ClaimsPrincipal principal)
     {

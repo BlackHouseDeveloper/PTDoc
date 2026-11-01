@@ -1,9 +1,12 @@
 let stopCurrent = null;
+let currentStartupId = null;
 
 // No bearer credential enters JavaScript. This identifier binds the current
 // circuit to its existing HttpOnly cookie and cannot authenticate a request.
-export function start(sessionId, receiver) {
+export function start(sessionId, receiver, startupId) {
+  if (startupId && startupId === currentStartupId && stopCurrent) return;
   stop();
+  currentStartupId = startupId;
   let lastAttempt = -Infinity;
   let pending = false;
   let stopped = false;
@@ -46,4 +49,5 @@ export function start(sessionId, receiver) {
 export function stop() {
   stopCurrent?.();
   stopCurrent = null;
+  currentStartupId = null;
 }

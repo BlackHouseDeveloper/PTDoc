@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 156 monitor startup and regression verification
+
+- Retry interrupted activity-monitor initialization when the retained circuit reconnects, coalescing concurrent retries and preserving an already-running JavaScript monitor after a lost acknowledgement. Add eight .NET lifecycle cases and two JavaScript regressions.
+- Exclude the seven localhost-only session-boundary browser cases from default QA discovery and select a dedicated configuration through the existing `--session-boundary` harness option. Add two discovery regressions and correct the blocked GET assertion while retaining the distinct POST error check.
+- Remove bUnit's placeholder authorization service before registering real authorization in the three retained-editor tests, addressing the current Core CI failure. Refresh the complete review classification and evidence in Plan 01; .NET and browser execution remain pending for these changes.
+- Correct the monitor disposal regression to remove the component through bUnit's renderer before raising reconnect; disposing only the rendered wrapper left the live component subscribed. Production behavior is unchanged by this test correction.
+
 ### Fixed - PR 156 retained-circuit identity boundary
 
 - Bind current local circuits to their opening sign-in so reconnecting with a replacement or anonymous identity cannot forward credentials from a retained draft. Observe authentication changes for recovery alerts and independently check circuit identity before protected requests, including when the handshake HttpContext is stale.

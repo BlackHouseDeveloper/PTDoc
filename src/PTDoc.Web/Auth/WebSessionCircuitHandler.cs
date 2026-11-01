@@ -10,6 +10,12 @@ public sealed class WebSessionCircuitHandler(
 {
     private bool _disposed;
 
+    public override Task OnConnectionUpAsync(Circuit circuit, CancellationToken cancellationToken)
+    {
+        if (!_disposed) sessionState.NotifyConnectionUp();
+        return Task.CompletedTask;
+    }
+
     public override async Task OnCircuitOpenedAsync(Circuit circuit, CancellationToken cancellationToken)
     {
         sessionState.BindCircuit((await authentication.GetAuthenticationStateAsync()).User);

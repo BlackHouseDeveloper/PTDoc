@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Claims;
 using Bunit;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Rendering;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moq;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
@@ -240,6 +242,8 @@ public sealed class WebScopedHttpClientFactoryTests
         hostAuthentication.SetAuthenticationState(Task.FromResult(new AuthenticationState(Principal("original"))));
         await OpenCircuitAsync(scope.ServiceProvider);
         using var ui = CreateCircuitRenderer(scope.ServiceProvider);
+        // AddAuthorizationCore uses TryAdd; remove bUnit's throwing placeholder first.
+        ui.Services.RemoveAll<IAuthorizationService>();
         ui.Services.AddAuthorizationCore();
         var monitor = ui.RenderComponent<WebSessionActivityMonitor>();
         var editor = ui.RenderComponent<CascadingAuthenticationState>(parameters => parameters

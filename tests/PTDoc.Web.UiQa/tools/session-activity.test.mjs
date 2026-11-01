@@ -150,3 +150,44 @@ test('backward wall-clock corrections do not suppress renewal or bypass throttli
   await h.fire();
   assert.equal(h.requests.length, 2);
 });
+
+test('retrying the same startup preserves listeners, throttle, and an in-flight renewal', async () => {
+  const h = harness();
+  let finish;
+  h.respond(() => new Promise(resolve => { finish = resolve; }));
+  h.monitor.start('session', h.receiver, 'startup-a');
+  const listener = h.listeners.get('input');
+  const pending = h.fire();
+  h.monitor.start('session', h.receiver, 'startup-a'); // First start executed but its acknowledgement was lost.
+  assert.equal(h.listeners.get('input'), listener);
+  assert.equal(h.requests[0].options.signal.aborted, false);
+  await h.fire();
+  assert.equal(h.requests.length, 1);
+  finish({ status: 204 });
+  await pending;
+  h.respond(async () => ({ status: 204 }));
+  h.advance(59_999);
+  await h.fire();
+  assert.equal(h.requests.length, 1);
+  h.advance(1);
+  await h.fire();
+  assert.equal(h.requests.length, 2);
+
+  h.monitor.start('session', h.receiver, 'startup-b'); // A new component may replace the old monitor.
+  assert.notEqual(h.listeners.get('input'), listener);
+  h.monitor.stop();
+  h.monitor.start('session', h.receiver, 'startup-b');
+  assert.equal(h.listeners.size, 5);
+});
+
+test('retrying an acknowledged terminal startup cannot resume renewal', async () => {
+  const h = harness();
+  h.respond(async () => ({ status: 401 }));
+  h.monitor.start('session', h.receiver, 'startup');
+  await h.fire();
+  h.monitor.start('session', h.receiver, 'startup');
+  h.advance(61_000);
+  await h.fire();
+  assert.equal(h.requests.length, 1);
+  assert.equal(h.notices.length, 1);
+});

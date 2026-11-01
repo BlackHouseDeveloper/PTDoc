@@ -330,6 +330,11 @@ The activity monitor starts only for tickets carrying both a sign-in ID and the
 current activity-ticket marker. Previous-version tickets keep normal expiry until
 the next sign-in. Input throttling uses `performance.now()` so a wall-clock
 correction cannot suspend renewal; the first trusted input is eligible immediately.
+If JavaScript import/start fails during a disconnect, the circuit's next connection-up
+notification retries startup. Concurrent notifications coalesce, and a per-component
+startup ID makes a repeated JavaScript start preserve existing listeners, throttling
+and in-flight renewal. No timer renews the session. Terminated/disposed monitors do
+not restart.
 
 #### 4c. PTDoc.Maui
 

@@ -1,9 +1,9 @@
 # Plan PR 01: Verify and repair active-use and multi-tab sessions
 
-**Latest assessment (2026-10-30): retained-circuit reconnect defect identified and fixed locally; .NET/browser verification pending.**
-The final assessment below develops the earlier summary-only concern into a
-concrete identity-transition failure. The nine earlier findings remain fixed at
-`81f565c`. Passing verification for that commit does not verify these new changes.
+**Latest audit (2026-11-01): three new review findings and one related CI test-setup defect fixed locally; .NET/browser verification pending.**
+The final audit below checks the complete feedback inventory against published
+head `b65520a` and records the new uncommitted fixes. Earlier assessments are
+historical snapshots; prior user-confirmed verification does not verify this diff.
 
 - Requirements: R003, R005, R048, R061
 - Original plan status: Verification Required
@@ -624,3 +624,118 @@ No commit, push, GitHub reply/resolution or review request was made. The concern
 has no inline thread to resolve; after all verification passes, an evidence-backed
 summary response would require separate user authorization. Existing resolved
 threads need no duplicate replies.
+
+## Complete review refresh — 2026-11-01
+
+### Scope and inventory
+
+Fetched PR 156 and confirmed local HEAD, tracking branch and remote head are
+`b65520a07d4f487c40742b4a958d8d65844effbd`; base is
+`ee9a0066d11b135841e7da33643d53ab954a4a76`. The working tree started clean.
+The paginated GraphQL review-fetch script and GitHub connector agree: **1 conversation
+comment, 16 reviews, 13 inline threads, 22 inline comments including 9 author replies**.
+Ten threads are resolved (eight marked outdated by GitHub); three are open.
+All review bodies and collapsed sections were inspected. **No suppressed finding or
+Previously missed section/item was returned.** The latest review labels its three
+findings New. The published summary comment is a verification record, not a new finding.
+
+After deduplication there are **13 unique review findings: 3 valid/actionable,
+10 outdated/already addressed, 0 invalid, 0 ambiguous**. One inline finding and
+19 links from review summaries are duplicates. A separate valid CI setup defect
+was found while checking the evidence for the earlier circuit-boundary concern.
+“Outdated” below is a code-based disposition, independent of GitHub's outdated flag;
+it does not claim that every historical acceptance test passed.
+
+### Complete classification and evidence
+
+Paths are repository-relative; named methods identify the rechecked code/tests.
+
+| Finding | Classification | Evidence and disposition |
+| --- | --- | --- |
+| [4381841551 / CodeQL 19](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381841551) | Outdated | `src/PTDoc.Web/Auth/WebSessionActivity.cs:RenewAsync` returns explicit Unauthorized on cross-site input before API calls/cookie writes. `CrossSiteActivity_IsRejectedWithoutRenewingCookie` asserts 401, zero API calls and no Set-Cookie. Fix `c90d7c1` remains present; the alert's PR instance is fixed. No change. |
+| [4381845004 / stale renewal](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381845004) | Outdated | Renewal writes only the sign-in-specific protected activity cookie; `Program.cs` disables local sliding renewal and cookie validation emits no deletion. `DelayedRenewal_CannotRestoreLogoutOrOverwriteNewSignIn` applies responses in delayed order and checks the replacement identity or logged-out rejection. Fixed by `4f45f05`; no change. |
+| [4381845075 / ended circuit still forwards](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381845075) | Outdated | Monitor callbacks end shared scoped state; `ApiAccessTokenForwardingHandler.SendAsync` checks it before and after token lookup. Logout/replacement calls `RevokePreviousSessionAsync`; `AuthService.LogoutAsync` revokes the matching token hash and validation excludes revoked sessions. `EndedCircuit_BlocksProtectedOperationsWithoutClearingNewCookieOrDraft`, `CircuitEndedDuringAuthenticationLookup_DoesNotSendProtectedRequest`, `AuthenticationChange_RevokesOldCircuitBeforeAnotherProtectedReadOrSave`, and `LogoutAsync_RejectsOldOpaqueSessionWithoutRevokingReplacementSession` retain the relevant assertions. Fix `4f45f05` remains present. |
+| [4381845135 / failed recovery callback](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4381845135) | Outdated | `sessionActivity.js` sets `stopped` only after successful callback delivery. Separate 401/409 disconnected-callback JavaScript regressions verify later trusted input retries. Fixed by `4f45f05`; both regressions pass in this session. |
+| [4411837564 / delayed logout](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4411837564) | Outdated | Local logout writes a sign-in-specific denial marker after revocation instead of deleting the shared identity cookie. `DelayedLogout_CannotClearReplacementSignIn` applies B's cookie before A's late logout and checks B succeeds/A is denied for current, previous-version and legacy tickets. Fix `d102f0d` remains present. |
+| [4411837629 / pooled authentication state](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4411837629) | Outdated | `Program.cs` and `WebScopedHttpClientFactory` resolve each authentication wrapper from its caller's scope and pool only transport. Named diagnostics/MFA clients and the injected UI HttpClient use this path. `NamedClients_IsolateRejectedUsers_WhileSharingTransport` covers A's rejection, B's diagnostics/recovery-code success and disposal isolation; `AuthApiClient_RemainsUsableForRecoveryInEndedScope` covers recovery. Fixed by `d102f0d`. |
+| [4411837680 / previous-version monitor](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4411837680) | Outdated | Monitor startup requires `UsesActivityTicket`, matching renewal eligibility. `Monitor_StartsOnlyForCurrentActivityTickets` covers absent/incorrect/current markers, and the previous-version/legacy integration cases retain normal expiry. Fix `d102f0d` remains present, including in the retry path. |
+| [4411837718 / backward wall clock](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4411837718) | Outdated | JavaScript uses `performance.now()` and an immediately eligible first input. The backward-clock regression checks the 59,999/60,000 ms threshold after a one-hour wall-clock rollback; it passes. Fixed by `d102f0d`. |
+| [4412062637 / CodeQL 20](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4412062637) | Outdated | `BrowserAuthenticationProbe` uses explicit `app.Map`/`Run`, with real cookie authentication only inside the nested test host. Three delayed-logout cases assert B's 200/A's 401. Fixed by `81f565c`; alert's PR instance is fixed and current CodeQL checks pass. |
+| [4418418883 / test routing](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4418418883) | Duplicate | Same probe and remedy as CodeQL 20; no separate change. |
+| [5711868930 / circuit boundary summary](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#pullrequestreview-5711868930) | Outdated for the identified defect | `b65520a` binds opening identity through `WebSessionCircuitHandler`/`WebCircuitSessionState`, validates host updates before publishing through `WebCircuitAuthenticationStateProvider`, preserves terminal UI state and blocks protected forwarding. The 12 composed cases and seven browser cases cover the intended transitions. This pass repairs the browser assertion/configuration and three .NET cases' authorization setup below; prior user confirmation alone does not establish those previously broken tests passed. The separate startup defect is counted below. No resolvable inline thread exists for the summary. |
+| [4424384669 / localhost suite in hosted discovery](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4424384669) | Valid — fixed locally | `package.json` runs unrestricted `playwright test`; the prior config discovered this spec, whose hooks require loopback/fault-proxy fixtures. Default config now ignores it; dedicated `playwright.session-boundary.config.ts` opts in and is selected by the harness's `--session-boundary` option. Two discovery regressions execute actual Playwright listing with a hosted origin and no fault proxy: default excludes the spec, explicit config contains exactly seven cases. Both pass. Other suites' behavior is unchanged; this does not claim the full hosted suite passes. |
+| [4424384752 / blocked GET error assertion](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4424384752) | Valid — fixed locally | `ProviderDirectorySettingsPanel.LoadAsync` exposes `ex.Message`; `ProviderDirectoryApiService.SearchForAdministrationAsync` uses `GetFromJsonAsync`, whose failed response produces the HTTP 401 exception message. `SubmitAsync` instead uses `ApiErrorReader`. The helper now checks `Response status code does not indicate success: 401 (Unauthorized).` for Search and retains the friendly POST assertion. All five helper callers still verify retained drafts and unconsumed read/write fault rules. Browser execution pending. |
+| [4424384803 / failed monitor startup](https://github.com/BlackHouseDeveloper/PTDoc/pull/156#discussion_r4424384803) | Valid — fixed locally | Prior `OnAfterRenderAsync` attempted import/start only on first render and swallowed disconnect/cancellation. Reconnect did not initialize it again. The existing registered circuit handler now signals connection-up through scoped state; the monitor retries failed startup, coalesces overlapping notifications, and does not restart after success, termination or disposal. A stable per-component startup ID makes JavaScript retries idempotent even if start ran but its acknowledgement was lost. Eight .NET lifecycle cases and two JavaScript regressions added; JavaScript passes, .NET pending. |
+| 19 review-summary links | Duplicate | References to the inline findings above; no extra code change or duplicate reply needed. |
+| [Core CI run 41065546190](https://github.com/BlackHouseDeveloper/PTDoc/actions/runs/41065546190/job/124095803236) | Valid additional verification defect — fixed locally | Current head's Core CI reports 2,105 tests: 2,102 passed, 3 failed. All three `HostAuthenticationUpdate_PreservesAuthorizedEditor_WhileDenyingChangedIdentity` cases throw `MissingFakeAuthorizationException` in bUnit's placeholder `IAuthorizationService`, before the editor assertions. `AddAuthorizationCore` does not replace an existing registration. Remove only that placeholder before adding real authorization; retain the production host authentication provider and all three editor/transport/recovery assertions. No production auth policy change. Rerun required. |
+
+### Correction details and verification limits
+
+The new connection-up callback returns immediately rather than awaiting JavaScript
+acknowledgement inside the SignalR reconnect lifecycle. The component marshals work
+onto its renderer, remembers a reconnect that arrives during pending startup, and
+reuses its module/reference/startup ID. The [framework lifecycle source](https://github.com/dotnet/aspnetcore/blob/v8.0.21/src/Components/Server/src/Circuits/CircuitHost.cs#L233-L258)
+invokes `CircuitHandler.OnConnectionUpAsync` on connection establishment.
+No activity timer or synthetic renewal was added. JavaScript duplicate startup
+preserves listener identity, pending fetch, throttle and terminal recovery state;
+a new component startup ID can still replace the old monitor.
+
+Added .NET coverage: four import/start × disconnect/cancellation cases, two
+reconnect-during-pending cases, and two termination/disposal cases. They invoke the
+real circuit-handler callback with a controlled JS runtime, and assert successful
+startup is not repeated. They do not claim to execute SignalR. The existing seven
+browser cases remain the real integration gate; discovery is not execution.
+
+Passed in this session: **12 JavaScript activity tests**, **2 Playwright discovery
+regressions**, harness JavaScript syntax check, and git whitespace checks. Existing
+CodeQL and other PR checks pass; Core CI is red for the three setup failures above.
+No .NET build/test, format command or full browser run was executed, following
+AGENTS.md. No remaining policy ambiguity was identified; verification of the new
+diff is outstanding.
+
+### Required commands and thread eligibility
+
+Run from the repository root (SDK pinned by `global.json`):
+
+```bash
+dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter 'FullyQualifiedName~WebSessionActivityMonitorTests|FullyQualifiedName~WebScopedHttpClientFactoryTests|FullyQualifiedName~ApiAccessTokenForwardingHandlerTests|FullyQualifiedName~WebSessionActivityIntegrationTests|FullyQualifiedName~AuthServiceTests' --verbosity normal
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter 'Category=CoreCi' --verbosity normal --logger 'trx;LogFileName=test-results.trx'
+dotnet format src/PTDoc.Web/PTDoc.Web.csproj --verify-no-changes --verbosity minimal
+dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity minimal
+node --test tests/PTDoc.Web.UiQa/tools/session-activity.test.mjs tests/PTDoc.Web.UiQa/tools/session-boundary-discovery.test.mjs
+```
+
+The actual localhost browser harness requires Debug host artifacts, the existing
+seeded local SQLite database, installed Chromium and out-of-band local credentials:
+
+```bash
+dotnet build src/PTDoc.Api/PTDoc.Api.csproj --configuration Debug
+dotnet build src/PTDoc.Web/PTDoc.Web.csproj --configuration Debug
+cd tests/PTDoc.Web.UiQa
+PTDOC_UI_QA_REQUIRE_FULL_FIXTURES=false PTDOC_UI_QA_PIN=<local-seeded-pin> npm run test:branch-live-unblock -- --session-boundary --headed
+```
+
+After these pass and publication/replies are explicitly authorized, the three
+open threads **4424384669** (`PRRT_kwDOQt-faM6x_ha5`), **4424384752**
+(`PRRT_kwDOQt-faM6x_hbp`) and **4424384803** (`PRRT_kwDOQt-faM6x_hcD`) will be
+eligible for evidence-based replies and resolution, provided fresh feedback and
+remote code still match. The ten historical threads are already resolved and need
+no duplicate replies. The summary and CI failure have no individual review thread
+to resolve. No suppressed finding was resolved. No commit, push, reply, resolution,
+PR-level response or review request was made during this pass.
+
+### Verification follow-up — disposal test harness
+
+The subsequent user-run suite reported **2,539 passed, 1 failed, 2,540 total**.
+Only `FailedStartup_DoesNotRetryAfterTerminationOrDisposal(dispose: true)` failed,
+observing a second import after reconnect. In bUnit 1.40,
+[`RenderedFragment.Dispose`](https://github.com/bUnit-dev/bUnit/blob/v1.40.0/src/bunit.web/Rendering/RenderedFragment.cs#L176-L198)
+cleans up the wrapper, not the underlying component. The test now invokes
+`DisposeComponents` on the renderer dispatcher and asserts the rendered component
+was removed before reconnect. This exercises the monitor's actual `DisposeAsync`
+and event unsubscription. The unchanged single-import/zero-successful-start
+assertions remain. No production code changed in this follow-up. The focused
+monitor tests and original full suite must be rerun; no .NET execution was performed
+by the agent.
