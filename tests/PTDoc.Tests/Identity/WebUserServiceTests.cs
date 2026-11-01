@@ -82,10 +82,26 @@ public sealed class WebUserServiceTests
         Assert.True(navigationManager.LastForceLoad);
     }
 
+    [Theory]
+    [InlineData("SessionEnded")]
+    [InlineData("SessionChanged")]
+    public async Task LogoutAsync_EndedCircuitDoesNotNavigateToLogoutForNewBrowserIdentity(string reason)
+    {
+        var navigationManager = CreateNavigationManager();
+        var state = new WebCircuitSessionState();
+        var service = CreateService(new RecordingJsRuntime(), navigationManager, false, state);
+        state.End(reason);
+
+        await service.LogoutAsync();
+
+        Assert.Equal(0, navigationManager.NavigationCount);
+    }
+
     private static WebUserService CreateService(
         IJSRuntime jsRuntime,
         NavigationManager navigationManager,
-        bool externalIdentityEnabled)
+        bool externalIdentityEnabled,
+        WebCircuitSessionState? sessionState = null)
     {
         var signupApiClient = new SignupApiClient(new Mock<System.Net.Http.IHttpClientFactory>().Object);
         var passwordResetApiClient = new PasswordResetApiClient(new Mock<System.Net.Http.IHttpClientFactory>().Object);
@@ -100,7 +116,7 @@ public sealed class WebUserServiceTests
             {
                 Enabled = externalIdentityEnabled,
                 DisplayName = "Microsoft"
-            }));
+            }), sessionState ?? new WebCircuitSessionState());
     }
 
     private static TestNavigationManager CreateNavigationManager()

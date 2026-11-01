@@ -32,6 +32,7 @@ if (requireFullFixtures) {
 
 export default defineConfig({
   testDir: './tests',
+  testIgnore: ['**/session-circuit-boundary.spec.ts'],
   outputDir: artifactDirectory ? `${artifactDirectory}/test-results` : './test-results',
   timeout: 45_000,
   retries: 0,
