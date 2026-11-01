@@ -238,6 +238,7 @@ jobs:
           "https://api-ptdoc.bhdevsites.com/health/ready"
         for username in january.beta dani.beta pta.beta patient.beta; do
           login_response="$(curl --fail --silent --show-error \
+            --retry 6 --retry-delay 5 --connect-timeout 10 --max-time 30 \
             --header 'Content-Type: application/json' \
             --data "{\"username\":\"${username}\",\"pin\":\"${PTDOC_BETA_SEED_PIN}\"}" \
             'https://api-ptdoc.bhdevsites.com/api/v1/auth/pin-login')"

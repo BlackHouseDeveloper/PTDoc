@@ -5,6 +5,7 @@
 @using PTDoc.Application.Identity
 @using PTDoc.Application.Integrations
 @using PTDoc.Application.Services
+@using PTDoc.Application.Settings
 @using PTDoc.Core.Models
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Routing
@@ -58,6 +59,7 @@
                                    IsFiltersOpen="@isFiltersOpen"
                                    IsFiltersOpenChanged="@((value) => isFiltersOpen = value)"
                                    CurrentFilter="@currentFilter"
+                                   AppointmentTypes="@AvailableAppointmentTypeNames"
                                    OnFilterChanged="HandleFilterChanged" />
 
             <AppointmentsRightColumn ViewLabel="@GetViewLabel()"
@@ -92,6 +94,7 @@
                     AvailablePatients="@availablePatients"
                     AvailableClinicians="@availableClinicians"
                     OnAddPatientRequested="@HandleAddPatientRequested"
+                    AvailableVisitTypes="@availableVisitTypes"
                     OnSubmit="@HandleAppointmentSubmit" />
 
 <AuthorizeView Policy="@AuthorizationPolicies.PatientWrite">
@@ -162,6 +165,10 @@
     private List<NewAppointmentModal.PatientOption> availablePatients = new();
     private List<SendIntakeModal.PatientOption> availableIntakePatients = new();
     private List<NewAppointmentModal.ClinicianOption> availableClinicians = new();
+    private IReadOnlyList<NewAppointmentModal.VisitTypeOption> availableVisitTypes = [];
+    private IReadOnlyList<string> AvailableAppointmentTypeNames => availableVisitTypes.Count == 0
+        ? Array.Empty<string>()
+        : availableVisitTypes.Select(item => item.Name).ToArray();
     private bool isLoadingAppointments = true;
     private string? appointmentLoadError;
     private bool shouldNormalizeRouteAction;
@@ -196,6 +203,7 @@
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
     [Inject] private IAppointmentService AppointmentService { get; set; } = default!;
+    [Inject] private ISchedulingAdministrationService SchedulingAdministrationService { get; set; } = default!;
     [Inject] private IPaymentClientService PaymentClientService { get; set; } = default!;
     [Inject] private IPatientService PatientService { get; set; } = default!;
     [Inject] private IIntakeService IntakeService { get; set; } = default!;
@@ -208,6 +216,7 @@
         await LoadUserContextAsync();
         ApplyRouteQuery();
         await LoadPatientsAsync();
+        await LoadVisitTypesAsync();
         await LoadAppointmentsAsync();
     }
 
@@ -451,6 +460,7 @@
                     PatientId = patientId,
                     ClinicianId = clinicianId,
                     AppointmentType = formData.AppointmentType,
+                    VisitTypeId = formData.VisitTypeId,
                     AppointmentDate = formData.AppointmentDate,
                     AppointmentTime = formData.AppointmentTime,
                     DurationMinutes = formData.DurationMinutes,
@@ -473,6 +483,7 @@
                     PatientId = patientId,
                     ClinicianId = clinicianId,
                     AppointmentType = formData.AppointmentType,
+                    VisitTypeId = formData.VisitTypeId,
                     AppointmentDate = formData.AppointmentDate,
                     AppointmentTime = formData.AppointmentTime,
                     DurationMinutes = formData.DurationMinutes,
@@ -840,6 +851,26 @@
         PhoneNumber = patient.Phone
     };
 
+    private async Task LoadVisitTypesAsync()
+    {
+        try
+        {
+            availableVisitTypes = (await SchedulingAdministrationService.GetVisitTypesAsync(Guid.Empty, false))
+                .Select(item => new NewAppointmentModal.VisitTypeOption
+                {
+                    Id = item.Id,
+                    Name = item.Name,
+                    DurationMinutes = item.DurationMinutes
+                })
+                .ToArray();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load visit-type catalog; the legacy compatibility choices remain available.");
+            availableVisitTypes = [];
+        }
+    }
+
     private async Task LoadAppointmentsAsync()
     {
         isLoadingAppointments = true;
@@ -1059,6 +1090,7 @@
                 ? string.Empty
                 : selectedAppointmentDetail.PatientRecordId.ToString(),
             AppointmentType = MapAppointmentTypeForForm(selectedAppointmentDetail.AppointmentType),
+            VisitTypeId = selectedAppointmentDetail.VisitTypeId,
             AppointmentDate = selectedAppointmentDetail.AppointmentDate,
             AppointmentTime = selectedAppointmentDetail.StartTime.ToTimeSpan(),
             DurationMinutes = selectedAppointmentDetail.DurationMinutes,
@@ -1358,6 +1390,7 @@
             StartTime = TimeOnly.FromDateTime(localStart),
             DurationMinutes = durationMinutes,
             AppointmentType = appointment.AppointmentType,
+            VisitTypeId = appointment.VisitTypeId,
             AppointmentStatus = GetEffectiveAppointmentStatus(appointment),
             VisitWorkflowStatus = GetEffectiveAppointmentStatus(appointment),
             IntakeStatus = appointment.IntakeStatus,

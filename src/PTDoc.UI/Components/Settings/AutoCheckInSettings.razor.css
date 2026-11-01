@@ -1,0 +1,10 @@
+.quick-settings { display: grid; gap: var(--spacing-5); max-width: 52rem; }
+.quick-settings__back { justify-self: start; border: 0; color: var(--primary); background: transparent; }
+.quick-settings__panel { display: grid; gap: var(--spacing-4); padding: var(--spacing-5); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); }
+.quick-settings__panel label { display: grid; gap: var(--spacing-2); }
+.quick-settings__panel fieldset { display: grid; gap: var(--spacing-2); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.quick-settings__actions { display: flex; justify-content: flex-end; gap: var(--spacing-3); }
+.quick-settings__primary { color: var(--primary-foreground); background: var(--primary); }
+.quick-settings__status { color: var(--settings-summary-foreground); }
+.quick-settings__status.is-error { color: var(--destructive); }
+.quick-settings input:disabled, .quick-settings button:disabled { cursor: not-allowed; opacity: 0.58; }

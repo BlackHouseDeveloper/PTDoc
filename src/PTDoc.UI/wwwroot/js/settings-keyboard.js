@@ -14,7 +14,7 @@ export function attachKeyboardGuards(root) {
       return;
     }
 
-    const isSettingsTab = target.matches(".roles-permissions__tab, .scheduling-settings__tab");
+    const isSettingsTab = target.matches(".roles-permissions__tab, .scheduling-settings__tab, .documentation-settings__tab");
     const isPermissionLevel = target.matches(".permission-level");
     if ((isSettingsTab && tabKeys.has(event.key))
       || (isPermissionLevel && radioKeys.has(event.key))) {

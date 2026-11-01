@@ -13,6 +13,7 @@ public sealed class AppointmentDetailViewModel
     public TimeOnly StartTime { get; init; } = new(9, 0);
     public int DurationMinutes { get; init; } = 45;
     public string AppointmentType { get; init; } = string.Empty;
+    public Guid? VisitTypeId { get; init; }
     public string AppointmentStatus { get; init; } = string.Empty;
     public string VisitWorkflowStatus { get; init; } = string.Empty;
     public string? IntakeStatus { get; init; }

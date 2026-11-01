@@ -1,0 +1,33 @@
+@page "/authentication-step-up"
+@attribute [AllowAnonymous]
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Continue authentication - PTDoc</PageTitle>
+
+<main class="step-up-page">
+    <section class="step-up-card" aria-labelledby="step-up-title">
+        <h1 id="step-up-title">Continue authentication</h1>
+        <p>Continue to the secure authentication form.</p>
+        <a class="step-up-primary" href="@ContinuationUrl">Continue</a>
+    </section>
+</main>
+
+@code {
+    [SupplyParameterFromQuery(Name = "mode")]
+    public string Mode { get; set; } = "verify";
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string ReturnUrl { get; set; } = "/";
+
+    // This compatibility route never selects or completes an authentication step.
+    // The login response supplies the purpose-bound challenge to the Web form flow.
+    private string ContinuationUrl => Mode == "recovery-codes"
+        ? $"/auth/mfa/recovery-codes?returnUrl={Uri.EscapeDataString(ReturnUrl ?? "/")}"
+        : $"/login?ReturnUrl={Uri.EscapeDataString(ReturnUrl ?? "/")}";
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender) Navigation.NavigateTo(ContinuationUrl, forceLoad: true);
+    }
+}

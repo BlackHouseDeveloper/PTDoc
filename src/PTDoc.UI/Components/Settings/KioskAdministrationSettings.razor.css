@@ -1,0 +1,24 @@
+.kiosk-admin { display: grid; gap: var(--spacing-5); }
+.kiosk-admin__back { justify-self: start; border: 0; color: var(--primary); background: transparent; }
+.kiosk-admin__code { display: grid; gap: var(--spacing-2); padding: var(--spacing-4); border: 1px solid var(--settings-clone-border); border-radius: var(--radius-md); background: var(--settings-clone-bg); }
+.kiosk-admin__code code { overflow-wrap: anywhere; font-size: var(--text-base); }
+.kiosk-admin__create { display: flex; gap: var(--spacing-3); align-items: end; }
+.kiosk-admin__create label { display: grid; flex: 1; gap: var(--spacing-2); }
+.kiosk-admin__token { display: grid; gap: var(--spacing-4); padding: var(--spacing-5); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card); }
+.kiosk-admin__token h2, .kiosk-admin__token p { margin: 0; }
+.kiosk-admin__token > div, .kiosk-admin__token form { display: grid; gap: var(--spacing-2); }
+.kiosk-admin__token form { grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
+.kiosk-admin__token form label { grid-column: 1 / -1; }
+.kiosk-admin__stations { display: grid; gap: var(--spacing-3); }
+.kiosk-admin__stations article { display: flex; justify-content: space-between; gap: var(--spacing-4); padding: var(--spacing-4); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card); }
+.kiosk-admin__stations article > div:first-child { display: grid; gap: var(--spacing-1); }
+.kiosk-admin__rename-label { font-size: var(--text-sm); font-weight: var(--font-medium); }
+.kiosk-admin__actions, .kiosk-admin__dialog-actions { display: flex; flex-wrap: wrap; gap: var(--spacing-2); }
+.kiosk-admin__dialog-backdrop { position: fixed; inset: 0; z-index: var(--z-modal-backdrop); display: grid; place-items: center; padding: var(--spacing-4); background: var(--modal-overlay-bg); }
+.kiosk-admin__dialog { display: grid; gap: var(--spacing-4); width: min(100%, 34rem); padding: var(--spacing-6); border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--foreground); background: var(--card); box-shadow: var(--shadow-lg); }
+.kiosk-admin__dialog h2, .kiosk-admin__dialog p { margin: 0; }
+.kiosk-admin__dialog-actions { justify-content: flex-end; }
+.kiosk-admin__danger { color: var(--destructive-foreground); background: var(--destructive); }
+.kiosk-admin button:disabled, .kiosk-admin input:disabled { cursor: not-allowed; opacity: 0.58; }
+.is-error { color: var(--destructive); }
+@media (max-width: 700px) { .kiosk-admin__stations article, .kiosk-admin__create { align-items: stretch; flex-direction: column; } .kiosk-admin__token form { grid-template-columns: 1fr; } }

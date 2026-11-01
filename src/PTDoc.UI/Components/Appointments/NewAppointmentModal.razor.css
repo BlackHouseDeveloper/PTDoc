@@ -37,6 +37,9 @@
     box-shadow: var(--shadow-lg);
     width: 100%;
     max-width: var(--modal-max-width);
+    max-height: 100%;
+    overflow-y: auto;
+    box-sizing: border-box;
     padding: var(--modal-padding);
     animation: slideUp var(--transition-normal);
     z-index: var(--z-modal);

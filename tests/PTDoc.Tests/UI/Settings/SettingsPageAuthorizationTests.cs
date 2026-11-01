@@ -12,6 +12,23 @@ namespace PTDoc.Tests.UI.Settings;
 [Trait("Category", "CoreCi")]
 public sealed class SettingsPageAuthorizationTests : TestContext
 {
+    [Theory]
+    [InlineData(Roles.Admin, "/settings/auto-check-in", "Auto Check-In Messaging")]
+    [InlineData(Roles.Admin, "/settings/kiosk", "Kiosk Check-In")]
+    [InlineData(Roles.Owner, "/settings/kiosk", "Kiosk Check-In")]
+    public async Task InitialRoute_IsAppliedAfterDeferredAuthorization(string role, string route, string heading)
+    {
+        var authentication = new DeferredAuthenticationStateProvider();
+        Services.AddSingleton<AuthenticationStateProvider>(authentication);
+        Services.AddSingleton<IHeaderConfigurationService, HeaderConfigurationService>();
+        var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        navigation.NavigateTo(route);
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Settings>();
+        Assert.Contains("Loading settings", cut.Markup, StringComparison.Ordinal);
+        await cut.InvokeAsync(() => authentication.Complete(role));
+        cut.WaitForAssertion(() => Assert.Equal(heading, cut.Find(".settings-main-content h1").TextContent));
+    }
+
     [Fact]
     public async Task PendingAuthentication_DoesNotRenderAdministrativeSettingsForPtUser()
     {
