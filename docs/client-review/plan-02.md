@@ -12,6 +12,8 @@
 
 ## Current evidence and changes
 
+**Evidence scope:** The implementation narrative and 180/185-test results below describe earlier revisions. For validation of the corrected modal lifecycle at `e3b5bb5`, use the 2026-11-02 audit and linked Core CI evidence below; the older counts are not results for that revision.
+
 Reproduced on main 6276027 with two synthetic bUnit regressions: both initially failed because failed-save recovery controls were absent. The existing guard prevented navigation and returned after a save error with no discard path. The new controls retain the draft on Stay, require a successful save before retry-navigation, and cancel pending writes before explicit discard. The final focused suite passes 180 tests, including existing API save/concurrency and signed-note enforcement checks. This establishes the specific failed-save navigation defect; it does not identify every cause of the client’s historical three-banner report. No schema or server authorization change. Follow-up browser QA reproduced an orphan keyboard trap after rapid incomplete-note Continue/Cancel: registration ownership was set only after a 75ms delay. Registration is now tracked before interop, close/dispose invalidate pending focus, and each component owns a unique handler ID. Five rapid Cancels and a Continue left zero focus/Escape handlers in real Chromium. Synthetic Evaluation and Daily save faults (401/409/500/disconnected transport) retained entered text; keyboard Stay and explicit discard remained usable, conflict Retry was disabled, successful Retry saved both note types, and discard sent no subsequent autosave during an 11-second observation beyond the 10-second fallback interval.
 
 ## Dependencies, blockers and owners
@@ -73,6 +75,8 @@ Regression risk is accidental data loss or duplicate writes. Preserve old server
 
 ## Verification performed
 
+Historical verification, predating the `e3b5bb5` correction:
+
 | Command/check | Result |
 | --- | --- |
 | dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --filter 'FullyQualifiedName~FailedSaveNavigation' --verbosity minimal -m:1 -p:BuildInParallel=false (before fix) | Expected RED: 2 regressions failed on missing recovery controls. |
@@ -103,9 +107,9 @@ Classification is against the inspected code, independently of GitHub's outdated
 
 ### Verification and reply eligibility
 
-The user confirmed required builds/tests passed for `84d6279`; that confirmation does not cover this correction. No builds, .NET tests, browser tests, commits, pushes, replies, resolutions, or review requests were performed during this audit. Both Git whitespace checks pass. The worktree started clean; only the modal, its existing test file, this audit, and the changelog are changed.
+At the time of this audit, the user had confirmed required builds/tests passed for `84d6279`; that earlier confirmation did not cover the correction. No builds, .NET tests, browser tests, commits, pushes, replies, resolutions, or review requests were performed during that audit. Both Git whitespace checks passed. The worktree started clean; only the modal, its existing test file, this audit, and the changelog were changed. Subsequent validation for `e3b5bb5` is recorded in the 2026-11-02 audit below.
 
-Follow-up user execution reported **2,551 passed, 1 failed, 0 skipped**. The failing reopen regression timed out waiting for two registration calls at its render-triggered assertion (two checks, five renders). bUnit 1.40.0's `WaitForAssertion` checks initially and on renders, while this gate continuation can invoke JS after a render without causing another. The test now awaits explicit first-cleanup, second-registration, and second-cleanup invocation signals, retaining the pending-operation and exact-count assertions. Production code is unchanged by this follow-up. This source-level diagnosis awaits a focused rerun; the reported suite is not recorded as passing.
+Follow-up user execution reported **2,551 passed, 1 failed, 0 skipped**. The failing reopen regression timed out waiting for two registration calls at its render-triggered assertion (two checks, five renders). bUnit 1.40.0's `WaitForAssertion` checks initially and on renders, while this gate continuation can invoke JS after a render without causing another. The test now awaits explicit first-cleanup, second-registration, and second-cleanup invocation signals, retaining the pending-operation and exact-count assertions. Production code was unchanged by this follow-up. That failed run remains historical evidence; the corrected test's subsequent passing CI result is recorded below, not inferred from the old 185-test result.
 
 Run from the repository root:
 
@@ -116,7 +120,33 @@ dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Rele
 dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity diagnostic
 ```
 
-After these checks pass and the fix is explicitly authorized for commit/push and GitHub responses, only `PRRT_kwDOQt-faM6ye8GL` is newly eligible for a fix reply and resolution. The other four threads are already resolved and already have evidence-based replies for `84d6279`; do not duplicate those replies. No suppressed finding lacks an individually resolvable thread in the retrieved history. No product decision is required for this correction; new runtime verification is still outstanding.
+The subsequent user confirmation authorized publication of `e3b5bb5`, and `PRRT_kwDOQt-faM6ye8GL` received one evidence-based reply and was resolved. The other four threads already had replies for `84d6279`; no duplicate replies were added. No suppressed finding lacked an individually resolvable thread in the retrieved history. See the current audit below for the remaining documentation finding.
+
+## PR 157 complete review audit — 2026-11-02
+
+Inspected local and remote head `e3b5bb59df8899bb65adbb838d2677a0cba234e0` with a clean starting worktree. Retrieved all six inline threads, nine review submissions (four nonempty summaries), two conversation comments, and the current PR description. All fourteen summary finding links duplicate the six inline findings. No additional suppressed or **Previously missed** findings were present in complete retrieved bodies, including collapsed details. Replies are historical evidence, not new findings.
+
+| Unique finding | Current classification | Evidence and disposition |
+| --- | --- | --- |
+| [Direct save outlives discard](https://github.com/BlackHouseDeveloper/PTDoc/pull/157#discussion_r4381088935) | **Outdated — addressed by `84d6279`** | Rechecked `PersistDraftAsync`, its manual/autosave/retry/override callers, the cancellation-aware service/HTTP contract, discard draining, and disposal ordering. The delayed-direct-save and no-disposal-retry tests above remain present. No change required. |
+| [Retry overrides Stay](https://github.com/BlackHouseDeveloper/PTDoc/pull/157#discussion_r4381088994) | **Outdated — addressed by `84d6279`** | Stay clears the recovery target; retry compares it again after the save await. The delayed Retry → Stay test still asserts no navigation. No change required. |
+| [Interrupted discard disables saving](https://github.com/BlackHouseDeveloper/PTDoc/pull/157#discussion_r4381089031) | **Outdated — addressed by `84d6279`** | Caught navigation interruption reloads the workspace after replacing the cancelled token; `LoadWorkspaceAsync` resets autosave. The reset service regression remains supporting coverage; no dedicated page-level interruption test is claimed. No change required. |
+| [Default autofocus overrides Cancel](https://github.com/BlackHouseDeveloper/PTDoc/pull/157#discussion_r4436705138) | **Outdated — addressed by `84d6279`** | Registration still supplies `false`; `modal.js` consumes the flag and Cancel focus remains generation-checked. Its argument regression passed in current Core CI. No change required. |
+| [Cleanup precedes registration](https://github.com/BlackHouseDeveloper/PTDoc/pull/157#discussion_r4437562668) | **Outdated — addressed by `e3b5bb5`** | `_interopGate` serializes registration/focus, cleanup, and disposal; stale cleanup runs while holding the gate. All four delayed close cases and the corrected close/reopen test passed in current Core CI. No change required. |
+| [Reconcile focused-test evidence](https://github.com/BlackHouseDeveloper/PTDoc/pull/157#discussion_r4439326106) — `PRRT_kwDOQt-faM6yjKMT` | **Valid — documentation correction** | The committed audit still described the corrected test as pending, while the PR description checked off the earlier 185-test command without a revision boundary. Marked old results as historical, replaced stale pending language, and recorded the revision-specific evidence below. No production or test change is needed. |
+
+No unique finding is invalid or ambiguous. **Duplicate** classification applies to the fourteen summary references, not additional defects. The five historical threads are already resolved; their existing replies must not be duplicated.
+
+### Current verification evidence
+
+- Before publication, the user explicitly confirmed that all required builds and tests passed for the exact changes committed as `e3b5bb5`. No new local test count or exact command transcript was supplied with that confirmation, so none is inferred.
+- [Core CI run 41383512640, Build & Test (Linux Core)](https://github.com/BlackHouseDeveloper/PTDoc/actions/runs/41383512640/job/125079214212) has `headSha=e3b5bb59df8899bb65adbb838d2677a0cba234e0` and concluded successfully. Its PR checkout tested merge `782e288` of that head into main `6cd3b64`, not a detached branch-head checkout.
+- The log records a successful Release build, format checks, and **2,125 tests passed out of 2,125** under `Category=CoreCi`. It explicitly records all seven `IncompleteNoteNavigationModalTests` cases passing, including `ReopenWhileRegistrationPending_CleansOldHandlerBeforeRegisteringAgain` (435 ms). This is current-revision evidence; it is a different suite from the historical 185-test command and the earlier user run with 2,551 passes plus one failure.
+- This audit only reads completed CI; it does not rerun builds/tests. Only this document and the changelog change. `git diff --check` and `git diff --cached --check` pass. No additional runtime verification is required for these documentation-only edits. The exact build/test commands above remain available if code changes or a fresh local reproduction is desired.
+
+### Publication follow-up
+
+The live PR description was inspected but remains unchanged because this audit does not authorize GitHub writes. Its 180/185-test and browser results should be labelled historical when publication is authorized; the current evidence is the user confirmation and the linked 2,125-test Core CI run, not a claimed rerun of the historical command. Only `PRRT_kwDOQt-faM6yjKMT` is newly eligible for an evidence reply/resolution after this documentation correction is published and the PR description is reconciled under explicit authorization. Do not repeat replies on the other five resolved threads. No comments, resolutions, PR edits, review requests, commits, or pushes were made in this audit.
 
 ## Publication and merge boundary
 
