@@ -11,6 +11,7 @@ public static class IntakeProfileProvenance
     [
         "prefilledPrimaryPolicyId", "prefilledSecondaryPolicyId",
         "prefilledPrimaryPolicyModifiedUtc", "prefilledSecondaryPolicyModifiedUtc",
+        "prefilledPrimaryLegacyPayerFingerprint", "prefilledSecondaryLegacyPayerFingerprint",
         "profilePrefillSourceModifiedUtc", "prefilledDemographics", "omitPrimaryPolicy", "omitSecondaryPolicy"
     ];
 

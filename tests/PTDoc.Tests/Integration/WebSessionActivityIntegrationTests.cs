@@ -28,6 +28,52 @@ public sealed class WebSessionActivityIntegrationTests
     private const string StartedAtClaim = "ptdoc_web_session_started_at";
     private const string SessionHeader = "X-PTDoc-Web-Session";
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CircuitForwarding_EnforcesWebIdleWithoutWaitingForBrowserNotification(bool renew)
+    {
+        await using var host = new SessionHost();
+        var cookie = host.IssueCookie(apiExpiry: host.Clock.GetUtcNow().AddHours(8));
+        var principal = host.ReadTicket(cookie).Principal;
+        var authentication = new Mock<AuthenticationStateProvider>();
+        authentication.Setup(value => value.GetAuthenticationStateAsync()).ReturnsAsync(new AuthenticationState(principal));
+        var state = new WebCircuitSessionState();
+        var forwarded = 0;
+        using var handler = new ApiAccessTokenForwardingHandler(new HttpContextAccessor(), authentication.Object,
+            new Mock<IUserService>(MockBehavior.Strict).Object, NullLogger<ApiAccessTokenForwardingHandler>.Instance,
+            state, host.Services.GetRequiredService<WebSessionActivityStore>(), host.Clock)
+        {
+            InnerHandler = new Handler(_ =>
+            {
+                forwarded++;
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+            })
+        };
+        using var client = new HttpClient(handler);
+        host.Clock.Advance(TimeSpan.FromMinutes(14));
+        using var before = await client.PostAsync("https://api.example.test/api/v1/notes", null);
+        Assert.Equal(HttpStatusCode.OK, before.StatusCode);
+        if (renew)
+        {
+            using var activity = await host.Activity(cookie);
+            Assert.Equal(HttpStatusCode.NoContent, activity.StatusCode);
+        }
+        host.Clock.Advance(TimeSpan.FromMinutes(2));
+        using var after = await client.PostAsync("https://api.example.test/api/v1/notes", null);
+        Assert.Equal(renew ? HttpStatusCode.OK : HttpStatusCode.Unauthorized, after.StatusCode);
+        Assert.Equal(renew ? 2 : 1, forwarded);
+        Assert.Equal(renew ? null : "SessionEnded", state.EndedReason);
+        if (renew)
+        {
+            // The successful protected request itself did not renew idle time.
+            host.Clock.Advance(TimeSpan.FromMinutes(13));
+            using var expired = await client.GetAsync("https://api.example.test/api/v1/notes");
+            Assert.Equal(HttpStatusCode.Unauthorized, expired.StatusCode);
+            Assert.Equal(2, forwarded);
+        }
+    }
+
     [Fact]
     public async Task ActiveEditing_RenewsCookieAcrossIdleInterval_AndSharesSameIdentityWithSecondTab()
     {
@@ -343,7 +389,8 @@ public sealed class WebSessionActivityIntegrationTests
         var state = new WebCircuitSessionState();
         var protectedCalls = 0;
         using var handler = new ApiAccessTokenForwardingHandler(new HttpContextAccessor(), authentication.Object,
-            userService.Object, NullLogger<ApiAccessTokenForwardingHandler>.Instance, state)
+            userService.Object, NullLogger<ApiAccessTokenForwardingHandler>.Instance, state,
+            new WebSessionActivityStore(TimeProvider.System), TimeProvider.System)
         {
             InnerHandler = new Handler(request =>
             {

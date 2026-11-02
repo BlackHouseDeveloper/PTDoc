@@ -244,7 +244,8 @@ public sealed class ApiAccessTokenForwardingHandlerTests
             authenticationStateProvider,
             userService,
             NullLogger<ApiAccessTokenForwardingHandler>.Instance,
-            sessionState ?? new WebCircuitSessionState())
+            sessionState ?? new WebCircuitSessionState(),
+            new WebSessionActivityStore(TimeProvider.System), TimeProvider.System)
         {
             InnerHandler = innerHandler
         };

@@ -14,6 +14,8 @@ public sealed class IntakeWizardState
     public Guid? PrefilledSecondaryPolicyId { get; set; }
     public DateTime? PrefilledPrimaryPolicyModifiedUtc { get; set; }
     public DateTime? PrefilledSecondaryPolicyModifiedUtc { get; set; }
+    public string? PrefilledPrimaryLegacyPayerFingerprint { get; set; }
+    public string? PrefilledSecondaryLegacyPayerFingerprint { get; set; }
     public DateTime? ProfilePrefillSourceModifiedUtc { get; set; }
     public Guid? IntakeId { get; set; }
     public Guid? PatientId { get; set; }

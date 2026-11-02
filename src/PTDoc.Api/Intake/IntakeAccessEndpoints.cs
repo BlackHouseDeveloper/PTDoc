@@ -416,7 +416,11 @@ public static class IntakeAccessEndpoints
             intake.LastModifiedUtc);
         IntakeEndpoints.ApplySubmittedIntakePatientFields(intake);
 
-        await db.SaveChangesAsync(cancellationToken);
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Results.Conflict(new { error = IntakeProfileUpdates.RefreshMessage });
+        }
         await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, cancellationToken);
 
         await auditService.LogIntakeEventAsync(

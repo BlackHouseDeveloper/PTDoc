@@ -85,16 +85,23 @@ public sealed class WebSessionActivityMonitorTests : TestContext
     }
 
     [Theory]
-    [InlineData("import", false)]
-    [InlineData("start", false)]
-    [InlineData("import", true)]
-    [InlineData("start", true)]
-    public async Task FailedStartup_RetriesOnConnectionUp_WithoutRestartingSuccessfulMonitor(string phase, bool canceled)
+    [InlineData("import", "disconnected")]
+    [InlineData("start", "disconnected")]
+    [InlineData("import", "canceled")]
+    [InlineData("start", "canceled")]
+    [InlineData("import", "js")]
+    [InlineData("start", "js")]
+    public async Task FailedStartup_RetriesOnConnectionUp_WithoutRestartingSuccessfulMonitor(string phase, string failure)
     {
         var runtime = new StartupRuntime();
         var failures = 0;
         runtime.BeforeInvoke = identifier => identifier == phase && failures++ == 0
-            ? Task.FromException(canceled ? new TaskCanceledException() : new JSDisconnectedException("Disconnected"))
+            ? Task.FromException(failure switch
+            {
+                "canceled" => new TaskCanceledException(),
+                "js" => new JSException("Module unavailable"),
+                _ => new JSDisconnectedException("Disconnected")
+            })
             : Task.CompletedTask;
         Services.AddSingleton<IJSRuntime>(runtime);
         using var handler = new WebSessionCircuitHandler(_authentication.Object, Services.GetRequiredService<WebCircuitSessionState>());

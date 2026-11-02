@@ -15,6 +15,8 @@ public sealed class IntakeResponseDraft
     public Guid? PrefilledSecondaryPolicyId { get; set; }
     public DateTime? PrefilledPrimaryPolicyModifiedUtc { get; set; }
     public DateTime? PrefilledSecondaryPolicyModifiedUtc { get; set; }
+    public string? PrefilledPrimaryLegacyPayerFingerprint { get; set; }
+    public string? PrefilledSecondaryLegacyPayerFingerprint { get; set; }
     public DateTime? ProfilePrefillSourceModifiedUtc { get; set; }
     public int IntakeFlowVersion { get; set; }
     public int CurrentStep { get; set; }

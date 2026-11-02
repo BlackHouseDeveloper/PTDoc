@@ -60,6 +60,8 @@ public sealed class NoteWorkspacePageTests : TestContext
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='failed-save-navigation']")));
         cut.WaitForAssertion(() => Assert.Equal(NavigationState.Prevented, history.History.First().State));
         Assert.True(autosave.IsDirty);
+        Assert.Contains("a save already sent may have reached the server", cut.Find("[data-testid='failed-save-navigation']").TextContent);
+        Assert.Equal("Leave without retrying", cut.Find("[data-testid='failed-save-discard']").TextContent);
 
         await cut.InvokeAsync(() => cut.Find("[data-testid='failed-save-stay']").Click());
         Assert.Empty(cut.FindAll("[data-testid='failed-save-navigation']"));
@@ -81,7 +83,7 @@ public sealed class NoteWorkspacePageTests : TestContext
     }
 
     [Fact]
-    public async Task FailedSaveNavigation_RetryCanSaveAndLeave()
+    public async Task FailedSaveNavigation_RetryRequiresIncompleteConfirmationBeforeLeaving()
     {
         var (cut, service, autosave, navigation) = RenderFailedSaveNavigationNote();
         await cut.InvokeAsync(() =>
@@ -93,6 +95,10 @@ public sealed class NoteWorkspacePageTests : TestContext
         service.Setup(item => item.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new NoteWorkspaceSaveResult { Success = true, NoteId = Guid.NewGuid(), Status = NoteStatus.Draft });
         await cut.InvokeAsync(() => cut.Find("[data-testid='failed-save-retry']").Click());
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='incomplete-note-modal']")));
+        Assert.False(navigation.Uri.EndsWith("/dashboard", StringComparison.Ordinal));
+        Assert.False(autosave.IsDirty);
+        cut.Find("[data-testid='incomplete-note-continue']").Click();
         cut.WaitForAssertion(() =>
         {
             Assert.EndsWith("/dashboard", navigation.Uri, StringComparison.Ordinal);
@@ -137,8 +143,10 @@ public sealed class NoteWorkspacePageTests : TestContext
         Assert.Empty(cut.FindAll("[data-testid='failed-save-navigation']"));
     }
 
-    [Fact]
-    public async Task FailedSaveNavigation_DiscardCancelsAndDrainsDelayedDirectSaveBeforeLeaving()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedSaveNavigation_DiscardCancelsAndDrainsDelayedDirectSaveBeforeLeaving(bool committedAfterCancellation)
     {
         var patientId = Guid.NewGuid();
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
@@ -181,7 +189,6 @@ public sealed class NoteWorkspacePageTests : TestContext
                 cancellationToken.Register(() =>
                 {
                     directSaveCancelled.TrySetResult(true);
-                    delayedDirectSave.TrySetCanceled(cancellationToken);
                 });
                 return delayedDirectSave.Task;
             });
@@ -206,11 +213,19 @@ public sealed class NoteWorkspacePageTests : TestContext
         await directSaveStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
         var discard = cut.Find("[data-testid='failed-save-discard']").ClickAsync(new MouseEventArgs());
         await directSaveCancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cut.WaitForAssertion(() => Assert.True(cut.Find("[data-testid='failed-save-stay']").HasAttribute("disabled")));
+        Assert.False(navigation.Uri.EndsWith("/dashboard", StringComparison.Ordinal));
+        // Cancellation cannot guarantee that the remote write did not commit.
+        if (committedAfterCancellation)
+            delayedDirectSave.SetResult(new NoteWorkspaceSaveResult { Success = true, NoteId = Guid.NewGuid(), Status = NoteStatus.Draft });
+        else
+            delayedDirectSave.SetCanceled();
         await Task.WhenAll(retry, discard);
 
         cut.WaitForAssertion(() =>
             Assert.EndsWith("/dashboard", navigation.Uri, StringComparison.Ordinal));
         Assert.Equal(2, saveAttempts);
+        Assert.Empty(cut.FindAll("[data-testid='incomplete-note-modal']"));
     }
 
     private (IRenderedComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage> Cut,

@@ -65,7 +65,10 @@ internal static class WebSessionActivity
             }
             catch (CryptographicException) { }
         }
-        return lastActivity is not null && lastActivity <= now && lastActivity.Value.AddMinutes(15) > now;
+        if (lastActivity is null || lastActivity > now || lastActivity.Value.AddMinutes(15) <= now) return false;
+        context.HttpContext.RequestServices.GetRequiredService<WebSessionActivityStore>()
+            .Observe(context.Principal!, lastActivity.Value);
+        return true;
     }
 
     // The marker affects only the original sign-in, even if this response arrives
@@ -177,7 +180,8 @@ internal static class WebSessionActivity
         }
 
         now = clock.GetUtcNow();
-        if (deadline <= now) return Results.Unauthorized();
+        if (deadline <= now || !context.RequestServices.GetRequiredService<WebSessionActivityStore>().Renew(principal))
+            return Results.Unauthorized();
         // Never rewrite the authentication cookie from a renewal response. Responses
         // can arrive after logout or another sign-in, even after a server-side lock
         // is released. A per-sign-in idle cookie cannot restore or replace identity.

@@ -55,6 +55,7 @@ public static class IntakeProfileUpdates
                     }
                     draft.PrefilledPrimaryPolicyId = profile.PrimaryPolicyId;
                     draft.PrefilledPrimaryPolicyModifiedUtc = profile.PrimaryPolicyModifiedUtc;
+                    draft.PrefilledPrimaryLegacyPayerFingerprint = profile.PrimaryLegacyPayerFingerprint;
                     break;
                 case IntakeProfileAction.UseSecondary:
                 case IntakeProfileAction.OmitSecondary:
@@ -70,6 +71,7 @@ public static class IntakeProfileUpdates
                     }
                     draft.PrefilledSecondaryPolicyId = profile.SecondaryPolicyId;
                     draft.PrefilledSecondaryPolicyModifiedUtc = profile.SecondaryPolicyModifiedUtc;
+                    draft.PrefilledSecondaryLegacyPayerFingerprint = profile.SecondaryLegacyPayerFingerprint;
                     break;
             }
             // Legacy drafts retain their demographic protection until a new intake is created.

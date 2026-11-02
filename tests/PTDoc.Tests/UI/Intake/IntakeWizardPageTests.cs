@@ -185,6 +185,47 @@ public sealed class IntakeWizardPageTests : TestContext
     }
 
     [Fact]
+    public void ProfileAcceptance_FailedReloadBlocksWritesUntilSavedAnswersAreRecovered()
+    {
+        var patientId = Guid.NewGuid();
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("synthetic-pt");
+        authorization.SetRoles(Roles.PT);
+        var initial = CreateSubmittableReviewDraft(patientId);
+        initial.InsuranceCompanyName = "Stale";
+        initial.ProfilePrefill = new IntakeProfilePrefill { InsuranceCompanyName = "Current", Fingerprint = "offer" };
+        var recovered = CreateSubmittableReviewDraft(patientId);
+        recovered.InsuranceCompanyName = "Current";
+        var service = CreateIntakeServiceMock(initial);
+        var saved = false;
+        var reloadFails = true;
+        service.Setup(value => value.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()))
+            .Callback(() => saved = true).Returns(Task.CompletedTask);
+        service.Setup(value => value.GetLatestByPatientIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .Returns(() => saved && reloadFails
+                ? Task.FromException<IntakeResponseDraft?>(new HttpRequestException("Reload unavailable"))
+                : Task.FromResult<IntakeResponseDraft?>(saved
+                    ? recovered
+                    : initial));
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}");
+        var cut = RenderPage(patientId);
+
+        cut.Find("[data-testid='intake-use-primary']").Click();
+
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='intake-profile-reload']")));
+        Assert.True(cut.Find("fieldset").HasAttribute("disabled"));
+        Assert.Empty(cut.FindAll("[data-testid='intake-use-primary']"));
+        service.Verify(value => value.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()), Times.Once);
+        service.Verify(value => value.SubmitAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()), Times.Never);
+        reloadFails = false;
+        cut.Find("[data-testid='intake-reload-saved']").Click();
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[data-testid='intake-profile-reload']")));
+        Assert.Equal("Current", GetWizardState(cut).InsuranceCompanyName);
+        Assert.Equal(IntakeStep.Review, GetWizardState(cut).CurrentStep);
+        Assert.False(cut.Find("fieldset").HasAttribute("disabled"));
+    }
+
+    [Fact]
     public void ClinicianBlankIntake_RequiresPatientSelectionBeforeWizardRenders()
     {
         var authorization = this.AddTestAuthorization();

@@ -15,6 +15,8 @@ public sealed class IntakeProfilePrefill
     public Guid? SecondaryPolicyId { get; set; }
     public DateTime? PrimaryPolicyModifiedUtc { get; set; }
     public DateTime? SecondaryPolicyModifiedUtc { get; set; }
+    public string? PrimaryLegacyPayerFingerprint { get; set; }
+    public string? SecondaryLegacyPayerFingerprint { get; set; }
     public DateTime SourceModifiedUtc { get; set; }
     public string? FullName { get; set; }
     public string? EmailAddress { get; set; }
@@ -116,6 +118,8 @@ public sealed class IntakeProfilePrefill
             "prefilledSecondaryPolicyId",
             "prefilledPrimaryPolicyModifiedUtc",
             "prefilledSecondaryPolicyModifiedUtc",
+            "prefilledPrimaryLegacyPayerFingerprint",
+            "prefilledSecondaryLegacyPayerFingerprint",
             "profilePrefillSourceModifiedUtc",
         ];
         foreach (var field in fields)
@@ -136,7 +140,9 @@ public sealed class IntakeProfilePrefill
         draft.PrefilledPrimaryPolicyId = PrimaryPolicyId;
         draft.PrefilledSecondaryPolicyId = SecondaryPolicyId;
         draft.PrefilledPrimaryPolicyModifiedUtc = PrimaryPolicyModifiedUtc;
+        draft.PrefilledPrimaryLegacyPayerFingerprint = PrimaryLegacyPayerFingerprint;
         draft.PrefilledSecondaryPolicyModifiedUtc = SecondaryPolicyModifiedUtc;
+        draft.PrefilledSecondaryLegacyPayerFingerprint = SecondaryLegacyPayerFingerprint;
         draft.ProfilePrefillSourceModifiedUtc = SourceModifiedUtc;
         draft.OmitPrimaryPolicy = false;
         draft.OmitSecondaryPolicy = false;
@@ -190,6 +196,7 @@ public sealed class IntakeProfilePrefill
             draft.AdjusterFax = AdjusterFax;
             draft.PrefilledPrimaryPolicyId = PrimaryPolicyId;
             draft.PrefilledPrimaryPolicyModifiedUtc = PrimaryPolicyModifiedUtc;
+            draft.PrefilledPrimaryLegacyPayerFingerprint = PrimaryLegacyPayerFingerprint;
         }
         if (!draft.OmitSecondaryPolicy && !SecondaryPolicyAmbiguous && Empty(draft.SecondaryInsuranceCompanyName) && Empty(draft.SecondaryMemberOrPolicyNumber)
             && Empty(draft.SecondaryGroupNumber))
@@ -199,6 +206,7 @@ public sealed class IntakeProfilePrefill
             draft.SecondaryGroupNumber = SecondaryGroupNumber;
             draft.PrefilledSecondaryPolicyId = SecondaryPolicyId;
             draft.PrefilledSecondaryPolicyModifiedUtc = SecondaryPolicyModifiedUtc;
+            draft.PrefilledSecondaryLegacyPayerFingerprint = SecondaryLegacyPayerFingerprint;
         }
         // Do not refresh the fallback timestamp for an already accepted legacy policy source.
         draft.ProfilePrefillSourceModifiedUtc ??= SourceModifiedUtc;

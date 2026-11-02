@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 158 intake, note recovery, and Web session review
+
+- Track server-owned accepted legacy payer fingerprints independently for primary and secondary insurance; reject changed or unknown legacy sources until explicitly reconciled. Intake projection rejects a policy inserted after source validation while explicit chart edits retain their upsert behavior.
+- Make patient updates conditional on `LastModifiedUtc` and return a conflict for concurrent intake submission changes. Update all three provider snapshots for the concurrency metadata; there is no column or data migration.
+- Block intake editing and submission after profile acceptance until the saved answers reload successfully. Preserve incomplete-note confirmation after a successful save retry, disable Stay during leave processing, and disclose that an already-dispatched save may have committed instead of promising remote discard.
+- Enforce the Web idle window before circuit API forwarding using validated, per-sign-in activity timestamps. Protected API traffic cannot renew the window. Recover from activity-monitor JavaScript startup failures using the existing reconnect retry.
+- Add regression coverage for legacy-source reconciliation and both submit routes, real SQLite write races, failed intake reload, note recovery races, server-side idle expiry, and module/start failures. Refresh the complete PR 158 audit and scope evidence. The user subsequently reported 2,571 passing tests and seven failures, all five requested builds passing without warnings/errors, and no SQLite model drift. Corrected the six monitor failures by restoring the separate `JSDisconnectedException` catches alongside `JSException`, and the intake test fixture by retaining a complete Review-step draft on reload. Existing regression assertions are preserved and a step-preservation assertion is added. The user subsequently confirmed all 2,578 Debug tests passed with zero failures/skips (2 minutes 42 seconds), alongside a build with zero warnings/errors. The user then confirmed the explicit post-correction Release Web build succeeded with zero warnings/errors in 1.42 seconds, completing the requested build/test verification. Native runtime/install checks and client acceptance remain separate open gates; publication remains unauthorized.
+
 ### Added - PR 158 timeline cancellation review coverage
 
 - Added patient-profile cases for canceled browser time-zone module import and zone lookup, checking explicit UTC fallback, preserved timestamp metadata, and continued intake navigation. Documented the review inventory and framework cancellation handling that makes a production catch-filter change unnecessary; native-platform validation and client acceptance remain open.

@@ -14,7 +14,9 @@ public sealed class ApiAccessTokenForwardingHandler(
     AuthenticationStateProvider authenticationStateProvider,
     IUserService userService,
     ILogger<ApiAccessTokenForwardingHandler> logger,
-    WebCircuitSessionState sessionState) : DelegatingHandler
+    WebCircuitSessionState sessionState,
+    WebSessionActivityStore activityStore,
+    TimeProvider clock) : DelegatingHandler
 {
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -112,10 +114,11 @@ public sealed class ApiAccessTokenForwardingHandler(
                     System.Globalization.CultureInfo.InvariantCulture,
                     System.Globalization.DateTimeStyles.RoundtripKind,
                     out var expiresAt)
-                || expiresAt <= DateTimeOffset.UtcNow;
+                || expiresAt <= clock.GetUtcNow();
         }
         if (isLocalWebSession && preserveDraft &&
-            (!WebSessionActivity.TryGetDeadline(principal!, out var deadline) || deadline <= DateTimeOffset.UtcNow))
+            (!WebSessionActivity.TryGetDeadline(principal!, out var deadline) || deadline <= clock.GetUtcNow()
+                || (WebSessionActivity.UsesActivityTicket(principal!) && !activityStore.IsCurrent(principal!))))
             isInvalid = true;
 
         if (!string.IsNullOrWhiteSpace(tokenFromClaim))

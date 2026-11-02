@@ -416,7 +416,11 @@ public sealed class IntakeService : IIntakeService
             await IntakeDomainProjection.UpsertAsync(_context, patient, canonicalState, userId, cancellationToken);
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        try { await _context.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new InvalidOperationException(IntakeProfileUpdates.RefreshMessage, ex);
+        }
     }
 
     public async Task<IntakeResponseDraft> MarkReviewedAsync(Guid intakeId, CancellationToken cancellationToken = default)
@@ -454,6 +458,8 @@ public sealed class IntakeService : IIntakeService
         target.PrefilledSecondaryPolicyId = source.PrefilledSecondaryPolicyId;
         target.PrefilledPrimaryPolicyModifiedUtc = source.PrefilledPrimaryPolicyModifiedUtc;
         target.PrefilledSecondaryPolicyModifiedUtc = source.PrefilledSecondaryPolicyModifiedUtc;
+        target.PrefilledPrimaryLegacyPayerFingerprint = source.PrefilledPrimaryLegacyPayerFingerprint;
+        target.PrefilledSecondaryLegacyPayerFingerprint = source.PrefilledSecondaryLegacyPayerFingerprint;
         target.ProfilePrefillSourceModifiedUtc = source.ProfilePrefillSourceModifiedUtc;
         target.PrefilledDemographics = source.PrefilledDemographics;
         target.OmitPrimaryPolicy = source.OmitPrimaryPolicy;

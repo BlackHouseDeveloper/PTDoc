@@ -24,22 +24,21 @@ public static class IntakeDomainProjection
 
     public static async Task<bool> HasCurrentPolicySourcesAsync(ApplicationDbContext db, Guid patientId, Guid? clinicId, IntakeResponseDraft draft, CancellationToken ct)
     {
-        var policies = await db.PatientInsurancePolicies.AsNoTracking()
-            .Where(policy => policy.PatientId == patientId && policy.ClinicId == clinicId
-                && !policy.IsArchived && policy.Status == InsurancePolicyStatus.Active)
-            .ToListAsync(ct);
+        var profile = await IntakeProfilePrefillReader.ReadAsync(db, patientId, clinicId, ct);
+        if (profile is null) return false;
 
-        bool IsCurrent(Guid? sourceId, DateTime? sourceModifiedUtc, InsuranceCoveragePriority priority)
-        {
-            var candidates = policies.Where(policy => policy.CoveragePriority == priority).ToArray();
-            if (sourceId is null) return candidates.Length == 0;
-            if (candidates.Length != 1 || candidates[0].Id != sourceId.Value) return false;
-            // Aggregate profile timestamps cannot establish an individual policy version.
-            return IsPolicyVersionCurrent(candidates[0], sourceModifiedUtc);
-        }
+        static bool IsCurrent(Guid? acceptedId, DateTime? acceptedVersion, string? acceptedLegacy,
+            Guid? currentId, DateTime? currentVersion, string? currentLegacy, bool ambiguous)
+            => !ambiguous && acceptedId == currentId && (acceptedId.HasValue
+                ? acceptedVersion.HasValue && acceptedVersion == currentVersion
+                : string.Equals(acceptedLegacy, currentLegacy, StringComparison.Ordinal));
 
-        return (draft.OmitPrimaryPolicy || IsCurrent(draft.PrefilledPrimaryPolicyId, draft.PrefilledPrimaryPolicyModifiedUtc, InsuranceCoveragePriority.Primary))
-            && (draft.OmitSecondaryPolicy || IsCurrent(draft.PrefilledSecondaryPolicyId, draft.PrefilledSecondaryPolicyModifiedUtc, InsuranceCoveragePriority.Secondary));
+        return (draft.OmitPrimaryPolicy || IsCurrent(draft.PrefilledPrimaryPolicyId, draft.PrefilledPrimaryPolicyModifiedUtc,
+                draft.PrefilledPrimaryLegacyPayerFingerprint, profile.PrimaryPolicyId, profile.PrimaryPolicyModifiedUtc,
+                profile.PrimaryLegacyPayerFingerprint, profile.PrimaryPolicyAmbiguous))
+            && (draft.OmitSecondaryPolicy || IsCurrent(draft.PrefilledSecondaryPolicyId, draft.PrefilledSecondaryPolicyModifiedUtc,
+                draft.PrefilledSecondaryLegacyPayerFingerprint, profile.SecondaryPolicyId, profile.SecondaryPolicyModifiedUtc,
+                profile.SecondaryLegacyPayerFingerprint, profile.SecondaryPolicyAmbiguous));
     }
 
     private static bool IsPolicyVersionCurrent(PatientInsurancePolicy policy, DateTime? sourceModifiedUtc)
@@ -63,7 +62,7 @@ public static class IntakeDomainProjection
         if (!string.IsNullOrWhiteSpace(referringProviderNpi)) draft.ReferringDoctorNpi = referringProviderNpi;
         if (string.IsNullOrWhiteSpace(draft.AuthorizationNumber)) draft.AuthorizationNumber = patient.AuthorizationNumber;
         // Patient Info is an explicit chart edit, not an intake with an accepted source snapshot.
-        await UpsertCoreAsync(db, patient, draft, userId, ct);
+        await UpsertCoreAsync(db, patient, draft, userId, ct, requireAcceptedSource: false);
         await UpsertAuthorizationHistoryAsync(db, patient, payerInfoJson, userId, ct);
     }
 
@@ -72,17 +71,17 @@ public static class IntakeDomainProjection
         if (!await HasCurrentPolicySourcesAsync(db, patient.Id, patient.ClinicId, draft, ct))
             throw new InvalidOperationException(StalePolicySourceMessage);
 
-        await UpsertCoreAsync(db, patient, draft, userId, ct);
+        await UpsertCoreAsync(db, patient, draft, userId, ct, requireAcceptedSource: true);
     }
 
-    private static async Task UpsertCoreAsync(ApplicationDbContext db, Patient patient, IntakeResponseDraft draft, Guid userId, CancellationToken ct)
+    private static async Task UpsertCoreAsync(ApplicationDbContext db, Patient patient, IntakeResponseDraft draft, Guid userId, CancellationToken ct, bool requireAcceptedSource)
     {
         await UpsertProviderAsync(db, patient, draft.PrimaryDoctorName, draft.PrimaryDoctorPhone, null, PatientProviderRole.PrimaryCare, userId, ct);
         await UpsertProviderAsync(db, patient, draft.ReferringDoctorName, draft.ReferringDoctorPhone, draft.ReferringDoctorNpi, PatientProviderRole.Referring, userId, ct);
         if (!draft.OmitPrimaryPolicy) await UpsertPolicyAsync(db, patient, InsuranceCoveragePriority.Primary, draft.InsuranceCompanyName, draft.MemberOrPolicyNumber, draft.GroupNumber, draft.PayerType, draft.AdjusterName, draft.AdjusterPhone, draft.AdjusterEmail, draft.AdjusterFax, userId, ct,
-            draft.PrefilledPrimaryPolicyId, draft.PrefilledPrimaryPolicyModifiedUtc);
+            draft.PrefilledPrimaryPolicyId, draft.PrefilledPrimaryPolicyModifiedUtc, requireAcceptedSource);
         if (!draft.OmitSecondaryPolicy) await UpsertPolicyAsync(db, patient, InsuranceCoveragePriority.Secondary, draft.SecondaryInsuranceCompanyName, draft.SecondaryMemberOrPolicyNumber, draft.SecondaryGroupNumber, null, null, null, null, null, userId, ct,
-            draft.PrefilledSecondaryPolicyId, draft.PrefilledSecondaryPolicyModifiedUtc);
+            draft.PrefilledSecondaryPolicyId, draft.PrefilledSecondaryPolicyModifiedUtc, requireAcceptedSource);
         if (!draft.OmitPrimaryPolicy) await UpsertAuthorizationAsync(db, patient, draft, userId, ct);
     }
 
@@ -129,13 +128,14 @@ public static class IntakeDomainProjection
               && string.Equals(Trim(entry.Phone), phone, StringComparison.OrdinalIgnoreCase);
 
     private static async Task UpsertPolicyAsync(ApplicationDbContext db, Patient patient, InsuranceCoveragePriority priority, string? carrier, string? member, string? group, string? payerType, string? adjusterName, string? adjusterPhone, string? adjusterEmail, string? adjusterFax, Guid userId, CancellationToken ct,
-        Guid? sourceId, DateTime? sourceModifiedUtc)
+        Guid? sourceId, DateTime? sourceModifiedUtc, bool requireAcceptedSource)
     {
         carrier = Trim(carrier); member = Trim(member); group = Trim(group); var normalizedPayerType = string.IsNullOrWhiteSpace(payerType) ? InsurancePayerType.Other : ParsePayerType(payerType); if (carrier is null && member is null && group is null && normalizedPayerType != InsurancePayerType.SelfPay) return;
         var policy = await db.PatientInsurancePolicies.FirstOrDefaultAsync(p => p.PatientId == patient.Id && p.ClinicId == patient.ClinicId
             && p.CoveragePriority == priority && !p.IsArchived && p.Status == InsurancePolicyStatus.Active
             && (!sourceId.HasValue || p.Id == sourceId.Value), ct);
-        if (sourceId.HasValue && (policy is null || !IsPolicyVersionCurrent(policy, sourceModifiedUtc)))
+        if ((requireAcceptedSource && !sourceId.HasValue && policy is not null)
+            || (sourceId.HasValue && (policy is null || !IsPolicyVersionCurrent(policy, sourceModifiedUtc))))
             throw new InvalidOperationException(StalePolicySourceMessage);
         if (policy is null) { policy = new() { PatientId = patient.Id, ClinicId = patient.ClinicId, CoveragePriority = priority, Status = InsurancePolicyStatus.Active }; db.PatientInsurancePolicies.Add(policy); }
         if (carrier is not null) { policy.CarrierDisplayName = carrier; policy.CarrierKey = string.Join('-', carrier.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries)); }

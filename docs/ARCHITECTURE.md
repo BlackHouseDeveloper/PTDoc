@@ -292,6 +292,17 @@ disabled for local sessions, so delayed renewal/denial responses cannot overwrit
 another tab's sign-in or restore a logged-out browser. No Web database or shared
 in-memory ticket store is introduced. OIDC retains its existing cookie behavior.
 
+`WebSessionActivityStore` holds only the latest validated activity timestamp per
+local sign-in, bounded by its absolute deadline. Cookie validation observes the
+protected timestamp; a successful activity endpoint renews it only if the idle
+window is still open after API validation. Circuit API forwarding checks this
+server-side idle window before dispatch, so a click racing the browser monitor or
+background autosave cannot bypass the 15-minute Web limit. Protected API traffic
+never advances activity. The store is process-local: after restart or routing to
+a different process, a validated browser activity cookie can seed it again;
+without that evidence, forwarding falls back to the signed initial sign-in time
+and fails closed once that window expires. It stores no token or draft content.
+
 Local logout and replacement sign-in revoke the prior opaque API session through
 `/api/v1/auth/logout` before completing the change. Local logout writes an
 HttpOnly/Secure/SameSite=Strict `__Host-PTDoc.SignedOut.<sign-in-id>` marker rather
