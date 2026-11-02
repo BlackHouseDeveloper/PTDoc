@@ -614,7 +614,7 @@
                 return;
             }
 
-            Vm.Goals.RemoveAll(goal => goal.IsAiSuggested && !goal.IsAccepted);
+            var added = 0;
 
             foreach (var description in ParseGoalSuggestions(result.GeneratedText))
             {
@@ -629,6 +629,14 @@
                     IsAiSuggested = true,
                     IsAccepted = false
                 });
+                added++;
+            }
+
+            if (added == 0)
+            {
+                _goalGenerationError = "No new goal suggestions were returned. Existing goals and pending suggestions are unchanged.";
+                ToastService.ShowInfo(_goalGenerationError, "No new suggestions");
+                return;
             }
 
             await VmChanged.InvokeAsync(Vm);
