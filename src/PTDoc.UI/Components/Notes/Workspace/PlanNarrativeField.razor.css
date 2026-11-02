@@ -1,0 +1,3 @@
+.plan-narrative-field { display: flex; flex-direction: column; gap: var(--spacing-3); min-width: 0; }
+.plan-narrative-field > button { align-self: flex-start; max-width: 100%; white-space: normal; }
+.plan-narrative-field p { margin: 0; color: var(--muted-foreground); }

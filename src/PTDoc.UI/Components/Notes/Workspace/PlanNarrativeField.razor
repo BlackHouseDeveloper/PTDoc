@@ -1,0 +1,122 @@
+@namespace PTDoc.UI.Components.Notes.Workspace
+@using PTDoc.Application.AI
+@using PTDoc.UI.Components.Notes.Models
+@implements IDisposable
+@inject INoteNarrativeClient NarrativeClient
+
+<div class="plan-narrative-field" data-testid="@TestId" data-note-field-key="@(Purpose == NoteNarrativePurpose.DischargeRecommendations ? "discharge-recommendations" : null)">
+    <button type="button" class="btn btn-secondary" disabled="@(Unavailable || _generating)" @onclick="GenerateAsync"
+            data-testid="@(TestId + "-generate")">@(_generating ? "Generating..." : ActionText)</button>
+    <EditableNarrativeBox @ref="_editor" Value="@CurrentValue" ValueChanged="ManualChangedAsync"
+                          OnAccepted="AcceptAsync" OnDiscarded="Discard" Label="@Label" Rows="5"
+                          IsReadOnly="IsReadOnly" ReviewContextKey="@ContextKey" TestId="@(TestId + "-editor")" />
+    @if (!IsReadOnly && (NoteId == Guid.Empty || SourceLastModifiedUtc is null || HasUnsavedChanges))
+    {
+        <p role="note">Save the note before generating a suggestion.</p>
+    }
+    @if (_error is not null) { <p role="alert">@_error</p> }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public PlanVm Vm { get; set; } = new();
+    [Parameter] public EventCallback<PlanVm> VmChanged { get; set; }
+    [Parameter] public Guid NoteId { get; set; }
+    [Parameter] public DateTime? SourceLastModifiedUtc { get; set; }
+    [Parameter] public bool HasUnsavedChanges { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    [Parameter] public NoteNarrativePurpose Purpose { get; set; }
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public string ActionText { get; set; } = "AI Suggest";
+    [Parameter] public string TestId { get; set; } = "plan-narrative";
+    private EditableNarrativeBox? _editor;
+    private NoteNarrativeResult? _pending;
+    private CancellationTokenSource? _cancellation;
+    private string? _lastContext, _error;
+    private long _epoch;
+    private bool _generating, _disposed;
+    private string ContextKey => $"{NoteId}:{SourceLastModifiedUtc:O}:{Purpose}:{HasUnsavedChanges}:{IsReadOnly}";
+    private bool Unavailable => _disposed || IsReadOnly || HasUnsavedChanges || NoteId == Guid.Empty || SourceLastModifiedUtc is null;
+    private string FieldName => Purpose switch
+    {
+        NoteNarrativePurpose.NextVisitPlan => nameof(PlanVm.FollowUpInstructions),
+        NoteNarrativePurpose.DischargeRecommendations => nameof(PlanVm.DischargeRecommendations),
+        NoteNarrativePurpose.DischargeFollowUp => nameof(PlanVm.PostDischargeInstructions),
+        NoteNarrativePurpose.DischargeSummary => nameof(PlanVm.FullDischargeSummary),
+        NoteNarrativePurpose.SoapSummary => nameof(PlanVm.ClinicalSummary),
+        _ => throw new InvalidOperationException("Unsupported plan narrative purpose.")
+    };
+    private string CurrentValue => (Purpose switch
+    {
+        NoteNarrativePurpose.NextVisitPlan => Vm.FollowUpInstructions ?? Vm.HomeExerciseProgramNotes,
+        NoteNarrativePurpose.DischargeRecommendations => Vm.DischargeRecommendations,
+        NoteNarrativePurpose.DischargeFollowUp => Vm.PostDischargeInstructions,
+        NoteNarrativePurpose.DischargeSummary => Vm.FullDischargeSummary,
+        NoteNarrativePurpose.SoapSummary => Vm.ClinicalSummary,
+        _ => null
+    }) ?? string.Empty;
+
+    protected override void OnParametersSet()
+    {
+        if (_lastContext == ContextKey) return;
+        _lastContext = ContextKey; _epoch++; _cancellation?.Cancel();
+        _pending = null; _generating = false; _error = null;
+    }
+
+    private async Task GenerateAsync()
+    {
+        if (Unavailable || _generating) return;
+        var epoch = ++_epoch;
+        var request = new NoteNarrativeRequest(NoteId, SourceLastModifiedUtc!.Value, Purpose);
+        _cancellation?.Cancel(); _cancellation?.Dispose(); _cancellation = new();
+        var token = _cancellation.Token;
+        _generating = true; _error = null;
+        try
+        {
+            var result = await NarrativeClient.GenerateAsync(request, token);
+            if (epoch != _epoch || token.IsCancellationRequested || Unavailable) return;
+            if (!result.Success) { _error = result.ErrorMessage ?? "Unable to generate. Continue editing manually or try again."; return; }
+            if (result.NoteId != request.NoteId || result.SourceLastModifiedUtc != request.ExpectedLastModifiedUtc || result.Purpose != request.Purpose)
+            { _error = "The note changed. Save and generate a new suggestion."; return; }
+            if (_editor is null || string.IsNullOrWhiteSpace(result.GeneratedText))
+            { _error = "No suggestion is available. Continue editing manually or try again."; return; }
+            _pending = result;
+            await _editor.LoadAiSuggestionAsync(result.GeneratedText);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch { if (epoch == _epoch && !_disposed) _error = "Unable to generate. Continue editing manually or try again."; }
+        finally { if (epoch == _epoch) _generating = false; }
+    }
+
+    private async Task<EditableNarrativeAcceptResult> AcceptAsync(string text)
+    {
+        if (Unavailable || _pending is null || _pending.NoteId != NoteId || _pending.SourceLastModifiedUtc != SourceLastModifiedUtc || _pending.Purpose != Purpose)
+            return EditableNarrativeAcceptResult.Fail("The note changed. Generate a new suggestion.");
+        // Acceptance changes local draft state. The normal versioned workspace save persists the
+        // intended field and its provenance together; no generic SOAP-section merge is invoked.
+        SetValue(text);
+        Vm.AcceptedNarrativeProvenance[FieldName] = _pending.ToProvenance();
+        _pending = null;
+        await VmChanged.InvokeAsync(Vm);
+        return EditableNarrativeAcceptResult.Ok();
+    }
+
+    private async Task ManualChangedAsync(string text)
+    {
+        if (IsReadOnly || _disposed) return;
+        _epoch++; _cancellation?.Cancel(); _generating = false; _pending = null;
+        SetValue(text); await VmChanged.InvokeAsync(Vm);
+    }
+    private void SetValue(string text)
+    {
+        switch (Purpose)
+        {
+            case NoteNarrativePurpose.NextVisitPlan: Vm.FollowUpInstructions = text; break;
+            case NoteNarrativePurpose.DischargeRecommendations: Vm.DischargeRecommendations = text; break;
+            case NoteNarrativePurpose.DischargeFollowUp: Vm.PostDischargeInstructions = text; break;
+            case NoteNarrativePurpose.DischargeSummary: Vm.FullDischargeSummary = text; break;
+            case NoteNarrativePurpose.SoapSummary: Vm.ClinicalSummary = text; break;
+        }
+    }
+    private void Discard() { _pending = null; _error = null; }
+    public void Dispose() { _disposed = true; _epoch++; _cancellation?.Cancel(); _cancellation?.Dispose(); }
+}
