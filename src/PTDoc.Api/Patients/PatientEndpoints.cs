@@ -8,6 +8,7 @@ using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Services;
+using System.ComponentModel.DataAnnotations;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
@@ -244,6 +245,27 @@ public static class PatientEndpoints
         if (patient is null)
             return Results.NotFound(new { error = $"Patient {id} not found." });
 
+        if (request.ExpectedLastModifiedUtc.HasValue && request.ExpectedLastModifiedUtc.Value != patient.LastModifiedUtc)
+        {
+            return Results.Conflict(new { error = "Patient information changed since it was loaded. Refresh before saving again." });
+        }
+
+        var validationResults = new List<ValidationResult>();
+        Validator.TryValidateObject(request, new ValidationContext(request), validationResults, validateAllProperties: true);
+        var errors = validationResults
+            .Where(result => !(string.IsNullOrEmpty(request.Email) && result.MemberNames.SequenceEqual([nameof(request.Email)])))
+            .SelectMany(result => result.MemberNames.Select(name => (Name: name, Message: result.ErrorMessage ?? "Invalid value.")))
+            .GroupBy(result => result.Name)
+            .ToDictionary(group => group.Key, group => group.Select(result => result.Message).ToArray());
+        if (request.DateOfBirth == default(DateTime))
+        {
+            errors[nameof(request.DateOfBirth)] = ["A valid date of birth is required."];
+        }
+        if (errors.Count > 0)
+        {
+            return Results.ValidationProblem(errors);
+        }
+
         // Apply only provided (non-null) fields
         if (request.FirstName is not null)
         {
@@ -351,7 +373,14 @@ public static class PatientEndpoints
         }
 
         await integrations.QueuePatientSynchronizationAsync(patient.Id, patient.ModifiedByUserId, patient.LastModifiedUtc, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Results.Conflict(new { error = "Patient information changed while saving. Refresh before saving again." });
+        }
 
         return Results.Ok(ToResponse(patient));
     }

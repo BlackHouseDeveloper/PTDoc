@@ -47,8 +47,15 @@
                 <PatientDemographicsCardEditable Patient="@patient" OnPatientUpdated="ReloadProfileAsync" />
 
                 <PatientPrimaryActionButton
+                    OnClick="FocusNoteChoices"
                     Label="Start New Note"
                     Href="@($"/patient/{Uri.EscapeDataString(Id ?? string.Empty)}?action=new-note")" />
+
+                <AuthorizeView Policy="@AuthorizationPolicies.PatientWrite">
+                    <Authorized>
+                        <PatientPrimaryActionButton Label="Add Patient" Href="/patients?action=add" />
+                    </Authorized>
+                </AuthorizeView>
 
                 <AuthorizeView Policy="@AuthorizationPolicies.HepRead">
                     <Authorized>
@@ -76,9 +83,12 @@
                             <p>Select the documentation workflow for this patient.</p>
                         </div>
                         <div class="patient-profile-note-chooser__actions">
-                            @foreach (var noteType in noteTypeOptions)
+                            @for (var index = 0; index < noteTypeOptions.Length; index++)
                             {
+                                var optionIndex = index;
+                                var noteType = noteTypeOptions[index];
                                 <button type="button"
+                                        @ref="noteChoiceButtons[optionIndex]"
                                         class="btn btn--secondary"
                                         @onclick="() => HandleCreateNoteType(noteType)">
                                     @noteType
@@ -123,6 +133,9 @@
     private string? lastLoadedPatientRouteId;
     private Guid currentPatientId;
     private bool isNoteTypeChooserOpen;
+    private bool focusNoteChoicesPending;
+    private readonly ElementReference[] noteChoiceButtons = new ElementReference[noteTypeOptions.Length];
+
     private static readonly TimeSpan TimelineLookbackWindow = TimeSpan.FromDays(180);
     private static readonly string[] noteTypeOptions =
     [
@@ -145,6 +158,26 @@
         if (!string.Equals(lastLoadedPatientRouteId, Id, StringComparison.Ordinal))
         {
             await ReloadProfileAsync();
+        }
+    }
+
+    private void FocusNoteChoices()
+    {
+        isNoteTypeChooserOpen = true;
+        focusNoteChoicesPending = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!focusNoteChoicesPending || isLoading || !isNoteTypeChooserOpen) return;
+        focusNoteChoicesPending = false;
+        try
+        {
+            await noteChoiceButtons[0].FocusAsync(preventScroll: false);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or JSException)
+        {
+            // Browser focus may be unavailable during a disconnected circuit.
         }
     }
 
@@ -188,7 +221,15 @@
                     : null,
                 Email = response.Email,
                 PhoneNumber = response.Phone,
-                Address = BuildAddress(response)
+                Address = BuildAddress(response),
+                LastModifiedUtc = response.LastModifiedUtc,
+                AddressLine1 = response.AddressLine1,
+                AddressLine2 = response.AddressLine2,
+                City = response.City,
+                State = response.State,
+                ZipCode = response.ZipCode,
+                EmergencyContactName = response.EmergencyContactName,
+                EmergencyContactPhone = response.EmergencyContactPhone
             };
 
             await ReloadTimelineAsync();
@@ -470,6 +511,7 @@
             && string.Equals(action, "new-note", StringComparison.OrdinalIgnoreCase))
         {
             isNoteTypeChooserOpen = true;
+            focusNoteChoicesPending = true;
         }
 
         return true;

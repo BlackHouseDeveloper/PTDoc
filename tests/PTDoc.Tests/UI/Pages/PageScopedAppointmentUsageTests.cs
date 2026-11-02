@@ -261,6 +261,8 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
         {
             Assert.Contains("Choose Note Type", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Evaluation Note", cut.Markup, StringComparison.Ordinal);
+            Assert.Contains(JSInterop.Invocations, call => call.Identifier == "Blazor._internal.domWrapper.focus");
+            Assert.Equal("/patients?action=add", cut.Find("a[aria-label='Add Patient']").GetAttribute("href"));
         });
     }
 
@@ -651,9 +653,11 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
 
     private void RegisterCommonServices(string role = Roles.PT)
     {
+        JSInterop.SetupVoid("Blazor._internal.domWrapper.focus", _ => true);
         var authorization = this.AddTestAuthorization();
         authorization.SetAuthorized("test-user");
         authorization.SetRoles(role);
+        if (role == Roles.PT) authorization.SetPolicies(AuthorizationPolicies.PatientWrite);
 
         var headerConfigurationService = new Mock<IHeaderConfigurationService>(MockBehavior.Loose);
         headerConfigurationService
