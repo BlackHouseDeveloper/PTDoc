@@ -1,0 +1,119 @@
+@namespace PTDoc.UI.Components.Notes.Workspace
+@using System.Text.Json
+@using PTDoc.Application.Notes.Workspace
+@using PTDoc.Core.Models
+@using PTDoc.UI.Components.Notes.Models
+
+@foreach (var kind in new[] { MetricType.MMT, MetricType.JointMobility })
+{
+    <section class="graded-editor" data-testid="@(kind == MetricType.MMT ? "objective-mmt-section" : "objective-joint-mobility-section")">
+        <h3>@(kind == MetricType.MMT ? "Manual Muscle Testing (MMT)" : "Joint Mobility")</h3>
+        @if (kind == MetricType.MMT)
+        {
+            <p>ROM movements seed empty strength rows for each applicable side. Enter an independent strength grade; removing ROM does not remove an entered grade.</p>
+            <div class="graded-editor__choices" aria-label="Additional MMT movements">
+                @foreach (var movement in Movements)
+                {
+                    <button type="button" disabled="@IsReadOnly" @onclick="() => AddMmt(movement)">Add MMT: @movement.Name</button>
+                }
+            </div>
+        }
+        else
+        {
+            <p>Record joint mobility separately, using its own grading scale.</p>
+            <button type="button" disabled="@IsReadOnly" @onclick="AddJoint">Add joint assessment</button>
+        }
+        @foreach (var row in Structured(kind))
+        {
+            <fieldset class="graded-editor__row" data-testid="graded-observation-row" @key="Key(row)">
+                <legend>@row.BodyPart — @row.Name</legend>
+                <p>@(row.Side ?? "Unsided") · @KindLabel(kind) · Unit: grade</p>
+                @if (kind == MetricType.JointMobility)
+                {
+                    <label>Joint / assessment<input value="@row.Name" maxlength="200" disabled="@IsReadOnly" @oninput="e => Update(row, r => r.Name = e.Value?.ToString() ?? string.Empty)" /></label>
+                }
+                @if (!string.IsNullOrWhiteSpace(row.NormValue))
+                { <p>Recorded reference grade: @row.NormValue</p> }
+                <label>Previous grade
+                    <select value="@row.PreviousValue" disabled="@IsReadOnly" @onchange="e => Update(row, r => r.PreviousValue = e.Value?.ToString())">
+                        <option value="">Not recorded</option>
+                        @foreach (var grade in GradedObservations.Grades(kind)) { <option value="@grade">@grade</option> }
+                    </select>
+                </label>
+                <label>Current grade
+                    <select value="@row.Value" disabled="@IsReadOnly" @onchange="e => Update(row, r => r.Value = e.Value?.ToString() ?? string.Empty)">
+                        <option value="">Select grade</option>
+                        @foreach (var grade in GradedObservations.Grades(kind)) { <option value="@grade">@grade</option> }
+                    </select>
+                </label>
+                <p class="graded-editor__source">Grading reference: @row.ReferenceDocumentPath (version @row.ReferenceVersion)</p>
+            </fieldset>
+        }
+        @if (!Structured(kind).Any()) { <p>No @KindLabel(kind) observations selected.</p> }
+    </section>
+}
+@if (Legacy.Any())
+{
+    <section class="graded-editor" data-testid="objective-legacy-grades">
+        <h3>Historical strength / other observations</h3>
+        <p>These entries predate separate grading controls. Their original labels and values are retained; they have not been classified or converted.</p>
+        @foreach (var row in Legacy)
+        {
+            <fieldset class="graded-editor__row">
+                <legend>@row.BodyPart — @row.Name</legend>
+                <p>Recorded type: @row.MetricType · Side: @(row.Side ?? "not recorded") · Unit: @(row.Unit ?? "not recorded")</p>
+                <p>Reference: @(row.NormValue ?? "not recorded") · Previous: @(row.PreviousValue ?? "not recorded")</p>
+                <p>Recorded value: @row.Value</p>
+            </fieldset>
+        }
+    </section>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<ObjectiveMetricRowEntry> Rows { get; set; } = [];
+    [Parameter] public EventCallback<List<ObjectiveMetricRowEntry>> RowsChanged { get; set; }
+    [Parameter] public BodyPart Region { get; set; } = BodyPart.Other;
+    [Parameter] public BodyRegionCatalog? Catalog { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    private List<ObjectiveMetricRowEntry> _rows = [];
+    private static string KindLabel(MetricType kind) => kind == MetricType.MMT ? "MMT" : "joint mobility";
+    private IEnumerable<ObjectiveMetricRowEntry> Structured(MetricType kind) => _rows.Where(r => r.MetricType == kind && !string.IsNullOrWhiteSpace(r.MovementId));
+    private IEnumerable<ObjectiveMetricRowEntry> Legacy => _rows.Where(r => r.MetricType == MetricType.Other || r.MetricType == MetricType.MMT && string.IsNullOrWhiteSpace(r.MovementId));
+    private IEnumerable<RomMovementDefinition> Movements => Catalog is null || Catalog.BodyPart != Region ? []
+        : Catalog.NormalRangeOfMotionOptions.Where(label => ObjectiveMetricDimensions.AppliesToRegion(Region, label)).Select(label => ObjectiveMetricDimensions.FromCatalog(Region, label, Catalog.NormalRangeOfMotion));
+    private static T Clone<T>(T value) => JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(value))!;
+    private static ObjectiveMetricInputV2 Dimensions(ObjectiveMetricRowEntry r) => new()
+    { BodyPart = Enum.TryParse<BodyPart>(r.BodyPart, out var region) ? region : BodyPart.Other, MetricType = r.MetricType, MovementId = r.MovementId, Name = r.Name, Side = r.Side, Unit = r.Unit };
+    private static string Key(ObjectiveMetricRowEntry row) => ObjectiveMetricDimensions.Key(Dimensions(row));
+    private static ObjectiveMetricRowEntry From(ObjectiveMetricInputV2 r) => new()
+    { BodyPart = r.BodyPart.ToString(), MetricType = r.MetricType, MovementId = r.MovementId, Name = r.Name, Side = r.Side, Unit = r.Unit,
+        Value = r.Value, ReferenceDocumentPath = r.ReferenceDocumentPath, ReferenceVersion = r.ReferenceVersion };
+    protected override void OnParametersSet()
+    {
+        _rows = Clone(Rows.ToList());
+        if (!IsReadOnly) _rows.AddRange(GradedObservations.SeedMmt(_rows.Select(Dimensions), _rows.Select(Dimensions)).Select(From));
+    }
+    private Task AddMmt(RomMovementDefinition movement)
+    {
+        if (IsReadOnly) return Task.CompletedTask;
+        _rows.AddRange(GradedObservations.SeedMmt(ObjectiveMetricDimensions.CreateRomRows(Region, movement), _rows.Select(Dimensions)).Select(From));
+        return RowsChanged.InvokeAsync(Clone(_rows));
+    }
+    private Task AddJoint()
+    {
+        if (IsReadOnly) return Task.CompletedTask;
+        var id = $"{Region.ToString().ToLowerInvariant()}:joint-{Guid.NewGuid():N}";
+        string?[] sides = ObjectiveMetricDimensions.IsPaired(Region) ? ["Left", "Right"] : [null];
+        _rows.AddRange(sides.Select(side => From(GradedObservations.New(Region, MetricType.JointMobility, id, "Joint mobility", side))));
+        return RowsChanged.InvokeAsync(Clone(_rows));
+    }
+    private Task Update(ObjectiveMetricRowEntry row, Action<ObjectiveMetricRowEntry> update)
+    {
+        if (IsReadOnly) return Task.CompletedTask;
+        // A queued browser event may reference the prior render's cloned row. Resolve its stable identity first.
+        var current = _rows.SingleOrDefault(candidate => Key(candidate) == Key(row));
+        if (current is null) return Task.CompletedTask;
+        update(current);
+        return RowsChanged.InvokeAsync(Clone(_rows));
+    }
+}

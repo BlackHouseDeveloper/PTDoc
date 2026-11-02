@@ -14,7 +14,7 @@ internal static class ObjectiveMetricPersistence
         NoteWorkspaceV2Payload? payload;
         try { payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(note.ContentJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }); }
         catch (JsonException) { return; }
-        if (payload?.Objective?.MeasurementSchemaVersion != 1) return;
+        if (payload?.Objective?.MeasurementSchemaVersion is not (1 or 2)) return;
         await ReplaceAsync(db, note, payload.Objective.Metrics, ct);
     }
 

@@ -75,6 +75,7 @@ public enum MetricType
     Girth = 2,
     Pain = 3,
     Functional = 4,
+    JointMobility = 5,
     Other = 99
 }
 

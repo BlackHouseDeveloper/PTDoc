@@ -69,6 +69,8 @@ public static class ObjectiveMetricDimensions
                 errors.Add("Select Left or Right for a paired-region ROM observation.");
             if (!string.IsNullOrEmpty(m.MovementId) && !seen.Add(Key(m)))
                 errors.Add("Duplicate movement, side and mode observations are not allowed.");
+            if (!Enum.IsDefined(m.MetricType)) errors.Add("Unknown objective measurement kind.");
+            errors.AddRange(GradedObservations.Validate(m));
             Check(m.Name, 200); Check(m.Value, 200); Check(m.PreviousValue, 200); Check(m.NormValue, 200);
             Check(m.MovementId, 160); Check(m.Side, 20); Check(m.Unit, 50); Check(m.ReferenceDocumentPath, 500); Check(m.ReferenceVersion, 100);
         }
@@ -82,9 +84,12 @@ public static class ObjectiveMetricDimensions
         var current = ReadWorkspace(incomingJson)?.Objective;
         var oldHasDimensions = old?.MeasurementSchemaVersion is not null || old?.Metrics?.Any(m => m.MotionMode.HasValue || m.MovementId is not null) == true;
         var newHasDimensions = current?.Metrics?.Any(m => m.MotionMode.HasValue || m.MovementId is not null) == true;
-        if ((oldHasDimensions || newHasDimensions) && current?.MeasurementSchemaVersion != 1
-            || current?.MeasurementSchemaVersion is not (null or 1))
-            return ["Use a compatible note editor to preserve the measurement dimensions and their schema version."];
+        var graded = old?.MeasurementSchemaVersion == 2 || old?.Metrics?.Any(GradedObservations.IsStructured) == true
+            || current?.Metrics?.Any(m => GradedObservations.IsStructured(m) || m.MetricType == MetricType.JointMobility) == true;
+        if ((oldHasDimensions || newHasDimensions) && current?.MeasurementSchemaVersion is not (1 or 2)
+            || current?.MeasurementSchemaVersion is not (null or 1 or 2)
+            || graded && current?.MeasurementSchemaVersion != 2)
+            return ["Use a compatible note editor to preserve the measurement kinds, dimensions and their schema version."];
         return current is null ? [] : Validate(current.Metrics ?? []);
     }
 
