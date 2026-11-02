@@ -2,6 +2,7 @@ using System.Globalization;
 using Bunit;
 using Bunit.TestDoubles;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
 using Moq;
 using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.DTOs;
@@ -85,8 +86,11 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
         appointmentService.Verify(service => service.GetOverviewAsync(It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    [Fact]
-    public void PatientProfile_RendersLockedIntakeCalloutAndTimelineEntry()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("import")]
+    [InlineData("lookup")]
+    public void PatientProfile_RendersLockedIntakeCalloutAndTimelineEntry(string? canceledTimeZoneStage)
     {
         var patientId = Guid.NewGuid();
         var submittedAt = new DateTime(2026, 5, 1, 14, 0, 0, DateTimeKind.Utc);
@@ -129,7 +133,28 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
                 LastModifiedUtc = submittedAt
             });
 
-        RegisterCommonServices();
+        RegisterCommonServices(resolveViewerTimeZone: canceledTimeZoneStage is null);
+        Mock<IJSRuntime>? importRuntime = null;
+        if (canceledTimeZoneStage == "import")
+        {
+            // Model import cancellation at the public runtime boundary, before a module exists.
+            importRuntime = new Mock<IJSRuntime>(MockBehavior.Strict);
+            importRuntime
+                .Setup(runtime => runtime.InvokeAsync<IJSObjectReference>(
+                    "import",
+                    It.Is<object?[]?>(arguments => arguments != null
+                        && arguments.Length == 1
+                        && Equals(arguments[0], "./_content/PTDoc.UI/js/viewer-time-zone.js"))))
+                .Returns(new ValueTask<IJSObjectReference>(
+                    Task.FromCanceled<IJSObjectReference>(new CancellationToken(canceled: true))));
+            Services.AddSingleton<IJSRuntime>(importRuntime.Object);
+        }
+        else if (canceledTimeZoneStage == "lookup")
+        {
+            JSInterop.SetupModule("./_content/PTDoc.UI/js/viewer-time-zone.js")
+                .Setup<string>("getViewerTimeZone").SetCanceled();
+        }
+
         Services.AddSingleton(patientService.Object);
         Services.AddSingleton(noteService.Object);
         Services.AddSingleton(appointmentService.Object);
@@ -144,7 +169,25 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
             Assert.Contains("Intake submitted and awaiting clinician review.", callout.TextContent, StringComparison.Ordinal);
             Assert.Contains("Review intake", callout.TextContent, StringComparison.Ordinal);
             Assert.Contains("Submitted Intake", cut.Markup, StringComparison.Ordinal);
+            var timestamp = cut.Find(".patient-clinical-info-timeline-time time");
+            Assert.Equal(canceledTimeZoneStage is null ? "10:00 AM UTC-04:00" : "2:00 PM UTC", timestamp.TextContent);
+            Assert.Equal(canceledTimeZoneStage is null ? "America/New_York" : TimeZoneInfo.Utc.Id, timestamp.GetAttribute("title"));
+            Assert.Equal(submittedAt.ToString("O"), timestamp.GetAttribute("datetime"));
         });
+
+        // A canceled first-render lookup must leave event dispatch usable as well as retaining UTC.
+        if (importRuntime is not null)
+        {
+            importRuntime.VerifyAll();
+        }
+        else
+        {
+            JSInterop.VerifyInvoke("import");
+        }
+
+        cut.Find("[data-testid='patient-intake-status'] button").Click();
+        var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        Assert.EndsWith($"/intake/{patientId:D}", navigation.Uri, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -649,10 +692,14 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
         });
     }
 
-    private void RegisterCommonServices(string role = Roles.PT)
+    private void RegisterCommonServices(string role = Roles.PT, bool resolveViewerTimeZone = true)
     {
-        JSInterop.SetupModule("./_content/PTDoc.UI/js/viewer-time-zone.js")
-            .Setup<string>("getViewerTimeZone").SetResult("America/New_York");
+        if (resolveViewerTimeZone)
+        {
+            JSInterop.SetupModule("./_content/PTDoc.UI/js/viewer-time-zone.js")
+                .Setup<string>("getViewerTimeZone").SetResult("America/New_York");
+        }
+
         var authorization = this.AddTestAuthorization();
         authorization.SetAuthorized("test-user");
         authorization.SetRoles(role);

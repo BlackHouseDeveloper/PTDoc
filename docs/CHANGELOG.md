@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - PR 158 timeline cancellation review coverage
+
+- Added patient-profile cases for canceled browser time-zone module import and zone lookup, checking explicit UTC fallback, preserved timestamp metadata, and continued intake navigation. Documented the review inventory and framework cancellation handling that makes a production catch-filter change unnecessary; native-platform validation and client acceptance remain open.
+- Rebased the local PR 158 review branch onto main after PR 157 merged, preserving upstream changelog history and uncommitted review coverage. The timeline implementation is unchanged; focused verification is recorded below.
+- Corrected the import-cancellation fixture after the user reported 2,342 passing tests and one setup failure, followed by a CS0122 compilation failure in the attempted custom handler. The fixture now mocks the public `IJSRuntime` interface with an exact import match and canceled task, avoiding both bUnit's restricted generic setup and inaccessible constructor. All behavior assertions remain intact. The user confirmed successful compilation and all three focused cases passing, with zero failures or skips, then confirmed all required builds and tests passed before authorizing publication.
+- Recorded the missing iOS signing-key blocker and provided an explicit Apple Silicon simulator build command for local verification. Signed device publishing remains unverified; project signing settings are unchanged.
+- Documented recovery for the user's solution-clean `NETSDK1047` failure by refreshing the Debug solution restore before clean/build/test. The inspected assets already contain the simulator target; no speculative project runtime changes were made. Subsequent required build/test success was confirmed by the user.
+- Recorded the user's successful iOS simulator Debug build: 0 warnings, 0 errors, 17.40 seconds. Simulator launch/timeline checks and signed-device publishing remain unverified.
+
 ### Documentation - PR 157 verification evidence reconciliation
 
 - Distinguish historical 180/185-test results and the earlier failed reopen run from validation of `e3b5bb5`. Record the user's verification confirmation and successful Core CI run with all 2,125 tests passing, including the corrected delayed-reopen regression, and identify the PR merge checkout tested by CI.
