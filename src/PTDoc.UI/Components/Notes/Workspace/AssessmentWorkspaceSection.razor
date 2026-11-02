@@ -16,20 +16,6 @@
 
 <section class="assessment-workspace" data-testid="assessment-workspace-section" role="tabpanel" aria-label="Assessment section">
 
-    <!-- 1. Clinical Assessment Summary (handled by existing AssessmentTab) -->
-    <AssessmentTab NoteId="@NoteId"
-                   IsNoteSigned="@IsReadOnly"
-                   AssessmentText="@Vm.AssessmentNarrative"
-                   AssessmentTextChanged="@(v => SetAndNotify(vm => vm.AssessmentNarrative = v))"
-                   FunctionalLimitations="@Vm.FunctionalLimitations"
-                   FunctionalLimitationsChanged="@(v => SetAndNotify(vm => vm.FunctionalLimitations = v))"
-                   ChiefComplaint="@ChiefComplaint"
-                   SelectedBodyPart="@SelectedBodyPart"
-                   ExaminationFindings="@ExaminationFindings"
-                   SubjectiveInputs="@SubjectiveInputs"
-                   ObjectiveInputs="@ObjectiveInputs"
-                   OnAiAccepted="@(v => SetAndNotify(vm => vm.AssessmentNarrative = v))" />
-
     <!-- 2. Deficits & Impairments -->
     <div class="aws-card" data-testid="deficits-card">
         <div class="aws-card__header">
@@ -451,6 +437,21 @@
                   value="@Vm.FindingsSummary"
                   @oninput="e => SetAndNotify(vm => vm.FindingsSummary = e.Value?.ToString())"></textarea>
     </div>
+
+    <!-- Compose the narrative after reviewing its contributing assessment inputs. -->
+    <AssessmentTab NoteId="@NoteId"
+                   IsNoteSigned="@IsReadOnly"
+                   AssessmentText="@Vm.AssessmentNarrative"
+                   AssessmentTextChanged="@(v => SetAndNotify(vm => vm.AssessmentNarrative = v))"
+                   FunctionalLimitations="@Vm.FunctionalLimitations"
+                   FunctionalLimitationsChanged="@(v => SetAndNotify(vm => vm.FunctionalLimitations = v))"
+                   ChiefComplaint="@ChiefComplaint"
+                   SelectedBodyPart="@SelectedBodyPart"
+                   ExaminationFindings="@ExaminationFindings"
+                   SubjectiveInputs="@SubjectiveInputs"
+                   ObjectiveInputs="@ObjectiveInputs"
+                   OnAiAccepted="@(v => SetAndNotify(vm => vm.AssessmentNarrative = v))" />
+
 
 </section>
 

@@ -41,6 +41,15 @@
     }
 
     <div class="assessment-tab__fields">
+        <EditableNarrativeBox @ref="_limitationsBox"
+                              Label="Functional Limitations"
+                              Placeholder="Describe identified functional limitations…"
+                              Value="@_functionalLimitations"
+                              ValueChanged="OnLimitationsChangedAsync"
+                              IsReadOnly="@IsNoteSigned"
+                              Rows="4"
+                              TestId="assessment-limitations-box" />
+
         <EditableNarrativeBox @ref="_narrativeBox"
                               Label="Clinical Assessment Narrative"
                               Placeholder="Enter or generate the assessment narrative…"
@@ -51,15 +60,6 @@
                               IsReadOnly="@IsNoteSigned"
                               Rows="10"
                               TestId="assessment-narrative-box" />
-
-        <EditableNarrativeBox @ref="_limitationsBox"
-                              Label="Functional Limitations"
-                              Placeholder="Describe identified functional limitations…"
-                              Value="@_functionalLimitations"
-                              ValueChanged="OnLimitationsChangedAsync"
-                              IsReadOnly="@IsNoteSigned"
-                              Rows="4"
-                              TestId="assessment-limitations-box" />
     </div>
 
 </section>
