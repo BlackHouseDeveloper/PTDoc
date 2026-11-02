@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation - PR 157 verification evidence reconciliation
+
+- Distinguish historical 180/185-test results and the earlier failed reopen run from validation of `e3b5bb5`. Record the user's verification confirmation and successful Core CI run with all 2,125 tests passing, including the corrected delayed-reopen regression, and identify the PR merge checkout tested by CI.
+- Refresh the complete six-finding audit, duplicate summary references, suppressed/Previously missed inventory, and publication boundary. This correction changes documentation only; the live PR description awaits authorized reconciliation.
+
+### Fixed - PR 157 delayed modal registration cleanup
+
+- Serialize incomplete-note modal registration, focus, cleanup, and interop disposal so closing or disposing during a delayed registration cannot leave an orphan Escape/focus-trap handler. Preserve generation checks and Cancel-only autofocus. Strengthen all four pending-registration close cases and add a close/reopen regression that also holds cleanup pending.
+- Synchronize the reopen regression with explicit interop invocation signals instead of render-triggered assertions: gate continuations can register after the last render. Preserve all ordering assertions. The earlier user-reported run passed 2,551 tests and failed this one wait; the corrected test subsequently passed in Core CI for `e3b5bb5`.
+- Record the complete PR 157 review inventory, historical dispositions, duplicate summary references, and verification limits in `docs/client-review/plan-02.md`. Subsequent user confirmation and CI evidence are recorded in the 2026-11-02 audit.
+
+### Fixed - PR 157 failed-save recovery races
+
+- Cancel and drain every note-workspace persistence path before explicit discard navigates, including direct/override saves, and retain the persistence gate until all cancelled work has completed. Retry now rechecks that its recovery target remains current after saving, so Stay cannot be overridden by a late navigation.
+- Reload the saved workspace if discard navigation is interrupted, restoring a usable autosave lifecycle instead of leaving editable controls with persistence disabled. Disable the modal helper's default autofocus where the incomplete-note dialog deliberately focuses Cancel, preventing a delayed focus switch to Continue. Added focused delayed-save and modal-registration regression coverage; verification remains pending user-run tests.
+
 ### Fixed - PR 156 monitor startup and regression verification
 
 - Retry interrupted activity-monitor initialization when the retained circuit reconnects, coalescing concurrent retries and preserving an already-running JavaScript monitor after a lost acknowledgement. Add eight .NET lifecycle cases and two JavaScript regressions.
@@ -119,6 +135,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - Client review Plan 04
 
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
+
+### Fixed - Plan 02 incomplete-note keyboard cleanup
+
+- Track modal handler ownership before asynchronous registration, remove the delayed focus race, and invalidate stale work on close/dispose. Synthetic Evaluation/Daily failure-matrix verification now covers retained edits, retry, discard, and no abandoned autosave.
+
+### Changed - Client review Plan 02
+
+- Added explicit Stay, Retry save and leave, and Leave without saving recovery after a failed note save. Explicit discard cancels/drains pending autosaves and prevents a disposal retry. Added navigation and autosave regressions; full browser fault-injection acceptance remains open.
 
 ### Fixed - PR 156 session review findings
 

@@ -48,6 +48,219 @@ public sealed class NoteWorkspacePageTests : TestContext
     }
 
     [Fact]
+    public async Task FailedSaveNavigation_OffersStayAndExplicitDiscard_WithoutDisposalRetry()
+    {
+        var (cut, service, autosave, navigation) = RenderFailedSaveNavigationNote();
+        var history = (FakeNavigationManager)navigation;
+        await cut.InvokeAsync(() =>
+        {
+            autosave.MarkDirty();
+            navigation.NavigateTo("/dashboard");
+        });
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='failed-save-navigation']")));
+        cut.WaitForAssertion(() => Assert.Equal(NavigationState.Prevented, history.History.First().State));
+        Assert.True(autosave.IsDirty);
+
+        await cut.InvokeAsync(() => cut.Find("[data-testid='failed-save-stay']").Click());
+        Assert.Empty(cut.FindAll("[data-testid='failed-save-navigation']"));
+        Assert.True(autosave.IsDirty);
+        cut.WaitForAssertion(() => Assert.Equal(NavigationState.Prevented, history.History.First().State));
+
+        await cut.InvokeAsync(() => navigation.NavigateTo("/dashboard"));
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='failed-save-discard']")));
+        await cut.InvokeAsync(() => cut.Find("[data-testid='failed-save-discard']").Click());
+        cut.WaitForAssertion(() =>
+        {
+            Assert.EndsWith("/dashboard", navigation.Uri, StringComparison.Ordinal);
+            Assert.False(autosave.IsDirty);
+            Assert.Equal(NavigationState.Succeeded, ((FakeNavigationManager)navigation).History.First().State);
+        });
+        var savesBeforeDisposal = service.Invocations.Count(call => call.Method.Name == nameof(INoteWorkspaceService.SaveDraftAsync));
+        cut.Dispose();
+        Assert.Equal(savesBeforeDisposal, service.Invocations.Count(call => call.Method.Name == nameof(INoteWorkspaceService.SaveDraftAsync)));
+    }
+
+    [Fact]
+    public async Task FailedSaveNavigation_RetryCanSaveAndLeave()
+    {
+        var (cut, service, autosave, navigation) = RenderFailedSaveNavigationNote();
+        await cut.InvokeAsync(() =>
+        {
+            autosave.MarkDirty();
+            navigation.NavigateTo("/dashboard");
+        });
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='failed-save-retry']")));
+        service.Setup(item => item.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceSaveResult { Success = true, NoteId = Guid.NewGuid(), Status = NoteStatus.Draft });
+        await cut.InvokeAsync(() => cut.Find("[data-testid='failed-save-retry']").Click());
+        cut.WaitForAssertion(() =>
+        {
+            Assert.EndsWith("/dashboard", navigation.Uri, StringComparison.Ordinal);
+            Assert.False(autosave.IsDirty);
+            Assert.Equal(NavigationState.Succeeded, ((FakeNavigationManager)navigation).History.First().State);
+        });
+    }
+
+    [Fact]
+    public async Task FailedSaveNavigation_RetryThenStay_DoesNotNavigateWhenDelayedSaveCompletes()
+    {
+        var (cut, service, autosave, navigation) = RenderFailedSaveNavigationNote();
+        await cut.InvokeAsync(() =>
+        {
+            autosave.MarkDirty();
+            navigation.NavigateTo("/dashboard");
+        });
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='failed-save-retry']")));
+
+        var saveStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var saveCompletion = new TaskCompletionSource<NoteWorkspaceSaveResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.Setup(item => item.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()))
+            .Returns((NoteWorkspaceDraft _, CancellationToken _) =>
+            {
+                saveStarted.TrySetResult(true);
+                return saveCompletion.Task;
+            });
+
+        var retry = cut.Find("[data-testid='failed-save-retry']").ClickAsync(new MouseEventArgs());
+        await saveStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await cut.InvokeAsync(() => cut.Find("[data-testid='failed-save-stay']").Click());
+        saveCompletion.SetResult(new NoteWorkspaceSaveResult
+        {
+            Success = true,
+            NoteId = Guid.NewGuid(),
+            Status = NoteStatus.Draft
+        });
+        await retry;
+
+        cut.WaitForAssertion(() =>
+            Assert.False(navigation.Uri.EndsWith("/dashboard", StringComparison.Ordinal)));
+        Assert.Empty(cut.FindAll("[data-testid='failed-save-navigation']"));
+    }
+
+    [Fact]
+    public async Task FailedSaveNavigation_DiscardCancelsAndDrainsDelayedDirectSaveBeforeLeaving()
+    {
+        var patientId = Guid.NewGuid();
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Loose);
+        var directSaveStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var directSaveCancelled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var delayedDirectSave = new TaskCompletionSource<NoteWorkspaceSaveResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var saveAttempts = 0;
+
+        patientService
+            .Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse
+            {
+                Id = patientId,
+                FirstName = "Synthetic",
+                LastName = "Fixture",
+                DateOfBirth = new DateTime(1988, 1, 1)
+            });
+        noteWorkspaceService
+            .Setup(service => service.GetEvaluationSeedAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceEvaluationSeedResult { Success = true, HasSeed = false });
+        noteWorkspaceService
+            .Setup(service => service.GetCarryForwardSeedAsync(patientId, "Progress Note", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceCarryForwardSeedResult { Success = true, HasSeed = false });
+        noteWorkspaceService
+            .Setup(service => service.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()))
+            .Returns((NoteWorkspaceDraft _, CancellationToken cancellationToken) =>
+            {
+                if (saveAttempts++ == 0)
+                {
+                    return Task.FromResult(new NoteWorkspaceSaveResult
+                    {
+                        Success = false,
+                        ErrorMessage = "Synthetic save failure."
+                    });
+                }
+
+                directSaveStarted.TrySetResult(true);
+                cancellationToken.Register(() =>
+                {
+                    directSaveCancelled.TrySetResult(true);
+                    delayedDirectSave.TrySetCanceled(cancellationToken);
+                });
+                return delayedDirectSave.Task;
+            });
+
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton(new DraftAutosaveService());
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        navigation.NavigateTo($"/patient/{patientId}/new-note");
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString()));
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='footer-save']")));
+
+        await cut.InvokeAsync(() => navigation.NavigateTo("/dashboard"));
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='failed-save-retry']")));
+
+        var retry = cut.Find("[data-testid='failed-save-retry']").ClickAsync(new MouseEventArgs());
+        await directSaveStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var discard = cut.Find("[data-testid='failed-save-discard']").ClickAsync(new MouseEventArgs());
+        await directSaveCancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await Task.WhenAll(retry, discard);
+
+        cut.WaitForAssertion(() =>
+            Assert.EndsWith("/dashboard", navigation.Uri, StringComparison.Ordinal));
+        Assert.Equal(2, saveAttempts);
+    }
+
+    private (IRenderedComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage> Cut,
+        Mock<INoteWorkspaceService> Service, DraftAutosaveService Autosave, NavigationManager Navigation)
+        RenderFailedSaveNavigationNote()
+    {
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var patients = new Mock<IPatientService>(MockBehavior.Strict);
+        patients.Setup(item => item.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse { Id = patientId, FirstName = "Synthetic", LastName = "Fixture", DateOfBirth = new DateTime(1988, 1, 1) });
+        var notes = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        notes.Setup(item => item.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceLoadResult
+            {
+                Success = true,
+                NoteId = noteId,
+                WorkspaceNoteType = "Evaluation Note",
+                Status = NoteStatus.Draft,
+                DateOfService = new DateTime(2026, 10, 26),
+                Payload = new NoteWorkspacePayload
+                {
+                    WorkspaceNoteType = "Evaluation Note",
+                    StructuredPayload = new NoteWorkspaceV2Payload { NoteType = NoteType.Evaluation },
+                    Subjective = new SubjectiveVm(),
+                    Objective = new ObjectiveVm(),
+                    Assessment = new AssessmentWorkspaceVm(),
+                    Plan = new PlanVm()
+                }
+            });
+        notes.Setup(item => item.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceSaveResult { Success = false, ErrorMessage = "Synthetic save failure." });
+        Services.AddAuthorizationCore();
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
+        Services.AddSingleton<AuthenticationStateProvider>(new TestAuthenticationStateProvider(Roles.PT));
+        Services.AddSingleton(patients.Object);
+        Services.AddSingleton(notes.Object);
+        Services.AddSingleton(new Mock<IAiClinicalGenerationService>().Object);
+        var autosave = new DraftAutosaveService();
+        Services.AddSingleton(autosave);
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        navigation.NavigateTo($"/patient/{patientId}/note/{noteId}");
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString())
+            .Add(component => component.NoteId, noteId.ToString()));
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='footer-save']")));
+        return (cut, notes, autosave, navigation);
+    }
+
+    [Fact]
     public void NewNotePage_AutoStartsEvaluation_WhenApplicableIntakeSeedExists()
     {
         var patientId = Guid.NewGuid();
@@ -1003,7 +1216,7 @@ public sealed class NoteWorkspacePageTests : TestContext
     }
 
     [Fact]
-    public void PtCanApplySaveTimeOverride_FromWorkspacePanel()
+    public async Task PtCanApplySaveTimeOverride_FromWorkspacePanel()
     {
         var patientId = Guid.NewGuid();
         var noteId = Guid.NewGuid();
@@ -1100,8 +1313,8 @@ public sealed class NoteWorkspacePageTests : TestContext
             Assert.Contains("Eight-minute rule", cut.Find("[data-testid='note-workspace-override-rule']").TextContent, StringComparison.Ordinal);
         });
 
-        cut.Find("[data-testid='note-workspace-override-reason']").Input("Clinical judgment supports billing this visit despite the 8-minute warning.");
-        cut.Find("[data-testid='note-workspace-override-save']").Click();
+        await cut.InvokeAsync(() => cut.Find("[data-testid='note-workspace-override-reason']").Input("Clinical judgment supports billing this visit despite the 8-minute warning."));
+        await cut.InvokeAsync(() => cut.Find("[data-testid='note-workspace-override-save']").Click());
 
         cut.WaitForAssertion(() =>
         {
