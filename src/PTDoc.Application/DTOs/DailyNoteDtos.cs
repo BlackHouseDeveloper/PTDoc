@@ -1,3 +1,4 @@
+using PTDoc.Core.Models;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.ReferenceData;
 using System.Text.Json;
@@ -46,6 +47,7 @@ public class DailyNoteSaveResponse : ValidatedOperationResponse
 
 public class DailyNoteContentDto
 {
+    public int? MeasurementSchemaVersion { get; set; }
     public int? ConditionChange { get; set; }
     public int? CurrentPainScore { get; set; }
     public int? BestPainScore { get; set; }
@@ -95,6 +97,13 @@ public class ActivityEntryDto
 
 public class ObjectiveMeasureEntryDto
 {
+    public string? MovementId { get; set; }
+    public RomMotionMode? MotionMode { get; set; }
+    public string? ReferenceDocumentPath { get; set; }
+    public string? ReferenceVersion { get; set; }
+    public string? Side { get; set; }
+    public string? Unit { get; set; }
+
     public int MeasureType { get; set; }
     public string BodyPart { get; set; } = string.Empty;
     public string? Specificity { get; set; }

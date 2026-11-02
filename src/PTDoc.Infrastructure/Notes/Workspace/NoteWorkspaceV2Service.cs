@@ -219,6 +219,7 @@ public sealed class NoteWorkspaceV2Service(
         NormalizeCptModifierSources(payload.Plan.SelectedCptCodes);
 
         var interventionErrors = NormalizeAndValidateInterventions(payload);
+        interventionErrors.AddRange(ObjectiveMetricDimensions.ValidateJsonRevision(note?.ContentJson, JsonSerializer.Serialize(payload, SerializerOptions)));
         if (interventionErrors.Count > 0)
         {
             return new NoteWorkspaceV2SaveResponse
@@ -1236,39 +1237,33 @@ public sealed class NoteWorkspaceV2Service(
         payload.DailyTreatment ??= new WorkspaceDailyTreatmentV2();
         var previousMetrics = await GetPreviousMetricMapAsync(note, cancellationToken);
 
-        // Keep workspace-authored metric rows (including in-progress rows that may not have a value yet)
-        // and enrich them with previous-value context from relational history.
-        if (payload.Objective.Metrics.Count > 0)
+        // JSON preserves deliberately blank/unfinished rows. Relational fallback has
+        // the same dimensions; never duplicate unknown legacy mode into active/passive.
+        if (payload.Objective.Metrics.Count == 0)
         {
-            payload.Objective.Metrics = payload.Objective.Metrics
-                .Select(metric => new ObjectiveMetricInputV2
-                {
-                    Name = metric.Name,
-                    BodyPart = metric.BodyPart,
-                    MetricType = metric.MetricType,
-                    Value = metric.Value,
-                    IsWithinNormalLimits = metric.IsWithinNormalLimits,
-                    NormValue = metric.NormValue,
-                    PreviousValue = previousMetrics.TryGetValue((metric.BodyPart, metric.MetricType), out var previousValue)
-                        ? previousValue
-                        : metric.PreviousValue
-                })
-                .ToList();
+            payload.Objective.Metrics = note.ObjectiveMetrics.Select(metric => new ObjectiveMetricInputV2
+            {
+                Name = metric.Name ?? string.Empty,
+                BodyPart = metric.BodyPart,
+                MetricType = metric.MetricType,
+                Value = metric.Value,
+                IsWithinNormalLimits = metric.IsWNL,
+                NormValue = metric.NormValue,
+                PreviousValue = metric.PreviousValue,
+                MovementId = metric.MovementId,
+                Side = metric.Side,
+                MotionMode = metric.MotionMode,
+                Unit = metric.Unit,
+                ReferenceDocumentPath = metric.ReferenceDocumentPath,
+                ReferenceVersion = metric.ReferenceVersion
+            }).ToList();
         }
-        else
+        foreach (var metric in payload.Objective.Metrics)
         {
-            payload.Objective.Metrics = note.ObjectiveMetrics
-                .Select(metric => new ObjectiveMetricInputV2
-                {
-                    BodyPart = metric.BodyPart,
-                    MetricType = metric.MetricType,
-                    Value = metric.Value,
-                    IsWithinNormalLimits = metric.IsWNL,
-                    PreviousValue = previousMetrics.TryGetValue((metric.BodyPart, metric.MetricType), out var previousValue)
-                        ? previousValue
-                        : null
-                })
-                .ToList();
+            // A recorded comparison is part of this note; only fill an absent comparison.
+            if (string.IsNullOrWhiteSpace(metric.PreviousValue)
+                && previousMetrics.TryGetValue(ObjectiveMetricDimensions.Key(metric), out var previousValue))
+                metric.PreviousValue = previousValue;
         }
 
         var persistedOutcomeResults = await db.OutcomeMeasureResults
@@ -1509,32 +1504,8 @@ public sealed class NoteWorkspaceV2Service(
         _ => false
     };
 
-    private async Task SyncObjectiveMetricsAsync(
-        ClinicalNote note,
-        NoteWorkspaceV2Payload payload,
-        CancellationToken cancellationToken)
-    {
-        if (db.Entry(note).State == EntityState.Detached)
-        {
-            await db.Entry(note).Collection(n => n.ObjectiveMetrics).LoadAsync(cancellationToken);
-        }
-
-        var existingMetrics = note.ObjectiveMetrics.ToList();
-        db.ObjectiveMetrics.RemoveRange(existingMetrics);
-        note.ObjectiveMetrics.Clear();
-
-        foreach (var metric in payload.Objective.Metrics.Where(metric => !string.IsNullOrWhiteSpace(metric.Value)))
-        {
-            db.ObjectiveMetrics.Add(new ObjectiveMetric
-            {
-                NoteId = note.Id,
-                BodyPart = metric.BodyPart,
-                MetricType = metric.MetricType,
-                Value = metric.Value,
-                IsWNL = metric.IsWithinNormalLimits
-            });
-        }
-    }
+    private Task SyncObjectiveMetricsAsync(ClinicalNote note, NoteWorkspaceV2Payload payload, CancellationToken cancellationToken)
+        => ObjectiveMetricPersistence.ReplaceAsync(db, note, payload.Objective.Metrics, cancellationToken);
 
     private Task SyncOutcomeMeasuresAsync(
         ClinicalNote note,
@@ -1814,28 +1785,24 @@ public sealed class NoteWorkspaceV2Service(
                ?? new NoteWorkspaceV2Payload { NoteType = payload.NoteType };
     }
 
-    private async Task<Dictionary<(BodyPart BodyPart, MetricType MetricType), string>> GetPreviousMetricMapAsync(
-        ClinicalNote note,
-        CancellationToken cancellationToken)
+    private async Task<Dictionary<string, string>> GetPreviousMetricMapAsync(
+        ClinicalNote note, CancellationToken cancellationToken)
     {
-        var previousMetrics = await db.ObjectiveMetrics
+        var previousMetrics = await db.ObjectiveMetrics.AsNoTracking()
             .Include(metric => metric.Note)
-            .Where(metric => metric.NoteId != note.Id &&
-                             metric.Note != null &&
-                             metric.Note.PatientId == note.PatientId &&
-                             metric.Note.DateOfService < note.DateOfService)
-            .OrderByDescending(metric => metric.Note!.DateOfService)
-            .Select(metric => new
-            {
-                metric.BodyPart,
-                metric.MetricType,
-                metric.Value
-            })
+            .Where(metric => metric.NoteId != note.Id && metric.Note != null
+                && metric.Note.PatientId == note.PatientId && metric.Note.DateOfService < note.DateOfService)
             .ToListAsync(cancellationToken);
-
-        return previousMetrics
-            .GroupBy(metric => (metric.BodyPart, metric.MetricType))
-            .ToDictionary(group => group.Key, group => group.First().Value);
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var group in previousMetrics.GroupBy(ObjectiveMetricDimensions.Key))
+        {
+            var latestDate = group.Max(m => m.Note!.DateOfService);
+            var latest = group.Where(m => m.Note!.DateOfService == latestDate).ToList();
+            // Unidentified legacy movements or same-day duplicate observations cannot
+            // be safely selected by row order. Leave the comparison unknown.
+            if (latest.Count == 1) result[group.Key] = latest[0].Value;
+        }
+        return result;
     }
 
     private static string BuildPlanOfCareNarrative(WorkspacePlanV2 plan)

@@ -94,6 +94,14 @@ public sealed class CreateObjectiveMetricRequest
 /// <summary>Response DTO for an objective metric.</summary>
 public sealed class ObjectiveMetricResponse
 {
+    public string? MovementId { get; set; }
+    public RomMotionMode? MotionMode { get; set; }
+    public string? ReferenceDocumentPath { get; set; }
+    public string? ReferenceVersion { get; set; }
+    public string? Name { get; set; }
+    public string? NormValue { get; set; }
+    public string? PreviousValue { get; set; }
+
     public Guid Id { get; set; }
     public Guid NoteId { get; set; }
     public BodyPart BodyPart { get; set; }

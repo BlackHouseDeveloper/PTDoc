@@ -1,3 +1,4 @@
+using PTDoc.Infrastructure.Notes.Workspace;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
@@ -136,6 +137,11 @@ public class DailyNoteService : IDailyNoteService
                 ct);
 
         var contentJson = SerializeStoredDailyContent(request.Content, request.DateOfService);
+        var dimensionErrors = ObjectiveMetricDimensions.ValidateJsonRevision(note?.ContentJson, contentJson);
+        if (dimensionErrors.Count > 0)
+        {
+            saveResponse.IsValid = false; saveResponse.Errors = dimensionErrors.ToList(); return saveResponse;
+        }
         var cptEntries = (request.Content.CptCodes ?? [])
             .Where(code => !string.IsNullOrWhiteSpace(code.Code))
             .Select(code => new CptCodeEntry
@@ -243,6 +249,8 @@ public class DailyNoteService : IDailyNoteService
                 ItemLabel = sel.ItemLabel
             });
         }
+
+        await ObjectiveMetricPersistence.ReplaceVersionedAsync(_db, note!, ct);
 
         if (request.Override is not null)
         {
@@ -827,6 +835,7 @@ public class DailyNoteService : IDailyNoteService
 
         return new DailyNoteContentDto
         {
+            MeasurementSchemaVersion = payload.Objective.MeasurementSchemaVersion,
             CurrentPainScore = currentPain,
             BestPainScore = payload.Subjective.BestPainScore > 0 ? payload.Subjective.BestPainScore : null,
             WorstPainScore = payload.Subjective.WorstPainScore > 0 ? payload.Subjective.WorstPainScore : null,
@@ -924,6 +933,7 @@ public class DailyNoteService : IDailyNoteService
             },
             Objective = new WorkspaceObjectiveV2
             {
+                MeasurementSchemaVersion = content.MeasurementSchemaVersion,
                 PrimaryBodyPart = ParseBodyPart(content.BodyParts),
                 Metrics = content.ObjectiveMeasures
                     .Select(MapObjectiveMetric)
@@ -1005,6 +1015,12 @@ public class DailyNoteService : IDailyNoteService
                 _ => (int)ObjectiveMeasureType.Other
             },
             BodyPart = metric.BodyPart.ToString(),
+            MovementId = metric.MovementId,
+            MotionMode = metric.MotionMode,
+            Side = metric.Side,
+            Unit = metric.Unit,
+            ReferenceDocumentPath = metric.ReferenceDocumentPath,
+            ReferenceVersion = metric.ReferenceVersion,
             Specificity = string.IsNullOrWhiteSpace(metric.Name) ? null : metric.Name,
             Value = metric.Value,
             BaselineValue = metric.PreviousValue,
@@ -1022,6 +1038,13 @@ public class DailyNoteService : IDailyNoteService
         return new ObjectiveMetricInputV2
         {
             Name = metric.Specificity ?? string.Empty,
+            MovementId = metric.MovementId,
+            MotionMode = metric.MotionMode,
+            Side = metric.Side,
+            Unit = metric.Unit,
+            ReferenceDocumentPath = metric.ReferenceDocumentPath,
+            ReferenceVersion = metric.ReferenceVersion,
+
             BodyPart = ParseBodyPart(metric.BodyPart),
             MetricType = metric.MeasureType switch
             {

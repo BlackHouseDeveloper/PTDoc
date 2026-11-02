@@ -400,7 +400,7 @@ public sealed class NoteWorkspacePayloadMapperTests
         Assert.True(roundTrippedUiPayload.Objective.IsPostureUnremarkable);
         Assert.True(roundTrippedUiPayload.Objective.IsPalpationUnremarkable);
         Assert.Equal("No focal tenderness.", roundTrippedUiPayload.Objective.PalpationComments);
-        Assert.Null(Assert.Single(roundTrippedUiPayload.Objective.Metrics).BodyPart);
+        Assert.Equal("Knee", Assert.Single(roundTrippedUiPayload.Objective.Metrics).BodyPart);
         Assert.Equal("Key findings summary.", roundTrippedUiPayload.Assessment.FindingsSummary);
         Assert.Equal("Expected to progress with plan of care.", roundTrippedUiPayload.Assessment.PrognosisNarrative);
         Assert.False(roundTrippedUiPayload.BillingSettings.AutoApplySuggestedModifiers);
@@ -458,7 +458,7 @@ public sealed class NoteWorkspacePayloadMapperTests
     }
 
     [Fact]
-    public void MapToUiPayload_PrimaryMetricBodyPartRendersAsPrimaryFallback()
+    public void MapToUiPayload_MetricBodyPartsRemainPinnedWhenPrimaryRegionChanges()
     {
         var payload = new NoteWorkspaceV2Payload
         {
@@ -488,7 +488,7 @@ public sealed class NoteWorkspacePayloadMapperTests
 
         var result = _mapper.MapToUiPayload(payload);
 
-        Assert.Null(result.Objective.Metrics[0].BodyPart);
+        Assert.Equal("Knee", result.Objective.Metrics[0].BodyPart);
         Assert.Equal(BodyPart.Shoulder.ToString(), result.Objective.Metrics[1].BodyPart);
     }
 

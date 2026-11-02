@@ -718,6 +718,12 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.NoteId);
 
             entity.Property(e => e.Value).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Name).HasMaxLength(200);
+            entity.Property(e => e.MovementId).HasMaxLength(160);
+            entity.Property(e => e.NormValue).HasMaxLength(200);
+            entity.Property(e => e.PreviousValue).HasMaxLength(200);
+            entity.Property(e => e.ReferenceDocumentPath).HasMaxLength(500);
+            entity.Property(e => e.ReferenceVersion).HasMaxLength(100);
             entity.Property(e => e.Side).HasMaxLength(20);
             entity.Property(e => e.Unit).HasMaxLength(50);
 

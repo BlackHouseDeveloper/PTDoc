@@ -8,6 +8,14 @@ namespace PTDoc.Core.Models;
 public class ObjectiveMetric
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public string? Name { get; set; }
+    public string? NormValue { get; set; }
+    public string? PreviousValue { get; set; }
+    public string? MovementId { get; set; }
+    public RomMotionMode? MotionMode { get; set; }
+    public string? ReferenceDocumentPath { get; set; }
+    public string? ReferenceVersion { get; set; }
+
 
     // Foreign key to ClinicalNote
     public Guid NoteId { get; set; }
@@ -68,4 +76,11 @@ public enum MetricType
     Pain = 3,
     Functional = 4,
     Other = 99
+}
+
+/// <summary>Null on historical observations whose measurement mode was not recorded.</summary>
+public enum RomMotionMode
+{
+    Active = 1,
+    Passive = 2
 }

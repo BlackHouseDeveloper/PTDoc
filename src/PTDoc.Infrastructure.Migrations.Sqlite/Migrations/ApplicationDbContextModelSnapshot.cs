@@ -28,8 +28,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.Property<bool>("AuthorizedOverlap")
                         .HasColumnType("INTEGER")
-                        .HasDefaultValue(false)
-                        .ValueGeneratedNever();
+                        .HasDefaultValue(false);
 
                     b.Property<string>("CancellationReason")
                         .HasMaxLength(500)
@@ -1931,13 +1930,12 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasAlternateKey("ClinicId", "Id");
-
                     b.HasIndex("ClinicId", "Name")
                         .IsUnique();
 
                     b.ToTable("KioskStations");
                 });
+
             modelBuilder.Entity("PTDoc.Core.Models.LoginAttempt", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2159,7 +2157,34 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Property<int>("MetricType")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("MotionMode")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("MovementId")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormValue")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("NoteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PreviousValue")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReferenceDocumentPath")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReferenceVersion")
+                        .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Side")
@@ -3829,8 +3854,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasAlternateKey("ClinicId", "Id");
-
                     b.HasIndex("ClinicId", "Code")
                         .IsUnique();
 
@@ -4265,6 +4288,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.Navigation("Clinic");
                 });
+
             modelBuilder.Entity("PTDoc.Core.Models.NoteTaxonomySelection", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.ClinicalNote", "Note")

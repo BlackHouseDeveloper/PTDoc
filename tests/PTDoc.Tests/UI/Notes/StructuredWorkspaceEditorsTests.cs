@@ -234,10 +234,11 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Single(vm.Metrics);
+            Assert.Equal(4, vm.Metrics.Count);
+            Assert.All(vm.Metrics, metric => Assert.Equal("Knee", metric.BodyPart));
             Assert.Single(vm.SpecialTests);
             Assert.Single(vm.ExerciseRows);
-            Assert.Null(vm.Metrics[0].BodyPart);
+            Assert.Equal("Knee", vm.Metrics[0].BodyPart);
             Assert.Equal("Heel slides", vm.ExerciseRows[0].SuggestedExercise);
             Assert.True(vm.ExerciseRows[0].IsSourceBacked);
         });
@@ -423,7 +424,7 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
     }
 
     [Fact]
-    public void ObjectiveTab_BodyPartEditorsShowPrimaryFallbackAsBlankSelection()
+    public void ObjectiveTab_RomPinsRegionWhileLegacyMmtRetainsPrimaryFallback()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
         var outcomeRegistry = new Mock<IOutcomeMeasureRegistry>(MockBehavior.Strict);
@@ -436,7 +437,7 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
                 {
                     Name = "Knee flexion",
                     MetricType = MetricType.ROM,
-                    BodyPart = null,
+                    BodyPart = "Knee",
                     Value = "120"
                 },
                 new ObjectiveMetricRowEntry
@@ -472,14 +473,13 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
 
         cut.WaitForAssertion(() =>
         {
-            var romBodyPartSelect = Assert.IsAssignableFrom<IHtmlSelectElement>(
-                cut.Find("[data-testid='objective-rom-row'] select.objective-tab__select"));
+            var romRow = cut.Find("[data-testid='objective-rom-row']");
+            Assert.Contains("Knee", romRow.QuerySelector("legend")!.TextContent);
+            Assert.Empty(romRow.QuerySelectorAll("select"));
             var mmtBodyPartSelect = Assert.IsAssignableFrom<IHtmlSelectElement>(
                 cut.Find("[data-testid='objective-mmt-row'] select.objective-tab__select"));
 
-            Assert.Equal(string.Empty, romBodyPartSelect.Value);
             Assert.Equal(string.Empty, mmtBodyPartSelect.Value);
-            Assert.Contains("Use primary body part", romBodyPartSelect.TextContent, StringComparison.Ordinal);
             Assert.Contains("Use primary body part", mmtBodyPartSelect.TextContent, StringComparison.Ordinal);
         });
 
@@ -488,7 +488,7 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
     }
 
     [Fact]
-    public void ObjectiveTab_AllowsEditingMetricNormalAndPreviousValuesWhenEditable()
+    public void ObjectiveTab_RomReferenceIsReadOnlyAndCurrentPriorAreEditable()
     {
         var workspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
         var outcomeRegistry = new Mock<IOutcomeMeasureRegistry>(MockBehavior.Strict);
@@ -537,31 +537,24 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
             .Add(component => component.PatientId, Guid.NewGuid().ToString())
             .Add(component => component.IsReadOnly, false));
 
-        var romInputs = cut.Find("[data-testid='objective-rom-row']")
-            .QuerySelectorAll("input.objective-tab__text-input")
-            .OfType<IHtmlInputElement>()
-            .ToList();
-        var mmtInputs = cut.Find("[data-testid='objective-mmt-row']")
-            .QuerySelectorAll("input.objective-tab__text-input")
-            .OfType<IHtmlInputElement>()
-            .ToList();
-
-        Assert.Null(romInputs[1].GetAttribute("disabled"));
-        Assert.Null(romInputs[2].GetAttribute("disabled"));
-        Assert.Null(mmtInputs[1].GetAttribute("disabled"));
-        Assert.Null(mmtInputs[2].GetAttribute("disabled"));
-
-        Bunit.InputEventDispatchExtensions.Input(FindMetricInputs("objective-rom-row")[1], "140");
-        Bunit.InputEventDispatchExtensions.Input(FindMetricInputs("objective-rom-row")[2], "115");
+        var romRow = cut.Find("[data-testid='objective-rom-row']");
+        Assert.Contains("135", romRow.TextContent);
+        var romInputs = romRow.QuerySelectorAll("input:not([type='checkbox'])").OfType<IHtmlInputElement>().ToList();
+        Assert.Equal(2, romInputs.Count);
+        Assert.All(romInputs, input => Assert.Null(input.GetAttribute("disabled")));
+        Bunit.InputEventDispatchExtensions.Input(romInputs[0], "115");
+        Bunit.InputEventDispatchExtensions.Input(cut.FindAll("[data-testid='objective-rom-row'] input:not([type='checkbox'])")[1], "125");
         Bunit.InputEventDispatchExtensions.Input(FindMetricInputs("objective-mmt-row")[1], "5-/5");
         Bunit.InputEventDispatchExtensions.Input(FindMetricInputs("objective-mmt-row")[2], "4-/5");
-
         cut.WaitForAssertion(() =>
         {
-            Assert.Equal("140", vm.Metrics[0].NormValue);
-            Assert.Equal("115", vm.Metrics[0].PreviousValue);
-            Assert.Equal("5-/5", vm.Metrics[1].NormValue);
-            Assert.Equal("4-/5", vm.Metrics[1].PreviousValue);
+            var rom = Assert.Single(vm.Metrics.Where(m => m.MetricType == MetricType.ROM));
+            var mmt = Assert.Single(vm.Metrics.Where(m => m.MetricType == MetricType.MMT));
+            Assert.Equal("135", rom.NormValue);
+            Assert.Equal("115", rom.PreviousValue);
+            Assert.Equal("125", rom.Value);
+            Assert.Equal("5-/5", mmt.NormValue);
+            Assert.Equal("4-/5", mmt.PreviousValue);
         });
 
         workspaceService.VerifyAll();

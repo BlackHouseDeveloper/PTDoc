@@ -1,0 +1,85 @@
+@namespace PTDoc.UI.Components.Notes.Workspace
+@using System.Text.Json
+@using PTDoc.Application.Notes.Workspace
+@using PTDoc.Core.Models
+@using PTDoc.UI.Components.Notes.Models
+
+<section class="rom-editor" data-testid="objective-rom-section" aria-labelledby="rom-editor-title">
+    <h3 id="rom-editor-title">Range of Motion (ROM)</h3>
+    <p>Choose movements for the selected region. Switch Body Region above to add another region; recorded rows stay here.</p>
+    @if (Movements.Count == 0)
+    {
+        <p>No approved ROM reference is available for this region. Previously recorded observations remain below.</p>
+    }
+    else
+    {
+        <div class="rom-editor__choices" aria-label="ROM movements">
+            @foreach (var movement in Movements)
+            {
+                <button type="button" disabled="@IsReadOnly" @onclick="() => AddMovement(movement)"
+                        aria-pressed="@_rows.Any(m => m.MovementId == movement.Id && m.BodyPart == Region.ToString())">
+                    Add @movement.Name
+                </button>
+            }
+        </div>
+    }
+    @foreach (var row in _rows)
+    {
+        <fieldset class="rom-editor__row" data-testid="objective-rom-row" @key="row.EditorRowId">
+            <legend>@row.BodyPart — @row.Name</legend>
+            <p class="rom-editor__dimensions">@SideLabel(row) · @(row.MotionMode?.ToString() ?? "Mode not recorded") · Unit: @(row.Unit ?? "not recorded")</p>
+            @if (row.MotionMode is null)
+            { <p>Historical observation: its active/passive mode was not recorded. This value has not been copied into either mode.</p> }
+            <div class="rom-editor__values">
+                <div><span class="rom-editor__label">Normal / reference</span><p>@(row.NormValue ?? "Not recorded")</p></div>
+                <label>Previous value<input value="@row.PreviousValue" disabled="@IsReadOnly" @oninput="e => Update(row, r => r.PreviousValue = e.Value?.ToString())" /></label>
+                <label>Current value<input value="@row.Value" disabled="@IsReadOnly" @oninput="e => Update(row, r => r.Value = e.Value?.ToString() ?? string.Empty)" /></label>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(row.ReferenceDocumentPath))
+            { <p class="rom-editor__source">Reference: @row.ReferenceDocumentPath (version @row.ReferenceVersion)</p> }
+            <label class="rom-editor__wnl"><input type="checkbox" checked="@row.IsWithinNormalLimits" disabled="@IsReadOnly" @onchange="e => Update(row, r => r.IsWithinNormalLimits = (bool)e.Value!)" /> Within normal limits</label>
+            @if (!IsReadOnly)
+            { <button type="button" class="rom-editor__remove" @onclick="() => Remove(row)">Remove observation</button> }
+        </fieldset>
+    }
+</section>
+
+@code {
+    [Parameter] public IReadOnlyList<ObjectiveMetricRowEntry> Rows { get; set; } = [];
+    [Parameter] public EventCallback<List<ObjectiveMetricRowEntry>> RowsChanged { get; set; }
+    [Parameter] public BodyPart Region { get; set; } = BodyPart.Other;
+    [Parameter] public BodyRegionCatalog? Catalog { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    private List<ObjectiveMetricRowEntry> _rows = [];
+    private List<RomMovementDefinition> Movements => Catalog is null || Catalog.BodyPart != Region ? []
+        : Catalog.NormalRangeOfMotionOptions.Where(label => ObjectiveMetricDimensions.AppliesToRegion(Region, label)).Select(label => ObjectiveMetricDimensions.FromCatalog(Region, label, Catalog.NormalRangeOfMotion)).ToList();
+    protected override void OnParametersSet() => _rows = Clone(Rows.ToList());
+    private static T Clone<T>(T value) => JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(value))!;
+    private static string SideLabel(ObjectiveMetricRowEntry row) => row.Side ??
+        (Enum.TryParse<BodyPart>(row.BodyPart, out var region) && !ObjectiveMetricDimensions.IsPaired(region) ? "Unsided" : "Side not recorded");
+    private async Task AddMovement(RomMovementDefinition movement)
+    {
+        if (IsReadOnly) return;
+        foreach (var m in ObjectiveMetricDimensions.CreateRomRows(Region, movement))
+        {
+            if (_rows.Any(r => r.MovementId == m.MovementId && r.BodyPart == Region.ToString() && r.Side == m.Side && r.MotionMode == m.MotionMode)) continue;
+            _rows.Add(new() { Name = m.Name, BodyPart = Region.ToString(), MetricType = MetricType.ROM,
+                MovementId = m.MovementId, Side = m.Side, MotionMode = m.MotionMode, Unit = m.Unit,
+                NormValue = m.NormValue, ReferenceDocumentPath = m.ReferenceDocumentPath, ReferenceVersion = m.ReferenceVersion });
+        }
+        await RowsChanged.InvokeAsync(Clone(_rows));
+    }
+    private Task Update(ObjectiveMetricRowEntry row, Action<ObjectiveMetricRowEntry> change)
+    {
+        if (IsReadOnly) return Task.CompletedTask;
+        var current = _rows.SingleOrDefault(candidate => candidate.EditorRowId == row.EditorRowId);
+        if (current is null) return Task.CompletedTask;
+        change(current); return RowsChanged.InvokeAsync(Clone(_rows));
+    }
+    private Task Remove(ObjectiveMetricRowEntry row)
+    {
+        if (IsReadOnly) return Task.CompletedTask;
+        _rows.RemoveAll(candidate => candidate.EditorRowId == row.EditorRowId);
+        return RowsChanged.InvokeAsync(Clone(_rows));
+    }
+}

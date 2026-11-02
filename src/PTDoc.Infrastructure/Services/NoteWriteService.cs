@@ -1,3 +1,4 @@
+using PTDoc.Infrastructure.Notes.Workspace;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
@@ -48,6 +49,7 @@ public sealed class NoteWriteService(
             request.IsReEvaluation,
             request.DateOfService,
             request.ContentJson);
+        ObjectiveMetricDimensions.EnsureValidJsonRevision(null, normalizedContentJson);
         var isDryNeedling = IsDryNeedlingContent(
             request.NoteType,
             request.IsReEvaluation,
@@ -128,6 +130,7 @@ public sealed class NoteWriteService(
         };
 
         db.ClinicalNotes.Add(note);
+        await ObjectiveMetricPersistence.ReplaceVersionedAsync(db, note, ct);
         db.AuditLogs.Add(AuditService.CreateAuditLog(AuditEvent.NoteCreated(note.Id, userId)));
 
         if (request.NoteType == NoteType.Evaluation)
@@ -197,6 +200,7 @@ public sealed class NoteWriteService(
             note.IsReEvaluation,
             effectiveDateOfService,
             request.ContentJson ?? note.ContentJson);
+        ObjectiveMetricDimensions.EnsureValidJsonRevision(note.ContentJson, normalizedContentJson);
         var isDryNeedling = IsDryNeedlingContent(
             note.NoteType,
             note.IsReEvaluation,
@@ -277,6 +281,8 @@ public sealed class NoteWriteService(
         note.LastModifiedUtc = DateTime.UtcNow;
         note.ModifiedByUserId = userId;
         note.SyncState = SyncState.Pending;
+
+        await ObjectiveMetricPersistence.ReplaceVersionedAsync(db, note, ct);
 
         if (request.Override is not null)
         {
@@ -1182,6 +1188,13 @@ public sealed class NoteWriteService(
             BodyPart = metric.BodyPart,
             MetricType = metric.MetricType,
             Value = metric.Value,
+            Name = metric.Name,
+            NormValue = metric.NormValue,
+            PreviousValue = metric.PreviousValue,
+            MovementId = metric.MovementId,
+            MotionMode = metric.MotionMode,
+            ReferenceDocumentPath = metric.ReferenceDocumentPath,
+            ReferenceVersion = metric.ReferenceVersion,
             Side = metric.Side,
             Unit = metric.Unit,
             IsWNL = metric.IsWNL,

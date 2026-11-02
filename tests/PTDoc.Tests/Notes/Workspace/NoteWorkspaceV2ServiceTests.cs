@@ -1957,4 +1957,61 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
     {
         public Guid? GetCurrentClinicId() => null;
     }
+    [Fact]
+    public async Task RomDimensions_KeepSixCellsAndTheirOwnPriorValuesAcrossTypedJsonAndReload()
+    {
+        var patient = new Patient { Id = Guid.NewGuid(), ClinicId = Guid.NewGuid(), FirstName = "Synthetic", LastName = "ROM" };
+        var rows = ObjectiveMetricDimensions.CreateRomRows(BodyPart.Knee, new("knee:flexion", "Flexion", "0-135 degrees", "degrees", "source.md", "v1"))
+            .Concat(ObjectiveMetricDimensions.CreateRomRows(BodyPart.Cervical, new("cervical:flexion", "Flexion", "0-45 degrees", "degrees", "source.md", "v1"))).ToList();
+        var prior = new ClinicalNote { Id = Guid.NewGuid(), PatientId = patient.Id, ClinicId = patient.ClinicId, NoteType = NoteType.Evaluation, DateOfService = new DateTime(2026, 1, 1), ContentJson = "{}" };
+        _context.Patients.Add(patient); _context.ClinicalNotes.Add(prior);
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var m = rows[i]; m.Value = (100 + i).ToString();
+            _context.ObjectiveMetrics.Add(new()
+            {
+                NoteId = prior.Id,
+                Name = m.Name,
+                MovementId = m.MovementId,
+                BodyPart = m.BodyPart,
+                MetricType = m.MetricType,
+                Side = m.Side,
+                MotionMode = m.MotionMode,
+                Unit = m.Unit,
+                Value = (80 + i).ToString()
+            });
+        }
+        await _context.SaveChangesAsync();
+        var result = await _service.SaveAsync(new()
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.Evaluation,
+            DateOfService = new DateTime(2026, 2, 1),
+            Payload = new() { Objective = new() { MeasurementSchemaVersion = 1, Metrics = rows } }
+        });
+        Assert.True(result.IsValid, string.Join("; ", result.Errors));
+        var loaded = await _service.LoadAsync(patient.Id, result.Workspace!.NoteId); Assert.NotNull(loaded);
+        var typed = await _context.ObjectiveMetrics.Where(m => m.NoteId == loaded.NoteId).ToListAsync(); Assert.Equal(6, typed.Count);
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var key = ObjectiveMetricDimensions.Key(rows[i]);
+            var jsonRow = Assert.Single(loaded.Payload.Objective.Metrics.Where(m => ObjectiveMetricDimensions.Key(m) == key));
+            var typedRow = Assert.Single(typed.Where(m => ObjectiveMetricDimensions.Key(m) == key));
+            Assert.Equal((100 + i).ToString(), jsonRow.Value); Assert.Equal(jsonRow.Value, typedRow.Value);
+            Assert.Equal((80 + i).ToString(), jsonRow.PreviousValue); Assert.Equal(rows[i].NormValue, typedRow.NormValue);
+            Assert.Equal("source.md", typedRow.ReferenceDocumentPath);
+        }
+        var stale = loaded.LastModifiedUtc.AddSeconds(-1);
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => _service.SaveAsync(new()
+        {
+            PatientId = patient.Id,
+            NoteId = loaded.NoteId,
+            NoteType = NoteType.Evaluation,
+            DateOfService = loaded.DateOfService,
+            ExpectedLastModifiedUtc = stale,
+            Payload = loaded.Payload
+        }));
+        Assert.Equal(6, await _context.ObjectiveMetrics.CountAsync(m => m.NoteId == loaded.NoteId));
+    }
+
 }

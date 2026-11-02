@@ -143,11 +143,14 @@ public sealed class NoteWorkspacePayloadMapper
                     .Select(metric => new ObjectiveMetricRowEntry
                     {
                         Name = ResolveMetricName(metric),
-                        BodyPart = metric.BodyPart == BodyPart.Other
-                            || (payload.Objective.PrimaryBodyPart != BodyPart.Other
-                                && metric.BodyPart == payload.Objective.PrimaryBodyPart)
-                                ? null
-                                : metric.BodyPart.ToString(),
+                        BodyPart = metric.BodyPart == BodyPart.Other ? null : metric.BodyPart.ToString(),
+                        MovementId = metric.MovementId,
+                        MotionMode = metric.MotionMode,
+                        Side = metric.Side,
+                        Unit = metric.Unit,
+                        ReferenceDocumentPath = metric.ReferenceDocumentPath,
+                        ReferenceVersion = metric.ReferenceVersion,
+
                         MetricType = metric.MetricType,
                         Value = metric.Value,
                         PreviousValue = metric.PreviousValue,
@@ -454,6 +457,8 @@ public sealed class NoteWorkspacePayloadMapper
                 payload.Subjective.MedicationDetails);
 
         preservedPayload.Objective.PrimaryBodyPart = primaryBodyPart;
+        if (payload.Objective.Metrics.Any(row => row.MotionMode.HasValue || row.MovementId is not null))
+            preservedPayload.Objective.MeasurementSchemaVersion ??= 1;
         preservedPayload.Objective.Metrics = MergeObjectiveMetrics(
             preservedPayload.Objective.Metrics,
             payload.Objective.Metrics,
@@ -830,64 +835,24 @@ public sealed class NoteWorkspacePayloadMapper
         IEnumerable<ObjectiveMetricRowEntry> visibleRows,
         BodyPart defaultBodyPart)
     {
-        var preserved = (preservedEntries ?? [])
-            .Select(entry => new ObjectiveMetricInputV2
-            {
-                Name = entry.Name,
-                BodyPart = entry.BodyPart,
-                MetricType = entry.MetricType,
-                Value = entry.Value,
-                PreviousValue = entry.PreviousValue,
-                NormValue = entry.NormValue,
-                IsWithinNormalLimits = entry.IsWithinNormalLimits
-            })
-            .ToList();
-
-        var rows = visibleRows.ToList();
-        var merged = new List<ObjectiveMetricInputV2>(rows.Count);
-
-        for (var index = 0; index < rows.Count; index++)
+        // All rows are fully hydrated by MapToUiPayload. Positional fallback would
+        // resurrect deleted rows or copy another side's value after a removal/reorder.
+        return visibleRows.Select(row => new ObjectiveMetricInputV2
         {
-            var row = rows[index];
-            var existing = index < preserved.Count ? preserved[index] : null;
-
-            var name = string.IsNullOrWhiteSpace(row.Name)
-                ? ResolveMetricName(existing, row.MetricType)
-                : row.Name.Trim();
-
-            if (string.IsNullOrWhiteSpace(name))
-            {
-                name = ResolveMetricFallbackName(row.MetricType);
-            }
-
-            var value = string.IsNullOrWhiteSpace(row.Value)
-                ? existing?.Value ?? string.Empty
-                : row.Value.Trim();
-
-            if (string.IsNullOrWhiteSpace(name) && string.IsNullOrWhiteSpace(value))
-            {
-                continue;
-            }
-
-            merged.Add(new ObjectiveMetricInputV2
-            {
-                Name = name,
-                BodyPart = ResolveMetricBodyPart(row.BodyPart, existing?.BodyPart, defaultBodyPart),
-                MetricType = row.MetricType != MetricType.Other ? row.MetricType : existing?.MetricType ?? MetricType.Other,
-                Value = value,
-                PreviousValue = string.IsNullOrWhiteSpace(row.PreviousValue)
-                    ? existing?.PreviousValue
-                    : row.PreviousValue.Trim(),
-                NormValue = string.IsNullOrWhiteSpace(row.NormValue)
-                    ? existing?.NormValue
-                    : row.NormValue.Trim(),
-                IsWithinNormalLimits = row.IsWithinNormalLimits
-            });
-        }
-
-        return merged.Count > 0
-            ? merged
-            : preserved;
+            Name = string.IsNullOrWhiteSpace(row.Name) ? ResolveMetricFallbackName(row.MetricType) : row.Name.Trim(),
+            BodyPart = ResolveMetricBodyPart(row.BodyPart, null, defaultBodyPart),
+            MetricType = row.MetricType,
+            Value = row.Value.Trim(),
+            PreviousValue = row.PreviousValue,
+            NormValue = row.NormValue,
+            IsWithinNormalLimits = row.IsWithinNormalLimits,
+            MovementId = row.MovementId,
+            MotionMode = row.MotionMode,
+            Side = row.Side,
+            Unit = row.Unit,
+            ReferenceDocumentPath = row.ReferenceDocumentPath,
+            ReferenceVersion = row.ReferenceVersion
+        }).ToList();
     }
 
     private static string ResolveMetricFallbackName(MetricType metricType)
