@@ -1,0 +1,34 @@
+.handoff-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal-backdrop);
+    background: var(--modal-overlay-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-4);
+}
+.handoff-dialog {
+    background: var(--card);
+    color: var(--foreground);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    padding: var(--spacing-5);
+    display: grid;
+    gap: var(--spacing-3);
+    width: min(100%, 36rem);
+    max-height: 90dvh;
+    overflow-y: auto;
+}
+.handoff-dialog h2, .handoff-dialog p { margin: 0; }
+.handoff-dialog select { width: 100%; min-width: 0; min-height: 44px; background: var(--background); color: var(--foreground); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--spacing-2); }
+.handoff-review { padding: var(--spacing-3); background: var(--muted); border-radius: var(--radius); }
+.handoff-actions { display: flex; gap: var(--spacing-2); flex-wrap: wrap; justify-content: flex-end; }
+.handoff-dialog button { min-height: 44px; }
+.handoff-dialog button:focus-visible, .handoff-dialog select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+@media (max-width: 480px) { .handoff-actions button { width: 100%; } .handoff-dialog { padding: var(--spacing-4); } }
+
+.handoff-dialog .btn--primary { background: var(--primary); color: var(--primary-foreground); border: 1px solid var(--primary); }
+.handoff-dialog .btn--secondary { background: var(--card); color: var(--foreground); border: 1px solid var(--border); }
+.handoff-dialog button:disabled { opacity: 0.5; cursor: not-allowed; }

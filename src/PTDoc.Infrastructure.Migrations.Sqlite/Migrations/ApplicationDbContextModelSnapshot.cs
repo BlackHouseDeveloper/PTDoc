@@ -28,8 +28,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.Property<bool>("AuthorizedOverlap")
                         .HasColumnType("INTEGER")
-                        .HasDefaultValue(false)
-                        .ValueGeneratedNever();
+                        .HasDefaultValue(false);
 
                     b.Property<string>("CancellationReason")
                         .HasMaxLength(500)
@@ -1931,13 +1930,12 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasAlternateKey("ClinicId", "Id");
-
                     b.HasIndex("ClinicId", "Name")
                         .IsUnique();
 
                     b.ToTable("KioskStations");
                 });
+
             modelBuilder.Entity("PTDoc.Core.Models.LoginAttempt", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1982,6 +1980,50 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("Success", "AttemptedAt");
 
                     b.ToTable("LoginAttempts");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.NoteHandoff", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ClinicalNoteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("NoteVersionUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("RecipientUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SenderUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Sequence")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId");
+
+                    b.HasIndex("RecipientUserId");
+
+                    b.HasIndex("SenderUserId");
+
+                    b.HasIndex("ClinicalNoteId", "Sequence")
+                        .IsUnique();
+
+                    b.ToTable("NoteHandoffs");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.NoteTaxonomySelection", b =>
@@ -3829,8 +3871,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasAlternateKey("ClinicId", "Id");
-
                     b.HasIndex("ClinicId", "Code")
                         .IsUnique();
 
@@ -4265,6 +4305,34 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.Navigation("Clinic");
                 });
+
+            modelBuilder.Entity("PTDoc.Core.Models.NoteHandoff", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", null)
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.ClinicalNote", null)
+                        .WithMany()
+                        .HasForeignKey("ClinicalNoteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("SenderUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.NoteTaxonomySelection", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.ClinicalNote", "Note")

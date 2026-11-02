@@ -66,6 +66,7 @@ public static class MauiProgram
         builder.Services.AddScoped<IPaymentClientService, PaymentClientApiService>();
         builder.Services.AddScoped<IIntegrationClientService, IntegrationClientApiService>();
         builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();
+        builder.Services.AddScoped<INoteHandoffService, NoteHandoffApiService>();
         builder.Services.AddScoped<INoteDraftLocalPersistenceService, MauiNoteDraftLocalPersistenceService>();
         builder.Services.AddTransient<DraftAutosaveService>();
         builder.Services.AddScoped<IAdminApprovalService, AdminApprovalApiService>();
