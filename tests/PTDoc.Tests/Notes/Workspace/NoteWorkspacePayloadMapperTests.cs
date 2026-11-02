@@ -16,6 +16,20 @@ public sealed class NoteWorkspacePayloadMapperTests
         new(new IntakeReferenceDataCatalogService(), new OutcomeMeasureRegistry());
 
     [Fact]
+    public void PersonalGoal_RoundTripsVerbatimAndPendingSuggestionsAreNotAcceptedGoals()
+    {
+        var source = new NoteWorkspaceV2Payload { Assessment = new() { PatientPersonalGoals = "  Walk my dog.  " } };
+        var ui = _mapper.MapToUiPayload(source);
+        ui.Assessment.Goals.Add(new SmartGoalEntry { Description = "Unreviewed suggestion", IsAiSuggested = true, IsAccepted = false });
+        var pending = _mapper.MapToV2Payload(ui, NoteType.Evaluation);
+        Assert.Equal("  Walk my dog.  ", pending.Assessment.PatientPersonalGoals);
+        Assert.Empty(pending.Assessment.Goals);
+        ui.Assessment.Goals[0].IsAccepted = true;
+        var accepted = _mapper.MapToV2Payload(ui, NoteType.Evaluation);
+        Assert.Equal("Unreviewed suggestion", Assert.Single(accepted.Assessment.Goals).Description);
+    }
+
+    [Fact]
     public void MapToUiPayload_SplitsCatalogSelectionsFromLegacySubjectiveValues()
     {
         var payload = new NoteWorkspaceV2Payload

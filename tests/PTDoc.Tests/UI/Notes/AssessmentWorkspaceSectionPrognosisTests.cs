@@ -21,6 +21,32 @@ public sealed class AssessmentWorkspaceSectionPrognosisTests : TestContext
     }
 
     [Fact]
+    public void PersonalGoal_IsContextOnlyUntilSuggestionAccepted()
+    {
+        var vm = new AssessmentWorkspaceVm { PatientPersonalGoals = "Walk my dog again", FunctionalLimitations = "Walking" };
+        GoalNarrativesGenerationRequest? captured = null;
+        var ai = new Mock<IAiClinicalGenerationService>();
+        ai.Setup(s => s.GenerateGoalNarrativesAsync(It.IsAny<GoalNarrativesGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<GoalNarrativesGenerationRequest, CancellationToken>((r, _) => captured = r)
+            .ReturnsAsync((GoalNarrativesGenerationRequest r, CancellationToken _) => new GoalGenerationResult
+            { Success = true, GeneratedText = "1. Review walking goal with clinician.\n2. Review park activity with clinician.", SourceInputs = r, Confidence = 0.8 });
+        Services.AddSingleton(ai.Object);
+        Services.AddSingleton(new Mock<INoteWorkspaceService>().Object);
+        var cut = RenderComponent<AssessmentWorkspaceSection>(p => p.Add(c => c.Vm, vm)
+            .Add(c => c.VmChanged, EventCallback.Factory.Create<AssessmentWorkspaceVm>(this, value => vm = value))
+            .Add(c => c.NoteId, Guid.NewGuid()).Add(c => c.ChiefComplaint, "Knee pain"));
+        cut.Find("[data-testid='ai-suggest-goals-btn']").Click();
+        cut.WaitForAssertion(() => Assert.Equal(2, vm.Goals.Count));
+        Assert.Equal("Walk my dog again", captured!.PatientPersonalGoals);
+        Assert.All(vm.Goals, g => { Assert.True(g.IsAiSuggested); Assert.False(g.IsAccepted); });
+        cut.FindAll(".aws-card__discard-btn")[1].Click();
+        Assert.Single(vm.Goals); Assert.False(vm.Goals[0].IsAccepted);
+        cut.Find(".aws-card__accept-btn").Click();
+        Assert.True(Assert.Single(vm.Goals).IsAccepted);
+        Assert.Equal("Walk my dog again", vm.PatientPersonalGoals);
+    }
+
+    [Fact]
     public void PrognosisAi_UsesDedicatedPrognosisServiceAndUpdatesNarrative()
     {
         var noteId = Guid.NewGuid();

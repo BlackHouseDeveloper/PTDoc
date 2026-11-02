@@ -10,6 +10,35 @@ public sealed class IntakeStructuredDataJsonTests
 {
     private readonly IIntakeReferenceDataCatalogService _catalog = new IntakeReferenceDataCatalogService();
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  Walk with my granddaughter.\nKeep my own wording!  ")]
+    public void PersonalGoal_NormalizesAndRoundTripsVerbatim(string? goal)
+    {
+        var payload = new IntakeStructuredDataDto { Subjective = new() { PatientPersonalGoals = goal } };
+        Assert.True(IntakeStructuredDataJson.TryNormalize(payload, _catalog, out var result, out _));
+        Assert.True(IntakeStructuredDataJson.TryParse(result.StructuredDataJson, out var reloaded, out _));
+        Assert.Equal(goal, reloaded.Subjective.PatientPersonalGoals);
+    }
+
+    [Fact]
+    public void PersonalGoal_RejectsOversizedInputWithoutTruncation()
+    {
+        var payload = new IntakeStructuredDataDto { Subjective = new() { PatientPersonalGoals = new string('x', 2001) } };
+        Assert.False(IntakeStructuredDataJson.TryNormalize(payload, _catalog, out _, out var errors));
+        Assert.Contains("structuredData.subjective.patientPersonalGoals", errors.Errors.Keys);
+        Assert.Equal(2001, payload.Subjective.PatientPersonalGoals.Length);
+    }
+
+    [Fact]
+    public void OldIntake_WithoutPersonalGoal_RemainsValid()
+    {
+        Assert.True(IntakeStructuredDataJson.TryParse("{}", out var payload, out _));
+        Assert.True(IntakeStructuredDataJson.TryNormalize(payload, _catalog, out var result, out _));
+        Assert.Null(result.StructuredData.Subjective.PatientPersonalGoals);
+    }
+
     [Fact]
     public void TryNormalize_KnownSelections_NormalizesAndProjectsPainMapData()
     {

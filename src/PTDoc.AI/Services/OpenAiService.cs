@@ -539,6 +539,13 @@ public sealed class OpenAiService : IAiService
         else
             prompt = prompt.Replace("{LongTermGoals:Existing Long-Term Goals (do not repeat): {0}}", string.Empty);
 
+        if (!string.IsNullOrWhiteSpace(request.PatientPersonalGoals))
+        {
+            prompt = string.Join(Environment.NewLine, prompt,
+                $"Patient-reported personal goals (not measured findings): {Sanitize(request.PatientPersonalGoals)}",
+                "Do not infer measurements, baseline capacity, target values or timeframes from the patient's personal statement. Suggestions require clinician review and acceptance.");
+        }
+
         if (request.OutcomeContext is not null)
         {
             prompt = string.Join(

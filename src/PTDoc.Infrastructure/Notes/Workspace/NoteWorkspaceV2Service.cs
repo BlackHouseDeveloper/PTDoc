@@ -624,7 +624,8 @@ public sealed class NoteWorkspaceV2Service(
             },
             Assessment = new WorkspaceAssessmentV2
             {
-                FunctionalLimitationsSummary = functionalLimitations ?? string.Empty
+                FunctionalLimitationsSummary = functionalLimitations ?? string.Empty,
+                PatientPersonalGoals = subjectiveIntake.PatientPersonalGoals
             }
         };
 

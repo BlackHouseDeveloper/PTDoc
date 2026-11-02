@@ -77,6 +77,9 @@ public static class IntakeStructuredDataJson
         payload.HouseLayoutOptionIds ??= new List<string>();
         EnsureEnhancedCollections(payload);
 
+        if (payload.Subjective.PatientPersonalGoals?.Length > IntakeSubjectiveDataDto.PatientPersonalGoalMaxLength)
+            validationResult.AddError("structuredData.subjective.patientPersonalGoals", "Keep your personal goal within 2,000 characters.");
+
         var catalog = catalogService.GetCatalog();
         var normalized = new IntakeStructuredDataDto
         {
@@ -428,6 +431,8 @@ public static class IntakeStructuredDataJson
 
     private static IntakeSubjectiveDataDto NormalizeSubjective(IntakeSubjectiveDataDto source) => new()
     {
+        // Preserve the patient's wording verbatim; this is attributed input, not a measured goal.
+        PatientPersonalGoals = source.PatientPersonalGoals,
         PriorFunctionalLevel = source.PriorFunctionalLevel
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Select(value => value.Trim())
