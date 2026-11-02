@@ -230,7 +230,7 @@ public sealed class AddPatientModalTests : TestContext
     }
 
     [Fact]
-    public void Submit_WithPayerReferralAndAuthorizationDetails_SubmitsPatientContext()
+    public void Submit_WithPayerAndReferralDetails_DoesNotInferAuthorization()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
         AddPatientModal.PatientFormData? submitted = null;
@@ -254,8 +254,6 @@ public sealed class AddPatientModalTests : TestContext
         cut.Find("#primaryCareProvider").Change("Dr. Primary");
         cut.Find("#referringPhysician").Change("Dr. Referral");
         cut.Find("#physicianNpi").Change("1234567890");
-        cut.Find("#authorizationRequired").Change("Yes");
-        cut.Find("#authorizationNumber").Change("AUTH-123");
         cut.Find("form").Submit();
 
         cut.WaitForAssertion(() =>
@@ -266,7 +264,8 @@ public sealed class AddPatientModalTests : TestContext
             Assert.Equal("Dr. Primary", submitted.PrimaryCareProvider);
             Assert.Equal("Dr. Referral", submitted.ReferringPhysician);
             Assert.Equal("1234567890", submitted.PhysicianNpi);
-            Assert.Equal("AUTH-123", submitted.AuthorizationNumber);
+            Assert.Empty(submitted.AuthorizationNumber);
+            Assert.Empty(submitted.AuthorizationRequired);
 
             using var payer = JsonDocument.Parse(submitted.PayerInfoJson);
             Assert.Equal("PT Beta PPO", payer.RootElement.GetProperty("insuranceCompanyName").GetString());
@@ -276,13 +275,14 @@ public sealed class AddPatientModalTests : TestContext
             Assert.Equal("Dr. Primary", payer.RootElement.GetProperty("primaryCareProviderName").GetString());
             Assert.Equal("Dr. Referral", payer.RootElement.GetProperty("referringPhysicianName").GetString());
             Assert.Equal("1234567890", payer.RootElement.GetProperty("physicianNpiNumber").GetString());
-            Assert.Equal("Yes", payer.RootElement.GetProperty("authorizationRequired").GetString());
-            Assert.Equal("pending", payer.RootElement.GetProperty("authorizationStatus").GetString());
+            Assert.False(payer.RootElement.TryGetProperty("authorizationRequired", out _));
+            Assert.False(payer.RootElement.TryGetProperty("authorizationStatus", out _));
+            Assert.False(payer.RootElement.TryGetProperty("authorizationNumber", out _));
         });
     }
 
     [Fact]
-    public void Submit_WithWhitespacePaddedAuthorizationRequired_SerializesPendingAuthorizationStatus()
+    public void Submit_WithoutInsurance_KeepsAuthorizationUnknown()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
         AddPatientModal.PatientFormData? submitted = null;
@@ -299,15 +299,16 @@ public sealed class AddPatientModalTests : TestContext
         cut.Find("#lastName").Change("Patient");
         cut.Find("#email").Change("alex.patient@example.com");
         cut.Find("#dob").Change("1990-01-01");
-        cut.Find("#authorizationRequired").Change(" Yes ");
+        Assert.Empty(cut.FindAll("#authorizationRequired, #authorizationNumber"));
         cut.Find("form").Submit();
 
         cut.WaitForAssertion(() =>
         {
             Assert.NotNull(submitted);
             using var payer = JsonDocument.Parse(submitted!.PayerInfoJson);
-            Assert.Equal("Yes", payer.RootElement.GetProperty("authorizationRequired").GetString());
-            Assert.Equal("pending", payer.RootElement.GetProperty("authorizationStatus").GetString());
+            Assert.False(payer.RootElement.TryGetProperty("authorizationRequired", out _));
+            Assert.False(payer.RootElement.TryGetProperty("authorizationStatus", out _));
+            Assert.False(payer.RootElement.TryGetProperty("authorizationNumber", out _));
         });
     }
 

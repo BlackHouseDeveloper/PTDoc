@@ -400,21 +400,45 @@ public sealed class PatientInfoRouteTests : TestContext
         Assert.False(root.TryGetProperty("caseManagerAdjusterContactInfo", out _));
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Unknown")]
+    [InlineData("Yes")]
+    [InlineData("No")]
+    public void RemovedRequirementControl_PreservesStoredStatusAndAuthorizationNumber(string? requirement)
+    {
+        var patientId = Guid.NewGuid();
+        var values = new Dictionary<string, string> { ["authorizationNumber"] = "AUTH-HISTORY", ["insuranceCompanyName"] = "Original Carrier" };
+        if (requirement is not null) values["authorizationRequired"] = requirement;
+        var patient = new PatientResponse { Id = patientId, FirstName = "Synthetic", LastName = "History", DateOfBirth = new(1990, 1, 1), PayerInfoJson = JsonSerializer.Serialize(values) };
+        UpdatePatientRequest? captured = null;
+        var service = new Mock<IPatientService>();
+        service.Setup(value => value.GetByIdAsync(patientId, It.IsAny<CancellationToken>())).ReturnsAsync(patient);
+        service.Setup(value => value.UpdateAsync(patientId, It.IsAny<UpdatePatientRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, UpdatePatientRequest, CancellationToken>((_, request, _) => captured = request).ReturnsAsync(patient);
+        Services.AddSingleton(service.Object);
+        Services.AddSingleton<IToastService, ToastService>();
+        var cut = RenderComponent<PatientInfoPage>(parameters => parameters.Add(value => value.Id, patientId.ToString()));
+        cut.WaitForAssertion(() => Assert.Equal("AUTH-HISTORY", cut.Find("#pi-auth-number").GetAttribute("value")));
+        Assert.Empty(cut.FindAll("#pi-auth-required"));
+        cut.Find("#pi-insurance-name").Input("Updated Carrier");
+        cut.Find("button[aria-label='Save Changes']").Click();
+        cut.WaitForAssertion(() => Assert.NotNull(captured));
+        using var saved = JsonDocument.Parse(captured!.PayerInfoJson!);
+        Assert.Equal("AUTH-HISTORY", saved.RootElement.GetProperty("authorizationNumber").GetString());
+        Assert.Equal("Updated Carrier", saved.RootElement.GetProperty("insuranceCompanyName").GetString());
+        if (requirement is null) Assert.False(saved.RootElement.TryGetProperty("authorizationRequired", out _));
+        else Assert.Equal(requirement, saved.RootElement.GetProperty("authorizationRequired").GetString());
+    }
+
     [Fact]
-    public void AuthorizationDetailsPanel_UnknownRequirement_ShowsUnknownPrompt()
+    public void AuthorizationDetailsPanel_DetailsAvailableWithoutRequirementControl()
     {
         var cut = RenderComponent<AuthorizationDetailsPanel>(parameters => parameters
-            .Add(component => component.Model, new AuthorizationDetailsVm())
-            .Add(component => component.AuthorizationRequired, "Unknown"));
-
-        Assert.Contains(
-            "Authorization / PCP referral requirement is marked unknown",
-            cut.Markup,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "Select Yes for Authorization / PCP Referral Required",
-            cut.Markup,
-            StringComparison.Ordinal);
+            .Add(component => component.Model, new AuthorizationDetailsVm()));
+        Assert.NotEmpty(cut.FindAll("#pi-auth-number"));
+        Assert.DoesNotContain("Select Yes", cut.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -432,8 +456,7 @@ public sealed class PatientInfoRouteTests : TestContext
                 {
                     AuthorizationStartDate = "03/04/2026",
                     AuthorizationEndDate = "04/03/2026"
-                })
-                .Add(component => component.AuthorizationRequired, "Yes"));
+                }));
 
             Assert.DoesNotContain(
                 "Authorization / Referral Start Date must be on or before Authorization / Referral End Date.",
@@ -445,8 +468,7 @@ public sealed class PatientInfoRouteTests : TestContext
                 {
                     AuthorizationStartDate = "04/03/2026",
                     AuthorizationEndDate = "03/04/2026"
-                })
-                .Add(component => component.AuthorizationRequired, "Yes"));
+                }));
 
             Assert.Contains(
                 "Authorization / Referral Start Date must be on or before Authorization / Referral End Date.",
@@ -469,7 +491,6 @@ public sealed class PatientInfoRouteTests : TestContext
                 AuthorizationStartDate = "2026-04-01",
                 AuthorizationEndDate = "2026-03-01"
             })
-            .Add(component => component.AuthorizationRequired, "Yes")
             .Add(component => component.FieldErrors, new Dictionary<string, string>
             {
                 ["authStart"] = "Authorization / Referral Start Date must be on or before Authorization / Referral End Date.",
@@ -507,9 +528,8 @@ public sealed class PatientInfoRouteTests : TestContext
             .Add(component => component.Id, patientId.ToString()));
 
         cut.WaitForAssertion(() =>
-            Assert.Contains("Authorization / PCP Referral Required?", cut.Markup, StringComparison.Ordinal));
+            Assert.NotEmpty(cut.FindAll("#pi-auth-number")));
 
-        cut.Find("#pi-auth-required").Change("Yes");
         cut.Find("#pi-auth-start").Input("2026-04-01");
         cut.Find("#pi-auth-end").Input("2026-03-01");
 
@@ -551,9 +571,8 @@ public sealed class PatientInfoRouteTests : TestContext
             .Add(component => component.Id, patientId.ToString()));
 
         cut.WaitForAssertion(() =>
-            Assert.Contains("Authorization / PCP Referral Required?", cut.Markup, StringComparison.Ordinal));
+            Assert.NotEmpty(cut.FindAll("#pi-auth-number")));
 
-        cut.Find("#pi-auth-required").Change("Yes");
         cut.Find("#pi-auth-start").Input("not a date");
         cut.Find("#pi-auth-end").Input("also invalid");
 
@@ -592,9 +611,8 @@ public sealed class PatientInfoRouteTests : TestContext
             .Add(component => component.Id, patientId.ToString()));
 
         cut.WaitForAssertion(() =>
-            Assert.Contains("Authorization / PCP Referral Required?", cut.Markup, StringComparison.Ordinal));
+            Assert.NotEmpty(cut.FindAll("#pi-auth-number")));
 
-        cut.Find("#pi-auth-required").Change("Yes");
         cut.Find("#pi-auth-start").Input("not a date");
 
         cut.WaitForAssertion(() =>
@@ -686,9 +704,8 @@ public sealed class PatientInfoRouteTests : TestContext
             .Add(component => component.Id, patientId.ToString()));
 
         cut.WaitForAssertion(() =>
-            Assert.Contains("Authorization / PCP Referral Required?", cut.Markup, StringComparison.Ordinal));
+            Assert.NotEmpty(cut.FindAll("#pi-auth-number")));
 
-        cut.Find("#pi-auth-required").Change("Yes");
         cut.Find("#pi-auth-type").Change("pcp_referral");
         cut.Find("#pi-auth-number").Input("REF-123");
         cut.Find("#pi-deductible-amount").Input("1500");

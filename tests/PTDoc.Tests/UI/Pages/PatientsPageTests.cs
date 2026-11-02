@@ -405,7 +405,6 @@ public sealed class PatientsPageTests : TestContext
         cut.Find("#email").Change("casey.created@example.com");
         cut.Find("#dob").Change("1992-02-02");
         cut.Find("#referringPhysician").Change(" ");
-        cut.Find("#authorizationNumber").Change(" ");
         cut.Find("form").Submit();
 
         cut.WaitForAssertion(() =>
