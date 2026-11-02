@@ -1,4 +1,6 @@
 .settings-page-container {
+    /* Keep visually hidden labels inside the Settings scroll container. */
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: var(--spacing-6);
