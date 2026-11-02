@@ -1021,6 +1021,16 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
 
         var questionnaire = workspace.ProgressQuestionnaire;
         var values = new List<string>();
+        if (questionnaire.PercentImproved is { } percent) values.Add($"Percent improved: {percent}%");
+        if (questionnaire.Activities is { } activities)
+        {
+            foreach (var activity in activities.Baseline)
+            {
+                var state = activities.ImprovedIds.Contains(activity.Id) ? "Improved" : activities.SameIds.Contains(activity.Id) ? "Same" : activities.WorseIds.Contains(activity.Id) ? "Worse" : null;
+                if (state is not null) values.Add($"{state}: {activity.BodyPart} — {activity.Description}");
+            }
+            foreach (var activity in activities.NewlyDifficult) values.Add($"Newly difficult: {activity.BodyPart} — {activity.Description}");
+        }
 
         AddIfPresent(values, questionnaire.OverallCondition, "Overall condition");
         AddIfPresent(values, questionnaire.GoalProgress, "Goal progress");

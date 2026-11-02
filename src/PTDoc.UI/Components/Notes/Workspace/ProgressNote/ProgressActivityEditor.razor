@@ -1,0 +1,83 @@
+@namespace PTDoc.UI.Components.Notes.Workspace.ProgressNote
+@using PTDoc.Application.Notes.Workspace
+@using PTDoc.Core.Models
+@inject PTDoc.UI.Services.INoteWorkspaceService WorkspaceService
+
+<fieldset disabled="@IsReadOnly" class="progress-activities" data-testid="progress-activity-editor">
+    <legend>Activity changes since your last visit</legend>
+    @if (Value.Baseline.Count == 0)
+    {
+        <p>No recorded activities are available from the intake or evaluation.</p>
+    }
+    @foreach (var activity in Value.Baseline)
+    {
+        <label @key="activity.Id" class="progress-activities__row">
+            <span>@activity.BodyPart — @activity.Description</span>
+            <select aria-label="@($"Change in {activity.BodyPart}: {activity.Description}")" value="@State(activity.Id)"
+                    @onchange="e => SetState(activity.Id, e.Value?.ToString())" data-testid="progress-activity-state">
+                <option value="">Not recorded</option>
+                <option value="improved">Improved</option><option value="same">Same</option><option value="worse">Worse</option>
+            </select>
+        </label>
+    }
+    <h4>Newly difficult activities</h4>
+    <p>Choose from the full catalog for the documented body regions. These activities become choices at later visits.</p>
+    @if (_error is not null) { <p role="alert">@_error</p> }
+    @foreach (var activity in Options)
+    {
+        <label @key="activity.Id" class="progress-activities__row">
+            <input type="checkbox" checked="@Value.NewlyDifficult.Any(a => a.Id == activity.Id)"
+                   @onchange="e => ToggleNew(activity, e.Value is true)" data-testid="progress-new-activity" />
+            <span>@activity.BodyPart — @activity.Description</span>
+        </label>
+    }
+</fieldset>
+
+@code {
+    [Parameter, EditorRequired] public ProgressActivityTrackingV1 Value { get; set; } = new();
+    [Parameter] public EventCallback<ProgressActivityTrackingV1> ValueChanged { get; set; }
+    [Parameter] public IReadOnlyList<BodyPart> BodyParts { get; set; } = [];
+    [Parameter] public bool IsReadOnly { get; set; }
+    private string? _loadedRegions;
+    private string? _error;
+    private IReadOnlyList<ProgressActivityReference> _catalog = [];
+    private IEnumerable<ProgressActivityReference> Options => _catalog.Concat(Value.NewlyDifficult)
+        .Where(a => !Value.Baseline.Any(b => b.BodyPart == a.BodyPart && b.Description.Equals(a.Description, StringComparison.OrdinalIgnoreCase)))
+        .DistinctBy(a => a.Id).OrderBy(a => a.BodyPart).ThenBy(a => a.Description);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var regions = BodyParts.Concat(Value.Baseline.Select(a => a.BodyPart)).Where(b => b != BodyPart.Other).Distinct().OrderBy(b => b).ToArray();
+        var key = string.Join(",", regions);
+        if (_loadedRegions == key) return;
+        _loadedRegions = key; _catalog = []; _error = null;
+        try
+        {
+            var options = new List<ProgressActivityReference>();
+            foreach (var region in regions)
+                options.AddRange(ProgressActivityTracking.CatalogOptions(await WorkspaceService.GetBodyRegionCatalogAsync(region)));
+            if (_loadedRegions == key) _catalog = options;
+        }
+        catch { if (_loadedRegions == key) _error = "Unable to load activity choices. Existing answers are preserved."; }
+    }
+
+    private string State(string id) => Value.ImprovedIds.Contains(id) ? "improved" : Value.SameIds.Contains(id) ? "same" : Value.WorseIds.Contains(id) ? "worse" : "";
+    private Task SetState(string id, string? state)
+    {
+        if (IsReadOnly) return Task.CompletedTask;
+        var next = ProgressActivityTracking.Clone(Value);
+        next.ImprovedIds.Remove(id); next.SameIds.Remove(id); next.WorseIds.Remove(id);
+        if (state == "improved") next.ImprovedIds.Add(id);
+        if (state == "same") next.SameIds.Add(id);
+        if (state == "worse") next.WorseIds.Add(id);
+        return ValueChanged.InvokeAsync(next);
+    }
+    private Task ToggleNew(ProgressActivityReference activity, bool selected)
+    {
+        if (IsReadOnly) return Task.CompletedTask;
+        var next = ProgressActivityTracking.Clone(Value);
+        next.NewlyDifficult.RemoveAll(a => a.Id == activity.Id);
+        if (selected) next.NewlyDifficult.Add(activity);
+        return ValueChanged.InvokeAsync(next);
+    }
+}

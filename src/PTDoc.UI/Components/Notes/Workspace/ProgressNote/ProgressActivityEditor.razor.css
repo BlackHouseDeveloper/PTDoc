@@ -1,0 +1,22 @@
+.progress-activities {
+    border: 0;
+    padding: 0;
+    min-width: 0;
+}
+.progress-activities__row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    margin-block: var(--spacing-2);
+    overflow-wrap: anywhere;
+}
+.progress-activities__row select {
+    min-height: var(--touch-target-desktop);
+    background: var(--input-background);
+    color: var(--foreground);
+    border: calc(var(--spacing-1) / 4) solid var(--border);
+    border-radius: var(--radius);
+}
+@media (max-width: 640px) {
+    .progress-activities__row:has(select) { flex-direction: column; align-items: stretch; }
+}

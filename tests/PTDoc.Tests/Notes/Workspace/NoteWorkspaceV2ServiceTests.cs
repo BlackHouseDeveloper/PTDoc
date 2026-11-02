@@ -65,6 +65,146 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SharedProgressWriteValidator_RejectsUnknownCatalogIdsAndReplacesClientSuppliedLabels()
+    {
+        var patient = new Patient { Id = Guid.NewGuid(), ClinicId = Guid.NewGuid(), FirstName = "Synthetic", LastName = "Shared" };
+        _context.Patients.Add(patient); await _context.SaveChangesAsync();
+        var catalog = new WorkspaceReferenceCatalogService(new OutcomeMeasureRegistry()).GetBodyRegionCatalog(BodyPart.Knee);
+        var canonical = ProgressActivityTracking.CatalogOptions(catalog).First();
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.ProgressNote,
+            ProgressQuestionnaire = new() { Activities = new() { NewlyDifficult = [canonical with { Id = "unknown" }] } }
+        };
+        var noteId = Guid.NewGuid();
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ProgressActivityWriteValidator.PrepareJsonAsync(
+            _context, null, patient.Id, noteId, JsonSerializer.Serialize(payload, options), default));
+        payload.ProgressQuestionnaire.Activities!.NewlyDifficult = [canonical with { Description = "Untrusted display", SourceVersion = "untrusted" }];
+        var result = await ProgressActivityWriteValidator.PrepareJsonAsync(_context, null, patient.Id, noteId, JsonSerializer.Serialize(payload, options), default);
+        var restored = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(result, options)!;
+        var activity = Assert.Single(restored.ProgressQuestionnaire.Activities!.NewlyDifficult);
+        Assert.Equal(canonical.Description, activity.Description); Assert.Equal(canonical.SourceVersion, activity.SourceVersion);
+        Assert.Equal(noteId, activity.SourceNoteId);
+    }
+
+    [Fact]
+    public async Task ProgressSeed_CannotReferenceAnUnrelatedOrMissingSignedNote()
+    {
+        var patient = new Patient { Id = Guid.NewGuid(), ClinicId = Guid.NewGuid(), FirstName = "Synthetic", LastName = "Scope" };
+        _context.Patients.Add(patient); await _context.SaveChangesAsync();
+        var payload = new NoteWorkspaceV2Payload
+        {
+            SeedContext = new() { SourceNoteId = Guid.NewGuid() },
+            ProgressQuestionnaire = new() { Activities = new() }
+        };
+        var result = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.ProgressNote,
+            DateOfService = DateTime.UtcNow.Date,
+            Payload = payload
+        });
+        Assert.False(result.IsValid); Assert.Contains(result.Errors, e => e.Contains("accessible signed note"));
+        Assert.Empty(_context.ClinicalNotes);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(101)]
+    public async Task ProgressPercent_OutOfRangeIsRejectedBeforeSaving(int percent)
+    {
+        var patient = new Patient { Id = Guid.NewGuid(), ClinicId = Guid.NewGuid(), FirstName = "Synthetic", LastName = "Progress" };
+        _context.Patients.Add(patient); await _context.SaveChangesAsync();
+        var result = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.ProgressNote,
+            DateOfService = DateTime.UtcNow.Date,
+            Payload = new() { ProgressQuestionnaire = new() { PercentImproved = percent } }
+        });
+        Assert.False(result.IsValid); Assert.Contains(result.Errors, e => e.Contains("between 0 and 100"));
+        Assert.Empty(_context.ClinicalNotes);
+    }
+
+    [Fact]
+    public async Task ProgressActivityHistory_CarriesNewCatalogActivityIntoNextVisitWithoutChangingSignedSource()
+    {
+        var patient = new Patient { Id = Guid.NewGuid(), ClinicId = Guid.NewGuid(), FirstName = "Synthetic", LastName = "Progress" };
+        var catalogs = new WorkspaceReferenceCatalogService(new OutcomeMeasureRegistry());
+        var selected = ProgressActivityTracking.CatalogOptions(catalogs.GetBodyRegionCatalog(BodyPart.Knee)).First();
+        var baseline = new ProgressActivityReference("recorded-knee", BodyPart.Knee, "Previously recorded activity", "Function", "recorded");
+        var payload = new NoteWorkspaceV2Payload { NoteType = NoteType.ProgressNote };
+        payload.Objective.PrimaryBodyPart = BodyPart.Knee;
+        payload.ProgressQuestionnaire = new()
+        {
+            PercentImproved = 45.5m,
+            Activities = new()
+            { Baseline = [baseline], ImprovedIds = [baseline.Id], NewlyDifficult = [selected] }
+        };
+        payload.Plan.TreatmentFrequencyDaysPerWeek = [3];
+        var source = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            ClinicId = patient.ClinicId,
+            NoteType = NoteType.ProgressNote,
+            NoteStatus = NoteStatus.Signed,
+            SignatureHash = "synthetic",
+            DateOfService = DateTime.UtcNow.AddDays(-1).Date,
+            SignedUtc = DateTime.UtcNow.AddDays(-1),
+            ContentJson = JsonSerializer.Serialize(payload)
+        };
+        _context.Patients.Add(patient); _context.ClinicalNotes.Add(source); await _context.SaveChangesAsync();
+        var original = source.ContentJson;
+        var seed = await _service.GetCarryForwardSeedAsync(patient.Id, NoteType.ProgressNote);
+        Assert.NotNull(seed);
+        Assert.Equal(2, seed!.Payload.ProgressQuestionnaire.Activities!.Baseline.Count);
+        Assert.Contains(seed.Payload.ProgressQuestionnaire.Activities.Baseline, a => a.Id == selected.Id);
+        Assert.Empty(seed.Payload.ProgressQuestionnaire.Activities.ImprovedIds);
+        Assert.Empty(seed.Payload.ProgressQuestionnaire.Activities.NewlyDifficult);
+        Assert.Null(seed.Payload.ProgressQuestionnaire.PercentImproved);
+        seed.Payload.ProgressQuestionnaire.PercentImproved = 100;
+        seed.Payload.ProgressQuestionnaire.Activities.WorseIds.Add(selected.Id);
+        seed.Payload.Plan.TreatmentFrequencyDaysPerWeek = [2];
+        var result = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.ProgressNote,
+            DateOfService = DateTime.UtcNow.Date,
+            Payload = seed.Payload
+        });
+        Assert.True(result.IsValid, string.Join("; ", result.Errors));
+        var loaded = await _service.LoadAsync(patient.Id, result.Workspace!.NoteId);
+        Assert.Equal(100, loaded!.Payload.ProgressQuestionnaire.PercentImproved);
+        Assert.Contains(selected.Id, loaded.Payload.ProgressQuestionnaire.Activities!.WorseIds);
+        Assert.Equal(new[] { 2 }, loaded.Payload.Plan.TreatmentFrequencyDaysPerWeek);
+        Assert.Equal(original, source.ContentJson);
+        var dailySeed = await _service.GetCarryForwardSeedAsync(patient.Id, NoteType.Daily);
+        var daily = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            DateOfService = DateTime.UtcNow.Date,
+            Payload = dailySeed!.Payload
+        });
+        Assert.True(daily.IsValid, string.Join("; ", daily.Errors));
+        Assert.Equal(45.5m, daily.Workspace!.Payload.ProgressQuestionnaire.PercentImproved);
+        Assert.Single(daily.Workspace.Payload.ProgressQuestionnaire.Activities!.NewlyDifficult);
+        var legacy = loaded.Payload; legacy.ProgressQuestionnaire.Activities = null;
+        var rejected = await _service.SaveAsync(new NoteWorkspaceV2SaveRequest
+        {
+            NoteId = result.Workspace!.NoteId,
+            PatientId = patient.Id,
+            ExpectedLastModifiedUtc = loaded.LastModifiedUtc,
+            NoteType = NoteType.ProgressNote,
+            DateOfService = DateTime.UtcNow.Date,
+            Payload = legacy
+        });
+        Assert.False(rejected.IsValid); Assert.Contains(rejected.Errors, e => e.Contains("compatible client"));
+    }
+
+    [Fact]
     public async Task SaveAsync_PersistsWorkspaceSnapshotAndLegacyBillingFields()
     {
         var patient = new Patient
