@@ -86,6 +86,9 @@ public static class MauiProgram
             return new PatientChartStorageApiService(httpClient);
         });
 
+        builder.Services.AddScoped<INoteNarrativeClient>(sp => new HttpNoteNarrativeClient(
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient("ApiClient")));
+
         // Register HTTP-backed AI generation for the shared UI workspace.
         // Uses the authenticated ApiClient so generated requests carry the bearer token.
         builder.Services.AddScoped<IAiClinicalGenerationService>(sp =>

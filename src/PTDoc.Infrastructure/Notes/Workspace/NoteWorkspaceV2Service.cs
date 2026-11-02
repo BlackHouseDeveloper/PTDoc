@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.AI;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Notes.Workspace;
@@ -206,6 +207,7 @@ public sealed class NoteWorkspaceV2Service(
             }
         }
 
+        var priorNarratives = ReadNarrativeProvenance(note?.ContentJson);
         var currentUserId = identityContext.GetCurrentUserId();
         var clinicId = tenantContext.GetCurrentClinicId() ?? patient.ClinicId;
         var noteId = note?.Id ?? request.NoteId ?? Guid.NewGuid();
@@ -466,8 +468,32 @@ public sealed class NoteWorkspaceV2Service(
             saveResponse.OverrideRequirements = [];
         }
 
+        if (auditService is not null)
+        {
+            foreach (var accepted in payload.Plan.AcceptedNarrativeProvenance ?? new())
+            {
+                if (!IsNarrativeField(accepted.Key) || accepted.Value is null) continue;
+                if (priorNarratives.TryGetValue(accepted.Key, out var prior)
+                    && JsonSerializer.Serialize(prior) == JsonSerializer.Serialize(accepted.Value)) continue;
+                await auditService.LogAiGenerationAcceptedAsync(
+                    AuditEvent.AiGenerationAccepted(note.Id, accepted.Value.Purpose.ToString(), currentUserId), cancellationToken);
+            }
+        }
+
         saveResponse.Workspace = await BuildLoadResponseAsync(note, cancellationToken);
         return saveResponse;
+    }
+
+    private static bool IsNarrativeField(string field) => field is nameof(WorkspacePlanV2.ClinicalSummary)
+        or nameof(WorkspacePlanV2.FollowUpInstructions) or nameof(WorkspacePlanV2.DischargePlanningNotes)
+        or nameof(WorkspacePlanV2.DischargeRecommendations) or nameof(WorkspacePlanV2.PostDischargeInstructions)
+        or nameof(WorkspacePlanV2.FullDischargeSummary);
+
+    private static Dictionary<string, NoteNarrativeProvenance> ReadNarrativeProvenance(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new();
+        try { return JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(json, SerializerOptions)?.Plan?.AcceptedNarrativeProvenance ?? new(); }
+        catch (JsonException) { return new(); }
     }
 
     private NoteWorkspaceV2Payload BuildEvaluationSeedPayload(IntakeForm intake, bool fromLockedSubmittedIntake)

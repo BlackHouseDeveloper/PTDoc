@@ -311,6 +311,7 @@ builder.Services.AddSingleton<IGoalManagementService, GoalManagementService>();
 
 // Register AI services
 builder.Services.AddScoped<IAiService, OpenAiService>();
+builder.Services.AddScoped<PTDoc.Application.AI.INoteNarrativeGenerator, OpenAiService>();
 builder.Services.AddScoped<PTDoc.AI.ClinicalPromptBuilder>();
 builder.Services.AddScoped<PTDoc.Application.AI.IAiClinicalGenerationService, PTDoc.AI.Services.ClinicalGenerationService>();
 builder.Services.AddHttpClient("AzureOpenAI"); // Used by OpenAiService to avoid socket exhaustion

@@ -72,6 +72,7 @@
     private string _currentValue = string.Empty;
     private string _preReviewValue = string.Empty;
     private string? _acceptErrorMessage;
+    private string? _lastReviewContextKey;
 
     /// <summary>The current text value of the narrative box.</summary>
     [Parameter] public string Value { get; set; } = string.Empty;
@@ -100,8 +101,18 @@
     /// <summary>data-testid prefix for automation.</summary>
     [Parameter] public string TestId { get; set; } = "editable-narrative-box";
 
+    /// <summary>Changing the saved source invalidates pending review without replacing the focused editor.</summary>
+    [Parameter] public string? ReviewContextKey { get; set; }
+
     protected override void OnParametersSet()
     {
+        if (_lastReviewContextKey != ReviewContextKey)
+        {
+            _lastReviewContextKey = ReviewContextKey;
+            _reviewState = ReviewState.None;
+            _preReviewValue = string.Empty;
+            _acceptErrorMessage = null;
+        }
         // Keep backing field in sync when parent pushes a new value.
         // Exception: when an AI suggestion is pending review, the parent's Value
         // is still the pre-AI text. Overwriting _currentValue here would silently

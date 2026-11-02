@@ -311,6 +311,7 @@ public sealed class NoteWorkspacePayloadMapper
                 DischargePlanningNotes = payload.Plan.DischargePlanningNotes,
                 FollowUpInstructions = payload.Plan.FollowUpInstructions,
                 ClinicalSummary = payload.Plan.ClinicalSummary,
+                AcceptedNarrativeProvenance = new(payload.Plan.AcceptedNarrativeProvenance ?? new()),
                 DischargeDocumentationMode = NormalizeDischargeDocumentationMode(payload.Plan.DischargeDocumentationMode),
                 IsNonBillableDischarge = ResolveIsNonBillableDischarge(
                     payload.Plan.DischargeDocumentationMode,
@@ -521,6 +522,7 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Plan.DischargePlanningNotes = payload.Plan.DischargePlanningNotes;
         preservedPayload.Plan.FollowUpInstructions = payload.Plan.FollowUpInstructions;
         preservedPayload.Plan.ClinicalSummary = payload.Plan.ClinicalSummary;
+        preservedPayload.Plan.AcceptedNarrativeProvenance = new(payload.Plan.AcceptedNarrativeProvenance);
         preservedPayload.Plan.DischargeDocumentationMode = NormalizeDischargeDocumentationMode(payload.Plan.DischargeDocumentationMode);
         preservedPayload.Plan.IsNonBillableDischarge = ResolveIsNonBillableDischarge(
             preservedPayload.Plan.DischargeDocumentationMode,

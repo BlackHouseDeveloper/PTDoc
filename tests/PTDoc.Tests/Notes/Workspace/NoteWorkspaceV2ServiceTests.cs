@@ -1,4 +1,6 @@
 using Microsoft.Data.Sqlite;
+using Moq;
+using PTDoc.Application.AI;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using PTDoc.Application.Compliance;
@@ -36,7 +38,7 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         _service = CreateService(_context);
     }
 
-    private static NoteWorkspaceV2Service CreateService(ApplicationDbContext context)
+    private static NoteWorkspaceV2Service CreateService(ApplicationDbContext context, IAuditService? acceptanceAudit = null)
     {
         var registry = new OutcomeMeasureRegistry();
         var intakeReferenceData = new IntakeReferenceDataCatalogService();
@@ -61,7 +63,27 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             intakeBodyPartMapper,
             intakeDraftCanonicalizer,
             carryForwardService,
-            catalogs);
+            catalogs, auditService: acceptanceAudit);
+    }
+
+    [Fact]
+    public async Task AcceptedNarrative_SavesWithExpectedVersionAndAuditsOnceWithoutChangingPlanOfCare()
+    {
+        var audit = new Mock<IAuditService>();
+        var service = CreateService(_context, audit.Object);
+        var patient = new Patient { Id = Guid.NewGuid(), FirstName = "Synthetic", LastName = "Narrative", ClinicId = Guid.NewGuid() };
+        _context.Patients.Add(patient); await _context.SaveChangesAsync();
+        var initial = await service.SaveAsync(new NoteWorkspaceV2SaveRequest { PatientId = patient.Id, NoteType = NoteType.Evaluation, DateOfService = DateTime.UtcNow.Date, Payload = new() });
+        Assert.True(initial.IsValid); var saved = initial.Workspace!;
+        var payload = saved.Payload; payload.Plan.ClinicalSummary = "Accepted summary";
+        var priorPlan = payload.Plan.PlanOfCareNarrative;
+        payload.Plan.AcceptedNarrativeProvenance[nameof(WorkspacePlanV2.ClinicalSummary)] = new(NoteNarrativePurpose.SoapSummary, saved.LastModifiedUtc, "synthetic-source", ["v1"], ["test-model"]);
+        var accepted = await service.SaveAsync(new NoteWorkspaceV2SaveRequest { PatientId = patient.Id, NoteId = saved.NoteId, ExpectedLastModifiedUtc = saved.LastModifiedUtc, NoteType = NoteType.Evaluation, DateOfService = DateTime.UtcNow.Date, Payload = payload });
+        Assert.True(accepted.IsValid); Assert.Equal("Accepted summary", accepted.Workspace!.Payload.Plan.ClinicalSummary);
+        Assert.Equal(priorPlan, accepted.Workspace.Payload.Plan.PlanOfCareNarrative);
+        var again = await service.SaveAsync(new NoteWorkspaceV2SaveRequest { PatientId = patient.Id, NoteId = saved.NoteId, ExpectedLastModifiedUtc = accepted.Workspace.LastModifiedUtc, NoteType = NoteType.Evaluation, DateOfService = DateTime.UtcNow.Date, Payload = accepted.Workspace.Payload });
+        Assert.True(again.IsValid);
+        audit.Verify(a => a.LogAiGenerationAcceptedAsync(It.Is<AuditEvent>(e => e.EntityId == saved.NoteId), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

@@ -7,7 +7,7 @@
 @using UiCptCodeEntry = PTDoc.UI.Components.Notes.Models.CptCodeEntry
 @implements IDisposable
 
-@inject IAiClinicalGenerationService AiService
+@inject INoteNarrativeClient NarrativeClient
 @inject PTDoc.UI.Services.INoteWorkspaceService NoteWorkspaceService
 @inject ILogger<PlanTab> Logger
 @inject IToastService ToastService
@@ -483,7 +483,7 @@
                                       TestId="ai-suggest-discharge-btn" />
                 }
             </div>
-            <EditableNarrativeBox @ref="_dischargePlanningBox"
+            <EditableNarrativeBox ReviewContextKey="@_narrativeContextKey" @ref="_dischargePlanningBox"
                                   Label=""
                                   Placeholder="Long-term maintenance plan, self-management strategies, return-to-care criteria..."
                                   Value="@(Vm.DischargePlanningNotes ?? string.Empty)"
@@ -509,7 +509,7 @@
                                       TestId="ai-suggest-followup-btn" />
                 }
             </div>
-            <EditableNarrativeBox @ref="_followUpBox"
+            <EditableNarrativeBox ReviewContextKey="@_narrativeContextKey" @ref="_followUpBox"
                                   Label=""
                                   Placeholder="Next appointment recommendations, referrals, precautions after discharge..."
                                   Value="@(Vm.FollowUpInstructions ?? string.Empty)"
@@ -527,7 +527,7 @@
         <div class="pt-card__header">
             <div>
                 <h3 class="pt-card__title">Clinical Summary (SOAP)</h3>
-                <p class="pt-card__subtitle">AI-generated comprehensive summary of all SOAP sections</p>
+                <p class="pt-card__subtitle">Separate Subjective, Objective, Assessment and Plan paragraphs from the saved note</p>
             </div>
             @if (!IsReadOnly)
             {
@@ -540,7 +540,7 @@
             }
         </div>
 
-        <EditableNarrativeBox @ref="_clinicalSummaryBox"
+        <EditableNarrativeBox ReviewContextKey="@_narrativeContextKey" @ref="_clinicalSummaryBox"
                               Label=""
                               Placeholder="Click 'Generate Summary' to create a comprehensive SOAP note summary, or type manually..."
                               Value="@(Vm.ClinicalSummary ?? string.Empty)"
@@ -560,6 +560,9 @@
     [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public bool IsNoteSigned { get; set; }
     [Parameter] public Guid NoteId { get; set; }
+    [Parameter] public DateTime? SourceLastModifiedUtc { get; set; }
+    [Parameter] public bool HasUnsavedChanges { get; set; }
+
     [Parameter] public string? SelectedBodyPart { get; set; }
     [Parameter] public string? DiagnosisSummary { get; set; }
     [Parameter] public string? AssessmentSummary { get; set; }
@@ -587,7 +590,12 @@
     private EditableNarrativeBox? _followUpBox;
     private EditableNarrativeBox? _clinicalSummaryBox;
 
-    private bool IsPlanGenerationDisabled => IsNoteSigned || IsReadOnly || NoteId == Guid.Empty || !HasConcreteBodyPart(SelectedBodyPart);
+    private string? _narrativeContextKey;
+    private long _narrativeEpoch;
+    private CancellationTokenSource? _narrativeCts;
+    private readonly Dictionary<NoteNarrativePurpose, NoteNarrativeResult> _pendingNarratives = new();
+
+    private bool IsPlanGenerationDisabled => HasUnsavedChanges || !SourceLastModifiedUtc.HasValue || _isGeneratingDischarge || _isGeneratingFollowUp || _isGeneratingSummary || IsNoteSigned || IsReadOnly || NoteId == Guid.Empty || !HasConcreteBodyPart(SelectedBodyPart);
 
     private string? PlanGenerationDisabledReason =>
         IsNoteSigned
@@ -598,7 +606,9 @@
                 ? "Save the note before generating AI plan content."
                 : !HasConcreteBodyPart(SelectedBodyPart)
                     ? "Select a body part before generating AI plan content."
-                    : null;
+                    : HasUnsavedChanges || !SourceLastModifiedUtc.HasValue
+                        ? "Save your latest changes before generating."
+                        : null;
 
     // ── Static: product-default CPT quick picks ────────────────────
 
@@ -648,6 +658,15 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        var key = $"{NoteId}:{SourceLastModifiedUtc:O}:{IsReadOnly}:{IsNoteSigned}:{HasUnsavedChanges}";
+        if (_narrativeContextKey != key)
+        {
+            _narrativeContextKey = key;
+            _narrativeEpoch++;
+            _narrativeCts?.Cancel();
+            _pendingNarratives.Clear();
+            _isGeneratingDischarge = _isGeneratingFollowUp = _isGeneratingSummary = false;
+        }
         await EnsureCatalogAsync();
     }
 
@@ -1026,162 +1045,62 @@
         return string.Join(" - ", parts);
     }
 
-    private async Task HandleAiSuggestDischargeAsync()
+    private Task HandleAiSuggestDischargeAsync() => GenerateNarrativeAsync(NoteNarrativePurpose.DischargeRecommendations, () => _dischargePlanningBox, "discharge planning");
+    private Task HandleAiSuggestFollowUpAsync() => GenerateNarrativeAsync(NoteNarrativePurpose.NextVisitPlan, () => _followUpBox, "follow-up instructions");
+    private Task HandleGenerateSummaryAsync() => GenerateNarrativeAsync(NoteNarrativePurpose.SoapSummary, () => _clinicalSummaryBox, "clinical summary");
+
+    private async Task GenerateNarrativeAsync(NoteNarrativePurpose purpose, Func<EditableNarrativeBox?> box, string label)
     {
-        if (IsNoteSigned || IsReadOnly) return;
-        if (NoteId == Guid.Empty)
-        {
-            _errorMessage = "Save the note before generating AI plan content.";
-            ToastService.ShowError(_errorMessage, "AI generation unavailable");
-            return;
-        }
-        if (!HasConcreteBodyPart(SelectedBodyPart))
-        {
-            _errorMessage = "Select a body part before generating AI plan content.";
-            ToastService.ShowError(_errorMessage, "AI generation unavailable");
-            return;
-        }
-        _isGeneratingDischarge = true;
+        if (IsPlanGenerationDisabled) return;
+        var epoch = ++_narrativeEpoch;
+        var source = new NoteNarrativeRequest(NoteId, SourceLastModifiedUtc!.Value, purpose);
+        _narrativeCts?.Cancel(); _narrativeCts?.Dispose(); _narrativeCts = new();
+        var token = _narrativeCts.Token;
+        _isGeneratingDischarge = purpose == NoteNarrativePurpose.DischargeRecommendations;
+        _isGeneratingFollowUp = purpose == NoteNarrativePurpose.NextVisitPlan;
+        _isGeneratingSummary = purpose == NoteNarrativePurpose.SoapSummary;
         _errorMessage = null;
-        StateHasChanged();
         try
         {
-            var result = await AiService.GeneratePlanOfCareAsync(BuildPlanRequest());
+            var result = await NarrativeClient.GenerateAsync(source, token);
+            if (token.IsCancellationRequested || epoch != _narrativeEpoch || IsNoteSigned || IsReadOnly || HasUnsavedChanges) return;
             if (!result.Success)
             {
-                _errorMessage = result.ErrorMessage ?? "Unable to generate discharge planning guidance.";
-                ToastService.ShowError(_errorMessage, "AI generation failed");
-                return;
+                _errorMessage = result.ErrorMessage ?? "Unable to generate this section. You can edit manually.";
+                ToastService.ShowError(_errorMessage, "AI generation failed"); return;
             }
-
-            var suggestion = result.GeneratedText;
-            var suggestionLoaded = await ShowPlanSuggestionAsync(
-                _dischargePlanningBox,
-                suggestion,
-                "discharge planning",
-                "Unable to open AI review for discharge planning. Please try again.");
-            if (!suggestionLoaded)
-            {
-                ToastService.ShowError(_errorMessage ?? "Unable to open AI review for discharge planning. Please try again.", "AI generation failed");
-                return;
-            }
-
-            ToastService.ShowSuccess("AI discharge planning guidance generated. Review it before accepting.", "AI generation complete");
+            if (result.NoteId != NoteId || result.Purpose != purpose || result.SourceLastModifiedUtc != SourceLastModifiedUtc)
+            { _errorMessage = "The suggestion belongs to a different note version. Save and generate again."; return; }
+            var failure = $"Unable to open AI review for {(purpose == NoteNarrativePurpose.SoapSummary ? "the " : "")}{label}. Please try again.";
+            if (!await ShowPlanSuggestionAsync(box(), result.GeneratedText, label, failure))
+            { ToastService.ShowError(_errorMessage ?? failure, "AI generation failed"); return; }
+            _pendingNarratives[purpose] = result;
+            ToastService.ShowSuccess("Suggestion generated. Review and accept it before saving.", "AI generation complete");
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch
         {
-            Logger.LogError(ex, "Discharge plan generation failed for note {NoteId}", NoteId);
-            _errorMessage = "Unable to generate discharge planning guidance.";
-            ToastService.ShowError(_errorMessage, "AI generation failed");
+            if (epoch == _narrativeEpoch)
+            { _errorMessage = "Unable to generate this section. You can continue editing manually."; ToastService.ShowError(_errorMessage, "AI generation failed"); }
         }
-        finally { _isGeneratingDischarge = false; }
+        finally
+        {
+            if (epoch == _narrativeEpoch) _isGeneratingDischarge = _isGeneratingFollowUp = _isGeneratingSummary = false;
+        }
     }
 
-    private async Task HandleAiSuggestFollowUpAsync()
-    {
-        if (IsNoteSigned || IsReadOnly) return;
-        if (NoteId == Guid.Empty)
-        {
-            _errorMessage = "Save the note before generating AI plan content.";
-            ToastService.ShowError(_errorMessage, "AI generation unavailable");
-            return;
-        }
-        if (!HasConcreteBodyPart(SelectedBodyPart))
-        {
-            _errorMessage = "Select a body part before generating AI plan content.";
-            ToastService.ShowError(_errorMessage, "AI generation unavailable");
-            return;
-        }
-        _isGeneratingFollowUp = true;
-        _errorMessage = null;
-        StateHasChanged();
-        try
-        {
-            var result = await AiService.GeneratePlanOfCareAsync(BuildPlanRequest());
-            if (!result.Success)
-            {
-                _errorMessage = result.ErrorMessage ?? "Unable to generate follow-up instructions.";
-                ToastService.ShowError(_errorMessage, "AI generation failed");
-                return;
-            }
-
-            var suggestion = result.GeneratedText;
-            var suggestionLoaded = await ShowPlanSuggestionAsync(
-                _followUpBox,
-                suggestion,
-                "follow-up instructions",
-                "Unable to open AI review for follow-up instructions. Please try again.");
-            if (!suggestionLoaded)
-            {
-                ToastService.ShowError(_errorMessage ?? "Unable to open AI review for follow-up instructions. Please try again.", "AI generation failed");
-                return;
-            }
-
-            ToastService.ShowSuccess("AI follow-up instructions generated. Review them before accepting.", "AI generation complete");
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Follow-up generation failed for note {NoteId}", NoteId);
-            _errorMessage = "Unable to generate follow-up instructions.";
-            ToastService.ShowError(_errorMessage, "AI generation failed");
-        }
-        finally { _isGeneratingFollowUp = false; }
-    }
-
-    private async Task HandleGenerateSummaryAsync()
-    {
-        if (IsNoteSigned || IsReadOnly) return;
-        if (NoteId == Guid.Empty)
-        {
-            _errorMessage = "Save the note before generating AI plan content.";
-            ToastService.ShowError(_errorMessage, "AI generation unavailable");
-            return;
-        }
-        if (!HasConcreteBodyPart(SelectedBodyPart))
-        {
-            _errorMessage = "Select a body part before generating AI plan content.";
-            ToastService.ShowError(_errorMessage, "AI generation unavailable");
-            return;
-        }
-        _isGeneratingSummary = true;
-        _errorMessage = null;
-        StateHasChanged();
-        try
-        {
-            var result = await AiService.GeneratePlanOfCareAsync(BuildPlanRequest());
-            if (!result.Success)
-            {
-                _errorMessage = result.ErrorMessage ?? "Unable to generate a clinical summary.";
-                ToastService.ShowError(_errorMessage, "AI generation failed");
-                return;
-            }
-
-            var suggestion = result.GeneratedText;
-            var suggestionLoaded = await ShowPlanSuggestionAsync(
-                _clinicalSummaryBox,
-                suggestion,
-                "clinical summary",
-                "Unable to open AI review for the clinical summary. Please try again.");
-            if (!suggestionLoaded)
-            {
-                ToastService.ShowError(_errorMessage ?? "Unable to open AI review for the clinical summary. Please try again.", "AI generation failed");
-                return;
-            }
-
-            ToastService.ShowSuccess("AI clinical summary generated. Review it before accepting.", "AI generation complete");
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Clinical summary generation failed for note {NoteId}", NoteId);
-            _errorMessage = "Unable to generate a clinical summary.";
-            ToastService.ShowError(_errorMessage, "AI generation failed");
-        }
-        finally { _isGeneratingSummary = false; }
-    }
+    private bool CanAcceptNarrative(NoteNarrativePurpose purpose) => !IsReadOnly && !IsNoteSigned && !HasUnsavedChanges
+        && _pendingNarratives.TryGetValue(purpose, out var pending) && pending.NoteId == NoteId
+        && pending.SourceLastModifiedUtc == SourceLastModifiedUtc;
 
     private async Task<EditableNarrativeAcceptResult> HandleDischargeAcceptedAsync(string acceptedText)
     {
-        await SetAndNotify(vm => vm.DischargePlanningNotes = acceptedText);
+        if (!CanAcceptNarrative(NoteNarrativePurpose.DischargeRecommendations)) return EditableNarrativeAcceptResult.Fail("The note changed. Generate a new suggestion.");
+        await SetAndNotify(vm =>
+        {
+            vm.DischargePlanningNotes = acceptedText;
+            vm.AcceptedNarrativeProvenance[nameof(PlanVm.DischargePlanningNotes)] = _pendingNarratives[NoteNarrativePurpose.DischargeRecommendations].ToProvenance();
+        });
         _errorMessage = null;
         await InvokeAsync(StateHasChanged);
         return EditableNarrativeAcceptResult.Ok();
@@ -1195,7 +1114,12 @@
 
     private async Task<EditableNarrativeAcceptResult> HandleFollowUpAcceptedAsync(string acceptedText)
     {
-        await SetAndNotify(vm => vm.FollowUpInstructions = acceptedText);
+        if (!CanAcceptNarrative(NoteNarrativePurpose.NextVisitPlan)) return EditableNarrativeAcceptResult.Fail("The note changed. Generate a new suggestion.");
+        await SetAndNotify(vm =>
+        {
+            vm.FollowUpInstructions = acceptedText;
+            vm.AcceptedNarrativeProvenance[nameof(PlanVm.FollowUpInstructions)] = _pendingNarratives[NoteNarrativePurpose.NextVisitPlan].ToProvenance();
+        });
         _errorMessage = null;
         await InvokeAsync(StateHasChanged);
         return EditableNarrativeAcceptResult.Ok();
@@ -1209,26 +1133,14 @@
 
     private async Task<EditableNarrativeAcceptResult> HandleClinicalSummaryAcceptedAsync(string acceptedText)
     {
+        if (!CanAcceptNarrative(NoteNarrativePurpose.SoapSummary)) return EditableNarrativeAcceptResult.Fail("The note changed. Generate a new suggestion.");
         try
         {
-            if (NoteId != Guid.Empty)
-            {
-                var acceptance = await NoteWorkspaceService.AcceptAiSuggestionAsync(
-                    NoteId,
-                    section: "plan",
-                    generatedText: acceptedText,
-                    generationType: "ClinicalSummary");
-
-                if (!acceptance.Success)
-                {
-                    _errorMessage = acceptance.ErrorMessage ?? "Unable to accept AI-generated summary content.";
-                    ToastService.ShowError(_errorMessage, "AI acceptance failed");
-                    await InvokeAsync(StateHasChanged);
-                    return EditableNarrativeAcceptResult.Fail(_errorMessage);
-                }
-            }
-
-            await SetAndNotify(vm => vm.ClinicalSummary = acceptedText);
+            await SetAndNotify(vm =>
+        {
+            vm.ClinicalSummary = acceptedText;
+            vm.AcceptedNarrativeProvenance[nameof(PlanVm.ClinicalSummary)] = _pendingNarratives[NoteNarrativePurpose.SoapSummary].ToProvenance();
+        });
             _errorMessage = null;
             ToastService.ShowSuccess("AI clinical summary accepted. Save the note to keep it.", "AI content accepted");
             await InvokeAsync(StateHasChanged);
@@ -1270,89 +1182,15 @@
         return true;
     }
 
-    private PlanOfCareGenerationRequest BuildPlanRequest()
-    {
-        return new PlanOfCareGenerationRequest
-        {
-            NoteId = NoteId,
-            Diagnosis = string.IsNullOrWhiteSpace(DiagnosisSummary)
-                ? "Physical therapy plan of care"
-                : DiagnosisSummary!,
-            SelectedBodyPart = SelectedBodyPart,
-            AssessmentSummary = AssessmentSummary,
-            Goals = GoalsSummary,
-            Precautions = PrecautionsSummary,
-            StructuredInputs = BuildStructuredInputs(),
-            IsNoteSigned = IsNoteSigned
-        };
-    }
-
-    private IReadOnlyList<AiStructuredInput> BuildStructuredInputs()
-    {
-        var inputs = new List<AiStructuredInput>();
-        inputs.AddRange(StructuredInputs);
-
-        AddInput(inputs, "Treatment frequency", Vm.TreatmentFrequency, SelectedBodyPart);
-        AddInput(inputs, "Treatment duration", Vm.TreatmentDuration, SelectedBodyPart);
-        AddInput(inputs, "Treatment focuses", JoinValues(Vm.TreatmentFocuses), SelectedBodyPart);
-        AddInput(inputs, "General interventions", JoinValues(Vm.GeneralInterventions.Select(FormatIntervention)), SelectedBodyPart);
-        AddInput(inputs, "Home exercise program", Vm.HomeExerciseProgramNotes, SelectedBodyPart);
-        AddInput(inputs, "Selected CPT codes", JoinValues(Vm.SelectedCptCodes.Select(code => $"{code.Code} {code.Description}".Trim())), SelectedBodyPart);
-
-        return DeduplicateInputs(inputs);
-    }
-
-    private static IReadOnlyList<AiStructuredInput> DeduplicateInputs(IEnumerable<AiStructuredInput> inputs) =>
-        inputs
-            .GroupBy(input => $"{input.Label}\u001f{input.Value}\u001f{input.BodyPart}", StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .ToList();
-
-    private static string FormatIntervention(GeneralInterventionEntry intervention)
-    {
-        var parts = new[]
-        {
-            intervention.Name,
-            intervention.Category,
-            intervention.CptCode is null ? null : $"CPT {intervention.CptCode}",
-            intervention.TimeMinutes.HasValue ? $"{intervention.TimeMinutes.Value} min" : null,
-            intervention.AssistanceLevel,
-            intervention.Cueing,
-            intervention.Response,
-            intervention.IncludeInHomeExerciseProgram ? "HEP linked" : null,
-            intervention.Notes
-        }.Where(value => !string.IsNullOrWhiteSpace(value));
-
-        return string.Join(" - ", parts);
-    }
-
-    private static void AddInput(List<AiStructuredInput> inputs, string label, string? value, string? bodyPart = null)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return;
-        }
-
-        inputs.Add(new AiStructuredInput
-        {
-            Label = label,
-            Value = value.Trim(),
-            BodyPart = string.IsNullOrWhiteSpace(bodyPart) ? null : bodyPart.Trim()
-        });
-    }
-
-    private static string? JoinValues(IEnumerable<string?> values)
-    {
-        var joined = string.Join("; ", values.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!.Trim()));
-        return string.IsNullOrWhiteSpace(joined) ? null : joined;
-    }
-
     private static bool HasConcreteBodyPart(string? bodyPart) =>
         !string.IsNullOrWhiteSpace(bodyPart)
         && !string.Equals(bodyPart.Trim(), "Other", StringComparison.OrdinalIgnoreCase);
 
     public void Dispose()
     {
+        _narrativeEpoch++;
+        _narrativeCts?.Cancel();
+        _narrativeCts?.Dispose();
         _cptSearchCts?.Cancel();
         _cptSearchCts?.Dispose();
     }
