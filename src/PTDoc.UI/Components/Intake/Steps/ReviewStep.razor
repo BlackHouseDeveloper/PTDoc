@@ -265,10 +265,25 @@
             </div>
         }
 
+        @if (!string.IsNullOrWhiteSpace(State.StructuredData?.OtherMedications))
+        {
+            <div class="review-step__note-box" data-testid="review-other-medications">
+                <span class="review-step__field-label">Other medications</span>
+                <p>@State.StructuredData.OtherMedications</p>
+            </div>
+        }
+        @if (!string.IsNullOrWhiteSpace(State.StructuredData?.OtherMedicalHistory))
+        {
+            <div class="review-step__note-box" data-testid="review-other-medical-history">
+                <span class="review-step__field-label">Other past medical history</span>
+                <p>@State.StructuredData.OtherMedicalHistory</p>
+            </div>
+        }
+
         @if (SelectedComorbidityLabels.Count > 0)
         {
             <div class="review-step__field">
-                <span class="review-step__field-label">Comorbidities</span>
+                <span class="review-step__field-label">Past Medical History</span>
                 <div class="review-step__chip-list">
                     @foreach (var item in SelectedComorbidityLabels)
                     {
@@ -347,7 +362,7 @@
                 <div class="review-step__chip-list">
                     @foreach (var limitation in State.StructuredData.FunctionalLimitations)
                     {
-                        <span class="review-step__pill">@limitation.Category: @limitation.Activity</span>
+                        <span class="review-step__pill">@limitation.Category: @(State.IsLocked ? limitation.Activity : FunctionalLimitationDisplayText.Format(limitation.Activity))</span>
                     }
                 </div>
             </div>

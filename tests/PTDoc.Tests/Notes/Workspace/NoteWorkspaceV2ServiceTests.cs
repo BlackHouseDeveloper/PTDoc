@@ -1138,6 +1138,8 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             {
                 SchemaVersion = "2026-03-30",
                 MedicationIds = ["zestril-lisinopril"],
+                OtherMedications = "Synthetic additional medication",
+                OtherMedicalHistory = "Synthetic additional history",
                 PainDescriptorIds = ["aching"],
                 FunctionalLimitations =
                 [
@@ -1209,7 +1211,9 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Contains("Hypertension (High Blood Pressure)", seed.Payload.Subjective.Comorbidities);
         Assert.Contains("Cane", seed.Payload.Subjective.AssistiveDevice.Devices);
         Assert.True(seed.Payload.Subjective.TakingMedications);
-        Assert.Equal("Zestril / Lisinopril", Assert.Single(seed.Payload.Subjective.Medications).Name);
+        Assert.Contains(seed.Payload.Subjective.Medications, x => x.Name == "Zestril / Lisinopril");
+        Assert.Contains(seed.Payload.Subjective.Medications, x => x.Name == "Synthetic additional medication");
+        Assert.Contains("Synthetic additional history", seed.Payload.Subjective.Comorbidities);
         Assert.Equal(
             "Can perform household tasks with pacing; requires seated breaks for community walking.",
             seed.Payload.Subjective.CurrentLevelOfFunction);

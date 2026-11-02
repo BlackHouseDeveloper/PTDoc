@@ -10,6 +10,34 @@ public sealed class IntakeStructuredDataJsonTests
 {
     private readonly IIntakeReferenceDataCatalogService _catalog = new IntakeReferenceDataCatalogService();
 
+    [Theory]
+    [InlineData(false, 2000, true)]
+    [InlineData(false, 2001, false)]
+    [InlineData(true, 1, false)]
+    [InlineData(true, 0, true)]
+    public void OtherDetails_EnforceLengthAndNoneConsistency(bool none, int length, bool valid)
+    {
+        var data = new IntakeStructuredDataDto
+        {
+            NoMedications = none,
+            NoComorbidities = none,
+            OtherMedications = new string('m', length),
+            OtherMedicalHistory = new string('h', length)
+        };
+        Assert.Equal(valid, IntakeStructuredDataJson.TryNormalize(data, _catalog, out var normalized, out var validation));
+        if (!valid)
+        {
+            Assert.Contains("structuredData.otherMedications", validation.Errors.Keys);
+            Assert.Contains("structuredData.otherMedicalHistory", validation.Errors.Keys);
+        }
+        else if (length > 0)
+        {
+            Assert.True(IntakeStructuredDataJson.TryParse(normalized.StructuredDataJson, out var reloaded, out _));
+            Assert.Equal(data.OtherMedications, reloaded.OtherMedications);
+            Assert.Equal(data.OtherMedicalHistory, reloaded.OtherMedicalHistory);
+        }
+    }
+
     [Fact]
     public void TryNormalize_KnownSelections_NormalizesAndProjectsPainMapData()
     {

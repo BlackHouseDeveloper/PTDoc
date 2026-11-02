@@ -31,6 +31,46 @@ public sealed class StructuredIntakeComponentsTests : TestContext
     }
 
     [Fact]
+    public void MedicalHistory_OtherDetailsRemainInTheirSectionAfterReload()
+    {
+        var state = new IntakeWizardState { MedicalHistoryNotes = "Existing surgery details" };
+        var card = RenderComponent<MedicalHistoryCard>(p => p.Add(c => c.State, state));
+        card.Find("#intake-other-medications").Input("Synthetic medication");
+        card.Find("#intake-other-medical-history").Input("Synthetic history");
+        Assert.True(state.HasCurrentMedications);
+        Assert.True(state.HasOtherMedicalConditions);
+        Assert.False(state.StructuredData!.NoMedications);
+        Assert.False(state.StructuredData.NoComorbidities);
+        Assert.True(IntakeStructuredDataJson.TryParse(IntakeStructuredDataJson.Serialize(state.StructuredData), out var reloaded, out _));
+        var review = RenderComponent<ReviewStep>(p => p.Add(c => c.State, new IntakeWizardState
+        {
+            StructuredData = reloaded,
+            MedicalHistoryNotes = state.MedicalHistoryNotes,
+            DateOfBirth = new DateTime(1988, 1, 1)
+        }));
+        Assert.Contains("Synthetic medication", review.Find("[data-testid='review-other-medications']").TextContent);
+        Assert.Contains("Synthetic history", review.Find("[data-testid='review-other-medical-history']").TextContent);
+        Assert.Equal("Existing surgery details", state.MedicalHistoryNotes);
+    }
+
+    [Fact]
+    public void FunctionalLimitations_OpenAllSelectedRegionsAndKeepStableActivityValues()
+    {
+        var state = new IntakeWizardState { SelectedBodyRegions = [BodyRegion.KneeLeftFront, BodyRegion.NeckFront] };
+        var card = RenderComponent<FunctionalLimitationsCard>(p => p.Add(c => c.State, state));
+        Assert.All(card.FindAll("details"), d => Assert.True(d.HasAttribute("open")));
+        Assert.Contains("Cervical", card.Markup);
+        Assert.Contains("Knee", card.Markup);
+        Assert.DoesNotContain("Unable to", card.Markup);
+        Assert.Contains("Difficulty with:", card.Markup);
+        var choices = card.FindAll(".intake-card__choice--activity input");
+        choices.First().Change(true);
+        card.FindAll(".intake-card__choice--activity input").Last().Change(true);
+        Assert.Equal(2, state.StructuredData!.FunctionalLimitations.Select(x => x.BodyPart).Distinct().Count());
+        Assert.All(state.StructuredData.FunctionalLimitations, item => Assert.StartsWith("Unable to", item.Activity));
+    }
+
+    [Fact]
     public void MedicalHistoryCard_RendersStructuredSelections()
     {
         var state = new IntakeWizardState
