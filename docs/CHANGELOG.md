@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 157 delayed modal registration cleanup
+
+- Serialize incomplete-note modal registration, focus, cleanup, and interop disposal so closing or disposing during a delayed registration cannot leave an orphan Escape/focus-trap handler. Preserve generation checks and Cancel-only autofocus. Strengthen all four pending-registration close cases and add a close/reopen regression that also holds cleanup pending.
+- Synchronize the reopen regression with explicit interop invocation signals instead of render-triggered assertions: gate continuations can register after the last render. Preserve all ordering assertions. The user-reported run passed 2,551 tests and failed this one wait; verification of the corrected test is pending.
+- Record the complete PR 157 review inventory, historical dispositions, duplicate summary references, and verification limits in `docs/client-review/plan-02.md`. New .NET verification remains pending user execution.
+
 ### Fixed - PR 157 failed-save recovery races
 
 - Cancel and drain every note-workspace persistence path before explicit discard navigates, including direct/override saves, and retain the persistence gate until all cancelled work has completed. Retry now rechecks that its recovery target remains current after saving, so Stay cannot be overridden by a late navigation.

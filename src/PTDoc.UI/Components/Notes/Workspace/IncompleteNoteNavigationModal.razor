@@ -50,6 +50,7 @@
 
 @code {
     private readonly string ModalId = $"incomplete-note-navigation-modal-{Guid.NewGuid():N}";
+    private readonly SemaphoreSlim _interopGate = new(1, 1);
     private DotNetObjectReference<IncompleteNoteNavigationModal>? _dotNetReference;
     private IJSObjectReference? _modalModule;
     private ElementReference _cancelButton;
@@ -75,8 +76,14 @@
 
         var generation = _generation;
         _registering = true;
+        await _interopGate.WaitAsync();
         try
         {
+            if (!CanRegister || generation != _generation)
+            {
+                return;
+            }
+
             _modalModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/modal.js");
             if (!CanRegister || generation != _generation)
             {
@@ -89,7 +96,7 @@
             await _modalModule.InvokeVoidAsync("registerEscapeHandler", ModalId, _dotNetReference, false);
             if (!CanRegister || generation != _generation)
             {
-                await UnregisterAsync();
+                await UnregisterCoreAsync();
                 return;
             }
 
@@ -97,12 +104,13 @@
         }
         catch (Exception)
         {
-            await UnregisterAsync();
+            await UnregisterCoreAsync();
             // JS interop is unavailable in prerendering and some component tests. The modal remains usable.
         }
         finally
         {
             _registering = false;
+            _interopGate.Release();
             if (CanRegister && generation != _generation)
             {
                 await InvokeAsync(StateHasChanged);
@@ -143,6 +151,21 @@
 
     private async Task UnregisterAsync()
     {
+        // A late registration must finish before cleanup can remove its handlers.
+        await _interopGate.WaitAsync();
+        try
+        {
+            await UnregisterCoreAsync();
+        }
+        finally
+        {
+            _interopGate.Release();
+        }
+    }
+
+    // Called only while holding _interopGate, including failed/stale registration cleanup.
+    private async Task UnregisterCoreAsync()
+    {
         if (!_registered)
         {
             return;
@@ -166,10 +189,10 @@
     {
         _disposed = true;
         _generation++;
-        await UnregisterAsync();
-
+        await _interopGate.WaitAsync();
         try
         {
+            await UnregisterCoreAsync();
             if (_modalModule is not null)
             {
                 await _modalModule.DisposeAsync();
@@ -179,7 +202,10 @@
         {
             // Best-effort cleanup only.
         }
-
-        _dotNetReference?.Dispose();
+        finally
+        {
+            _dotNetReference?.Dispose();
+            _interopGate.Release();
+        }
     }
 }
