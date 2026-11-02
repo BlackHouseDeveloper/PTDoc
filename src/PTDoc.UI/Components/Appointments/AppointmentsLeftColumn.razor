@@ -74,7 +74,7 @@
                                 OnFilterChanged="OnFilterChanged" />
     }
     
-    <AppointmentsDaySwitcher SelectedDate="SelectedDate"
+    <AppointmentsDaySwitcher SelectedDate="SelectedDate" TodayDate="@TodayDate"
                              SelectedView="SelectedView"
                              OnPrevDay="OnPrevDay"
                              OnNextDay="OnNextDay"
@@ -87,6 +87,7 @@
 </div>
 
 @code {
+    [Parameter] public DateTime TodayDate { get; set; } = DateTime.Today;
     [Parameter]
     public AppointmentsView SelectedView { get; set; } = AppointmentsView.Today;
 

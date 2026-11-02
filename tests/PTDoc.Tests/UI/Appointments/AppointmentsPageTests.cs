@@ -1151,6 +1151,52 @@ public sealed class AppointmentsPageTests : TestContext
         });
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EmptySchedule_ShowsRosterAndPrefillsSelectedSlot(bool week)
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var first = Guid.NewGuid(); var second = Guid.NewGuid();
+        RegisterServices(new AppointmentsOverviewResponse
+        {
+            ClinicTimeZoneId = "UTC",
+            Clinicians = [new() { Id = first, DisplayName = "Empty PT" }, new() { Id = second, DisplayName = "Empty PTA" }]
+        });
+        if (week) Services.GetRequiredService<NavigationManager>().NavigateTo($"/appointments?dateRange=week&clinicianId={second:D}");
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
+        cut.WaitForElement(".appointment-slot:not([disabled])");
+        if (!week) Assert.Equal(2, cut.FindAll(".clinician-header").Count);
+        var slots = cut.FindAll(".appointment-slot:not([disabled])");
+        var slot = week ? slots[0] : slots[12]; // first hour of second clinician
+        slot.Click();
+        cut.WaitForElement("#appointmentDate");
+        Assert.Equal(second.ToString("D"), ((IHtmlSelectElement)cut.Find("#clinician")).Value);
+        Assert.Equal(TimeOnly.FromTimeSpan(TimeSpan.FromHours(7)), TimeOnly.Parse(((IHtmlInputElement)cut.Find("#appointmentTime")).Value!));
+        var date = week ? GetSundayStartOfWeek(DateTime.UtcNow.Date) : DateTime.UtcNow.Date;
+        Assert.Equal(date.ToString("yyyy-MM-dd"), ((IHtmlInputElement)cut.Find("#appointmentDate")).Value);
+    }
+
+    [Fact]
+    public void HistoricalAssignee_RemainsReadableButIsNotAnEmptySlotOrFormChoice()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var clinician = Guid.NewGuid(); var history = Guid.NewGuid();
+        RegisterServices(new AppointmentsOverviewResponse
+        {
+            Clinicians = [new() { Id = clinician, DisplayName = "Eligible PT" }],
+            Appointments = [CreateAppointment("Historical Patient", history, "Historical Admin", DateTime.Today.AddHours(9))]
+        });
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Appointments>();
+        cut.WaitForElement(".appointment-block");
+        var historicalColumn = cut.FindAll(".clinician-column").Single(value => value.TextContent.Contains("Historical Admin", StringComparison.Ordinal));
+        Assert.NotEmpty(historicalColumn.QuerySelectorAll(".appointment-block"));
+        Assert.Empty(historicalColumn.QuerySelectorAll(".appointment-slot:not([disabled])"));
+        cut.Find(".appointment-slot:not([disabled])").Click();
+        cut.WaitForElement("#clinician");
+        Assert.DoesNotContain(cut.FindAll("#clinician option"), option => option.GetAttribute("value") == history.ToString("D"));
+    }
+
     private Mock<IAppointmentService> RegisterServices(
         AppointmentsOverviewResponse? overview = null,
         IReadOnlyList<PatientListItemResponse>? patients = null,

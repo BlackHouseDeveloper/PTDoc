@@ -72,3 +72,10 @@
         overflow: visible;
     }
 }
+
+.appointments-empty-state--with-schedule {
+    flex: 0 0 auto;
+    min-height: 0;
+    padding: var(--spacing-3);
+    gap: var(--spacing-1);
+}

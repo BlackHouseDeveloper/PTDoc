@@ -31,13 +31,8 @@ public static class AppointmentEndpoints
     [
         Roles.PT,
         Roles.PTA,
-        Roles.Admin,
-        Roles.Owner,
-        Roles.PracticeManager,
         "Physical Therapist",
-        "Physical Therapist Assistant",
-        "Clinician",
-        "Provider"
+        "Physical Therapist Assistant"
     ];
 
     public static void MapAppointmentEndpoints(this IEndpointRouteBuilder app)
@@ -141,7 +136,10 @@ public static class AppointmentEndpoints
         return Results.Ok(new AppointmentsOverviewResponse
         {
             Appointments = appointments.Select(row => ToResponse(row, paymentAvailable)).ToList(),
-            Clinicians = clinicians
+            Clinicians = clinicians,
+            ClinicTimeZoneId = currentClinicId.HasValue
+                ? await db.Clinics.Where(clinic => clinic.Id == currentClinicId.Value).Select(clinic => clinic.TimeZoneId).SingleOrDefaultAsync(cancellationToken) ?? "America/Los_Angeles"
+                : TimeZoneInfo.Local.Id
         });
     }
 

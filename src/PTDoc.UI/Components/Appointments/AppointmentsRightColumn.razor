@@ -8,7 +8,7 @@
 
     @if (ShowEmptyState)
     {
-        <section class="appointments-empty-state" role="status" aria-live="polite">
+        <section class="appointments-empty-state @(Clinicians?.Count > 0 ? "appointments-empty-state--with-schedule" : string.Empty)" role="status" aria-live="polite">
             <h3>@EmptyStateTitle</h3>
             <p>@EmptyStateDescription</p>
             @if (HasActiveFilters)
@@ -19,7 +19,7 @@
             }
         </section>
     }
-    else
+    @if (!ShowEmptyState || Clinicians?.Count > 0)
     {
         <ClinicianScheduler SelectedDate="@SelectedDate"
                            Clinicians="@Clinicians"
@@ -28,11 +28,17 @@
                            WeekGrouping="@WeekGrouping"
                            Filter="@Filter"
                            OnAppointmentSelected="@OnAppointmentSelected"
+                           OnSlotSelected="@OnSlotSelected"
+                           SelectedWeekClinicianId="@SelectedWeekClinicianId"
+                           DisplayTimeZone="@DisplayTimeZone"
                            AppointmentStatusOverrides="@AppointmentStatusOverrides" />
     }
 </div>
 
 @code {
+    [Parameter] public EventCallback<AppointmentSlotSelection> OnSlotSelected { get; set; }
+    [Parameter] public Guid? SelectedWeekClinicianId { get; set; }
+    [Parameter] public TimeZoneInfo DisplayTimeZone { get; set; } = TimeZoneInfo.Local;
     [Parameter]
     public string ViewLabel { get; set; } = "Today's Appointments";
 

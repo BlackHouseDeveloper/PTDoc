@@ -399,6 +399,18 @@
             return;
         }
 
+        // Restore modal-managed siblings before the parent removes its own
+        // aria-hidden/inert attributes, otherwise cleanup can restore stale state.
+        if (modalAccessibilityActive && modalModule is not null)
+        {
+            try
+            {
+                await modalModule.InvokeVoidAsync("unlockBodyScroll");
+                await modalModule.InvokeVoidAsync("unregisterEscapeHandler", modalId);
+                modalAccessibilityActive = false;
+            }
+            catch (JSDisconnectedException) { }
+        }
         await IsOpenChanged.InvokeAsync(false);
 
         ApplyFormState(null);
@@ -531,6 +543,10 @@
         if (string.IsNullOrWhiteSpace(ClinicianId))
         {
             validationErrors[nameof(ClinicianId)] = "Select a clinician.";
+        }
+        else if (AvailableClinicians?.Any(value => value.Id == ClinicianId) != true)
+        {
+            validationErrors[nameof(ClinicianId)] = "Select an available PT or PTA clinician before saving this appointment.";
         }
 
         return validationErrors.Count == 0;

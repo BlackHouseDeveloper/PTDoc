@@ -94,6 +94,74 @@ public sealed class AppointmentComponentsTests : TestContext
     }
 
     [Fact]
+    public void NewAppointmentModal_CleansAccessibilityBeforeNotifyingParentOfClose()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var module = JSInterop.SetupModule("./_content/PTDoc.UI/js/modal.js");
+        module.Mode = JSRuntimeMode.Loose;
+        var closed = false;
+        var cut = RenderComponent<NewAppointmentModal>(parameters => parameters
+            .Add(value => value.IsOpen, true)
+            .Add(value => value.IsOpenChanged, open =>
+            {
+                if (!open)
+                {
+                    Assert.NotEmpty(module.Invocations["unregisterEscapeHandler"]);
+                    closed = true;
+                }
+            }));
+        cut.WaitForAssertion(() => Assert.NotEmpty(module.Invocations["registerEscapeHandler"]));
+        cut.Find(".btn-cancel").Click();
+        cut.WaitForAssertion(() => Assert.True(closed));
+    }
+
+    [Theory]
+    [InlineData(3, 8, 2)]
+    [InlineData(11, 1, 1)]
+    public void Scheduler_DisablesDstGapOrAmbiguousSlot_AndReturnsClinicWallTime(int month, int day, int disabledHour)
+    {
+        var clinicianId = Guid.NewGuid();
+        AppointmentSlotSelection? selected = null;
+        var date = new DateTime(2026, month, day);
+        var cut = RenderComponent<ClinicianScheduler>(parameters => parameters
+            .Add(value => value.SelectedDate, date)
+            .Add(value => value.StartHour, 0).Add(value => value.EndHour, 4)
+            .Add(value => value.DisplayTimeZone, TimeZoneInfo.FindSystemTimeZoneById("America/New_York"))
+            .Add(value => value.Clinicians, new List<ClinicianSchedule> { new() { ClinicianId = clinicianId, Name = "Synthetic PT", IsSchedulable = true } })
+            .Add(value => value.OnSlotSelected, slot => selected = slot));
+        var slots = cut.FindAll(".appointment-slot");
+        Assert.True(slots[disabledHour].HasAttribute("disabled"));
+        slots[3].Click();
+        Assert.NotNull(selected);
+        Assert.Equal(clinicianId, selected!.ClinicianId);
+        Assert.Equal(date, selected.Date);
+        Assert.Equal(TimeSpan.FromHours(3), selected.Time);
+        Assert.Contains("America/New_York", slots[3].GetAttribute("aria-label"));
+    }
+
+    [Fact]
+    public void Scheduler_UsesStableClinicianIdsAndClinicZoneForSameNameColumns()
+    {
+        var first = Guid.NewGuid(); var second = Guid.NewGuid();
+        var cut = RenderComponent<ClinicianScheduler>(parameters => parameters
+            .Add(value => value.SelectedDate, new DateTime(2026, 11, 2))
+            .Add(value => value.DisplayTimeZone, TimeZoneInfo.FindSystemTimeZoneById("America/New_York"))
+            .Add(value => value.Clinicians, new List<ClinicianSchedule>
+            {
+                new() { ClinicianId = first, Name = "Same Name", IsSchedulable = true },
+                new() { ClinicianId = second, Name = "Same Name", IsSchedulable = true }
+            })
+            .Add(value => value.Appointments, new List<AppointmentListItemResponse>
+            {
+                new() { Id = Guid.NewGuid(), ClinicianId = second, ClinicianName = "Same Name", PatientName = "Synthetic", StartTimeUtc = new(2026, 11, 2, 15, 0, 0, DateTimeKind.Utc), EndTimeUtc = new(2026, 11, 2, 15, 45, 0, DateTimeKind.Utc) }
+            }));
+        var columns = cut.FindAll(".clinician-column");
+        Assert.Empty(columns[0].QuerySelectorAll(".appointment-block"));
+        Assert.Single(columns[1].QuerySelectorAll(".appointment-block"));
+        Assert.Contains("10:00 AM", columns[1].TextContent);
+    }
+
+    [Fact]
     public void AppointmentDetailModal_CheckedInAppointment_ShowsEnabledStartVisitOnly()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;

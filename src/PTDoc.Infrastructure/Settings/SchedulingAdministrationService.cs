@@ -16,13 +16,8 @@ public sealed partial class SchedulingAdministrationService(
         [
             Roles.PT,
             Roles.PTA,
-            Roles.Admin,
-            Roles.Owner,
-            Roles.PracticeManager,
             "Physical Therapist",
-            "Physical Therapist Assistant",
-            "Clinician",
-            "Provider"
+            "Physical Therapist Assistant"
         ];
 
     public async Task<IReadOnlyList<VisitTypeDto>> GetVisitTypesAsync(
