@@ -45,6 +45,15 @@ public sealed class PatientApiService(HttpClient httpClient) : IPatientService
             ?? new List<PatientListItemResponse>();
     }
 
+    public async Task<IReadOnlyList<PatientListItemResponse>> SearchPageAsync(
+        string? query, int take, int skip, CancellationToken cancellationToken = default)
+    {
+        var url = $"/api/v1/patients/?take={take}&skip={skip}&query={Uri.EscapeDataString(query?.Trim() ?? string.Empty)}";
+        var response = await httpClient.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<PatientListItemResponse>>(SerializerOptions, cancellationToken) ?? [];
+    }
+
     public async Task<PatientResponse> CreateAsync(
         CreatePatientRequest request,
         CancellationToken cancellationToken = default)

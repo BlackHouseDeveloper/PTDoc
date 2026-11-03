@@ -675,6 +675,9 @@ public sealed class PatientsPageTests : TestContext
             return tcs.Task;
         }
 
+        public Task<IReadOnlyList<PatientListItemResponse>> SearchPageAsync(string? query, int take, int skip, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public void CompleteSearch(string query, params PatientListItemResponse[] patients)
         {
             if (_pending.TryGetValue(query, out var tcs))

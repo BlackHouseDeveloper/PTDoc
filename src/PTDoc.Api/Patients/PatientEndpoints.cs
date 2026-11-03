@@ -99,11 +99,17 @@ public static class PatientEndpoints
     private static async Task<IResult> ListPatients(
         [FromQuery] string? query,
         [FromQuery] string? take,
+        [FromQuery] string? skip,
         [FromServices] ApplicationDbContext db,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         if (!ListQueryParameterParser.TryNormalizeTake(take, 100, 250, httpContext, out var normalizedTake, out var failure))
+        {
+            return failure!;
+        }
+
+        if (!ListQueryParameterParser.TryNormalizeSkip(skip, httpContext, out var normalizedSkip, out failure))
         {
             return failure!;
         }
@@ -126,6 +132,8 @@ public static class PatientEndpoints
         var patients = await patientQuery
             .OrderBy(p => p.LastName)
             .ThenBy(p => p.FirstName)
+            .ThenBy(p => p.Id)
+            .Skip(normalizedSkip)
             .Take(normalizedTake)
             .Select(p => new PatientListItemResponse
             {
