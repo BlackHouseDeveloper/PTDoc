@@ -234,8 +234,7 @@ public sealed class IntakeService : IIntakeService
         var draft = new IntakeResponseDraft();
         // Copy state properties
         CopyDraftProperties(canonicalState, draft);
-        var initialProfile = JsonSerializer.Deserialize<IntakeProfilePrefill>(SerializeDraft(canonicalState), SerializerOptions)!;
-        initialProfile.SourceModifiedUtc = patient.LastModifiedUtc;
+        var initialProfile = await IntakeProfilePrefillReader.ReadAsync(_context, patient, cancellationToken);
         initialProfile.InitializeSource(draft);
         draft.PatientId = patient.Id;
 
@@ -318,7 +317,15 @@ public sealed class IntakeService : IIntakeService
             intake.SyncState = SyncState.Pending;
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            _context.Entry(intake).State = EntityState.Detached;
+            throw new InvalidOperationException(IntakeProfileProvenance.StaleRevisionMessage, ex);
+        }
     }
 
     public async Task SubmitAsync(IntakeResponseDraft state, CancellationToken cancellationToken = default)
@@ -416,7 +423,11 @@ public sealed class IntakeService : IIntakeService
             await IntakeDomainProjection.UpsertAsync(_context, patient, canonicalState, userId, cancellationToken);
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        try { await _context.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new InvalidOperationException(IntakeProfileUpdates.RefreshMessage, ex);
+        }
     }
 
     public async Task<IntakeResponseDraft> MarkReviewedAsync(Guid intakeId, CancellationToken cancellationToken = default)
@@ -451,9 +462,12 @@ public sealed class IntakeService : IIntakeService
         target.PatientId = source.PatientId;
         target.IntakeFlowVersion = source.IntakeFlowVersion;
         target.PrefilledPrimaryPolicyId = source.PrefilledPrimaryPolicyId;
+        target.ProfileSourceRevision = source.ProfileSourceRevision;
         target.PrefilledSecondaryPolicyId = source.PrefilledSecondaryPolicyId;
         target.PrefilledPrimaryPolicyModifiedUtc = source.PrefilledPrimaryPolicyModifiedUtc;
         target.PrefilledSecondaryPolicyModifiedUtc = source.PrefilledSecondaryPolicyModifiedUtc;
+        target.PrefilledPrimaryLegacyPayerFingerprint = source.PrefilledPrimaryLegacyPayerFingerprint;
+        target.PrefilledSecondaryLegacyPayerFingerprint = source.PrefilledSecondaryLegacyPayerFingerprint;
         target.ProfilePrefillSourceModifiedUtc = source.ProfilePrefillSourceModifiedUtc;
         target.PrefilledDemographics = source.PrefilledDemographics;
         target.OmitPrimaryPolicy = source.OmitPrimaryPolicy;

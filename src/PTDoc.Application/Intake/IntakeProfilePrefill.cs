@@ -15,6 +15,8 @@ public sealed class IntakeProfilePrefill
     public Guid? SecondaryPolicyId { get; set; }
     public DateTime? PrimaryPolicyModifiedUtc { get; set; }
     public DateTime? SecondaryPolicyModifiedUtc { get; set; }
+    public string? PrimaryLegacyPayerFingerprint { get; set; }
+    public string? SecondaryLegacyPayerFingerprint { get; set; }
     public DateTime SourceModifiedUtc { get; set; }
     public string? FullName { get; set; }
     public string? EmailAddress { get; set; }
@@ -72,7 +74,7 @@ public sealed class IntakeProfilePrefill
         string[] serverFields =
         [
             "intakeId", "patientId", "isLocked", "isSubmitted", "submittedAt",
-            "reviewedAtUtc", "reviewedByUserId", "lastModifiedUtc", "profilePrefill"
+            "reviewedAtUtc", "reviewedByUserId", "lastModifiedUtc", "profilePrefill", "profileSourceRevision"
         ];
         foreach (var key in original.Select(item => item.Key).Where(key => serverFields.Contains(key, StringComparer.OrdinalIgnoreCase)).ToArray())
             original.Remove(key);
@@ -90,6 +92,7 @@ public sealed class IntakeProfilePrefill
             "omitPrimaryPolicy",
             "omitSecondaryPolicy",
             "profileUpdate",
+            "profileSourceRevision",
             "fullName",
             "dateOfBirth",
             "emailAddress",
@@ -116,6 +119,8 @@ public sealed class IntakeProfilePrefill
             "prefilledSecondaryPolicyId",
             "prefilledPrimaryPolicyModifiedUtc",
             "prefilledSecondaryPolicyModifiedUtc",
+            "prefilledPrimaryLegacyPayerFingerprint",
+            "prefilledSecondaryLegacyPayerFingerprint",
             "profilePrefillSourceModifiedUtc",
         ];
         foreach (var field in fields)
@@ -132,11 +137,15 @@ public sealed class IntakeProfilePrefill
     // Called only when the server creates an intake. Record absence as well as presence.
     public void InitializeSource(IntakeResponseDraft draft)
     {
+        // Older drafts remain editable until explicit reconciliation changes their sources.
+        draft.ProfileSourceRevision = null;
         draft.PrefilledDemographics = JsonSerializer.Deserialize<IntakeProfilePrefill>(JsonSerializer.Serialize(this));
         draft.PrefilledPrimaryPolicyId = PrimaryPolicyId;
         draft.PrefilledSecondaryPolicyId = SecondaryPolicyId;
         draft.PrefilledPrimaryPolicyModifiedUtc = PrimaryPolicyModifiedUtc;
+        draft.PrefilledPrimaryLegacyPayerFingerprint = PrimaryLegacyPayerFingerprint;
         draft.PrefilledSecondaryPolicyModifiedUtc = SecondaryPolicyModifiedUtc;
+        draft.PrefilledSecondaryLegacyPayerFingerprint = SecondaryLegacyPayerFingerprint;
         draft.ProfilePrefillSourceModifiedUtc = SourceModifiedUtc;
         draft.OmitPrimaryPolicy = false;
         draft.OmitSecondaryPolicy = false;
@@ -190,6 +199,7 @@ public sealed class IntakeProfilePrefill
             draft.AdjusterFax = AdjusterFax;
             draft.PrefilledPrimaryPolicyId = PrimaryPolicyId;
             draft.PrefilledPrimaryPolicyModifiedUtc = PrimaryPolicyModifiedUtc;
+            draft.PrefilledPrimaryLegacyPayerFingerprint = PrimaryLegacyPayerFingerprint;
         }
         if (!draft.OmitSecondaryPolicy && !SecondaryPolicyAmbiguous && Empty(draft.SecondaryInsuranceCompanyName) && Empty(draft.SecondaryMemberOrPolicyNumber)
             && Empty(draft.SecondaryGroupNumber))
@@ -199,6 +209,7 @@ public sealed class IntakeProfilePrefill
             draft.SecondaryGroupNumber = SecondaryGroupNumber;
             draft.PrefilledSecondaryPolicyId = SecondaryPolicyId;
             draft.PrefilledSecondaryPolicyModifiedUtc = SecondaryPolicyModifiedUtc;
+            draft.PrefilledSecondaryLegacyPayerFingerprint = SecondaryLegacyPayerFingerprint;
         }
         // Do not refresh the fallback timestamp for an already accepted legacy policy source.
         draft.ProfilePrefillSourceModifiedUtc ??= SourceModifiedUtc;

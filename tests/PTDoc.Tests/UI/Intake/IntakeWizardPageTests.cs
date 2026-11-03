@@ -158,6 +158,7 @@ public sealed class IntakeWizardPageTests : TestContext
             InsuranceCompanyName = "Stale",
             MemberOrPolicyNumber = "OLD",
             MedicalHistoryNotes = "Keep me",
+            ProfileSourceRevision = Guid.NewGuid(),
             ProfilePrefill = new IntakeProfilePrefill { InsuranceCompanyName = "Current", MemberOrPolicyNumber = "NEW", Fingerprint = "current-offer" }
         };
         var service = CreateIntakeServiceMock(initial);
@@ -167,11 +168,13 @@ public sealed class IntakeWizardPageTests : TestContext
             {
                 Assert.Equal(omit ? IntakeProfileAction.OmitPrimary : IntakeProfileAction.UsePrimary, draft.ProfileUpdate!.Action);
                 Assert.Equal("current-offer", draft.ProfileUpdate.ExpectedFingerprint);
+                Assert.Equal(initial.ProfileSourceRevision, draft.ProfileSourceRevision);
                 Assert.Equal("Keep me", draft.MedicalHistoryNotes);
                 draft.InsuranceCompanyName = omit ? null : "Current";
                 draft.MemberOrPolicyNumber = omit ? null : "NEW";
                 draft.OmitPrimaryPolicy = omit;
                 draft.ProfileUpdate = null;
+                draft.ProfileSourceRevision = Guid.NewGuid();
                 accepted = draft;
             }).Returns(Task.CompletedTask);
         service.Setup(value => value.GetLatestByPatientIdAsync(patientId, It.IsAny<CancellationToken>()))
@@ -182,6 +185,48 @@ public sealed class IntakeWizardPageTests : TestContext
         cut.WaitForAssertion(() => Assert.Equal(omit ? null : "NEW", GetWizardState(cut).MemberOrPolicyNumber));
         Assert.Equal("Keep me", GetWizardState(cut).MedicalHistoryNotes);
         Assert.Equal(omit, GetWizardState(cut).OmitPrimaryPolicy);
+        Assert.Equal(accepted!.ProfileSourceRevision, GetWizardState(cut).ProfileSourceRevision);
+    }
+
+    [Fact]
+    public void ProfileAcceptance_FailedReloadBlocksWritesUntilSavedAnswersAreRecovered()
+    {
+        var patientId = Guid.NewGuid();
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("synthetic-pt");
+        authorization.SetRoles(Roles.PT);
+        var initial = CreateSubmittableReviewDraft(patientId);
+        initial.InsuranceCompanyName = "Stale";
+        initial.ProfilePrefill = new IntakeProfilePrefill { InsuranceCompanyName = "Current", Fingerprint = "offer" };
+        var recovered = CreateSubmittableReviewDraft(patientId);
+        recovered.InsuranceCompanyName = "Current";
+        var service = CreateIntakeServiceMock(initial);
+        var saved = false;
+        var reloadFails = true;
+        service.Setup(value => value.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()))
+            .Callback(() => saved = true).Returns(Task.CompletedTask);
+        service.Setup(value => value.GetLatestByPatientIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .Returns(() => saved && reloadFails
+                ? Task.FromException<IntakeResponseDraft?>(new HttpRequestException("Reload unavailable"))
+                : Task.FromResult<IntakeResponseDraft?>(saved
+                    ? recovered
+                    : initial));
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}");
+        var cut = RenderPage(patientId);
+
+        cut.Find("[data-testid='intake-use-primary']").Click();
+
+        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='intake-profile-reload']")));
+        Assert.True(cut.Find("fieldset").HasAttribute("disabled"));
+        Assert.Empty(cut.FindAll("[data-testid='intake-use-primary']"));
+        service.Verify(value => value.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()), Times.Once);
+        service.Verify(value => value.SubmitAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()), Times.Never);
+        reloadFails = false;
+        cut.Find("[data-testid='intake-reload-saved']").Click();
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[data-testid='intake-profile-reload']")));
+        Assert.Equal("Current", GetWizardState(cut).InsuranceCompanyName);
+        Assert.Equal(IntakeStep.Review, GetWizardState(cut).CurrentStep);
+        Assert.False(cut.Find("fieldset").HasAttribute("disabled"));
     }
 
     [Fact]

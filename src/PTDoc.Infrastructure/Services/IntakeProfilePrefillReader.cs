@@ -17,6 +17,15 @@ public static class IntakeProfilePrefillReader
             .SingleOrDefaultAsync(p => p.Id == patientId && p.ClinicId == clinicId && !p.IsArchived, cancellationToken);
         if (patient is null) return null;
 
+        return await ReadAsync(db, patient, cancellationToken);
+    }
+
+    // Also initializes a newly created patient's source before its atomic patient/intake save.
+    internal static async Task<IntakeProfilePrefill> ReadAsync(
+        ApplicationDbContext db, Patient patient, CancellationToken cancellationToken = default)
+    {
+        var patientId = patient.Id;
+        var clinicId = patient.ClinicId;
         var policies = await db.PatientInsurancePolicies.AsNoTracking()
             .Where(p => p.PatientId == patientId && p.ClinicId == clinicId && !p.IsArchived
                 && p.Status == InsurancePolicyStatus.Active)
@@ -91,6 +100,9 @@ public static class IntakeProfilePrefillReader
             profile.AdjusterPhone = legacy.AdjusterPhone;
             profile.AdjusterEmail = legacy.AdjusterEmail;
             profile.AdjusterFax = legacy.AdjusterFax;
+            profile.PrimaryLegacyPayerFingerprint = LegacyFingerprint(legacy.InsuranceCompanyName,
+                legacy.MemberOrPolicyNumber, legacy.GroupNumber, legacy.PayerType,
+                legacy.AdjusterName, legacy.AdjusterPhone, legacy.AdjusterEmail, legacy.AdjusterFax);
         }
         var secondary = policies.Where(p => p.CoveragePriority == InsuranceCoveragePriority.Secondary).ToArray();
         if (secondary.Length == 1)
@@ -108,12 +120,22 @@ public static class IntakeProfilePrefillReader
             profile.SecondaryInsuranceCompanyName = legacy.SecondaryInsuranceCompanyName;
             profile.SecondaryMemberOrPolicyNumber = legacy.SecondaryMemberOrPolicyNumber;
             profile.SecondaryGroupNumber = legacy.SecondaryGroupNumber;
+            profile.SecondaryLegacyPayerFingerprint = LegacyFingerprint(legacy.SecondaryInsuranceCompanyName,
+                legacy.SecondaryMemberOrPolicyNumber, legacy.SecondaryGroupNumber);
         }
         profile.PrimaryPolicyAmbiguous = primary.Length > 1;
         profile.SecondaryPolicyAmbiguous = secondary.Length > 1;
         profile.Fingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             JsonSerializer.SerializeToUtf8Bytes(profile)));
         return profile;
+    }
+
+    private static string? LegacyFingerprint(params string?[] fields)
+    {
+        var normalized = fields.Select(value => string.IsNullOrWhiteSpace(value) ? null : value.Trim()).ToArray();
+        // Missing provenance is safe only when there is no accepted legacy payer data.
+        return normalized.All(value => value is null) ? null : Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(normalized)));
     }
 
     private static string? ReadAlias(JsonElement value, string key) => value.EnumerateObject()

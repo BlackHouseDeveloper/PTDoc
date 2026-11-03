@@ -465,7 +465,14 @@ public static class IntakeEndpoints
         intake.ModifiedByUserId = identityContext.GetCurrentUserId();
         intake.SyncState = SyncState.Pending;
 
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Results.Conflict(new { error = IntakeProfileProvenance.StaleRevisionMessage });
+        }
         await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, cancellationToken);
         return Results.Ok(ToResponse(intake));
     }
@@ -518,13 +525,23 @@ public static class IntakeEndpoints
             intake.PatientId,
             intake.SubmittedAt.Value,
             intake.LastModifiedUtc);
-        ApplySubmittedIntakePatientFields(intake);
-        if (intake.Patient is not null)
+        try
         {
-            await IntakeDomainProjection.UpsertAsync(db, intake.Patient, intake.ResponseJson, intake.ModifiedByUserId, cancellationToken);
+            ApplySubmittedIntakePatientFields(intake);
+            if (intake.Patient is not null)
+            {
+                await IntakeDomainProjection.UpsertAsync(db, intake.Patient, intake.ResponseJson, intake.ModifiedByUserId, cancellationToken);
+            }
+            await db.SaveChangesAsync(cancellationToken);
         }
-
-        await db.SaveChangesAsync(cancellationToken);
+        catch (DbUpdateConcurrencyException)
+        {
+            return Results.Conflict(new { error = IntakeProfileUpdates.RefreshMessage });
+        }
+        catch (InvalidOperationException ex) when (ex.Message == IntakeDomainProjection.StalePolicySourceMessage)
+        {
+            return Results.Conflict(new { error = ex.Message });
+        }
         await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, cancellationToken);
 
         await auditService.LogIntakeEventAsync(

@@ -131,6 +131,7 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<Patient>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.LastModifiedUtc).IsConcurrencyToken();
             entity.HasIndex(e => e.LastModifiedUtc);
             entity.HasIndex(e => new { e.FirstName, e.LastName });
             entity.HasIndex(e => e.MedicalRecordNumber).IsUnique().HasFilter(IsNotNullFilter("MedicalRecordNumber"));
@@ -238,6 +239,7 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<IntakeForm>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.LastModifiedUtc).IsConcurrencyToken();
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => e.AccessToken).IsUnique();
             entity.HasIndex(e => e.LastModifiedUtc);

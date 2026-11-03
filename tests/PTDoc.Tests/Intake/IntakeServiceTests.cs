@@ -46,6 +46,96 @@ public sealed class IntakeServiceTests : IDisposable
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProfileAcceptance_RejectsStaleTabSaveAndSubmit(bool secondary)
+    {
+        var patient = CreatePatient("Two", "Tabs");
+        patient.PayerInfoJson = """{"insuranceCompanyName":"Original","secondaryInsuranceCompanyName":"Original secondary"}""";
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var stale = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        var accepting = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
+        patient.PayerInfoJson = """{"insuranceCompanyName":"Replacement","secondaryInsuranceCompanyName":"Replacement secondary"}""";
+        await _context.SaveChangesAsync();
+        accepting.ProfileUpdate = new IntakeProfileUpdate
+        {
+            Action = secondary ? IntakeProfileAction.UseSecondary : IntakeProfileAction.UsePrimary,
+            ExpectedFingerprint = (await IntakeProfilePrefillReader.ReadAsync(_context, patient.Id, _clinicId))!.Fingerprint
+        };
+        await _service.SaveDraftAsync(accepting);
+        var intake = await _context.IntakeForms.SingleAsync();
+        var acceptedJson = intake.ResponseJson;
+        stale.MedicalHistoryNotes = "Stale tab answer";
+
+        var saveError = await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SaveDraftAsync(stale));
+        var submitError = await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SubmitAsync(stale));
+
+        Assert.Equal(IntakeProfileProvenance.StaleRevisionMessage, saveError.Message);
+        Assert.Equal(IntakeProfileProvenance.StaleRevisionMessage, submitError.Message);
+        Assert.Equal(acceptedJson, intake.ResponseJson);
+        Assert.False(intake.IsLocked);
+        var reloaded = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
+        Assert.NotNull(reloaded.ProfileSourceRevision);
+        reloaded.MedicalHistoryNotes = "Fresh tab answer";
+        await _service.SaveDraftAsync(reloaded);
+        Assert.Equal("Fresh tab answer", (await _service.GetLatestByPatientIdAsync(patient.Id))!.MedicalHistoryNotes);
+    }
+
+    [Theory]
+    [InlineData(false, "changed")]
+    [InlineData(true, "changed")]
+    [InlineData(false, "unknown")]
+    [InlineData(true, "unknown")]
+    [InlineData(false, "same")]
+    [InlineData(true, "same")]
+    public async Task ProfileAcceptance_LegacyAuthorizationRequiresSameSource(bool fillBlanks, string source)
+    {
+        var patient = CreatePatient("Legacy", "Authorization");
+        patient.PayerInfoJson = """{"insuranceCompanyName":"Original","memberOrPolicyNumber":"OLD"}""";
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        draft.AuthorizationNumber = "OLD-AUTH";
+        draft.AuthorizationType = "Visits";
+        draft.NumberOfVisitsOrUnitsAuthorized = "12";
+        draft.AuthorizationNotes = "Old insurer authorization";
+        if (source == "unknown")
+        {
+            var intake = await _context.IntakeForms.SingleAsync();
+            draft.PrefilledPrimaryLegacyPayerFingerprint = null;
+            intake.ResponseJson = IntakeDraftPersistence.SerializePersistenceJson(draft);
+        }
+        if (source == "changed")
+            patient.PayerInfoJson = """{"insuranceCompanyName":"Replacement","memberOrPolicyNumber":"NEW"}""";
+        await _context.SaveChangesAsync();
+        if (fillBlanks)
+        {
+            draft.InsuranceCompanyName = draft.MemberOrPolicyNumber = draft.GroupNumber = draft.PayerType = null;
+        }
+        draft.ProfileUpdate = new IntakeProfileUpdate
+        {
+            Action = fillBlanks ? IntakeProfileAction.FillBlankFields : IntakeProfileAction.UsePrimary,
+            ExpectedFingerprint = (await IntakeProfilePrefillReader.ReadAsync(_context, patient.Id, _clinicId))!.Fingerprint
+        };
+
+        await _service.SaveDraftAsync(draft);
+
+        var saved = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
+        Assert.Null(saved.PrefilledPrimaryPolicyId);
+        Assert.Equal(source == "changed" ? "Replacement" : "Original", saved.InsuranceCompanyName);
+        Assert.Equal(source == "same" ? "OLD-AUTH" : null, saved.AuthorizationNumber);
+        Assert.Equal(source == "same" ? "Visits" : null, saved.AuthorizationType);
+        Assert.Equal(source == "same" ? "12" : null, saved.NumberOfVisitsOrUnitsAuthorized);
+        Assert.Equal(source == "same" ? "Old insurer authorization" : null, saved.AuthorizationNotes);
+        await _service.SubmitAsync(saved);
+        var authorizations = await _context.PatientInsuranceAuthorizations.ToListAsync();
+        Assert.Equal(saved.ProfileSourceRevision, (await _service.GetLatestByPatientIdAsync(patient.Id))!.ProfileSourceRevision);
+        if (source == "same") Assert.Equal("OLD-AUTH", Assert.Single(authorizations).ReferenceNumber);
+        else Assert.Empty(authorizations);
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]
@@ -88,9 +178,63 @@ public sealed class IntakeServiceTests : IDisposable
             ExpectedFingerprint = (await IntakeProfilePrefillReader.ReadAsync(_context, patient.Id, _clinicId))!.Fingerprint
         };
         await _service.SaveDraftAsync(draft);
+        if (withoutProvenance)
+        {
+            // Both legacy priorities need acceptance when the old draft has no source metadata.
+            draft = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
+            draft.ProfileUpdate = new IntakeProfileUpdate
+            {
+                Action = secondary ? IntakeProfileAction.UsePrimary : IntakeProfileAction.UseSecondary,
+                ExpectedFingerprint = draft.ProfilePrefill!.Fingerprint
+            };
+            await _service.SaveDraftAsync(draft);
+        }
         await _service.SubmitAsync((await _service.GetLatestByPatientIdAsync(patient.Id))!);
         Assert.True(intake.IsLocked);
         Assert.Equal("CURRENT", policy.MemberOrPolicyNumber);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProfilePrefill_LegacyPayerChangesRequirePerPriorityAcceptance(bool secondary)
+    {
+        var patient = CreatePatient("Legacy", "Correction");
+        patient.PayerInfoJson = """{"insuranceCompanyName":"Original primary","secondaryInsuranceCompanyName":"Original secondary"}""";
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        var originalPrimary = draft.PrefilledPrimaryLegacyPayerFingerprint;
+        var originalSecondary = draft.PrefilledSecondaryLegacyPayerFingerprint;
+        // Standalone submissions update the legacy JSON without creating normalized policies.
+        patient.PayerInfoJson = secondary
+            ? """{"insuranceCompanyName":"Original primary","secondaryInsuranceCompanyName":"Corrected secondary"}"""
+            : """{"insuranceCompanyName":"Corrected primary","secondaryInsuranceCompanyName":"Original secondary"}""";
+        await _context.SaveChangesAsync();
+        var current = (await IntakeProfilePrefillReader.ReadAsync(_context, patient.Id, _clinicId))!;
+        Assert.Equal(secondary ? originalPrimary : originalSecondary,
+            secondary ? current.PrimaryLegacyPayerFingerprint : current.SecondaryLegacyPayerFingerprint);
+        // Forging the accepted fingerprint on the client must not bypass the stored source.
+        draft.PrefilledPrimaryLegacyPayerFingerprint = current.PrimaryLegacyPayerFingerprint;
+        draft.PrefilledSecondaryLegacyPayerFingerprint = current.SecondaryLegacyPayerFingerprint;
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SubmitAsync(draft));
+        Assert.Equal(IntakeDomainProjection.StalePolicySourceMessage, error.Message);
+        Assert.False((await _context.IntakeForms.SingleAsync()).IsLocked);
+        Assert.Empty(await _context.PatientInsurancePolicies.ToListAsync());
+        draft.ProfileUpdate = new IntakeProfileUpdate
+        {
+            Action = secondary ? IntakeProfileAction.UseSecondary : IntakeProfileAction.UsePrimary,
+            ExpectedFingerprint = current.Fingerprint
+        };
+        await _service.SaveDraftAsync(draft);
+        var accepted = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
+        Assert.Equal(secondary ? "Corrected secondary" : "Corrected primary",
+            secondary ? accepted.SecondaryInsuranceCompanyName : accepted.InsuranceCompanyName);
+        await _service.SubmitAsync(accepted);
+        Assert.True((await _context.IntakeForms.SingleAsync()).IsLocked);
+        var submitted = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
+        Assert.Equal(current.PrimaryLegacyPayerFingerprint, submitted.PrefilledPrimaryLegacyPayerFingerprint);
+        Assert.Equal(current.SecondaryLegacyPayerFingerprint, submitted.PrefilledSecondaryLegacyPayerFingerprint);
     }
 
     [Theory]
@@ -195,6 +339,7 @@ public sealed class IntakeServiceTests : IDisposable
         var incoming = new System.Text.Json.Nodes.JsonObject { ["customAnswer"] = "keep" };
         string[] fields =
         [
+            "profileSourceRevision",
             "prefilledPrimaryPolicyId", "prefilledSecondaryPolicyId",
             "prefilledPrimaryPolicyModifiedUtc", "prefilledSecondaryPolicyModifiedUtc",
             "profilePrefillSourceModifiedUtc", "prefilledDemographics", "omitPrimaryPolicy", "omitSecondaryPolicy"
@@ -1141,6 +1286,12 @@ public sealed class IntakeServiceTests : IDisposable
             ClinicId = _clinicId
         });
         await _context.SaveChangesAsync();
+        var stored = await _context.IntakeForms.SingleAsync();
+        var profile = (await IntakeProfilePrefillReader.ReadAsync(_context, patient.Id, _clinicId))!;
+        var accepted = JsonSerializer.Deserialize<IntakeResponseDraft>(stored.ResponseJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        profile.InitializeSource(accepted);
+        stored.ResponseJson = IntakeDraftPersistence.SerializePersistenceJson(accepted);
+        await _context.SaveChangesAsync();
 
         await _service.SubmitAsync(new IntakeResponseDraft
         {
@@ -1196,6 +1347,12 @@ public sealed class IntakeServiceTests : IDisposable
             ModifiedByUserId = _userId,
             ClinicId = _clinicId
         });
+        await _context.SaveChangesAsync();
+        var stored = await _context.IntakeForms.SingleAsync();
+        var profile = (await IntakeProfilePrefillReader.ReadAsync(_context, patient.Id, _clinicId))!;
+        var accepted = JsonSerializer.Deserialize<IntakeResponseDraft>(stored.ResponseJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        profile.InitializeSource(accepted);
+        stored.ResponseJson = IntakeDraftPersistence.SerializePersistenceJson(accepted);
         await _context.SaveChangesAsync();
 
         await _service.SubmitAsync(new IntakeResponseDraft

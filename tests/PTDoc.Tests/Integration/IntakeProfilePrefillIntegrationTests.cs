@@ -8,6 +8,7 @@ using PTDoc.Application.Intake;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Services;
 
 namespace PTDoc.Tests.Integration;
 
@@ -16,6 +17,89 @@ public sealed class IntakeProfilePrefillIntegrationTests : IClassFixture<PtDocAp
 {
     private readonly PtDocApiFactory _factory;
     public IntakeProfilePrefillIntegrationTests(PtDocApiFactory factory) => _factory = factory;
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ProfileAcceptance_RejectsOlderTabBeforeMergingAnswers(bool standalone, bool secondary)
+    {
+        using var staff = _factory.CreateClientWithRole(Roles.PT);
+        var (patient, intake) = await CreateReviewFixtureAsync(staff);
+        var stale = JsonSerializer.Deserialize<IntakeResponseDraft>(intake.ResponseJson, ReviewJson)!;
+        var originalId = secondary ? stale.PrefilledSecondaryPolicyId : stale.PrefilledPrimaryPolicyId;
+        Guid replacementId;
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var original = await db.PatientInsurancePolicies.SingleAsync(p => p.Id == originalId);
+            original.IsArchived = true;
+            await db.SaveChangesAsync();
+            var replacement = new PatientInsurancePolicy
+            {
+                PatientId = patient.Id,
+                ClinicId = original.ClinicId,
+                CoveragePriority = original.CoveragePriority,
+                CarrierDisplayName = "Replacement",
+                MemberOrPolicyNumber = "CURRENT"
+            };
+            replacementId = replacement.Id;
+            db.PatientInsurancePolicies.Add(replacement);
+            await db.SaveChangesAsync();
+        }
+        using var anonymous = _factory.CreateUnauthenticatedClient();
+        var client = standalone ? anonymous : staff;
+        if (standalone) anonymous.DefaultRequestHeaders.Add(IntakeAccessHeaders.AccessToken,
+            await CreateAccessTokenAsync(staff, anonymous, intake.Id, patient.Email!));
+        var path = standalone ? $"/api/v1/intake/access/{intake.Id}" : $"/api/v1/intake/{intake.Id}";
+        var refreshPath = standalone ? $"/api/v1/intake/access/patient/{patient.Id}/latest" : $"/api/v1/intake/patient/{patient.Id}/latest";
+        var current = (await client.GetFromJsonAsync<IntakeResponse>(refreshPath))!;
+        var accepting = JsonSerializer.Deserialize<IntakeResponseDraft>(current.ResponseJson, ReviewJson)!;
+        accepting.ProfileUpdate = new IntakeProfileUpdate
+        {
+            ExpectedFingerprint = current.ProfilePrefill!.Fingerprint,
+            Action = secondary ? IntakeProfileAction.UseSecondary : IntakeProfileAction.UsePrimary
+        };
+        using var accept = await client.PutAsJsonAsync(path, new UpdateIntakeRequest
+        {
+            ResponseJson = IntakeDraftPersistence.SerializePersistenceJson(accepting),
+            Consents = ReviewConsents
+        });
+        Assert.Equal(HttpStatusCode.OK, accept.StatusCode);
+        var accepted = (await accept.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        Assert.NotNull(JsonSerializer.Deserialize<IntakeResponseDraft>(accepted.ResponseJson, ReviewJson)!.ProfileSourceRevision);
+
+        // Tab B still holds the old answers; no source-version omission may endorse them.
+        stale.MedicalHistoryNotes = "Stale tab";
+        using var rejected = await client.PutAsJsonAsync(path, new UpdateIntakeRequest
+        {
+            ResponseJson = IntakeDraftPersistence.SerializePersistenceJson(stale),
+            Consents = ReviewConsents
+        });
+        Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+        Assert.Contains(IntakeProfileProvenance.StaleRevisionMessage, await rejected.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        var afterRejectedSave = (await client.GetFromJsonAsync<IntakeResponse>(refreshPath))!;
+        Assert.Equal(accepted.ResponseJson, afterRejectedSave.ResponseJson);
+
+        // Reloading lets B save fresh answers, and submission keeps the accepted policy intact.
+        var reloaded = JsonSerializer.Deserialize<IntakeResponseDraft>(afterRejectedSave.ResponseJson, ReviewJson)!;
+        reloaded.MedicalHistoryNotes = "Fresh tab";
+        using var saved = await client.PutAsJsonAsync(path, new UpdateIntakeRequest
+        {
+            ResponseJson = IntakeDraftPersistence.SerializePersistenceJson(reloaded),
+            Consents = ReviewConsents
+        });
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        using var submitted = await client.PostAsync(path + "/submit", null);
+        Assert.Equal(HttpStatusCode.OK, submitted.StatusCode);
+        await using var verify = _factory.Services.CreateAsyncScope();
+        var verifyDb = verify.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Equal("CURRENT", (await verifyDb.PatientInsurancePolicies.SingleAsync(p => p.Id == replacementId)).MemberOrPolicyNumber);
+        var persisted = await verifyDb.IntakeForms.SingleAsync(f => f.Id == intake.Id);
+        Assert.True(persisted.IsLocked);
+        Assert.Equal("Fresh tab", JsonSerializer.Deserialize<IntakeResponseDraft>(persisted.ResponseJson, ReviewJson)!.MedicalHistoryNotes);
+    }
 
     [Fact]
     public async Task Create_DiscardsCallerLifecycleMetadataAndPreservesAnswers()
@@ -271,6 +355,114 @@ public sealed class IntakeProfilePrefillIntegrationTests : IClassFixture<PtDocAp
 
     private const string ReviewConsents = """{"hipaaAcknowledged":true,"treatmentConsentAccepted":true,"finalAttestationAccepted":true}""";
     private static readonly JsonSerializerOptions ReviewJson = new(JsonSerializerDefaults.Web);
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Submit_LegacyPayerAnswerEditsDoNotConflictWithTheirOwnPatientWrite(bool standalone, bool secondary)
+    {
+        using var staff = _factory.CreateClientWithRole(Roles.PT);
+        using var anonymous = _factory.CreateUnauthenticatedClient();
+        var (patient, intake) = await CreateReviewFixtureAsync(staff, withPolicies: false);
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var current = await db.Patients.SingleAsync(p => p.Id == patient.Id);
+            current.PayerInfoJson = secondary
+                ? """{"secondaryInsuranceCompanyName":"Original","secondaryMemberOrPolicyNumber":"OLD"}"""
+                : """{"insuranceCompanyName":"Original","memberOrPolicyNumber":"OLD"}""";
+            await db.SaveChangesAsync();
+            var profile = (await IntakeProfilePrefillReader.ReadAsync(db, patient.Id, current.ClinicId))!;
+            intake.ResponseJson = profile.ApplyToNewResponseJson(intake.ResponseJson);
+            var stored = await db.IntakeForms.SingleAsync(f => f.Id == intake.Id);
+            stored.ResponseJson = intake.ResponseJson;
+            stored.Consents = ReviewConsents;
+            await db.SaveChangesAsync();
+        }
+        if (standalone) anonymous.DefaultRequestHeaders.Add(IntakeAccessHeaders.AccessToken,
+            await CreateAccessTokenAsync(staff, anonymous, intake.Id, patient.Email!));
+        var client = standalone ? anonymous : staff;
+        var path = standalone ? $"/api/v1/intake/access/{intake.Id}" : $"/api/v1/intake/{intake.Id}";
+        var draft = JsonSerializer.Deserialize<IntakeResponseDraft>(intake.ResponseJson, ReviewJson)!;
+        if (secondary)
+        {
+            draft.SecondaryInsuranceCompanyName = "Edited carrier";
+            draft.SecondaryMemberOrPolicyNumber = "EDITED";
+        }
+        else
+        {
+            draft.InsuranceCompanyName = "Edited carrier";
+            draft.MemberOrPolicyNumber = "EDITED";
+        }
+        using var update = await client.PutAsJsonAsync(path, new UpdateIntakeRequest
+        {
+            ResponseJson = IntakeDraftPersistence.SerializePersistenceJson(draft),
+            Consents = ReviewConsents
+        });
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+
+        using var response = await client.PostAsync($"{path}/submit", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await using var verification = _factory.Services.CreateAsyncScope();
+        var verify = verification.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.True((await verify.IntakeForms.SingleAsync(f => f.Id == intake.Id)).IsLocked);
+        Assert.Contains("Edited carrier", (await verify.Patients.SingleAsync(p => p.Id == patient.Id)).PayerInfoJson);
+        var policies = await verify.PatientInsurancePolicies.Where(p => p.PatientId == patient.Id).ToListAsync();
+        if (standalone)
+            Assert.Empty(policies); // Standalone intake updates legacy data; staff submission projects policies.
+        else
+        {
+            var policy = Assert.Single(policies);
+            Assert.Equal(secondary ? InsuranceCoveragePriority.Secondary : InsuranceCoveragePriority.Primary, policy.CoveragePriority);
+            Assert.Equal("Edited carrier", policy.CarrierDisplayName);
+            Assert.Equal("EDITED", policy.MemberOrPolicyNumber);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Submit_RejectsChangedLegacyPayerWithoutNormalizedPolicy(bool standalone, bool secondary)
+    {
+        using var staff = _factory.CreateClientWithRole(Roles.PT);
+        using var anonymous = _factory.CreateUnauthenticatedClient();
+        var (patient, intake) = await CreateReviewFixtureAsync(staff, withPolicies: false);
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var current = await db.Patients.SingleAsync(p => p.Id == patient.Id);
+            current.PayerInfoJson = """{"insuranceCompanyName":"Original primary","secondaryInsuranceCompanyName":"Original secondary"}""";
+            await db.SaveChangesAsync();
+            var profile = (await IntakeProfilePrefillReader.ReadAsync(db, patient.Id, current.ClinicId))!;
+            intake.ResponseJson = profile.ApplyToNewResponseJson(intake.ResponseJson);
+            var stored = await db.IntakeForms.SingleAsync(f => f.Id == intake.Id);
+            stored.ResponseJson = intake.ResponseJson;
+            stored.Consents = ReviewConsents;
+            current.PayerInfoJson = secondary
+                ? """{"insuranceCompanyName":"Original primary","secondaryInsuranceCompanyName":"Corrected secondary"}"""
+                : """{"insuranceCompanyName":"Corrected primary","secondaryInsuranceCompanyName":"Original secondary"}""";
+            current.LastModifiedUtc = current.LastModifiedUtc.AddMinutes(1);
+            await db.SaveChangesAsync();
+        }
+        if (standalone) anonymous.DefaultRequestHeaders.Add(IntakeAccessHeaders.AccessToken,
+            await CreateAccessTokenAsync(staff, anonymous, intake.Id, patient.Email!));
+        var client = standalone ? anonymous : staff;
+        using var response = await client.PostAsync(standalone
+            ? $"/api/v1/intake/access/{intake.Id}/submit" : $"/api/v1/intake/{intake.Id}/submit", null);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains(IntakeDomainProjection.StalePolicySourceMessage, await response.Content.ReadAsStringAsync());
+        await using var verification = _factory.Services.CreateAsyncScope();
+        var verify = verification.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.False((await verify.IntakeForms.SingleAsync(f => f.Id == intake.Id)).IsLocked);
+        Assert.Contains(secondary ? "Corrected secondary" : "Corrected primary",
+            (await verify.Patients.SingleAsync(p => p.Id == patient.Id)).PayerInfoJson);
+        Assert.False(await verify.PatientInsurancePolicies.AnyAsync(p => p.PatientId == patient.Id));
+    }
 
     [Theory]
     [InlineData(false, false)]

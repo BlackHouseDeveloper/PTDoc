@@ -353,7 +353,14 @@ public static class IntakeAccessEndpoints
         intake.ModifiedByUserId = Guid.Empty;
         intake.SyncState = SyncState.Pending;
 
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Results.Conflict(new { error = IntakeProfileProvenance.StaleRevisionMessage });
+        }
         await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, cancellationToken);
         return Results.Ok(IntakeEndpoints.ToResponse(intake));
     }
@@ -416,7 +423,11 @@ public static class IntakeAccessEndpoints
             intake.LastModifiedUtc);
         IntakeEndpoints.ApplySubmittedIntakePatientFields(intake);
 
-        await db.SaveChangesAsync(cancellationToken);
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Results.Conflict(new { error = IntakeProfileUpdates.RefreshMessage });
+        }
         await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, cancellationToken);
 
         await auditService.LogIntakeEventAsync(

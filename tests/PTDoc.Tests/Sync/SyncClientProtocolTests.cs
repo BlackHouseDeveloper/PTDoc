@@ -1279,6 +1279,66 @@ public class SyncClientProtocolTests
         Assert.Equal(SyncState.Synced, updated.SyncState);
     }
 
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("stale")]
+    [InlineData("current")]
+    public async Task ReceiveClientPushAsync_ProfileRevisionOverridesNewerClientClock(string revision)
+    {
+        using var context = CreateInMemoryContext();
+        var patient = new Patient { FirstName = "Synthetic", LastName = "Offline" };
+        var acceptedRevision = Guid.NewGuid();
+        var sourceId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            AccessToken = Guid.NewGuid().ToString("N"),
+            ResponseJson = JsonSerializer.Serialize(new
+            {
+                profileSourceRevision = acceptedRevision,
+                prefilledPrimaryPolicyId = sourceId,
+                memberOrPolicyNumber = "CURRENT"
+            }),
+            LastModifiedUtc = now.AddMinutes(-1)
+        };
+        context.AddRange(patient, intake);
+        await context.SaveChangesAsync();
+        var original = intake.ResponseJson;
+        var incoming = new System.Text.Json.Nodes.JsonObject { ["memberOrPolicyNumber"] = "Offline answer" };
+        if (revision != "missing") incoming["profileSourceRevision"] = revision == "current" ? acceptedRevision : Guid.NewGuid();
+        var engine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var response = await engine.ReceiveClientPushAsync(new ClientSyncPushRequest
+        {
+            Items =
+            [
+                new ClientSyncPushItem
+                {
+                    EntityType = "IntakeForm", ServerId = intake.Id, LocalId = 1,
+                    OperationId = Guid.NewGuid(), Operation = "Update", LastModifiedUtc = now,
+                    DataJson = JsonSerializer.Serialize(new { responseJson = incoming.ToJsonString() })
+                }
+            ]
+        });
+        var result = Assert.Single(response.Items);
+        var saved = await context.IntakeForms.AsNoTracking().SingleAsync();
+        if (revision == "current")
+        {
+            Assert.Equal(1, response.AcceptedCount);
+            using var json = JsonDocument.Parse(saved.ResponseJson);
+            Assert.Equal("Offline answer", json.RootElement.GetProperty("memberOrPolicyNumber").GetString());
+            Assert.Equal(sourceId, json.RootElement.GetProperty("prefilledPrimaryPolicyId").GetGuid());
+            Assert.Equal(acceptedRevision, json.RootElement.GetProperty("profileSourceRevision").GetGuid());
+        }
+        else
+        {
+            Assert.Equal(0, response.AcceptedCount);
+            Assert.Equal("Conflict", result.Status);
+            Assert.Equal(ConflictResolution.ManualRequired, result.Conflict!.ResolutionType);
+            Assert.Equal(original, saved.ResponseJson);
+        }
+    }
+
     [Fact]
     public async Task ReceiveClientPushAsync_RejectsPush_WhenServerVersionIsNewer()
     {

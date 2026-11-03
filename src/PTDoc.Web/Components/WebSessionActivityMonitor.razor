@@ -83,6 +83,7 @@
                     _started = true;
                 }
                 catch (JSDisconnectedException) { }
+                catch (JSException) { }
                 catch (TaskCanceledException) { }
             } while (_retryRequested && !_started && !_disposed);
         }
@@ -108,6 +109,7 @@
         {
             try { await _module.InvokeVoidAsync("stop"); await _module.DisposeAsync(); }
             catch (JSDisconnectedException) { }
+            catch (JSException) { }
             catch (TaskCanceledException) { }
         }
         _reference?.Dispose();

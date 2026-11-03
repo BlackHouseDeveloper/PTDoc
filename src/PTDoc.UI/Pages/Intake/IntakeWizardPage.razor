@@ -87,6 +87,14 @@
 
                 @if (ShouldShowWizard)
                 {
+                    @if (_profileReloadRequired)
+                    {
+                        <section class="intake-page__notice" role="alert" data-testid="intake-profile-reload">
+                            <p>Reload the saved intake before making further changes. The saved insurance may have changed.</p>
+                            <button type="button" class="btn btn--secondary" disabled="@_isSavingDraft"
+                                    data-testid="intake-reload-saved" @onclick="ReloadSavedProfileAsync">Reload saved intake</button>
+                        </section>
+                    }
                     @if (ShouldShowPageFeedback)
                     {
                         <section class="intake-page__notice" role="alert" data-testid="intake-page-feedback">
@@ -196,6 +204,7 @@
     private bool _canMarkIntakeReviewed;
     private bool _isLoadingDraft;
     private bool _isSavingDraft;
+    private bool _profileReloadRequired;
     private bool _isMarkingReviewed;
     private string? _validationMessage;
     private string _draftUnavailableTitle = "Intake Unavailable";
@@ -209,7 +218,7 @@
     private bool ShowMissingPatientContext => State.IsPatientMode && !PatientId.HasValue && !State.PatientId.HasValue;
     private bool ShouldShowWizard => PatientId.HasValue || State.PatientId.HasValue;
     private bool CanViewOutcomeMeasureRecommendations => !State.IsPatientMode && _canViewOutcomeMeasureRecommendations;
-    private bool CanEditDraft => !State.IsLocked && (State.IsPatientMode || _canManageDrafts);
+    private bool CanEditDraft => !_profileReloadRequired && !State.IsLocked && (State.IsPatientMode || _canManageDrafts);
     private bool CanMarkIntakeReviewed =>
         _canMarkIntakeReviewed &&
         !State.IsPatientMode &&
@@ -221,13 +230,13 @@
         !State.IsPatientMode &&
         State.IsLocked &&
         State.IsSubmitted;
-    private bool IsInteractionLocked => _isLoadingDraft || _isSavingDraft || State.IsSubmitting || _isMarkingReviewed || (!CanEditDraft && !CanMarkIntakeReviewed);
+    private bool IsInteractionLocked => _profileReloadRequired || _isLoadingDraft || _isSavingDraft || State.IsSubmitting || _isMarkingReviewed || (!CanEditDraft && !CanMarkIntakeReviewed);
     private bool ShouldShowPageFeedback =>
         !string.IsNullOrWhiteSpace(_validationMessage) &&
         State.CurrentStep is not IntakeStep.Demographics and not IntakeStep.Review;
     private string? ReadOnlyNoticeMessage => State.IsLocked
         ? "This intake has been submitted and locked. Editing is disabled."
-        : (!CanEditDraft && !State.IsPatientMode && _loadedPatientId.HasValue
+        : (!_profileReloadRequired && !CanEditDraft && !State.IsPatientMode && _loadedPatientId.HasValue
             ? "Your role has read-only access to this intake."
             : null);
 
@@ -300,6 +309,7 @@
         }
 
         _isLoadingDraft = true;
+        _profileReloadRequired = false;
         IntakeResponseDraft? draft;
         try
         {
@@ -639,20 +649,39 @@
         try
         {
             _isSavingDraft = true;
-            var patientMode = State.IsPatientMode;
             var draft = ToPersistenceDraft();
             draft.ProfileUpdate = new IntakeProfileUpdate { Action = action, ExpectedFingerprint = State.ProfilePrefill.Fingerprint };
+            // A failed response can also leave the save outcome uncertain. Only a full
+            // reload may reconcile answers with the server-owned accepted provenance.
+            _profileReloadRequired = true;
             await IntakeService.SaveDraftAsync(draft);
-            var saved = await IntakeService.GetLatestByPatientIdAsync(State.PatientId.Value)
-                ?? throw new InvalidOperationException("The saved intake could not be reloaded. Refresh before continuing.");
-            State = FromDraft(saved);
-            State.IsPatientMode = patientMode;
-            State.IsDirty = false;
-            _validationMessage = null;
+            await ReloadSavedProfileCoreAsync();
         }
         catch (HttpRequestException ex) { _validationMessage = ToUserFacingApiError(ex); }
         catch (InvalidOperationException ex) { _validationMessage = ex.Message; }
         finally { _isSavingDraft = false; }
+    }
+
+    private async Task ReloadSavedProfileAsync()
+    {
+        if (!_profileReloadRequired || _isSavingDraft || State.PatientId is null) return;
+        _isSavingDraft = true;
+        try { await ReloadSavedProfileCoreAsync(); }
+        catch (HttpRequestException ex) { _validationMessage = ToUserFacingApiError(ex); }
+        catch (InvalidOperationException ex) { _validationMessage = ex.Message; }
+        finally { _isSavingDraft = false; }
+    }
+
+    private async Task ReloadSavedProfileCoreAsync()
+    {
+        var patientMode = State.IsPatientMode;
+        var saved = await IntakeService.GetLatestByPatientIdAsync(State.PatientId!.Value)
+            ?? throw new InvalidOperationException("The saved intake could not be reloaded. Reload before continuing.");
+        State = FromDraft(saved);
+        State.IsPatientMode = patientMode;
+        State.IsDirty = false;
+        _profileReloadRequired = false;
+        _validationMessage = null;
     }
 
     private Task HandleStateChangedAsync()
@@ -804,6 +833,11 @@
 
     private string GetReadOnlyDraftMessage()
     {
+        if (_profileReloadRequired)
+        {
+            return "Reload the saved intake before making further changes.";
+        }
+
         if (State.IsLocked)
         {
             return "This intake is locked and cannot be modified.";
@@ -841,7 +875,10 @@
             PrefilledSecondaryPolicyId = state.PrefilledSecondaryPolicyId,
             PrefilledPrimaryPolicyModifiedUtc = state.PrefilledPrimaryPolicyModifiedUtc,
             PrefilledSecondaryPolicyModifiedUtc = state.PrefilledSecondaryPolicyModifiedUtc,
+            PrefilledPrimaryLegacyPayerFingerprint = state.PrefilledPrimaryLegacyPayerFingerprint,
+            PrefilledSecondaryLegacyPayerFingerprint = state.PrefilledSecondaryLegacyPayerFingerprint,
             ProfilePrefillSourceModifiedUtc = state.ProfilePrefillSourceModifiedUtc,
+            ProfileSourceRevision = state.ProfileSourceRevision,
             PatientId = state.PatientId,
             IntakeFlowVersion = CurrentIntakeFlowVersion,
             CurrentStep = (int)state.CurrentStep,
@@ -976,7 +1013,10 @@
             PrefilledSecondaryPolicyId = hydratedDraft.PrefilledSecondaryPolicyId,
             PrefilledPrimaryPolicyModifiedUtc = hydratedDraft.PrefilledPrimaryPolicyModifiedUtc,
             PrefilledSecondaryPolicyModifiedUtc = hydratedDraft.PrefilledSecondaryPolicyModifiedUtc,
+            PrefilledPrimaryLegacyPayerFingerprint = hydratedDraft.PrefilledPrimaryLegacyPayerFingerprint,
+            PrefilledSecondaryLegacyPayerFingerprint = hydratedDraft.PrefilledSecondaryLegacyPayerFingerprint,
             ProfilePrefillSourceModifiedUtc = hydratedDraft.ProfilePrefillSourceModifiedUtc,
+            ProfileSourceRevision = hydratedDraft.ProfileSourceRevision,
             PatientId = hydratedDraft.PatientId,
             CurrentStep = ResolveDraftCurrentStep(hydratedDraft),
             ConsentPacket = hydratedDraft.ConsentPacket,

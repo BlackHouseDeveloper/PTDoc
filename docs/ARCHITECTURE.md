@@ -292,6 +292,17 @@ disabled for local sessions, so delayed renewal/denial responses cannot overwrit
 another tab's sign-in or restore a logged-out browser. No Web database or shared
 in-memory ticket store is introduced. OIDC retains its existing cookie behavior.
 
+`WebSessionActivityStore` holds only the latest validated activity timestamp per
+local sign-in, bounded by its absolute deadline. Cookie validation observes the
+protected timestamp; a successful activity endpoint renews it only if the idle
+window is still open after API validation. Circuit API forwarding checks this
+server-side idle window before dispatch, so a click racing the browser monitor or
+background autosave cannot bypass the 15-minute Web limit. Protected API traffic
+never advances activity. The store is process-local: after restart or routing to
+a different process, a validated browser activity cookie can seed it again;
+without that evidence, forwarding falls back to the signed initial sign-in time
+and fails closed once that window expires. It stores no token or draft content.
+
 Local logout and replacement sign-in revoke the prior opaque API session through
 `/api/v1/auth/logout` before completing the change. Local logout writes an
 HttpOnly/Secure/SameSite=Strict `__Host-PTDoc.SignedOut.<sign-in-id>` marker rather
@@ -990,6 +1001,12 @@ When implementing full clinic management:
 2. Assign users to the new clinic via `User.ClinicId`
 3. New clinical records created by those users automatically inherit the clinic scope
 4. No data migration required for existing records (they remain `null`-scoped)
+
+## Intake reconciliation concurrency
+
+Explicit profile acceptance writes a new server-owned `ProfileSourceRevision` into the existing intake response JSON. Ordinary HTTP, service, and offline-sync writes must echo that revision before answers can be combined with stored source provenance; missing or older revisions require a reload. New and legacy drafts without a revision retain their existing behavior until the first explicit reconciliation. Creation strips caller-supplied revisions, and the wizard carries the accepted revision through reload/save without treating it as editable data.
+
+`IntakeForm.LastModifiedUtc` is an EF concurrency token so a reconciliation committed between a writer's read and save cannot be overwritten. Both HTTP update routes return 409 on that race, and the direct service reports a reload error. Offline sync rejects stale source revisions before timestamp-based last-write-wins resolution. All three provider snapshots contain the concurrency metadata; no schema or data migration is required. Primary authorization answers are retained during reconciliation only when both normalized policy identity and legacy payer fingerprint remain the same.
 
 ## Related Documentation
 

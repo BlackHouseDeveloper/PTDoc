@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 158 temporary intake insurance provenance
+
+- Initialize temporary-patient intake provenance through the shared patient profile reader, including independent primary/secondary legacy payer fingerprints and normalized payer aliases, before the existing atomic patient/intake save. Caller-supplied source metadata cannot replace that initial server snapshot.
+- Add ten regression cases: four SQLite temporary-patient creation/save/submit cases (primary, secondary, both, neither), two SQLite legacy-payer edit submissions, and four staff/standalone HTTP submission cases. The latter protect the existing persisted-source contract; no submission-order change is required because source validation uses `AsNoTracking()` before `SaveChangesAsync`.
+- Refresh the complete PR 158 review audit in `docs/client-review/plan-03.md`: 18 threads, 33 duplicate summary references, no exposed suppressed or Previously missed items. The Playwright path finding is invalid for the locked version and current test-root configuration. The user confirmed all requested builds/tests pass and supplied the discovery output: 2 passed, 0 failed/skipped/cancelled. No new .NET test count is inferred and no builds/tests were rerun by the agent; native runtime/install checks remain deferred to issue #197. No commit, push, review reply, or resolution was performed.
+
+### Fixed - PR 158 stale intake editors and legacy authorization
+
+- Record the user's 2026-11-02 confirmation that the client accepted PR 158, closing the client-acceptance gate. The user confirmed the requested build/test/model-drift checks passed, then clarified that native installation/runtime checks were not run. Correct the earlier record that incorrectly marked those native gates passed; defer native validation to [issue #197](https://github.com/BlackHouseDeveloper/PTDoc/issues/197) for a separate PR after Web setup. No new counts or platform logs were supplied; commit/push/review-write authorization is unchanged.
+- Reject older or missing intake profile-source revisions after explicit reconciliation before combining incoming answers with server-owned provenance. Carry revisions through the wizard and direct service; prevent offline sync's newer client timestamp from bypassing this check. Make the existing intake modification timestamp a concurrency token, update all three provider snapshots, and return reload/conflict errors for overlapping saves. No schema or data migration is required.
+- Clear primary authorization answers when explicit primary acceptance or blank-field prefill changes the accepted legacy payer fingerprint, while retaining authorization for an unchanged source.
+- Retain the patient timeline's explicit UTC fallback when browser time-zone lookup returns null, empty, or blank; preserve timestamp metadata and navigation.
+- Add 20 regression cases covering staff/standalone two-tab writes, direct save/submit rejection, real SQLite overlapping saves, offline sync, legacy authorization retention/clearing, and unavailable zone identifiers; strengthen wizard revision round-trip assertions. Refresh the complete 14-thread review audit, including 25 duplicate summary references and the absence of exposed suppressed/Previously missed findings. Source inspection and Git whitespace checks completed; the user subsequently confirmed the requested build/test checks passed; native runtime/install validation is deferred to issue #197. No builds/tests were rerun by the agent. No commit, push, review reply, thread resolution, or review request was made in this pass.
+
+### Fixed - PR 158 intake, note recovery, and Web session review
+
+- Track server-owned accepted legacy payer fingerprints independently for primary and secondary insurance; reject changed or unknown legacy sources until explicitly reconciled. Intake projection rejects a policy inserted after source validation while explicit chart edits retain their upsert behavior.
+- Make patient updates conditional on `LastModifiedUtc` and return a conflict for concurrent intake submission changes. Update all three provider snapshots for the concurrency metadata; there is no column or data migration.
+- Block intake editing and submission after profile acceptance until the saved answers reload successfully. Preserve incomplete-note confirmation after a successful save retry, disable Stay during leave processing, and disclose that an already-dispatched save may have committed instead of promising remote discard.
+- Enforce the Web idle window before circuit API forwarding using validated, per-sign-in activity timestamps. Protected API traffic cannot renew the window. Recover from activity-monitor JavaScript startup failures using the existing reconnect retry.
+- Add regression coverage for legacy-source reconciliation and both submit routes, real SQLite write races, failed intake reload, note recovery races, server-side idle expiry, and module/start failures. Refresh the complete PR 158 audit and scope evidence. The user subsequently reported 2,571 passing tests and seven failures, all five requested builds passing without warnings/errors, and no SQLite model drift. Corrected the six monitor failures by restoring the separate `JSDisconnectedException` catches alongside `JSException`, and the intake test fixture by retaining a complete Review-step draft on reload. Existing regression assertions are preserved and a step-preservation assertion is added. The user subsequently confirmed all 2,578 Debug tests passed with zero failures/skips (2 minutes 42 seconds), alongside a build with zero warnings/errors. The user then confirmed the explicit post-correction Release Web build succeeded with zero warnings/errors in 1.42 seconds, completing the requested build/test verification. Native runtime/install checks and client acceptance remain separate open gates; publication remains unauthorized.
+
+### Added - PR 158 timeline cancellation review coverage
+
+- Added patient-profile cases for canceled browser time-zone module import and zone lookup, checking explicit UTC fallback, preserved timestamp metadata, and continued intake navigation. Documented the review inventory and framework cancellation handling that makes a production catch-filter change unnecessary; native-platform validation and client acceptance remain open.
+- Rebased the local PR 158 review branch onto main after PR 157 merged, preserving upstream changelog history and uncommitted review coverage. The timeline implementation is unchanged; focused verification is recorded below.
+- Corrected the import-cancellation fixture after the user reported 2,342 passing tests and one setup failure, followed by a CS0122 compilation failure in the attempted custom handler. The fixture now mocks the public `IJSRuntime` interface with an exact import match and canceled task, avoiding both bUnit's restricted generic setup and inaccessible constructor. All behavior assertions remain intact. The user confirmed successful compilation and all three focused cases passing, with zero failures or skips, then confirmed all required builds and tests passed before authorizing publication.
+- Recorded the missing iOS signing-key blocker and provided an explicit Apple Silicon simulator build command for local verification. Signed device publishing remains unverified; project signing settings are unchanged.
+- Documented recovery for the user's solution-clean `NETSDK1047` failure by refreshing the Debug solution restore before clean/build/test. The inspected assets already contain the simulator target; no speculative project runtime changes were made. Subsequent required build/test success was confirmed by the user.
+- Recorded the user's successful iOS simulator Debug build: 0 warnings, 0 errors, 17.40 seconds. Simulator launch/timeline checks and signed-device publishing remain unverified.
+
 ### Documentation - PR 157 verification evidence reconciliation
 
 - Distinguish historical 180/185-test results and the earlier failed reopen run from validation of `e3b5bb5`. Record the user's verification confirmation and successful Core CI run with all 2,125 tests passing, including the corrected delayed-reopen regression, and identify the PR merge checkout tested by CI.
@@ -135,6 +166,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - Client review Plan 04
 
 - Preserve visible custom and historical appointment durations after consuming saved clinic visit types. Constrain the appointment dialog to a scrollable viewport so phone users can reach Cancel and Schedule. Verified Settings persistence on #154, added duration regressions, and checked synthetic browser/database persistence.
+### Planning - Client review Plan 03
+### Fixed - Client review Plan 03
+
+- Corrected timeline timestamps to use the viewer’s browser time zone, with explicit UTC fallback and offsets that distinguish repeated daylight-saving times. Preserved UTC sorting and date-only clinical values. Undated intakes show Date unavailable instead of inventing a current timestamp.
 
 ### Fixed - Plan 02 incomplete-note keyboard cleanup
 

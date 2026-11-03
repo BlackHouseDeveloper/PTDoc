@@ -135,7 +135,7 @@
                                     </div>
                                     <div class="patient-clinical-info-timeline-meta">
                                         <p class="patient-clinical-info-timeline-date">@entry.Date</p>
-                                        <p class="patient-clinical-info-timeline-time">@entry.Time</p>
+                                        <p class="patient-clinical-info-timeline-time"><time datetime="@entry.TimestampUtc?.ToString("O")" title="@entry.DisplayTimeZone">@entry.Time</time></p>
                                     </div>
                                 </div>
                             </div>

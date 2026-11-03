@@ -39,6 +39,7 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<WebSessionActivityStore>();
 builder.Services.AddScoped<IUserService, WebUserService>();
 builder.Services.AddScoped<SignupApiClient>();
 builder.Services.AddScoped<PasswordResetApiClient>();
