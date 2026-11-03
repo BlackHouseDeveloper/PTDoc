@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Native launcher API lifetime
+
+- Keep the launcher-owned API running after Android, iOS, or Mac Catalyst launch commands return; keep the terminal open and use Ctrl+C to end the session. Report an unexpected API exit, clean up once on exit/interruption or launch failure, and leave pre-existing APIs untouched.
+- Check Android device readiness before API startup and target the single ready device explicitly. Report missing, offline, unauthorized, or multiple ready devices before attempting launch.
+- Add isolated launcher regressions using mocked tools and temporary projects; no .NET builds, devices, or real API processes are used. Shell syntax and the eight regression tests pass. Actual native launch verification remains for the user to perform.
+
 ### Documentation - PR 157 verification evidence reconciliation
 
 - Distinguish historical 180/185-test results and the earlier failed reopen run from validation of `e3b5bb5`. Record the user's verification confirmation and successful Core CI run with all 2,125 tests passing, including the corrected delayed-reopen regression, and identify the PR merge checkout tested by CI.
