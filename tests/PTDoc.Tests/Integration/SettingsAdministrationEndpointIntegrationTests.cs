@@ -25,6 +25,34 @@ public sealed class SettingsAdministrationEndpointIntegrationTests : IClassFixtu
         this.factory = factory;
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SecurityPolicyEndpoints_RejectStaleAdminClaimAfterMembershipChange(bool changeRole)
+    {
+        using var tenantFactory = await CreateTenantScopedFactoryAsync();
+        using var admin = CreateRoleClient(tenantFactory, Roles.Admin);
+        using var before = await admin.GetAsync("/api/v1/admin/security-policy");
+        Assert.Equal(HttpStatusCode.OK, before.StatusCode);
+
+        await using (var scope = tenantFactory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var user = await db.Users.SingleAsync(item => item.Username == "integration-admin");
+            var membership = await db.ClinicMemberships.SingleAsync(item => item.UserId == user.Id
+                && item.ClinicId == PtDocApiFactory.AuthorizationClinicId);
+            if (changeRole) membership.Role = Roles.PT;
+            else membership.IsActive = false;
+            membership.Version++;
+            await db.SaveChangesAsync();
+            Assert.Equal(Roles.Admin, user.Role);
+        }
+
+        // The request still claims Admin, but the current clinic grant controls access.
+        using var after = await admin.GetAsync("/api/v1/admin/security-policy");
+        Assert.Equal(HttpStatusCode.Forbidden, after.StatusCode);
+    }
+
     [Fact]
     public async Task SecurityPolicyEndpoints_EnforceAuthenticationRolesAndResultMappings()
     {
@@ -111,16 +139,9 @@ public sealed class SettingsAdministrationEndpointIntegrationTests : IClassFixtu
         await using var scope = tenantFactory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await db.Database.MigrateAsync();
-        if (!await db.Clinics.AnyAsync(item => item.Id == PtDocApiFactory.AuthorizationClinicId))
-        {
-            db.Clinics.Add(new Clinic
-            {
-                Id = PtDocApiFactory.AuthorizationClinicId,
-                Name = "Settings Endpoint Clinic",
-                Slug = "settings-endpoint-clinic"
-            });
-            await db.SaveChangesAsync();
-        }
+        // Derived hosts have their own database and do not receive xUnit's
+        // InitializeAsync call on the parent fixture. Seed real actors and grants.
+        await PtDocApiFactory.SeedTestUsersAsync(db);
 
         return tenantFactory;
     }

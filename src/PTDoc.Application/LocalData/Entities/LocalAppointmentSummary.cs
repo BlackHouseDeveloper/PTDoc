@@ -8,6 +8,9 @@ namespace PTDoc.Application.LocalData.Entities;
 /// </summary>
 public class LocalAppointmentSummary : ILocalEntity
 {
+    /// <summary>User and clinic partition; null legacy rows require explicit recovery.</summary>
+    public string? ScopeKey { get; set; }
+
     /// <inheritdoc/>
     public int LocalId { get; set; }
 

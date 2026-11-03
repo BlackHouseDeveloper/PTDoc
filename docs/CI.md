@@ -321,8 +321,8 @@ manual dispatch.
 The CI owner categories are intentionally exclusive. `ci-core.yml` runs `[Category=CoreCi]`, and each release/database workflow filters one of the gate categories below.
 
 | `[Category=RBAC]` | `Security/RbacRoleMatrixTests.cs`, `Security/AuthorizationCoverageTests.cs`, `Security/RbacHttpSmokeTests.cs` |
-| `[Category=Tenancy]` | `Tenancy/TenantIsolationTests.cs` |
-| `[Category=OfflineSync]` | `Sync/SyncConflictResolutionTests.cs`, `Sync/SyncClientProtocolTests.cs`, `LocalData/LocalSyncOrchestratorTests.cs` |
+| `[Category=Tenancy]` | `Tenancy/TenantIsolationTests.cs`, `Tenancy/OrganizationMembershipTests.cs`, `Tenancy/OrganizationMigrationTests.cs` |
+| `[Category=OfflineSync]` | `Sync/SyncConflictResolutionTests.cs`, `Sync/SyncClientProtocolTests.cs`, `LocalData/LocalSyncOrchestratorTests.cs`, `LocalData/LocalClinicScopeTests.cs` |
 | `[Category=Compliance]` | `Compliance/RulesEngineTests.cs`, `Compliance/SignatureServiceTests.cs`, `Compliance/NoteComplianceIntegrationTests.cs` |
 | `[Category=EndToEnd]` | `Integration/EndToEndWorkflowTests.cs` |
 | `[Category=SecretPolicy]` | `Security/SecretPolicyScanTests.cs` |

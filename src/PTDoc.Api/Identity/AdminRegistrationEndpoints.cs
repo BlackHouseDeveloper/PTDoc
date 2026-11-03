@@ -9,7 +9,16 @@ public static class AdminRegistrationEndpoints
     {
         var group = app.MapGroup("/api/v1/admin/registrations")
             .WithTags("Registration")
-            .RequireAuthorization(AuthorizationPolicies.AdminOnly);
+            .RequireAuthorization();
+        group.AddEndpointFilter(async (context, next) =>
+        {
+            context.HttpContext.Response.Headers.CacheControl = "no-store";
+            try { return await next(context); }
+            catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+            {
+                return Results.Conflict(new { error = "Organization access changed. Reload before retrying." });
+            }
+        });
 
         group.MapGet("/pending", GetPending)
             .WithName("ListPendingRegistrations");

@@ -17,6 +17,7 @@ public sealed class MauiUserService : IUserService, IAuthenticationStepUserServi
     private readonly IHttpClientFactory httpClientFactory;
     private readonly MauiAuthenticationStateProvider authStateProvider;
     private readonly ILogger<MauiUserService> logger;
+    private readonly Microsoft.AspNetCore.Components.NavigationManager? navigation;
 
     private ClaimsPrincipal? currentUser;
     private string? pendingChallengeToken;
@@ -28,13 +29,15 @@ public sealed class MauiUserService : IUserService, IAuthenticationStepUserServi
         ITokenStore tokenStore,
         IHttpClientFactory httpClientFactory,
         AuthenticationStateProvider authStateProvider,
-        ILogger<MauiUserService> logger)
+        ILogger<MauiUserService> logger,
+        Microsoft.AspNetCore.Components.NavigationManager? navigation = null)
     {
         this.tokenService = tokenService;
         this.tokenStore = tokenStore;
         this.httpClientFactory = httpClientFactory;
         this.authStateProvider = (MauiAuthenticationStateProvider)authStateProvider;
         this.logger = logger;
+        this.navigation = navigation;
     }
 
     public bool IsAuthenticated => currentUser?.Identity?.IsAuthenticated ?? false;
@@ -55,6 +58,25 @@ public sealed class MauiUserService : IUserService, IAuthenticationStepUserServi
 
     public AuthenticationStepState? PendingAuthenticationStep { get; private set; }
 
+    private Guid? SelectedClinic()
+    {
+        if (navigation is null) return null;
+        Guid? selectedClinic = null;
+        var found = false;
+        foreach (var pair in new Uri(navigation.Uri).Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (!string.Equals(WebUtility.UrlDecode(parts[0]), "clinicId", StringComparison.OrdinalIgnoreCase)) continue;
+            if (found) throw new ArgumentException("Clinic selection must be specified only once.");
+            found = true;
+            var value = parts.Length == 2 ? WebUtility.UrlDecode(parts[1]) : string.Empty;
+            if (string.IsNullOrWhiteSpace(value)) continue;
+            if (!Guid.TryParse(value, out var clinicId)) throw new ArgumentException("Invalid clinic selection.");
+            selectedClinic = clinicId;
+        }
+        return selectedClinic;
+    }
+
     public async Task<bool> LoginAsync(
         string username,
         string password,
@@ -66,7 +88,7 @@ public sealed class MauiUserService : IUserService, IAuthenticationStepUserServi
             logger.LogDebug("Attempting MAUI login.");
 
             var result = await tokenService.LoginAsync(
-                new LoginRequest(username, password),
+                new LoginRequest(username, password, SelectedClinic()),
                 cancellationToken);
 
             if (result.Tokens is not null)

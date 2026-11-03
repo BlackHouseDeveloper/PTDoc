@@ -483,13 +483,23 @@ public sealed class SettingsAdministrationTests
         credential.IsActive = true;
         user.Role = Roles.Billing;
         await context.SaveChangesAsync();
-        Assert.False(await validator.IsValidAsync(principal));
-
-        user.Role = Roles.Admin;
-        user.ClinicId = reassignedClinic.Id;
+        // Home metadata no longer replaces the selected clinic's explicit role.
+        Assert.True(await validator.IsValidAsync(principal));
+        var membership = await context.ClinicMemberships.SingleAsync(item => item.UserId == user.Id && item.ClinicId == clinic.Id);
+        membership.Role = Roles.Billing;
         await context.SaveChangesAsync();
         Assert.False(await validator.IsValidAsync(principal));
 
+        user.Role = Roles.Admin;
+        membership.Role = Roles.Admin;
+        user.ClinicId = reassignedClinic.Id;
+        await context.SaveChangesAsync();
+        Assert.True(await validator.IsValidAsync(principal));
+        membership.IsActive = false;
+        await context.SaveChangesAsync();
+        Assert.False(await validator.IsValidAsync(principal));
+
+        membership.IsActive = true;
         user.ClinicId = clinic.Id;
         user.PinChangedAtUtc = null;
         user.LegacyPinGraceEndsAtUtc = DateTime.UtcNow.AddMinutes(-1);
@@ -2427,10 +2437,18 @@ public sealed class SettingsAdministrationTests
 
         user.Role = Roles.Admin;
         await context.SaveChangesAsync();
+        Assert.NotNull(await store.GetAsync(rawToken, CancellationToken.None));
+        var membership = await context.ClinicMemberships.SingleAsync(item => item.UserId == user.Id && item.ClinicId == originalClinic.Id);
+        membership.Role = Roles.Admin;
+        await context.SaveChangesAsync();
         Assert.Null(await store.GetAsync(rawToken, CancellationToken.None));
 
         user.Role = Roles.PT;
+        membership.Role = Roles.PT;
         user.ClinicId = reassignedClinic.Id;
+        await context.SaveChangesAsync();
+        Assert.NotNull(await store.GetAsync(rawToken, CancellationToken.None));
+        membership.IsActive = false;
         await context.SaveChangesAsync();
         Assert.Null(await store.GetAsync(rawToken, CancellationToken.None));
     }

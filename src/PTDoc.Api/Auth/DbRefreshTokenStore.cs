@@ -101,21 +101,29 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
         {
             return null;
         }
-        if (!ClaimsMatchCurrentAuthorizationState(claims, user))
+        var clinicClaims = claims.Where(claim => claim.Type == HttpTenantContextAccessor.ClinicIdClaimType).ToArray();
+        if (clinicClaims.Length > 1) return null;
+        Guid? selectedClinicId = null;
+        if (clinicClaims.Length == 1)
         {
-            return null;
+            if (!Guid.TryParse(clinicClaims[0].Value, out var parsed)) return null;
+            selectedClinicId = parsed;
         }
+        var currentRole = await ClinicMembershipAccess.ResolveRoleAsync(db, user, selectedClinicId, cancellationToken);
+        var roleClaims = claims.Where(claim => claim.Type == ClaimTypes.Role).ToArray();
+        if (currentRole is null || roleClaims.Length != 1 || roleClaims[0].Value != currentRole) return null;
+        var policyClinicId = selectedClinicId == Guid.Empty ? user.ClinicId : selectedClinicId;
 
         var tokenHasMfaAssurance = claims.Any(claim =>
             string.Equals(claim.Type, "amr", StringComparison.Ordinal)
             && string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase));
-        var policy = user.ClinicId.HasValue
+        var policy = policyClinicId.HasValue
             ? await db.ClinicSecurityPolicies
                 .IgnoreQueryFilters()
                 .AsNoTracking()
-                .SingleOrDefaultAsync(item => item.ClinicId == user.ClinicId.Value, cancellationToken)
+                .SingleOrDefaultAsync(item => item.ClinicId == policyClinicId.Value, cancellationToken)
             : null;
-        if (tokenHasMfaAssurance || (user.ClinicId.HasValue && MfaPolicyRules.RequiresMfa(policy, now.UtcDateTime)))
+        if (tokenHasMfaAssurance || (policyClinicId.HasValue && MfaPolicyRules.RequiresMfa(policy, now.UtcDateTime)))
         {
             var credential = await db.UserMfaCredentials
                 .IgnoreQueryFilters()
@@ -130,36 +138,6 @@ public sealed class DbRefreshTokenStore : IRefreshTokenStore
         }
 
         return new RefreshTokenRecord(stored.Subject, claims, stored.ExpiresAtUtc);
-    }
-
-    private static bool ClaimsMatchCurrentAuthorizationState(
-        IReadOnlyCollection<Claim> claims,
-        User user)
-    {
-        var roles = claims
-            .Where(claim => claim.Type == ClaimTypes.Role && !string.IsNullOrWhiteSpace(claim.Value))
-            .Select(claim => claim.Value)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        if (roles.Length != 1 || !string.Equals(roles[0], user.Role, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        var clinicClaims = claims
-            .Where(claim => claim.Type == HttpTenantContextAccessor.ClinicIdClaimType
-                && !string.IsNullOrWhiteSpace(claim.Value))
-            .Select(claim => claim.Value)
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
-        if (user.ClinicId is not { } clinicId)
-        {
-            return clinicClaims.Length == 0;
-        }
-
-        return clinicClaims.Length == 1
-            && Guid.TryParse(clinicClaims[0], out var claimedClinicId)
-            && claimedClinicId == clinicId;
     }
 
     public async Task RevokeAsync(string refreshToken, CancellationToken cancellationToken)

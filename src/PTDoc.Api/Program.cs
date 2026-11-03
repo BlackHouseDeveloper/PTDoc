@@ -249,6 +249,8 @@ builder.Services.AddScoped<PrincipalRecordResolver>();
 builder.Services.AddScoped<IIdentityContextAccessor, HttpIdentityContextAccessor>();
 builder.Services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>(); // Sprint J: clinic/tenant scoping
 builder.Services.AddScoped<IPatientContextAccessor, HttpPatientContextAccessor>();
+builder.Services.AddScoped<ClinicSignInContext>();
+builder.Services.AddScoped<IOrganizationAdministrationService, OrganizationAdministrationService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserRegistrationService, UserRegistrationService>();
 builder.Services.AddScoped<IRolePermissionAdministrationService, RolePermissionAdministrationService>();
@@ -974,6 +976,7 @@ app.UseCors();
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseMiddleware<ProvisioningGuardMiddleware>();
+app.UseMiddleware<ClinicMembershipGuardMiddleware>();
 app.UseMiddleware<ExternalMfaAssuranceMiddleware>();
 app.UseAuthorization();
 
@@ -1029,6 +1032,7 @@ if (legacyApiAuthEnabled)
 }
 app.MapPinAuthEndpoints(); // New PIN-based auth
 app.MapRegistrationEndpoints(); // Self-service registration lookups and create
+app.MapOrganizationEndpoints();
 app.MapAdminRegistrationEndpoints(); // Admin approval/rejection for pending registrations
 app.MapAppointmentEndpoints(); // Scheduling read endpoints
 app.MapPatientEndpoints(); // Sprint O: Patient CRUD

@@ -22,6 +22,7 @@ public class AuthService : IAuthService
     private readonly IAuditService _auditService;
     private readonly IMfaAuthenticationService? _mfaAuthenticationService;
     private readonly TimeProvider _timeProvider;
+    private readonly ClinicSignInContext _clinicSignIn;
 
     // HIPAA-compliant session timeouts
     private static readonly TimeSpan AbsoluteTimeout = TimeSpan.FromHours(8);
@@ -32,13 +33,15 @@ public class AuthService : IAuthService
         ILogger<AuthService> logger,
         IAuditService auditService,
         IMfaAuthenticationService? mfaAuthenticationService = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ClinicSignInContext? clinicSignIn = null)
     {
         _context = context;
         _logger = logger;
         _auditService = auditService;
         _mfaAuthenticationService = mfaAuthenticationService;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _clinicSignIn = clinicSignIn ?? new ClinicSignInContext();
     }
 
     public async Task<AuthResult?> AuthenticateAsync(
@@ -129,6 +132,8 @@ public class AuthService : IAuthService
                 };
             }
 
+            if (!await SelectClinicAsync(user, cancellationToken)) return null;
+
             return await ContinueAfterPrimaryAsync(
                 user,
                 pin,
@@ -172,13 +177,16 @@ public class AuthService : IAuthService
             return null;
         }
 
+        _clinicSignIn.ClinicId = principal.ClinicId;
+        if (!await SelectClinicAsync(user, cancellationToken)) return null;
+
         var expectedPinState = CreatePinCredentialBinding(user.PinHash);
         if (!string.Equals(principal.StateBinding, expectedPinState, StringComparison.Ordinal))
         {
             return null;
         }
 
-        var policy = await GetSecurityPolicyAsync(user.ClinicId, cancellationToken);
+        var policy = await GetSecurityPolicyAsync(_clinicSignIn.ClinicId == Guid.Empty ? user.ClinicId : _clinicSignIn.ClinicId ?? user.ClinicId, cancellationToken);
         var minimumPinLength = PinPolicyRules.NormalizeMinimumLength(policy.MinimumPinLength);
         if (string.IsNullOrEmpty(newPin)
             || newPin.Length < minimumPinLength
@@ -296,7 +304,11 @@ public class AuthService : IAuthService
             return null;
         }
 
+        _clinicSignIn.ClinicId = principal.ClinicId;
+        if (!await SelectClinicAsync(user, cancellationToken)) return null;
+
         var credential = await _context.UserMfaCredentials
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .SingleOrDefaultAsync(item => item.Id == principal.CredentialId
                 && item.UserId == principal.UserId
@@ -354,8 +366,15 @@ public class AuthService : IAuthService
             return null;
         }
 
+        var selectedClinicId = session.ClinicId ?? session.User.ClinicId;
+        var selectedRole = await ClinicMembershipAccess.ResolveRoleAsync(_context, session.User, selectedClinicId, cancellationToken);
+        if (selectedRole is null)
+        {
+            await RevokeSessionAsync(session, now, cancellationToken);
+            return null;
+        }
         ClinicSecurityPolicy? policy = null;
-        if (session.User.ClinicId is { } clinicId)
+        if ((selectedClinicId == Guid.Empty ? session.User.ClinicId : selectedClinicId) is { } clinicId)
         {
             policy = await _context.ClinicSecurityPolicies
                 .IgnoreQueryFilters()
@@ -371,6 +390,7 @@ public class AuthService : IAuthService
             {
                 var effectiveAtUtc = policy.MfaEffectiveAtUtc;
                 var credentialIsActive = await _context.UserMfaCredentials
+                    .IgnoreQueryFilters()
                     .AsNoTracking()
                     .AnyAsync(item => item.UserId == session.UserId && item.IsActive, cancellationToken);
                 if (!effectiveAtUtc.HasValue
@@ -404,10 +424,10 @@ public class AuthService : IAuthService
         {
             UserId = session.UserId,
             Username = session.User.Username,
-            Role = session.User.Role,
+            Role = selectedRole,
             ExpiresAt = session.ExpiresAt,
             LastActivityAt = session.LastActivityAt ?? session.CreatedAt,
-            ClinicId = session.User.ClinicId
+            ClinicId = selectedClinicId
         };
     }
 
@@ -468,9 +488,9 @@ public class AuthService : IAuthService
             Username = user.Username,
             FirstName = user.FirstName,
             LastName = user.LastName,
-            Role = user.Role,
+            Role = sessionInfo.Role,
             IsActive = user.IsActive,
-            ClinicId = user.ClinicId
+            ClinicId = sessionInfo.ClinicId
         };
     }
 
@@ -519,7 +539,7 @@ public class AuthService : IAuthService
         AuthSessionMode sessionMode,
         CancellationToken cancellationToken)
     {
-        var policy = await GetSecurityPolicyAsync(user.ClinicId, cancellationToken);
+        var policy = await GetSecurityPolicyAsync(_clinicSignIn.ClinicId == Guid.Empty ? user.ClinicId : _clinicSignIn.ClinicId ?? user.ClinicId, cancellationToken);
         var minimumPinLength = PinPolicyRules.NormalizeMinimumLength(policy.MinimumPinLength);
         var now = _timeProvider.GetUtcNow().UtcDateTime;
         if (suppliedPin.Length < minimumPinLength)
@@ -584,6 +604,7 @@ public class AuthService : IAuthService
         if (isMfaEnforced)
         {
             var credential = await _context.UserMfaCredentials
+                .IgnoreQueryFilters()
                 .Where(item => item.UserId == user.Id && item.IsActive)
                 .Select(item => new { item.Id, item.EncryptedSecret })
                 .SingleOrDefaultAsync(cancellationToken);
@@ -622,8 +643,8 @@ public class AuthService : IAuthService
             UserId = user.Id,
             Username = user.Username,
             Email = user.Email,
-            Role = user.Role,
-            ClinicId = user.ClinicId,
+            Role = _clinicSignIn.Role ?? user.Role,
+            ClinicId = _clinicSignIn.ClinicId ?? user.ClinicId,
             ChallengeToken = CreateChallenge(user, purpose, credentialId, credentialState),
             MinimumPinLength = minimumPinLength
         };
@@ -674,6 +695,7 @@ public class AuthService : IAuthService
             {
                 Id = Guid.NewGuid(),
                 UserId = user.Id,
+                ClinicId = _clinicSignIn.ClinicId ?? user.ClinicId,
                 TokenHash = HashToken(token),
                 CreatedAt = now,
                 LastActivityAt = now,
@@ -696,12 +718,22 @@ public class AuthService : IAuthService
             Email = user.Email,
             Token = token,
             ExpiresAt = expiresAt,
-            Role = user.Role,
-            ClinicId = user.ClinicId,
+            Role = _clinicSignIn.Role ?? user.Role,
+            ClinicId = _clinicSignIn.ClinicId ?? user.ClinicId,
             MfaSatisfied = mfaSatisfied,
             MfaCredentialBinding = mfaCredentialBinding,
             PinCredentialBinding = PinCredentialBinding.Create(user.PinHash)
         };
+    }
+
+    private async Task<bool> SelectClinicAsync(User user, CancellationToken cancellationToken)
+    {
+        var clinicId = _clinicSignIn.ClinicId ?? user.ClinicId;
+        var role = await ClinicMembershipAccess.ResolveRoleAsync(_context, user, clinicId, cancellationToken);
+        if (role is null) return false;
+        _clinicSignIn.ClinicId = clinicId;
+        _clinicSignIn.Role = role;
+        return true;
     }
 
     private async Task<ClinicSecurityPolicy> GetSecurityPolicyAsync(Guid? clinicId, CancellationToken cancellationToken)

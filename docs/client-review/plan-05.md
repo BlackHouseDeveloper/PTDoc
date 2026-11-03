@@ -1,88 +1,209 @@
-# Plan PR 05: Decide organization and clinic ownership before migrating tenancy
+# Plan PR 05: Organization ownership and explicit clinic memberships
 
-**Planning only — this PR does not implement or fix the feature.**
+**Implementation approved; code prepared, .NET/provider/native validation pending.**
 
 - Requirements: R001, R085
-- Original plan status: Needs Clarification
-- Branch: `codex/plan-05-organization-decision`
-- Base: `main`
-- Expected GitHub number: #159; actual: assigned by GitHub at publication
-- [Authoritative plan brief](https://github.com/BlackHouseDeveloper/PTDoc/blob/codex/plan-01-session-verification/docs/client-review/source/implementation-plan.md#pr-05)
-- Inspected main: `6276027251609df64ffbbfa883f66e2d83dd57e4` (2026-10-26); this supersedes the source plan’s earlier repository snapshot.
+- Branch: `codex/plan-05-organization-decision`; PR: #160; base: `main`
+- PR #160 was rebased onto main after PR #158 merged (`fb9dc06b`). The planning head was pushed as `7bd2714e`; this implementation is uncommitted.
+- The user approved implementation on 2026-11-02 and selected **all** of the proposed ownership/access choices below. This supersedes the earlier planning-only clarification gate.
 
-## Current evidence and changes
+## Approved decisions
 
-Current main still models Clinic and User.ClinicId. Settings #153 establishes server-enforced clinic role/capability services; it does not approve organization-wide PHI visibility. The meeting proposes local customer administration and an organization-above-clinic model but leaves membership and ownership rules unresolved.
-
-## Dependencies, blockers and owners
-
-- January with engineering/security: approve organization versus clinic ownership, staff membership, invitation/approval powers and cross-clinic clinical access before any schema/access migration.
-
-## Decisions and options
-
-| Decision | Options to review (none selected) | Affected acceptance |
-| --- | --- | --- |
-| Ownership | Independent clinics; organization with separately administered clinics | AC1 |
-| Staff membership | One clinic per user; explicit many-clinic memberships | AC1–AC3 |
-| Parent administrator access | Administrative metadata only; separately granted clinical memberships | AC1/AC3 |
-| Legacy migration | Explicit organization backfill after ownership review; retain current clinic IDs | AC2 |
-
-Neutral question: who owns each organization/clinic, who may invite/approve clinicians, and which clinics’ patient records may each role access? Owner: January with engineering/security. All answers remain unresolved.
+| Decision | Selected behavior |
+| --- | --- |
+| Ownership | Organizations contain separately scoped clinics. |
+| Staff membership | A staff account can have explicit memberships in one or more clinics. |
+| Organization administration | Owners/admins manage staff within their organization. |
+| Clinical access | Granted separately per clinic; organization roles never imply PHI access. |
+| Existing data | Each clinic initially becomes its own organization; clinic IDs and patient ownership stay unchanged. |
 
 ## Development specification
 
 ### User Problem
 
-The current clinic-first model does not express the proposed organization owner managing multiple clinics and their staff.
+An organization's owner/admin needs to manage clinicians locally across its clinics,
+without treating every organization administrator as a clinician in every clinic.
 
 ### Confirmed Requirement
 
-The developer proposed organization above clinic; January wants a customer’s owner/admin to add its clinicians without platform-owner approval for every person. Exact hierarchy, cross-clinic access and approval authority remain unresolved.
+Implement the approved organization-above-clinic model, explicit many-clinic staff
+membership, local invitation/approval, and separate clinical access boundaries.
 
 ### Expected Behavior
 
-A decision brief establishes ownership, membership, invitations, cross-clinic access and conversion rules before schema work starts.
+`/organizations` lists the signed-in user's clinic grants, supports fresh sign-in to
+one selected clinic, and exposes authorized staff administration. Owners create
+clinics and manage organization roles. Owners/admins invite existing active staff
+accounts and review new clinic registrations locally. Administrators can manage
+ordinary clinic grants; only owners manage privileged grants and organization roles.
+The last active owner account cannot be removed.
 
-### Scope
+Invitations are email-bound, single-use, expire after 72 hours, and persist only a
+hash. Joining adds an ordinary organization membership and no clinical grant.
+New accounts use the existing clinic registration and approval process. Invitation
+codes are displayed for private sharing; this release sends no invitation messages.
 
-Document an explicit role/tenant matrix and migration design with single-clinic and multi-clinic examples.
+### Scope and implementation
 
-### Out of Scope
+- Add Core organization/membership/invitation entities, Application contracts,
+  Infrastructure administration and persistence, API endpoints and shared Web/MAUI UI.
+- Add SQLite, SQL Server and Postgres migrations and target-model snapshots. Backfill
+  one organization per clinic and preserve all clinical ownership/signatures.
+- Preserve `User.ClinicId`/`Role` as home/registration metadata. Use selected-clinic
+  grants for authentication roles, sessions, JWT validation/refresh, scheduling and
+  fax triage. Newly pushed patients/appointments inherit server-selected ownership.
+- Carry the selected clinic through PIN/MFA challenges and enforce the target policy.
+  Revocation takes effect on subsequent requests/refresh. API checks apply to local
+  and externally mapped identities. No organization role becomes a clinic role.
+- Offer an administration-only sign-in (`Guid.Empty` selected clinic), restricted to
+  organization/registration administration and anonymous authentication endpoints.
+- Partition native cache, drafts, sync queue and watermarks by user/clinic; serialize
+  credential replacement with in-flight cache/sync work and retain legacy data.
+- Scope registration reads/updates/approval to the actor's active organizations.
+  Version organization mutations and audit them atomically.
 
-Automatic access to all clinics in an organization, platform-wide PHI access, billing implementation or schema mutation in this planning task.
+### Role/tenant matrix and examples
 
-### Implementation Guidance
+| Actor | Staff administration | Clinical access |
+| --- | --- | --- |
+| Organization A owner | A's clinics/staff, organization roles, privileged grants | Only explicitly granted A/B/etc. clinic memberships |
+| Organization A administrator | A's ordinary staff invitations/approvals/grants | Only explicitly granted clinics |
+| Organization member | Own memberships and invitation acceptance | Selected clinic's granted role/capabilities |
+| Clinic Admin/PT/PTA/etc. | No organization authority from clinic role alone | Existing clinic role/capability rules |
+| Organization B administrator | B only; denied A's staff/membership operations | Denied A's records without an explicit clinic grant |
 
-**Technical Recommendation:** retain clinic data boundaries while adding organization relationships only after approval. Analyze null/legacy clinic IDs, background jobs, sync/export/fax scopes and claims refresh. Choose additive backfill and validation rather than silently changing every ClinicId meaning.
+Single-clinic migration example: clinic A and its patients keep their IDs, organization
+A gets the same ID, and A's active Admin/Owner accounts become organization owners.
+Every home user retains exactly its existing clinic role; inactive users stay blocked.
 
-### Data and Migration Considerations
+Multi-clinic example: owner creates clinic B under organization A. Neither the owner
+nor A's clinicians gain B access automatically. An explicit B/PTA grant lets a staff
+member sign in to B with PTA capabilities while their A/PT grant and home clinic stay
+unchanged. Revoking B access does not move patients or revoke A access. Organization
+membership deactivation disables every grant in that organization.
 
-Potential migration of clinics, users and role relationships; patient/note ownership must remain stable. Signed records must not be reassigned as a side effect of subscription or organization setup.
+### Out of Scope and operational boundaries
 
-### Security and Privacy Considerations
+No automatic organization merging, clinic reparenting, signed-record reassignment,
+platform-wide PHI access, billing, deployment, or automatic invitation delivery.
+Entra keeps its existing provisioned clinic mapping; interactive clinic selection
+uses local PIN sign-in. Account-wide PIN/MFA administration remains tied to the home
+clinic. Existing active accounts can accept invitations; this is not an anonymous
+invitation-based account-creation flow.
 
-**Technical Recommendation:** explicitly separate platform administration, organization administration and clinical access. No implicit parent-organization access to clinical records.
+Legacy native rows remain encrypted but unscoped and unavailable to normal sync.
+Devices with pending legacy work must sync before upgrade or undergo verified
+operator recovery; no recovery UI is included. See the recovery procedure in
+[MOBILE_ARCHITECTURE.md](../MOBILE_ARCHITECTURE.md#upgrading-an-existing-device).
 
-### Acceptance Criteria
+### Data and migration considerations
 
-- [ ] **AC1:** Given a proposed organization with two clinics, when the client reviews the role matrix, then permitted patient access and staff administration are explicitly recorded for each role.
-- [ ] **AC2:** Given legacy single-clinic users and records, when a migration rehearsal runs after approval, then every record retains a verifiable owning clinic and no access broadens unintentionally.
-- [ ] **AC3:** Given an administrator from another organization, when accessing clinic records or memberships, then access is denied.
+See [EF_MIGRATIONS.md](../EF_MIGRATIONS.md#plan-05-organization-migration). Null home
+users are left unassigned. Existing clinics without an active Admin/Owner need an
+operator-designated organization owner. Reserve the empty GUID for administration
+sessions and flag any preexisting clinic using it before migration. Downgrade refuses
+states that would lose changed/multi-clinic grants or turn administration sessions
+into clinical sessions. Protected database rehearsal is required for each provider.
 
-### Rollout and Regression Risks
+### Security and privacy considerations
 
-Highest architectural risk: accidental access expansion and destructive tenant remapping. Block schema implementation until ownership decisions are explicit.
+Organization administration checks active users, organizations and memberships on
+the server, including invitation acceptance. Authorization is separate from clinical
+query filters. Admin-only sessions cannot call clinical endpoints. Clinician schedule
+blocks reference clinic membership instead of the user's home clinic. Invitation
+codes and email addresses are excluded from audit payloads. Native scope changes
+cannot send a previous clinic's pending work using the new clinic's credentials.
+
+### Acceptance criteria
+
+- [x] **AC1:** The client approved an explicit organization/clinic access matrix, recorded above and in [ARCHITECTURE.md](../ARCHITECTURE.md#organizations-and-clinic-isolation).
+- [ ] **AC2:** Synthetic SQLite SQL rehearsal preserves clinic/patient/signed-record ownership. Complete EF model-drift, real-provider rehearsal, and native/browser checks before marking full migration acceptance complete.
+- [ ] **AC3:** Server enforcement and regressions cover foreign-organization denial, revoked grants, stale versions, privileged-role escalation, refresh and admin-only routes. Execute the .NET/API/browser checks before marking runtime acceptance complete.
 
 ## Verification performed
 
-| Command/check | Result |
+| Check | Result |
 | --- | --- |
-| python3 /private/tmp/ptdoc-client-implementation/workflow.py check 5 | PASS: requirement IDs, specification/acceptance sections, local links, no private source paths and git diff --check. |
+| `node --test tools/auth-requests.test.mjs` in `tests/PTDoc.Web.UiQa` | PASS: 6 tests, including home, selected-clinic and administration-only sign-in forwarding. |
+| Synthetic in-memory SQLite rehearsal of the actual migration SQL | PASS: upgrade/backfill, unchanged patient/signed-note ownership, schedule-block membership FK, rejected unsafe rollback, safe downgrade, clean foreign-key checks. No application or user database used. |
+| Source inspection and `git diff --check` | PASS at handoff. |
+| `python3 .github/scripts/scan_secret_policy.py` | PASS for the 9 tracked appsettings files checked by that scanner. |
+| User's full .NET test run (2026-11-03) | 2,622 passed, 18 failed, 0 skipped, 2,640 total; 3 minutes 17 seconds. Corrections below await rerun. |
+| User's subsequent full .NET test run (2026-11-03) | 2,643 passed, 3 failed, 0 skipped, 2,646 total; 3 minutes 4 seconds. The three positive registration integration cases remained failing. |
+| CI owner-category source scan | PASS: all 208 test files declare exactly one supported owner category after correction. |
+| EF model drift, SQL Server/Postgres execution, browser/native runtime | No new evidence supplied. Repo instructions require the user to run heavy verification. |
 
-## Remaining acceptance work
+Added regression source covers organization authorization and invitation behavior,
+selected sessions and PIN policy, refresh after grant/role change, registration scope,
+SQLite migration/rollback, native partition retention and sync authentication failure.
+Provider smoke tests now query the four new entity sets. Sources remain uncommitted;
+the user-supplied run above is the current .NET evidence, and the corrected sources
+have not yet been rerun.
 
-Decision approval precedes schema design. Then rehearse with two organizations/three synthetic clinics, legacy users, claims refresh, exports/fax/sync and denied cross-organization access.
+## Validation to run
+
+The user's 2026-11-03 clean/restore/build/test chain stopped during compilation with
+CS0136 in `Organizations.razor`; tests did not run. The staff dropdown variable has
+been renamed to avoid the selected-staff pattern variable's generated scope. Rerun
+`dotnet build && dotnet test --no-build` before proceeding with migration validation.
+
+The subsequent build exposed an unavailable WebUtilities dependency on all three
+MAUI targets and a separate API-local `LoginRequest` missing `ClinicId`. Both sources
+are corrected: native query parsing uses built-in URI decoding and the API contract
+accepts the optional clinic selection. The next user-supplied run reached all 2,640
+tests, with 2,622 passing and 18 failing.
+
+The 18 reported failures traced to duplicate CI owner categories, derived HTTP hosts
+without the authenticated fixture users, registration fixtures in a different
+organization, token tests mutating home fields instead of the selected membership,
+and an unnecessary default return-route query parameter. Corrections preserve
+production authorization and the original payment/settings behavior assertions.
+Additional HTTP cases verify foreign-organization denial and stale role/grant
+rejection; redirect cases retain selected clinics and non-default return routes.
+The payment concurrency timeout occurred before the gateway callback because its
+test request lacked a seeded FrontDesk actor; its concurrency assertions remain.
+Rerun the full build/test command after these corrections before migrations or commits.
+
+The follow-up run reduced the failures to three registration cases. The shared
+fixture still depended on the first-owner bootstrap while creating both clinic
+Admin and Owner users. It now assigns their organization Administrator/Owner roles
+explicitly. Positive registration cases cover both roles, assert the authenticated
+organization role, and retain the original completeness/edit/approval expectations;
+foreign-organization access remains denied. No production permission change was
+made in this correction. Run the focused suite first:
+
+```bash
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --filter "FullyQualifiedName~AdminRegistrationIntegrationTests" --verbosity normal
+```
+
+Then rerun `dotnet build && dotnet test --no-build` before migration or commit approval.
+
+From the repository root:
+
+```bash
+dotnet build src/PTDoc.Api/PTDoc.Api.csproj
+dotnet build src/PTDoc.Web/PTDoc.Web.csproj
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --filter "Category=CoreCi|Category=Tenancy|Category=OfflineSync" --verbosity normal
+EF_PROVIDER=sqlite dotnet ef migrations has-pending-model-changes -p src/PTDoc.Infrastructure.Migrations.Sqlite -s src/PTDoc.Api
+DB_PROVIDER=sqlite dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --filter "Category=DatabaseProvider" --verbosity normal
+dotnet build src/PTDoc.Maui/PTDoc.csproj -f net8.0-maccatalyst
+```
+
+Also run the repo format gate and SQL Server/Postgres migration/model/provider checks
+using the commands and isolated database configuration in [CI.md](../CI.md) and
+[EF_MIGRATIONS.md](../EF_MIGRATIONS.md). Repeat builds in Release before publication.
+Native workloads and signing/runtime gates remain platform-specific; prior PR #158's
+native deferral (#197) is not evidence that these new native changes work.
+
+Browser/native walkthrough after builds pass: create a second clinic, verify no
+implicit owner access, grant a second role, sign in and confirm only that clinic's
+records, exercise PIN/MFA step-up, revoke access and refresh, attempt foreign-org
+administration, accept an invitation with matching/mismatched accounts, approve a
+local registration, and switch clinics while drafts/sync are pending. Confirm the
+old partition is retained and nothing appears or uploads in the new clinic.
 
 ## Publication and merge boundary
 
-No merges, deployments, production-data changes, external messages or review-thread replies/resolutions are authorized. A planning-only PR may be reviewed as documentation; merging it does not complete the feature. Shared subject matter alone does not create a Git stack dependency.
+No implementation commit until the user confirms the relevant builds/tests passed
+or explicitly permits committing without them. No deployment, production-data
+mutation, merge, external message, or review-thread reply/resolution was performed.

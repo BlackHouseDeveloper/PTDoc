@@ -7,6 +7,9 @@ namespace PTDoc.Application.LocalData.Entities;
 /// </summary>
 public class LocalSyncMetadata
 {
+    /// <summary>User and clinic partition; null legacy rows require explicit recovery.</summary>
+    public string? ScopeKey { get; set; }
+
     /// <summary>Auto-incremented local primary key.</summary>
     public int Id { get; set; }
 

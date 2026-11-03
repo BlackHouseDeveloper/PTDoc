@@ -34,6 +34,7 @@ public class LocalDbInitializer : ILocalDbInitializer
             // for a single-user offline store.
             await _context.Database.EnsureCreatedAsync(cancellationToken);
             await EnsureLocalSyncQueueSchemaAsync(cancellationToken);
+            await EnsureScopeSchemaAsync(cancellationToken);
 
             _logger.LogInformation("Local encrypted SQLite database ready");
         }
@@ -42,6 +43,34 @@ public class LocalDbInitializer : ILocalDbInitializer
             _logger.LogError(ex, "Failed to initialise local encrypted SQLite database");
             throw;
         }
+    }
+
+    private async Task EnsureScopeSchemaAsync(CancellationToken cancellationToken)
+    {
+        if (!_context.Database.IsRelational()) return;
+        var connection = _context.Database.GetDbConnection();
+        var openedHere = connection.State != System.Data.ConnectionState.Open;
+        if (openedHere) await connection.OpenAsync(cancellationToken);
+        try
+        {
+            foreach (var table in new[] { "UserProfiles", "PatientSummaries", "AppointmentSummaries", "IntakeFormDrafts", "ClinicalNoteDrafts", "SyncQueueItems", "SyncMetadata" })
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = $"PRAGMA table_info(\"{table}\")";
+                var found = false;
+                using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+                    while (await reader.ReadAsync(cancellationToken)) found |= reader.GetString(1) == "ScopeKey";
+                if (!found)
+                {
+                    command.CommandText = $"ALTER TABLE \"{table}\" ADD COLUMN \"ScopeKey\" TEXT NULL";
+                    await command.ExecuteNonQueryAsync(cancellationToken);
+                }
+            }
+            using var index = connection.CreateCommand();
+            index.CommandText = "DROP INDEX IF EXISTS \"IX_SyncMetadata_EntityType\"; CREATE UNIQUE INDEX IF NOT EXISTS \"IX_SyncMetadata_ScopeKey_EntityType\" ON \"SyncMetadata\" (\"ScopeKey\", \"EntityType\");";
+            await index.ExecuteNonQueryAsync(cancellationToken);
+        }
+        finally { if (openedHere) await connection.CloseAsync(); }
     }
 
     private async Task EnsureLocalSyncQueueSchemaAsync(CancellationToken cancellationToken)

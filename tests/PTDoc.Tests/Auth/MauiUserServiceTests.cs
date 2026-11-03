@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PTDoc.Application.Auth;
@@ -11,6 +12,38 @@ namespace PTDoc.Tests.Auth;
 [Trait("Category", "CoreCi")]
 public sealed class MauiUserServiceTests
 {
+    [Theory]
+    [InlineData("?returnUrl=%2Forganizations", null)]
+    [InlineData("?clinicId=aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")]
+    [InlineData("?clinicId=00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000000")]
+    [InlineData("?CLINIC%49D=%7Baaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa%7D#fragment", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")]
+    public async Task Login_ForwardsSelectedClinic(string query, string? expectedClinic)
+    {
+        var tokenService = new Mock<ITokenService>();
+        tokenService.Setup(service => service.LoginAsync(It.IsAny<LoginRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TokenLoginResult(StepUp: new TokenAuthenticationStep(AuthStatus.RequiresPinChange, "challenge", 10)));
+        var service = CreateService(tokenService, CreateTokenStore(), new TestNavigationManager(query));
+
+        await service.LoginAsync("staff", "12345678");
+
+        var expectedId = expectedClinic is null ? (Guid?)null : Guid.Parse(expectedClinic);
+        tokenService.Verify(item => item.LoginAsync(It.Is<LoginRequest>(request => request.ClinicId == expectedId),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("?clinicId=invalid")]
+    [InlineData("?clinicId=&clinicId=aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")]
+    public async Task Login_InvalidOrDuplicateClinic_DoesNotFallBackToHomeClinic(string query)
+    {
+        var tokenService = new Mock<ITokenService>();
+        var service = CreateService(tokenService, CreateTokenStore(), new TestNavigationManager(query));
+
+        Assert.False(await service.LoginAsync("staff", "12345678"));
+
+        tokenService.Verify(item => item.LoginAsync(It.IsAny<LoginRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     [Fact]
     public async Task PinChangeAndEnrollmentFlow_StoresTokensOnlyAfterRecoveryCodesAreAcknowledged()
     {
@@ -175,7 +208,8 @@ public sealed class MauiUserServiceTests
 
     private static MauiUserService CreateService(
         Mock<ITokenService> tokenService,
-        Mock<ITokenStore> tokenStore)
+        Mock<ITokenStore> tokenStore,
+        NavigationManager? navigation = null)
     {
         var stateProvider = new MauiAuthenticationStateProvider(
             tokenStore.Object,
@@ -186,7 +220,14 @@ public sealed class MauiUserServiceTests
             tokenStore.Object,
             Mock.Of<IHttpClientFactory>(),
             stateProvider,
-            NullLogger<MauiUserService>.Instance);
+            NullLogger<MauiUserService>.Instance,
+            navigation);
+    }
+
+    private sealed class TestNavigationManager : NavigationManager
+    {
+        public TestNavigationManager(string query) => Initialize("https://localhost/", "https://localhost/login" + query);
+        protected override void NavigateToCore(string uri, bool forceLoad) => throw new NotSupportedException();
     }
 
     private static Mock<ITokenStore> CreateTokenStore()

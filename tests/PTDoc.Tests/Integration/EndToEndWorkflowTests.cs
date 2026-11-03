@@ -3047,7 +3047,7 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
         services.AddScoped(_ => instance);
     }
 
-    private static async Task SeedTestUsersAsync(ApplicationDbContext db)
+    internal static async Task SeedTestUsersAsync(ApplicationDbContext db)
     {
         if (!await db.Clinics.AnyAsync(clinic => clinic.Id == AuthorizationClinicId))
         {
@@ -3059,6 +3059,12 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
             });
             await db.SaveChangesAsync();
         }
+
+        var organizationId = await db.Clinics
+            .Where(clinic => clinic.Id == AuthorizationClinicId)
+            .Select(clinic => clinic.OrganizationId)
+            .SingleAsync()
+            ?? throw new InvalidOperationException("The integration clinic must belong to an organization.");
 
         var roles = new[]
         {
@@ -3092,6 +3098,19 @@ public sealed class PtDocApiFactory : WebApplicationFactory<Program>, IAsyncLife
                 ClinicId = AuthorizationClinicId,
                 CreatedAt = DateTime.UtcNow,
                 IsActive = true
+            });
+            // Clinical roles and organization authority are separate. Do not
+            // depend on tracked-user ordering to choose the fixture's owner.
+            db.OrganizationMemberships.Add(new OrganizationMembership
+            {
+                OrganizationId = organizationId,
+                UserId = userId,
+                Role = role switch
+                {
+                    Roles.Owner => OrganizationRole.Owner,
+                    Roles.Admin => OrganizationRole.Administrator,
+                    _ => OrganizationRole.Member
+                }
             });
         }
 

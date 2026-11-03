@@ -7,6 +7,51 @@ Migrations are split into provider-specific assemblies (Sprint B architecture).
 The `ApplicationDbContext` lives in `PTDoc.Infrastructure`; migrations live in
 separate class library projects, one per provider.
 
+## Plan 05 organization migration
+
+`20261103030000_AddOrganizationMemberships` adds organizations, organization/clinic
+memberships, invitation hashes, `Clinic.OrganizationId`, and selected-session clinic
+IDs in all three provider assemblies. It also changes clinician schedule-block
+references to the composite clinic-membership key, so staff with a second clinic
+grant can be scheduled there. SQLite rebuilds only `ScheduleBlockRules`, preserving
+its columns/indexes and keeping foreign keys enabled.
+
+Backfill is deliberately one organization per existing clinic, with identical IDs.
+Users with a home clinic get that clinic's current role; active home Admin/Owner
+users become organization owners, and all other users become ordinary members.
+Inactive accounts remain unable to authenticate. Unassigned users and null-owned
+clinical records are not guessed or moved. Patient/appointment/note IDs, clinic
+ownership, signatures and historical content are untouched.
+
+Before rollout, rehearse against a protected copy for **each deployed provider**:
+
+1. Inventory clinics, active administrators, orphan/null ownership, and pending
+   native drafts. Identify clinics lacking an active Admin/Owner; they will have no
+   initial organization owner. Provision a designated owner through an audited
+   operator procedure before handing that organization's administration to users.
+2. Back up the database, stop writes, apply the provider migration out of band, and
+   compare clinic IDs/ownership, signed-record counts and signature hashes.
+3. Check foreign keys and the new memberships. Exercise two organizations/three
+   clinics, denied cross-organization reads/writes, a second-clinic clinician,
+   token refresh after revocation, and target-clinic PIN/MFA requirements.
+4. Run model-drift checks and provider smoke tests before deploying application
+   code. Start the API before Web and verify sign-in in each intended clinic.
+
+The Down migration rejects multi-clinic or changed/inactive grants, inactive
+organizations, grouped clinics, cross-organization memberships, non-home selected
+sessions (including administration-only sessions), or invitations. Reconcile or
+restore from a verified backup instead of forcing a lossy downgrade. Organization
+administration metadata is removed even on an allowed downgrade; export/audit it
+before proceeding. Do not deploy older code over a still-active multi-clinic schema:
+older code treats `User.ClinicId` as its sole grant.
+
+A synthetic SQLite SQL rehearsal passed upgrade, backfill, ownership/signature
+preservation, schedule-block membership enforcement, unsafe rollback rejection,
+and safe downgrade with `PRAGMA foreign_key_check`. This is not an EF model-drift
+check or SQL Server/Postgres execution. The committed `OrganizationMigrationTests`
+repeat the SQLite cases under .NET; those and all provider runs await user execution.
+Commands are in [Plan 05](client-review/plan-05.md#validation-to-run).
+
 ## Provider Configuration
 
 Set the active database provider in `appsettings.json` (or environment):

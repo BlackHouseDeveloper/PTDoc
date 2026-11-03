@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Infrastructure.Identity;
 using PTDoc.Application.Appointments;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
@@ -588,10 +589,13 @@ public static class AppointmentEndpoints
             });
         }
 
-        var clinicianRole = await db.Users.AsNoTracking()
-            .Where(user => user.Id == appointment.ClinicalId && user.ClinicId == appointment.ClinicId)
-            .Select(user => user.Role)
-            .SingleOrDefaultAsync(cancellationToken);
+        var selectedClinician = await GetClinicianAsync(db, appointment.ClinicalId, appointment.ClinicId, cancellationToken);
+        if (selectedClinician is null)
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                { nameof(request.AppointmentType), ["The assigned clinician no longer has active access to this clinic."] }
+            });
+        var clinicianRole = selectedClinician.Role;
         var clinicianVisitTypeValidation = ValidateClinicianVisitType(
             clinicianRole,
             visitTypeResolution.Value.PtaAllowed,
@@ -1518,12 +1522,14 @@ public static class AppointmentEndpoints
         Guid? clinicId,
         Guid? restrictedClinicianId = null)
     {
+        var activeMembers = ClinicMembershipAccess.ActiveMemberships(db, clinicId ?? Guid.Empty);
         return db.Users
             .AsNoTracking()
             .Where(user => user.IsActive
-                && (clinicId == null || user.ClinicId == clinicId)
                 && (restrictedClinicianId == null || user.Id == restrictedClinicianId)
-                && SchedulableClinicianRoles.Contains(user.Role))
+                && (clinicId == null ? SchedulableClinicianRoles.Contains(user.Role)
+                    : activeMembers.Any(member =>
+                        member.UserId == user.Id && SchedulableClinicianRoles.Contains(member.Role))))
             .OrderBy(user => user.LastName)
             .ThenBy(user => user.FirstName)
             .Select(user => new AppointmentClinicianResponse
@@ -1608,13 +1614,14 @@ public static class AppointmentEndpoints
         Guid? clinicId,
         CancellationToken cancellationToken)
     {
-        return await db.Users
-            .AsNoTracking()
-            .Where(user => user.Id == clinicianId
-                && user.IsActive
-                && user.ClinicId == clinicId
-                && SchedulableClinicianRoles.Contains(user.Role))
-            .FirstOrDefaultAsync(cancellationToken);
+        var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(item => item.Id == clinicianId && item.IsActive, cancellationToken);
+        if (user is null) return null;
+        var role = await ClinicMembershipAccess.ResolveRoleAsync(db, user, clinicId, cancellationToken);
+        if (role is null || !SchedulableClinicianRoles.Contains(role)) return null;
+        // Detached result is a projection for appointment validation, not a change to
+        // the staff member's home clinic or historical attribution.
+        user.Role = role;
+        return user;
     }
 
     private static bool TryMapAppointmentType(string appointmentType, out AppointmentType result) =>

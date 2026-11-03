@@ -11,7 +11,7 @@ namespace PTDoc.Infrastructure.Data;
 /// Supports both SQLite (local-first) and SQL Server (cloud) via provider configuration.
 /// Sprint J: Tenant-aware query filtering scopes all clinical data to the current clinic.
 /// </summary>
-public class ApplicationDbContext : DbContext
+public partial class ApplicationDbContext : DbContext
 {
     private readonly ITenantContextAccessor? _tenantContext;
 
@@ -109,6 +109,7 @@ public class ApplicationDbContext : DbContext
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         SeedTrackedClinicSettings();
+        SeedTrackedOrganizationMemberships();
         NormalizeTrackedAppointments();
         NormalizeTrackedUsers();
         return base.SaveChanges(acceptAllChangesOnSuccess);
@@ -117,6 +118,7 @@ public class ApplicationDbContext : DbContext
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         SeedTrackedClinicSettings();
+        SeedTrackedOrganizationMemberships();
         NormalizeTrackedAppointments();
         NormalizeTrackedUsers();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
@@ -126,6 +128,7 @@ public class ApplicationDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
         ConfigureSettingsModels(modelBuilder);
+        ConfigureOrganizationModels(modelBuilder);
 
         // Configure Patient
         modelBuilder.Entity<Patient>(entity =>
@@ -1149,9 +1152,9 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.ReasonCode).HasMaxLength(80).IsRequired();
             entity.Property(e => e.Version).IsConcurrencyToken();
             entity.HasOne(e => e.Clinic).WithMany().HasForeignKey(e => e.ClinicId).OnDelete(DeleteBehavior.Cascade);
-            // User.ClinicId is nullable for legacy rows, so provider migrations strengthen this
-            // optional EF relationship to (ClinicId, ClinicianId) at the database boundary.
-            entity.HasOne<User>().WithMany().HasForeignKey(e => e.ClinicianId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ClinicMembership>().WithMany()
+                .HasForeignKey(e => new { e.ClinicId, e.ClinicianId })
+                .HasPrincipalKey(e => new { e.ClinicId, e.UserId }).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<AppointmentReminderDispatch>(entity =>

@@ -8,6 +8,9 @@ namespace PTDoc.Application.LocalData.Entities;
 /// </summary>
 public class LocalSyncQueueItem
 {
+    /// <summary>User and clinic partition; null legacy rows require explicit recovery.</summary>
+    public string? ScopeKey { get; set; }
+
     public int Id { get; set; }
 
     /// <summary>

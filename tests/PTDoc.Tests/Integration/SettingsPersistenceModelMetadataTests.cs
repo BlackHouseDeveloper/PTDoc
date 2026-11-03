@@ -122,9 +122,9 @@ public sealed class SettingsPersistenceModelMetadataTests
         AssertForeignKey(
             context.Model,
             typeof(ScheduleBlockRule),
-            typeof(User),
-            new[] { nameof(ScheduleBlockRule.ClinicianId) },
-            new[] { nameof(User.Id) });
+            typeof(ClinicMembership),
+            new[] { nameof(ScheduleBlockRule.ClinicId), nameof(ScheduleBlockRule.ClinicianId) },
+            new[] { nameof(ClinicMembership.ClinicId), nameof(ClinicMembership.UserId) });
         AssertForeignKey(
             context.Model,
             typeof(KioskEnrollmentCode),

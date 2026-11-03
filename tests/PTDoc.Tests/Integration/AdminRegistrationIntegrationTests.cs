@@ -20,16 +20,51 @@ public sealed class AdminRegistrationIntegrationTests : IClassFixture<PtDocApiFa
     }
 
     [Fact]
-    public async Task PendingRegistrations_Returns_Real_Credential_Completeness()
+    public async Task RegistrationAdministration_DeniesForeignOrganizationDespiteAdminClinicRole()
+    {
+        Guid foreignClinicId;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var clinic = new Clinic { Name = "Foreign registration clinic", Slug = $"foreign-registration-{Guid.NewGuid():N}" };
+            db.Clinics.Add(clinic);
+            await db.SaveChangesAsync();
+            foreignClinicId = clinic.Id;
+        }
+        var userId = await SeedPendingRegistrationAsync(Roles.PT, "foreign-registration@example.test",
+            new DateTime(1990, 1, 1), "PT-1000", "CA", foreignClinicId);
+        using var client = factory.CreateClientWithRole(Roles.Admin);
+
+        using var detail = await client.GetAsync($"/api/v1/admin/registrations/{userId}");
+        using var approval = await client.PostAsync($"/api/v1/admin/registrations/{userId}/approve", null);
+        var pending = await client.GetFromJsonAsync<PendingRegistrationsPage>("/api/v1/admin/registrations/pending?status=Pending&page=1&pageSize=25");
+
+        Assert.Equal(HttpStatusCode.NotFound, detail.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, approval.StatusCode);
+        Assert.NotNull(pending);
+        Assert.DoesNotContain(pending!.Items, item => item.Id == userId);
+        await using var verificationScope = factory.Services.CreateAsyncScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.False((await verificationDb.Users.SingleAsync(item => item.Id == userId)).IsActive);
+    }
+
+    [Theory]
+    [InlineData(Roles.Admin)]
+    [InlineData(Roles.Owner)]
+    public async Task PendingRegistrations_Returns_Real_Credential_Completeness(string administratorRole)
     {
         var userId = await SeedPendingRegistrationAsync(
             role: "PT",
-            email: "pending-license-gap@example.com",
+            email: $"pending-license-gap-{administratorRole}@example.com",
             dateOfBirth: new DateTime(1990, 1, 1),
             licenseNumber: null,
             licenseState: null);
 
-        using var client = factory.CreateClientWithRole(Roles.Admin);
+        using var client = factory.CreateClientWithRole(administratorRole);
+        var organizations = await client.GetFromJsonAsync<OrganizationSummary[]>("/api/v1/organizations/");
+        Assert.NotNull(organizations);
+        var organization = Assert.Single(organizations!, item => item.Id == PtDocApiFactory.AuthorizationClinicId);
+        Assert.Equal(administratorRole == Roles.Owner ? OrganizationRole.Owner : OrganizationRole.Administrator, organization.Role);
         var response = await client.GetFromJsonAsync<PendingRegistrationsPage>("/api/v1/admin/registrations/pending?status=Pending&page=1&pageSize=25");
 
         Assert.NotNull(response);
@@ -40,17 +75,19 @@ public sealed class AdminRegistrationIntegrationTests : IClassFixture<PtDocApiFa
         Assert.Null(item.LicenseState);
     }
 
-    [Fact]
-    public async Task PendingRegistration_Detail_And_Update_Flow_Returns_Edited_Data()
+    [Theory]
+    [InlineData(Roles.Admin)]
+    [InlineData(Roles.Owner)]
+    public async Task PendingRegistration_Detail_And_Update_Flow_Returns_Edited_Data(string administratorRole)
     {
         var userId = await SeedPendingRegistrationAsync(
             role: "PT",
-            email: "detail-flow@example.com",
+            email: $"detail-flow-{administratorRole}@example.com",
             dateOfBirth: null,
             licenseNumber: null,
             licenseState: null);
 
-        using var client = factory.CreateClientWithRole(Roles.Admin);
+        using var client = factory.CreateClientWithRole(administratorRole);
 
         var detail = await client.GetFromJsonAsync<PendingUserDetail>($"/api/v1/admin/registrations/{userId}");
         Assert.NotNull(detail);
@@ -62,7 +99,7 @@ public sealed class AdminRegistrationIntegrationTests : IClassFixture<PtDocApiFa
             $"/api/v1/admin/registrations/{userId}",
             new AdminRegistrationUpdateRequest(
                 "Edited Applicant",
-                "edited-applicant@example.com",
+                $"edited-applicant-{administratorRole.ToLowerInvariant()}@example.com",
                 new DateTime(1987, 6, 23),
                 "PTA",
                 "PTA-4455",
@@ -74,24 +111,26 @@ public sealed class AdminRegistrationIntegrationTests : IClassFixture<PtDocApiFa
         Assert.NotNull(payload);
         Assert.NotNull(payload!.Detail);
         Assert.Equal("Edited Applicant", payload.Detail!.FullName);
-        Assert.Equal("edited-applicant@example.com", payload.Detail.Email);
+        Assert.Equal($"edited-applicant-{administratorRole.ToLowerInvariant()}@example.com", payload.Detail.Email);
         Assert.Equal("PTA", payload.Detail.RoleKey);
         Assert.Equal("PTA-4455", payload.Detail.LicenseNumber);
         Assert.Equal("GA", payload.Detail.LicenseState);
         Assert.True(payload.Detail.CredentialsComplete);
     }
 
-    [Fact]
-    public async Task Approve_Rejects_Incomplete_Registration_Then_Succeeds_After_Update()
+    [Theory]
+    [InlineData(Roles.Admin)]
+    [InlineData(Roles.Owner)]
+    public async Task Approve_Rejects_Incomplete_Registration_Then_Succeeds_After_Update(string administratorRole)
     {
         var userId = await SeedPendingRegistrationAsync(
             role: "PT",
-            email: "approve-after-edit@example.com",
+            email: $"approve-after-edit-{administratorRole.ToLowerInvariant()}@example.com",
             dateOfBirth: null,
             licenseNumber: null,
             licenseState: null);
 
-        using var client = factory.CreateClientWithRole(Roles.Admin);
+        using var client = factory.CreateClientWithRole(administratorRole);
 
         var failedApprove = await client.PostAsync($"/api/v1/admin/registrations/{userId}/approve", null);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, failedApprove.StatusCode);
@@ -105,7 +144,7 @@ public sealed class AdminRegistrationIntegrationTests : IClassFixture<PtDocApiFa
             $"/api/v1/admin/registrations/{userId}",
             new AdminRegistrationUpdateRequest(
                 "Approval Candidate",
-                "approve-after-edit@example.com",
+                $"approve-after-edit-{administratorRole.ToLowerInvariant()}@example.com",
                 new DateTime(1989, 9, 19),
                 "PT",
                 "PT-0099",
@@ -126,24 +165,14 @@ public sealed class AdminRegistrationIntegrationTests : IClassFixture<PtDocApiFa
         string email,
         DateTime? dateOfBirth,
         string? licenseNumber,
-        string? licenseState)
+        string? licenseState,
+        Guid? clinicId = null)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-        var clinic = await db.Clinics.FirstOrDefaultAsync();
-        if (clinic is null)
-        {
-            clinic = new Clinic
-            {
-                Id = Guid.NewGuid(),
-                Name = "Integration Clinic",
-                Slug = "integration-clinic",
-                IsActive = true
-            };
-            db.Clinics.Add(clinic);
-            await db.SaveChangesAsync();
-        }
+        var targetClinicId = clinicId ?? PtDocApiFactory.AuthorizationClinicId;
+        var clinic = await db.Clinics.SingleAsync(item => item.Id == targetClinicId);
 
         var user = new User
         {

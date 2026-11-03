@@ -37,11 +37,40 @@ public sealed class UserRegistrationService : IUserRegistrationService
 
     private readonly ApplicationDbContext dbContext;
     private readonly ILogger<UserRegistrationService> logger;
+    private readonly IIdentityContextAccessor? identity;
 
-    public UserRegistrationService(ApplicationDbContext dbContext, ILogger<UserRegistrationService> logger)
+    public UserRegistrationService(ApplicationDbContext dbContext, ILogger<UserRegistrationService> logger, IIdentityContextAccessor? identity = null)
     {
         this.dbContext = dbContext;
         this.logger = logger;
+        this.identity = identity;
+    }
+
+    private IQueryable<User> AdministrativeUsers()
+    {
+        // Public registration does not need an actor; administrative operations do.
+        if (identity is null) return dbContext.Users.Where(_ => false);
+        var actorId = identity.TryGetCurrentUserId();
+        return dbContext.Users.Where(user => dbContext.Users.Any(actor => actor.Id == actorId && actor.IsActive)
+            && user.ClinicId != null && dbContext.Clinics.Any(clinic =>
+            clinic.Id == user.ClinicId && clinic.IsActive && dbContext.OrganizationMemberships.Any(member =>
+                member.OrganizationId == clinic.OrganizationId && member.UserId == actorId && member.IsActive
+                && (member.Role == OrganizationRole.Owner || (member.Role == OrganizationRole.Administrator
+                    && user.Role.ToUpper() != "ADMIN" && user.Role.ToUpper() != "OWNER"))
+                && dbContext.Organizations.Any(organization => organization.Id == member.OrganizationId && organization.IsActive))));
+    }
+
+    private async Task<User?> AdministrativeUserForUpdateAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var organization = await (from user in dbContext.Users
+                                  join clinic in dbContext.Clinics on user.ClinicId equals clinic.Id
+                                  join root in dbContext.Organizations on clinic.OrganizationId equals root.Id
+                                  where user.Id == userId
+                                  select root).SingleOrDefaultAsync(cancellationToken);
+        var candidate = await AdministrativeUsers().Include(user => user.Clinic)
+            .SingleOrDefaultAsync(user => user.Id == userId, cancellationToken);
+        if (candidate is not null && organization is not null) organization.Version++;
+        return candidate;
     }
 
     public async Task<RegistrationResult> RegisterAsync(UserRegistrationRequest request, CancellationToken cancellationToken = default)
@@ -80,7 +109,8 @@ public sealed class UserRegistrationService : IUserRegistrationService
                 $"PIN must be {minimumPinLength} to 12 digits.");
         }
 
-        var normalizedRole = request.RoleKey?.Trim() ?? string.Empty;
+        var suppliedRole = request.RoleKey?.Trim() ?? string.Empty;
+        var normalizedRole = AllowedRoleKeys.FirstOrDefault(role => string.Equals(role, suppliedRole, StringComparison.OrdinalIgnoreCase)) ?? suppliedRole;
         if (!AllowedRoleKeys.Contains(normalizedRole))
         {
             return ValidationFailure("The selected role is not valid for registration.", CreateFieldError("RoleKey", "The selected role is not valid."));
@@ -183,7 +213,7 @@ public sealed class UserRegistrationService : IUserRegistrationService
         var normalizedPageSize = query.PageSize is 10 or 25 or 50 ? query.PageSize : 25;
         var normalizedPage = query.Page < 1 ? 1 : query.Page;
 
-        var registrationQuery = dbContext.Users
+        var registrationQuery = AdministrativeUsers()
             .AsNoTracking()
             .Where(u => u.Role != "System")
             .Select(u => new
@@ -345,7 +375,7 @@ public sealed class UserRegistrationService : IUserRegistrationService
         Guid userId,
         CancellationToken cancellationToken = default)
     {
-        var user = await dbContext.Users
+        var user = await AdministrativeUsers()
             .AsNoTracking()
             .Include(u => u.Clinic)
             .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
@@ -383,9 +413,7 @@ public sealed class UserRegistrationService : IUserRegistrationService
         Guid editedBy,
         CancellationToken cancellationToken = default)
     {
-        var user = await dbContext.Users
-            .Include(u => u.Clinic)
-            .FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        var user = await AdministrativeUserForUpdateAsync(userId, cancellationToken);
         if (user is null)
         {
             return new RegistrationResult(RegistrationStatus.NotFound, null, "Registration not found.");
@@ -402,7 +430,16 @@ public sealed class UserRegistrationService : IUserRegistrationService
             return new RegistrationResult(RegistrationStatus.ServerError, null, "Cancelled registrations cannot be edited.");
         }
 
-        var normalizedRole = request.RoleKey?.Trim() ?? string.Empty;
+        var suppliedRole = request.RoleKey?.Trim() ?? string.Empty;
+        var normalizedRole = AllowedRoleKeys.FirstOrDefault(role => string.Equals(role, suppliedRole, StringComparison.OrdinalIgnoreCase)) ?? suppliedRole;
+        if (identity is not null && normalizedRole is (Roles.Owner or Roles.Admin))
+        {
+            var actorId = identity.TryGetCurrentUserId();
+            var owner = await dbContext.OrganizationMemberships.AnyAsync(member => member.UserId == actorId
+                && member.IsActive && member.Role == OrganizationRole.Owner
+                && dbContext.Clinics.Any(clinic => clinic.Id == user.ClinicId && clinic.OrganizationId == member.OrganizationId), cancellationToken);
+            if (!owner) return ValidationFailure("Only an organization owner can assign this role.", CreateFieldError("RoleKey", "Role is not permitted."), userId);
+        }
         var validationErrors = ValidateRegistrationData(
             request.FullName,
             request.Email,
@@ -485,7 +522,7 @@ public sealed class UserRegistrationService : IUserRegistrationService
 
     public async Task<RegistrationResult> ApproveRegistrationAsync(Guid userId, Guid approvedBy, CancellationToken cancellationToken = default)
     {
-        var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        var user = await AdministrativeUserForUpdateAsync(userId, cancellationToken);
         if (user is null)
         {
             return new RegistrationResult(RegistrationStatus.NotFound, null, "Registration not found.");
@@ -515,6 +552,13 @@ public sealed class UserRegistrationService : IUserRegistrationService
         }
 
         user.IsActive = true;
+        var clinicMembership = await dbContext.ClinicMemberships.SingleOrDefaultAsync(
+            item => item.UserId == user.Id && item.ClinicId == user.ClinicId, cancellationToken);
+        if (clinicMembership is not null)
+        {
+            clinicMembership.Role = user.Role;
+            clinicMembership.Version++;
+        }
         dbContext.AuditLogs.Add(CreateRegistrationAudit(
             eventType: RegistrationApprovedEventType,
             actorUserId: approvedBy,
@@ -528,7 +572,7 @@ public sealed class UserRegistrationService : IUserRegistrationService
 
     public async Task<RegistrationResult> RejectRegistrationAsync(Guid userId, Guid rejectedBy, CancellationToken cancellationToken = default)
     {
-        var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        var user = await AdministrativeUserForUpdateAsync(userId, cancellationToken);
         if (user is null)
         {
             return new RegistrationResult(RegistrationStatus.NotFound, null, "Registration not found.");
@@ -565,7 +609,7 @@ public sealed class UserRegistrationService : IUserRegistrationService
 
     public async Task<RegistrationResult> HoldRegistrationAsync(Guid userId, Guid heldBy, CancellationToken cancellationToken = default)
     {
-        var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        var user = await AdministrativeUserForUpdateAsync(userId, cancellationToken);
         if (user is null)
         {
             return new RegistrationResult(RegistrationStatus.NotFound, null, "Registration not found.");
@@ -600,7 +644,7 @@ public sealed class UserRegistrationService : IUserRegistrationService
 
     public async Task<RegistrationResult> CancelRegistrationAsync(Guid userId, Guid cancelledBy, CancellationToken cancellationToken = default)
     {
-        var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        var user = await AdministrativeUserForUpdateAsync(userId, cancellationToken);
         if (user is null)
         {
             return new RegistrationResult(RegistrationStatus.NotFound, null, "Registration not found.");

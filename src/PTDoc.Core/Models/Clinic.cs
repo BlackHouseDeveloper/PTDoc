@@ -8,6 +8,9 @@ public class Clinic
 {
     public Guid Id { get; set; } = Guid.NewGuid();
 
+    /// <summary>Administrative parent; clinical records remain owned by this clinic.</summary>
+    public Guid? OrganizationId { get; set; }
+
     /// <summary>
     /// Display name of the clinic.
     /// </summary>

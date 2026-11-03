@@ -212,13 +212,54 @@ The `SqliteConnection` is a **Singleton** because it holds the SQLCipher authent
 
 ---
 
+## User and clinic cache partitions (Plan 05)
+
+Every local entity, queued sync operation and sync watermark has a nullable
+`ScopeKey`. Runtime MAUI uses a singleton `LocalDataScope` with a key composed of
+canonical user and selected-clinic GUIDs. Each `LocalDbContext` applies that key at
+query time and rejects writes from a previous partition. Administration-only and
+anonymous sessions have no usable clinical cache scope.
+
+The scope lease covers repository and complete sync request/write operations.
+Authentication restore, token refresh, sign-in replacement and explicit logout
+serialize with that lease. Sync marks its HTTP requests as already holding the
+lease so the authenticated handler does not acquire it twice. On a native HTTP
+authentication failure, the handler clears credentials while holding the lease;
+the next authentication-state read becomes anonymous. It does not call back into
+UI logout while sync holds the lease. Cached drafts remain intact.
+
+### Upgrading an existing device
+
+The initializer adds nullable scope columns and changes watermark uniqueness to
+`(ScopeKey, EntityType)` without deleting data. Previously unscoped rows stay null
+and are hidden from ordinary queries and sync. They are **not automatically
+recovered** by this release. Before upgrading devices with pending work, sync that
+work in the original single-clinic release and confirm server persistence.
+
+If a device is already upgraded with unsynced legacy work, preserve the encrypted
+database and its hardware-backed key. Do not clear storage, reinstall, or assign
+all null rows to the next login. An authorized recovery must establish the original
+user, verify each patient's owning clinic against the server, and copy only verified
+drafts/queue rows into that user's clinic partition on a protected copy first.
+Unverifiable rows must remain quarantined for manual review. Reset/recreate that
+partition's pull watermarks from the server rather than borrowing old global ones.
+There is no end-user recovery UI in this implementation; unresolved device recovery
+is a rollout blocker for that device, not permission to discard pending clinical work.
+
+Local test construction may omit `LocalDataScope` for existing single-partition
+fixtures; production MAUI always registers it. New coverage exercises partition
+isolation, pending-draft retention, lease ordering and authentication failure during
+sync. Native build/install and live clinic-switch testing remain required.
+
+---
+
 ## HIPAA Considerations
 
 - All patient data cached locally is encrypted at rest with AES-256 (SQLCipher)
 - The encryption key is stored in hardware-backed secure enclave (Keychain / Keystore)
 - `FileSystem.AppDataDirectory` is a sandboxed location inaccessible to other apps
 - No PHI is written to application logs
-- Cached data contains only summary fields (name, MRN, DOB) — no clinical note content
+- Cached summaries and unsynced clinical-note/intake drafts are sensitive clinical data; all partitions remain encrypted at rest.
 
 ---
 

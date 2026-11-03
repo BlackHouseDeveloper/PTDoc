@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 160 explicit organization authority in registration fixtures
+
+- Record the user's follow-up run: 2,643 passed, 3 failed, 0 skipped, 2,646 total in 3 minutes 4 seconds. Only the positive registration integration cases remained failing.
+- Explicitly seed organization Owner/Administrator memberships for the corresponding fixture accounts instead of relying on first-owner bootstrap ordering. The previous correction scoped pending applicants to the correct clinic but did not explicitly establish the reviewing account's organization authority. Production authorization is unchanged.
+- Exercise registration listing, editing and approval with both organization roles, use distinct applicant emails, and verify the authenticated organization's returned role before checking list results. Retain the foreign-organization denial test. Whitespace checks pass; focused and full .NET reruns remain for the user. No migrations, commits or pushes were performed.
+
+### Fixed - PR 160 membership regression fixtures and CI ownership
+
+- Record the user's full test run: 2,622 passed, 18 failed, 0 skipped, 2,640 total in 3 minutes 17 seconds. Correct the duplicate owner categories on the new organization/native suites; a lightweight source scan now confirms exactly one supported category for all 208 test files.
+- Seed real users and explicit clinic memberships in derived payment/Settings integration hosts, and place local registration fixtures in the test administrator's clinic. Keep production membership enforcement intact and add HTTP regressions for changed/revoked grants and foreign-organization registration denial.
+- Update JWT/refresh regressions to invalidate changed or revoked selected-clinic memberships while preserving explicit access when only home-account metadata changes. Restore the default pending-approval redirect and cover preservation of non-default return routes and selected/administration-only clinics.
+- Update Plan 05 verification evidence and CI ownership documentation. Source/whitespace checks pass; the corrected .NET tests await user execution. No builds/tests, database migrations, commits or pushes were performed by the agent.
+
+### Fixed - PR 160 API and native sign-in compilation
+
+- Add the optional selected clinic to the API-local `LoginRequest`, which shadows the Application request type in the JWT endpoint. Replace MAUI's unavailable ASP.NET Core WebUtilities query parser with built-in URI decoding, preserving selected and administration-only clinics while rejecting malformed/duplicate selections instead of silently choosing the home clinic.
+- Add native sign-in regression cases for home, selected, administration-only, encoded and invalid query values. The user's build stopped with CS0234 on all three MAUI targets and CS1061 in the API; tests did not run. Corrected sources await user build/test verification; no .NET commands or commits were run by the agent.
+
+### Fixed - PR 160 organization page compilation
+
+- Rename the staff dropdown loop variable to avoid colliding with the selected-staff pattern variable in Razor's generated scope (CS0136). The user's clean/restore completed, but compilation stopped before tests ran. Build/test verification remains pending; no agent-run .NET checks or commits were performed.
+
+### Added - PR 160 organization and clinic memberships (Plan 05)
+
+- Implement the user's approved organization-above-clinic model with explicit organization/staff and per-clinic role grants, owner/admin staff administration, local registration approval, and hashed, expiring, email-bound invitations. Organization authority never implies clinical access; protect the last active owner and reject stale/concurrent access changes.
+- Add organization management to the shared Web/MAUI UI and selected-clinic PIN sign-in, retaining the clinic across errors and PIN/MFA steps. Persist session selection, revalidate membership on API requests and token refresh, and provide administration-only sessions. Update scheduling/fax recipients and sync-created ownership for explicit memberships.
+- Add additive migrations and snapshots for SQLite, SQL Server and Postgres, preserving clinic IDs and patient/signed-record ownership. Backfill one organization per clinic and retain home roles as explicit memberships; guard rollback against unsafe access changes and selected sessions.
+- Partition native cache, drafts, queued work and watermarks by user/clinic, serialize credential replacement with sync, and retain unscoped legacy device data for verified recovery. Document the pre-upgrade pending-work requirement and absence of automatic legacy recovery.
+- Add authorization, refresh, registration, migration and native-scope regression sources; expand provider query checks and sign-in JavaScript coverage. Six JavaScript tests and the synthetic SQLite SQL migration rehearsal pass; .NET, EF model-drift, SQL Server/Postgres and browser/native verification await user execution under repo rules. Update architecture, migration, mobile and Plan 05 documentation. Implementation remains uncommitted and unpushed.
+
 ### Fixed - PR 158 temporary intake insurance provenance
 
 - Initialize temporary-patient intake provenance through the shared patient profile reader, including independent primary/secondary legacy payer fingerprints and normalized payer aliases, before the existing atomic patient/intake save. Caller-supplied source metadata cannot replace that initial server snapshot.

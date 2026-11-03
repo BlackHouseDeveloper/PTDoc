@@ -8,6 +8,7 @@ namespace PTDoc.Application.LocalData;
 /// </summary>
 public interface ILocalEntity
 {
+    string? ScopeKey { get; set; }
     /// <summary>
     /// Auto-incremented primary key for local SQLite storage.
     /// </summary>

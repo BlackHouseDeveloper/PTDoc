@@ -14,7 +14,8 @@ public sealed class MauiNoteDraftLocalPersistenceService(
     ILocalRepository<LocalClinicalNoteDraft> localRepository,
     ILocalSyncOrchestrator localSyncOrchestrator,
     IIntakeReferenceDataCatalogService intakeReferenceData,
-    IOutcomeMeasureRegistry outcomeMeasureRegistry) : INoteDraftLocalPersistenceService
+    IOutcomeMeasureRegistry outcomeMeasureRegistry,
+    LocalDataScope? localScope = null) : INoteDraftLocalPersistenceService
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
     private readonly NoteWorkspacePayloadMapper _payloadMapper = new(intakeReferenceData, outcomeMeasureRegistry);
@@ -25,11 +26,13 @@ public sealed class MauiNoteDraftLocalPersistenceService(
         NoteWorkspaceDraft draft,
         CancellationToken cancellationToken = default)
     {
+        var scopeKey = localScope?.Key;
         var localDraft = await ResolveLocalDraftAsync(draft, cancellationToken) ?? new LocalClinicalNoteDraft();
         var noteType = WorkspaceNoteTypeMapper.ToApiNoteType(draft.WorkspaceNoteType);
         var canonicalPayload = _payloadMapper.MapToV2Payload(draft.Payload, noteType);
 
         localDraft.ServerId = draft.NoteId ?? Guid.Empty;
+        if (localScope is not null) localDraft.ScopeKey ??= scopeKey;
         localDraft.PatientServerId = draft.PatientId;
         localDraft.NoteType = noteType.ToString();
         localDraft.IsReEvaluation = draft.IsReEvaluation;

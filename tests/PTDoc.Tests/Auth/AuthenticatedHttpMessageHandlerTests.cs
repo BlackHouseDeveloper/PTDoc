@@ -1,6 +1,7 @@
 using System.Net;
 using Moq;
 using PTDoc.Application.Auth;
+using PTDoc.Application.LocalData;
 using PTDoc.Infrastructure.Services;
 
 namespace PTDoc.Tests.Auth;
@@ -8,6 +9,34 @@ namespace PTDoc.Tests.Auth;
 [Trait("Category", "CoreCi")]
 public sealed class AuthenticatedHttpMessageHandlerTests
 {
+    [Fact]
+    public async Task NativeSyncAuthenticationFailure_ClearsTokensWithoutReenteringScopeOrLogout()
+    {
+        var scope = new LocalDataScope();
+        await scope.ChangeAsync("user:clinic-a");
+        using var syncLease = await scope.EnterAsync();
+        var tokenStore = CreateTokenStore(Tokens("expired", "refresh", DateTimeOffset.UtcNow.AddMinutes(-1)));
+        tokenStore.Setup(store => store.ClearAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        var tokenService = new Mock<ITokenService>();
+        tokenService.Setup(service => service.RefreshAsync(It.IsAny<RefreshTokenRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TokenResponse?)null);
+        var userService = CreateUserService();
+        var inner = new SequencedHandler(HttpStatusCode.OK);
+        using var handler = new AuthenticatedHttpMessageHandler(tokenStore.Object, tokenService.Object, userService.Object, scope) { InnerHandler = inner };
+        using var client = new HttpClient(handler);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://ptdoc.test/api/v1/sync/client/push");
+        request.Options.Set(AuthenticatedHttpMessageHandler.LocalScopeLeaseHeld, true);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var response = await client.SendAsync(request, timeout.Token);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Empty(inner.AuthorizationParameters);
+        tokenStore.Verify(store => store.ClearAsync(It.IsAny<CancellationToken>()), Times.Once);
+        userService.Verify(service => service.LogoutAsync(It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal("user:clinic-a", scope.Key);
+    }
+
     [Fact]
     public async Task SendAsync_LogsOutWithoutCallingApi_WhenExpiredTokenCannotRefresh()
     {

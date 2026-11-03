@@ -38,3 +38,28 @@ test('successful requests retain same-origin credentials and JSON payloads', asy
   assert.equal(result.ok, true);
   assert.equal(result.body.accepted, true);
 });
+
+for (const clinicId of ['aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '00000000-0000-0000-0000-000000000000', '']) {
+  test(`sign-in posts the selected clinic without changing the return route (${clinicId || 'home'})`, () => {
+    let submitted;
+    const form = {
+      fields: {},
+      appendChild(input) { this.fields[input.name] = input.value; },
+      submit() { submitted = this; }
+    };
+    const context = vm.createContext({
+      window: { location: { search: clinicId ? `?clinicId=${clinicId}` : '' } },
+      URLSearchParams,
+      document: {
+        createElement(tag) { return tag === 'form' ? form : {}; },
+        body: { appendChild() {} }
+      }
+    });
+    vm.runInContext(source, context);
+    context.window.ptdocAuth.submitLogin('synthetic-user', '12345678', '/organizations');
+    assert.equal(submitted.action, '/auth/login');
+    assert.equal(submitted.method, 'post');
+    assert.equal(submitted.fields.clinicId, clinicId);
+    assert.equal(submitted.fields.returnUrl, '/organizations');
+  });
+}

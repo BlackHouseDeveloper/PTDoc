@@ -21,6 +21,7 @@ public class LocalRepository<TEntity> : ILocalRepository<TEntity>
     /// <inheritdoc/>
     public async Task<TEntity?> GetByLocalIdAsync(int localId, CancellationToken cancellationToken = default)
     {
+        using var scopeLease = await _context.EnterScopeAsync(cancellationToken);
         return await _context.Set<TEntity>()
             .FirstOrDefaultAsync(e => e.LocalId == localId, cancellationToken);
     }
@@ -28,6 +29,7 @@ public class LocalRepository<TEntity> : ILocalRepository<TEntity>
     /// <inheritdoc/>
     public async Task<TEntity?> GetByServerIdAsync(Guid serverId, CancellationToken cancellationToken = default)
     {
+        using var scopeLease = await _context.EnterScopeAsync(cancellationToken);
         return await _context.Set<TEntity>()
             .FirstOrDefaultAsync(e => e.ServerId == serverId, cancellationToken);
     }
@@ -35,6 +37,7 @@ public class LocalRepository<TEntity> : ILocalRepository<TEntity>
     /// <inheritdoc/>
     public async Task<IReadOnlyList<TEntity>> GetAllAsync(CancellationToken cancellationToken = default)
     {
+        using var scopeLease = await _context.EnterScopeAsync(cancellationToken);
         return await _context.Set<TEntity>()
             .AsNoTracking()
             .ToListAsync(cancellationToken);
@@ -43,6 +46,7 @@ public class LocalRepository<TEntity> : ILocalRepository<TEntity>
     /// <inheritdoc/>
     public async Task<IReadOnlyList<TEntity>> GetPendingSyncAsync(CancellationToken cancellationToken = default)
     {
+        using var scopeLease = await _context.EnterScopeAsync(cancellationToken);
         return await _context.Set<TEntity>()
             .AsNoTracking()
             .Where(e => e.SyncState == SyncState.Pending || e.SyncState == SyncState.Conflict)
@@ -52,6 +56,7 @@ public class LocalRepository<TEntity> : ILocalRepository<TEntity>
     /// <inheritdoc/>
     public async Task<TEntity> UpsertAsync(TEntity entity, CancellationToken cancellationToken = default)
     {
+        using var scopeLease = await _context.EnterScopeAsync(cancellationToken);
         if (entity.LocalId == 0)
         {
             // Insert: stamp the creation timestamp only if the caller has not already set one
@@ -65,6 +70,8 @@ public class LocalRepository<TEntity> : ILocalRepository<TEntity>
         }
         else
         {
+            if (_context.ScopeEnabled && entity.ScopeKey != _context.CurrentScopeKey)
+                throw new InvalidOperationException("The draft belongs to another clinic.");
             // Update: preserve the caller-supplied LastModifiedUtc so that server-sourced
             // timestamps (used for last-write-wins conflict resolution) are not lost.
             _context.Set<TEntity>().Update(entity);
@@ -77,6 +84,7 @@ public class LocalRepository<TEntity> : ILocalRepository<TEntity>
     /// <inheritdoc/>
     public async Task DeleteAsync(int localId, CancellationToken cancellationToken = default)
     {
+        using var scopeLease = await _context.EnterScopeAsync(cancellationToken);
         var entity = await _context.Set<TEntity>()
             .FirstOrDefaultAsync(e => e.LocalId == localId, cancellationToken);
 
@@ -90,6 +98,7 @@ public class LocalRepository<TEntity> : ILocalRepository<TEntity>
     /// <inheritdoc/>
     public async Task MarkSyncedAsync(Guid serverId, CancellationToken cancellationToken = default)
     {
+        using var scopeLease = await _context.EnterScopeAsync(cancellationToken);
         var entity = await _context.Set<TEntity>()
             .FirstOrDefaultAsync(e => e.ServerId == serverId, cancellationToken);
 

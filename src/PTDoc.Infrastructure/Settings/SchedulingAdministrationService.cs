@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using PTDoc.Infrastructure.Identity;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Services;
 using PTDoc.Application.Settings;
@@ -605,11 +606,12 @@ public sealed partial class SchedulingAdministrationService(
             return true;
         }
 
+        var activeMembers = ClinicMembershipAccess.ActiveMemberships(context, clinicId);
         return await context.Users.AnyAsync(
             user => user.Id == clinicianId.Value
-                && user.ClinicId == clinicId
                 && user.IsActive
-                && SchedulableClinicianRoles.Contains(user.Role),
+                && activeMembers.Any(member =>
+                    member.UserId == user.Id && SchedulableClinicianRoles.Contains(member.Role)),
             cancellationToken);
     }
 

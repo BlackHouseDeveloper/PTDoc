@@ -13,6 +13,9 @@ public class Session
     // User association
     public Guid UserId { get; set; }
 
+    /// <summary>Clinic selected at sign-in; empty for administration-only, null on legacy sessions.</summary>
+    public Guid? ClinicId { get; set; }
+
     // Token
     public string TokenHash { get; set; } = string.Empty; // SHA-256 hash
 

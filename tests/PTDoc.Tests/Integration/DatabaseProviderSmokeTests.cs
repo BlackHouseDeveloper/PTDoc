@@ -738,6 +738,10 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
 
     private static async Task AssertSchemaQueryableAsync(ApplicationDbContext context)
     {
+        _ = await context.Organizations.CountAsync();
+        _ = await context.OrganizationMemberships.CountAsync();
+        _ = await context.ClinicMemberships.CountAsync();
+        _ = await context.OrganizationInvitations.CountAsync();
         _ = await context.Clinics.CountAsync();
         _ = await context.Patients.CountAsync();
         _ = await context.Users.CountAsync();
