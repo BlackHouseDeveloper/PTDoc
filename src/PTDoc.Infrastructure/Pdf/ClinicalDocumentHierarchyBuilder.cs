@@ -826,7 +826,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         }
 
         var values = new List<string>();
-        if (workspace.Subjective.CurrentPainScore > 0)
+        if (workspace.Subjective.IsPainScoreDocumented || workspace.Subjective.CurrentPainScore > 0)
         {
             values.Add($"Current {workspace.Subjective.CurrentPainScore}/10");
         }
@@ -1234,6 +1234,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         }
 
         var values = new List<string>();
+        AddIfPresent(values, DailyQuestionnaireDefinition.Summarize(workspace?.DailyTreatment.Questionnaire), "Daily questionnaire");
         AddIfPresent(values, workspace?.DailyTreatment.SubjectiveUpdate, "Daily update");
         AddIfPresent(values, workspace?.DailyTreatment.ChangesSinceLastVisit, "Changes since last visit");
         AddIfPresent(values, workspace?.DailyTreatment.PainLevelChanges, "Pain changes");

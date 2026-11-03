@@ -95,3 +95,14 @@
         grid-template-columns: 1fr;
     }
 }
+
+.daily-question-group { border: 0; padding: 0; margin: var(--spacing-4) 0; min-width: 0; }
+.daily-question-group legend { font-weight: var(--font-weight-medium); margin-bottom: var(--spacing-2); }
+.daily-question-input { display: block; width: 100%; min-width: 0; min-height: var(--touch-target-mobile); padding: var(--spacing-2) var(--spacing-3); color: var(--foreground); background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
+.daily-question-input:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.daily-question-pain-range { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacing-3); margin-top: var(--spacing-3); }
+.daily-question-label { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+.daily-legacy { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--spacing-4); color: var(--muted-foreground); }
+.daily-legacy summary { cursor: pointer; min-height: var(--touch-target-mobile); }
+.daily-legacy dt { font-weight: var(--font-weight-semibold); }
+.daily-legacy dd { margin: 0 0 var(--spacing-3); white-space: pre-wrap; overflow-wrap: anywhere; }

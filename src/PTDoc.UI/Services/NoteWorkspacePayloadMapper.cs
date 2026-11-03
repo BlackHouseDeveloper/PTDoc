@@ -350,6 +350,7 @@ public sealed class NoteWorkspacePayloadMapper
             },
             DailyTreatment = new DailyTreatmentVm
             {
+                Questionnaire = DailyQuestionnaireDefinition.Clone(dailyTreatment.Questionnaire),
                 ChangesSinceLastVisit = dailyTreatment.ChangesSinceLastVisit,
                 PainLevelChanges = dailyTreatment.PainLevelChanges,
                 SubjectiveUpdate = dailyTreatment.SubjectiveUpdate,
@@ -550,6 +551,7 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Discharge.PatientReportedOutcome = TrimToNull(dischargeSubjective.PatientReportedOutcome);
 
         var dailyTreatment = payload.DailyTreatment ?? new DailyTreatmentVm();
+        preservedPayload.DailyTreatment.Questionnaire = DailyQuestionnaireDefinition.Clone(dailyTreatment.Questionnaire);
         preservedPayload.DailyTreatment.ChangesSinceLastVisit = dailyTreatment.ChangesSinceLastVisit?.Trim() ?? string.Empty;
         preservedPayload.DailyTreatment.PainLevelChanges = dailyTreatment.PainLevelChanges?.Trim() ?? string.Empty;
         preservedPayload.DailyTreatment.SubjectiveUpdate = dailyTreatment.SubjectiveUpdate?.Trim() ?? string.Empty;

@@ -1506,6 +1506,17 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         });
         await _context.SaveChangesAsync();
 
+        var originalContent = sourceNote.ContentJson;
+        var dailySeed = await _service.GetCarryForwardSeedAsync(patient.Id, NoteType.Daily);
+        Assert.NotNull(dailySeed);
+        Assert.Empty(dailySeed.Payload.Subjective.Problems);
+        Assert.Null(dailySeed.Payload.Subjective.OtherProblem);
+        Assert.False(dailySeed.Payload.Subjective.IsPainScoreDocumented);
+        Assert.Equal(0, dailySeed.Payload.Subjective.CurrentPainScore);
+        Assert.Null(dailySeed.Payload.DailyTreatment.Questionnaire);
+        Assert.Single(dailySeed.Payload.Assessment.DiagnosisCodes);
+        Assert.Equal(originalContent, sourceNote.ContentJson);
+
         var seed = await _service.GetCarryForwardSeedAsync(patient.Id, NoteType.ProgressNote);
 
         Assert.NotNull(seed);
@@ -1957,4 +1968,98 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
     {
         public Guid? GetCurrentClinicId() => null;
     }
+    [Fact]
+    public async Task DailyQuestionnaire_SaveReloadKeepsEveryAnswerAndHistoricalOutcomeProvenance()
+    {
+        var patient = new Patient { Id = Guid.NewGuid(), ClinicId = Guid.NewGuid(), FirstName = "Synthetic", LastName = "Daily" };
+        var historicalClinician = Guid.NewGuid();
+        var historicalResult = new OutcomeMeasureResult
+        {
+            PatientId = patient.Id,
+            ClinicId = patient.ClinicId,
+            ClinicianId = historicalClinician,
+            MeasureType = OutcomeMeasureType.LEFS,
+            Score = 44,
+            DateRecorded = new DateTime(2026, 1, 1)
+        };
+        var questionnaire = new DailyQuestionnaireV1
+        {
+            OverallCondition = "Improved slightly",
+            PainChange = "Decreased",
+            DailyActivityEase = "More ease",
+            ImprovedActivities = ["Walking"],
+            SameActivities = ["Stairs"],
+            WorseActivities = ["Lifting"],
+            NewDifficultyActivities = ["Work tasks"],
+            HepAdherence = "Daily",
+            AdditionalInformation = "Synthetic report"
+        };
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            Subjective = new() { CurrentPainScore = 0, IsPainScoreDocumented = true, BestPainScore = 0, WorstPainScore = 8, PainFrequency = "Only with specific activities", OtherLocation = "Left lateral knee" },
+            DailyTreatment = new() { Questionnaire = questionnaire, PreviousTreatment = "Legacy evidence" },
+            Objective = new() { OutcomeMeasures = [new() { MeasureType = historicalResult.MeasureType, Score = 44, RecordedAtUtc = historicalResult.DateRecorded }] }
+        };
+        var note = new ClinicalNote
+        {
+            Id = Guid.NewGuid(),
+            PatientId = patient.Id,
+            ClinicId = patient.ClinicId,
+            NoteType = NoteType.Daily,
+            DateOfService = new DateTime(2026, 10, 26),
+            ContentJson = JsonSerializer.Serialize(payload),
+            LastModifiedUtc = DateTime.UtcNow
+        };
+        historicalResult.NoteId = note.Id;
+        _context.Patients.Add(patient); _context.ClinicalNotes.Add(note); _context.OutcomeMeasureResults.Add(historicalResult);
+        await _context.SaveChangesAsync();
+        var originalResultId = historicalResult.Id;
+        var saved = await _service.SaveAsync(new()
+        {
+            NoteId = note.Id,
+            PatientId = patient.Id,
+            DateOfService = note.DateOfService,
+            NoteType = NoteType.Daily,
+            ExpectedLastModifiedUtc = note.LastModifiedUtc,
+            Payload = payload
+        });
+        Assert.True(saved.IsValid, string.Join("; ", saved.Errors));
+        var loaded = await _service.LoadAsync(patient.Id, note.Id);
+        Assert.NotNull(loaded);
+        Assert.Equal(JsonSerializer.Serialize(questionnaire), JsonSerializer.Serialize(loaded.Payload.DailyTreatment.Questionnaire));
+        Assert.Equal("Legacy evidence", loaded.Payload.DailyTreatment.PreviousTreatment);
+        Assert.True(loaded.Payload.Subjective.IsPainScoreDocumented);
+        Assert.Equal(0, loaded.Payload.Subjective.CurrentPainScore);
+        Assert.Equal("Only with specific activities", loaded.Payload.Subjective.PainFrequency);
+        Assert.Equal("Left lateral knee", loaded.Payload.Subjective.OtherLocation);
+        var outcome = Assert.Single(await _context.OutcomeMeasureResults.AsNoTracking().Where(o => o.NoteId == note.Id).ToListAsync());
+        Assert.Equal(originalResultId, outcome.Id); Assert.Equal(historicalClinician, outcome.ClinicianId);
+        payload.DailyTreatment.Questionnaire!.Version = 99;
+        var invalid = await _service.SaveAsync(new()
+        {
+            NoteId = note.Id,
+            PatientId = patient.Id,
+            DateOfService = note.DateOfService,
+            NoteType = NoteType.Daily,
+            ExpectedLastModifiedUtc = loaded.LastModifiedUtc,
+            Payload = payload
+        });
+        Assert.False(invalid.IsValid);
+        Assert.Contains(invalid.Errors, e => e.Contains("version"));
+        payload.DailyTreatment.Questionnaire = null;
+        var olderClient = await _service.SaveAsync(new()
+        {
+            NoteId = note.Id,
+            PatientId = patient.Id,
+            DateOfService = note.DateOfService,
+            NoteType = NoteType.Daily,
+            ExpectedLastModifiedUtc = loaded.LastModifiedUtc,
+            Payload = payload
+        });
+        Assert.False(olderClient.IsValid);
+        Assert.Contains(olderClient.Errors, e => e.Contains("compatible client"));
+        Assert.Equal(1, (await _service.LoadAsync(patient.Id, note.Id))!.Payload.DailyTreatment.Questionnaire!.Version);
+    }
+
 }
