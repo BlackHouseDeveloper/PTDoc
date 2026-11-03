@@ -361,6 +361,72 @@ public sealed class IntakeProfilePrefillIntegrationTests : IClassFixture<PtDocAp
     [InlineData(true, false)]
     [InlineData(false, true)]
     [InlineData(true, true)]
+    public async Task Submit_LegacyPayerAnswerEditsDoNotConflictWithTheirOwnPatientWrite(bool standalone, bool secondary)
+    {
+        using var staff = _factory.CreateClientWithRole(Roles.PT);
+        using var anonymous = _factory.CreateUnauthenticatedClient();
+        var (patient, intake) = await CreateReviewFixtureAsync(staff, withPolicies: false);
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var current = await db.Patients.SingleAsync(p => p.Id == patient.Id);
+            current.PayerInfoJson = secondary
+                ? """{"secondaryInsuranceCompanyName":"Original","secondaryMemberOrPolicyNumber":"OLD"}"""
+                : """{"insuranceCompanyName":"Original","memberOrPolicyNumber":"OLD"}""";
+            await db.SaveChangesAsync();
+            var profile = (await IntakeProfilePrefillReader.ReadAsync(db, patient.Id, current.ClinicId))!;
+            intake.ResponseJson = profile.ApplyToNewResponseJson(intake.ResponseJson);
+            var stored = await db.IntakeForms.SingleAsync(f => f.Id == intake.Id);
+            stored.ResponseJson = intake.ResponseJson;
+            stored.Consents = ReviewConsents;
+            await db.SaveChangesAsync();
+        }
+        if (standalone) anonymous.DefaultRequestHeaders.Add(IntakeAccessHeaders.AccessToken,
+            await CreateAccessTokenAsync(staff, anonymous, intake.Id, patient.Email!));
+        var client = standalone ? anonymous : staff;
+        var path = standalone ? $"/api/v1/intake/access/{intake.Id}" : $"/api/v1/intake/{intake.Id}";
+        var draft = JsonSerializer.Deserialize<IntakeResponseDraft>(intake.ResponseJson, ReviewJson)!;
+        if (secondary)
+        {
+            draft.SecondaryInsuranceCompanyName = "Edited carrier";
+            draft.SecondaryMemberOrPolicyNumber = "EDITED";
+        }
+        else
+        {
+            draft.InsuranceCompanyName = "Edited carrier";
+            draft.MemberOrPolicyNumber = "EDITED";
+        }
+        using var update = await client.PutAsJsonAsync(path, new UpdateIntakeRequest
+        {
+            ResponseJson = IntakeDraftPersistence.SerializePersistenceJson(draft),
+            Consents = ReviewConsents
+        });
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+
+        using var response = await client.PostAsync($"{path}/submit", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await using var verification = _factory.Services.CreateAsyncScope();
+        var verify = verification.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.True((await verify.IntakeForms.SingleAsync(f => f.Id == intake.Id)).IsLocked);
+        Assert.Contains("Edited carrier", (await verify.Patients.SingleAsync(p => p.Id == patient.Id)).PayerInfoJson);
+        var policies = await verify.PatientInsurancePolicies.Where(p => p.PatientId == patient.Id).ToListAsync();
+        if (standalone)
+            Assert.Empty(policies); // Standalone intake updates legacy data; staff submission projects policies.
+        else
+        {
+            var policy = Assert.Single(policies);
+            Assert.Equal(secondary ? InsuranceCoveragePriority.Secondary : InsuranceCoveragePriority.Primary, policy.CoveragePriority);
+            Assert.Equal("Edited carrier", policy.CarrierDisplayName);
+            Assert.Equal("EDITED", policy.MemberOrPolicyNumber);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
     public async Task Submit_RejectsChangedLegacyPayerWithoutNormalizedPolicy(bool standalone, bool secondary)
     {
         using var staff = _factory.CreateClientWithRole(Roles.PT);

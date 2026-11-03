@@ -234,8 +234,7 @@ public sealed class IntakeService : IIntakeService
         var draft = new IntakeResponseDraft();
         // Copy state properties
         CopyDraftProperties(canonicalState, draft);
-        var initialProfile = JsonSerializer.Deserialize<IntakeProfilePrefill>(SerializeDraft(canonicalState), SerializerOptions)!;
-        initialProfile.SourceModifiedUtc = patient.LastModifiedUtc;
+        var initialProfile = await IntakeProfilePrefillReader.ReadAsync(_context, patient, cancellationToken);
         initialProfile.InitializeSource(draft);
         draft.PatientId = patient.Id;
 

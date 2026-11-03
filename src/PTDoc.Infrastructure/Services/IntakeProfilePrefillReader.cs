@@ -17,6 +17,15 @@ public static class IntakeProfilePrefillReader
             .SingleOrDefaultAsync(p => p.Id == patientId && p.ClinicId == clinicId && !p.IsArchived, cancellationToken);
         if (patient is null) return null;
 
+        return await ReadAsync(db, patient, cancellationToken);
+    }
+
+    // Also initializes a newly created patient's source before its atomic patient/intake save.
+    internal static async Task<IntakeProfilePrefill> ReadAsync(
+        ApplicationDbContext db, Patient patient, CancellationToken cancellationToken = default)
+    {
+        var patientId = patient.Id;
+        var clinicId = patient.ClinicId;
         var policies = await db.PatientInsurancePolicies.AsNoTracking()
             .Where(p => p.PatientId == patientId && p.ClinicId == clinicId && !p.IsArchived
                 && p.Status == InsurancePolicyStatus.Active)

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 158 temporary intake insurance provenance
+
+- Initialize temporary-patient intake provenance through the shared patient profile reader, including independent primary/secondary legacy payer fingerprints and normalized payer aliases, before the existing atomic patient/intake save. Caller-supplied source metadata cannot replace that initial server snapshot.
+- Add ten regression cases: four SQLite temporary-patient creation/save/submit cases (primary, secondary, both, neither), two SQLite legacy-payer edit submissions, and four staff/standalone HTTP submission cases. The latter protect the existing persisted-source contract; no submission-order change is required because source validation uses `AsNoTracking()` before `SaveChangesAsync`.
+- Refresh the complete PR 158 review audit in `docs/client-review/plan-03.md`: 18 threads, 33 duplicate summary references, no exposed suppressed or Previously missed items. The Playwright path finding is invalid for the locked version and current test-root configuration. The user confirmed all requested builds/tests pass and supplied the discovery output: 2 passed, 0 failed/skipped/cancelled. No new .NET test count is inferred and no builds/tests were rerun by the agent; native runtime/install checks remain deferred to issue #197. No commit, push, review reply, or resolution was performed.
+
 ### Fixed - PR 158 stale intake editors and legacy authorization
 
 - Record the user's 2026-11-02 confirmation that the client accepted PR 158, closing the client-acceptance gate. The user confirmed the requested build/test/model-drift checks passed, then clarified that native installation/runtime checks were not run. Correct the earlier record that incorrectly marked those native gates passed; defer native validation to [issue #197](https://github.com/BlackHouseDeveloper/PTDoc/issues/197) for a separate PR after Web setup. No new counts or platform logs were supplied; commit/push/review-write authorization is unchanged.
