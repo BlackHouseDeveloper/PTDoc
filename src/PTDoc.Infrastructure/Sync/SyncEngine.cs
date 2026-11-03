@@ -1924,6 +1924,17 @@ public class SyncEngine : ISyncEngine
             return ConflictType.IntakeLockedConflict;
         }
 
+        if (string.Equals(snapshot.EntityType, "IntakeForm", StringComparison.OrdinalIgnoreCase)
+            && !item.Operation.Equals("Delete", StringComparison.OrdinalIgnoreCase))
+        {
+            using var stored = JsonDocument.Parse(snapshot.CurrentDataJson!);
+            using var incoming = JsonDocument.Parse(item.DataJson);
+            var storedResponse = TryGetString(stored.RootElement, "responseJson") ?? TryGetString(stored.RootElement, "ResponseJson");
+            var incomingResponse = TryGetString(incoming.RootElement, "responseJson") ?? TryGetString(incoming.RootElement, "ResponseJson") ?? storedResponse;
+            if (!IntakeProfileProvenance.HasCurrentRevision(IntakeProfileProvenance.Parse(storedResponse), IntakeProfileProvenance.Parse(incomingResponse)))
+                return ConflictType.Unknown; // A newer client clock cannot authorize stale-source answers.
+        }
+
         if (snapshot.LastModifiedUtc.HasValue && snapshot.LastModifiedUtc.Value != item.LastModifiedUtc)
         {
             return ConflictType.DraftConflict;

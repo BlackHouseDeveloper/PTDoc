@@ -11,6 +11,7 @@ public sealed class IntakeResponseDraft
     public bool OmitPrimaryPolicy { get; set; }
     public bool OmitSecondaryPolicy { get; set; }
     public IntakeProfileUpdate? ProfileUpdate { get; set; }
+    public Guid? ProfileSourceRevision { get; set; }
     public Guid? PrefilledPrimaryPolicyId { get; set; }
     public Guid? PrefilledSecondaryPolicyId { get; set; }
     public DateTime? PrefilledPrimaryPolicyModifiedUtc { get; set; }

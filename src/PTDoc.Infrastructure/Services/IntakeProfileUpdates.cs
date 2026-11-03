@@ -31,14 +31,19 @@ public static class IntakeProfileUpdates
                 case IntakeProfileAction.FillBlankFields:
                     // Filling demographics must not refresh previously accepted insurance versions.
                     var previousPrimaryId = draft.PrefilledPrimaryPolicyId;
+                    var previousPrimaryLegacyFingerprint = draft.PrefilledPrimaryLegacyPayerFingerprint;
                     profile.ApplyTo(draft, confirmedBlankFields: true);
-                    if (previousPrimaryId != draft.PrefilledPrimaryPolicyId) ClearAuthorization(draft);
+                    if (previousPrimaryId != draft.PrefilledPrimaryPolicyId
+                        || previousPrimaryLegacyFingerprint != draft.PrefilledPrimaryLegacyPayerFingerprint)
+                        ClearAuthorization(draft);
                     break;
                 case IntakeProfileAction.UsePrimary:
                 case IntakeProfileAction.OmitPrimary:
                     if (update.Action == IntakeProfileAction.UsePrimary && profile.PrimaryPolicyAmbiguous)
                         throw new InvalidOperationException("More than one primary policy is active. Ask the clinic to reconcile the policies.");
-                    if (draft.PrefilledPrimaryPolicyId != profile.PrimaryPolicyId || update.Action == IntakeProfileAction.OmitPrimary)
+                    if (draft.PrefilledPrimaryPolicyId != profile.PrimaryPolicyId
+                        || draft.PrefilledPrimaryLegacyPayerFingerprint != profile.PrimaryLegacyPayerFingerprint
+                        || update.Action == IntakeProfileAction.OmitPrimary)
                         ClearAuthorization(draft);
                     ClearPrimary(draft);
                     draft.OmitPrimaryPolicy = update.Action == IntakeProfileAction.OmitPrimary;
@@ -76,6 +81,7 @@ public static class IntakeProfileUpdates
             }
             // Legacy drafts retain their demographic protection until a new intake is created.
             draft.ProfilePrefillSourceModifiedUtc ??= profile.SourceModifiedUtc;
+            draft.ProfileSourceRevision = Guid.NewGuid();
         }
         if (draft.OmitPrimaryPolicy) { ClearPrimary(draft); ClearAuthorization(draft); }
         if (draft.OmitSecondaryPolicy) ClearSecondary(draft);

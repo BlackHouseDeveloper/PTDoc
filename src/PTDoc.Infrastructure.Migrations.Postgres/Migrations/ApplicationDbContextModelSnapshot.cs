@@ -1404,6 +1404,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasColumnType("boolean");
 
                     b.Property<DateTime>("LastModifiedUtc")
+                        .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("ModifiedByUserId")

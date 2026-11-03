@@ -1002,6 +1002,12 @@ When implementing full clinic management:
 3. New clinical records created by those users automatically inherit the clinic scope
 4. No data migration required for existing records (they remain `null`-scoped)
 
+## Intake reconciliation concurrency
+
+Explicit profile acceptance writes a new server-owned `ProfileSourceRevision` into the existing intake response JSON. Ordinary HTTP, service, and offline-sync writes must echo that revision before answers can be combined with stored source provenance; missing or older revisions require a reload. New and legacy drafts without a revision retain their existing behavior until the first explicit reconciliation. Creation strips caller-supplied revisions, and the wizard carries the accepted revision through reload/save without treating it as editable data.
+
+`IntakeForm.LastModifiedUtc` is an EF concurrency token so a reconciliation committed between a writer's read and save cannot be overwritten. Both HTTP update routes return 409 on that race, and the direct service reports a reload error. Offline sync rejects stale source revisions before timestamp-based last-write-wins resolution. All three provider snapshots contain the concurrency metadata; no schema or data migration is required. Primary authorization answers are retained during reconciliation only when both normalized policy identity and legacy payer fingerprint remain the same.
+
 ## Related Documentation
 
 - [BUILD.md](BUILD.md) - Build instructions

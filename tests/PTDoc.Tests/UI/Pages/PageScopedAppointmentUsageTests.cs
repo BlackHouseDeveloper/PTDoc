@@ -90,7 +90,11 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
     [InlineData(null)]
     [InlineData("import")]
     [InlineData("lookup")]
-    public void PatientProfile_RendersLockedIntakeCalloutAndTimelineEntry(string? canceledTimeZoneStage)
+    [InlineData("null-zone")]
+    [InlineData("empty-zone")]
+    [InlineData("blank-zone")]
+    [InlineData("unknown-zone")]
+    public void PatientProfile_RendersLockedIntakeCalloutAndTimelineEntry(string? timeZoneScenario)
     {
         var patientId = Guid.NewGuid();
         var submittedAt = new DateTime(2026, 5, 1, 14, 0, 0, DateTimeKind.Utc);
@@ -133,9 +137,9 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
                 LastModifiedUtc = submittedAt
             });
 
-        RegisterCommonServices(resolveViewerTimeZone: canceledTimeZoneStage is null);
+        RegisterCommonServices(resolveViewerTimeZone: timeZoneScenario is null);
         Mock<IJSRuntime>? importRuntime = null;
-        if (canceledTimeZoneStage == "import")
+        if (timeZoneScenario == "import")
         {
             // Model import cancellation at the public runtime boundary, before a module exists.
             importRuntime = new Mock<IJSRuntime>(MockBehavior.Strict);
@@ -149,10 +153,23 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
                     Task.FromCanceled<IJSObjectReference>(new CancellationToken(canceled: true))));
             Services.AddSingleton<IJSRuntime>(importRuntime.Object);
         }
-        else if (canceledTimeZoneStage == "lookup")
+        else if (timeZoneScenario == "lookup")
         {
             JSInterop.SetupModule("./_content/PTDoc.UI/js/viewer-time-zone.js")
                 .Setup<string>("getViewerTimeZone").SetCanceled();
+        }
+
+        if (timeZoneScenario is "null-zone" or "empty-zone" or "blank-zone" or "unknown-zone")
+        {
+            var zone = timeZoneScenario switch
+            {
+                "empty-zone" => "",
+                "blank-zone" => "   ",
+                "unknown-zone" => "Not/A_Time_Zone",
+                _ => null
+            };
+            JSInterop.SetupModule("./_content/PTDoc.UI/js/viewer-time-zone.js")
+                .Setup<string>("getViewerTimeZone").SetResult(zone!);
         }
 
         Services.AddSingleton(patientService.Object);
@@ -170,12 +187,12 @@ public sealed class PageScopedAppointmentUsageTests : TestContext
             Assert.Contains("Review intake", callout.TextContent, StringComparison.Ordinal);
             Assert.Contains("Submitted Intake", cut.Markup, StringComparison.Ordinal);
             var timestamp = cut.Find(".patient-clinical-info-timeline-time time");
-            Assert.Equal(canceledTimeZoneStage is null ? "10:00 AM UTC-04:00" : "2:00 PM UTC", timestamp.TextContent);
-            Assert.Equal(canceledTimeZoneStage is null ? "America/New_York" : TimeZoneInfo.Utc.Id, timestamp.GetAttribute("title"));
+            Assert.Equal(timeZoneScenario is null ? "10:00 AM UTC-04:00" : "2:00 PM UTC", timestamp.TextContent);
+            Assert.Equal(timeZoneScenario is null ? "America/New_York" : TimeZoneInfo.Utc.Id, timestamp.GetAttribute("title"));
             Assert.Equal(submittedAt.ToString("O"), timestamp.GetAttribute("datetime"));
         });
 
-        // A canceled first-render lookup must leave event dispatch usable as well as retaining UTC.
+        // An unavailable first-render lookup must leave event dispatch usable as well as retaining UTC.
         if (importRuntime is not null)
         {
             importRuntime.VerifyAll();

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 158 stale intake editors and legacy authorization
+
+- Record the user's 2026-11-02 confirmation that the client accepted PR 158, closing the client-acceptance gate. The user confirmed the requested build/test/model-drift checks passed, then clarified that native installation/runtime checks were not run. Correct the earlier record that incorrectly marked those native gates passed; defer native validation to [issue #197](https://github.com/BlackHouseDeveloper/PTDoc/issues/197) for a separate PR after Web setup. No new counts or platform logs were supplied; commit/push/review-write authorization is unchanged.
+- Reject older or missing intake profile-source revisions after explicit reconciliation before combining incoming answers with server-owned provenance. Carry revisions through the wizard and direct service; prevent offline sync's newer client timestamp from bypassing this check. Make the existing intake modification timestamp a concurrency token, update all three provider snapshots, and return reload/conflict errors for overlapping saves. No schema or data migration is required.
+- Clear primary authorization answers when explicit primary acceptance or blank-field prefill changes the accepted legacy payer fingerprint, while retaining authorization for an unchanged source.
+- Retain the patient timeline's explicit UTC fallback when browser time-zone lookup returns null, empty, or blank; preserve timestamp metadata and navigation.
+- Add 20 regression cases covering staff/standalone two-tab writes, direct save/submit rejection, real SQLite overlapping saves, offline sync, legacy authorization retention/clearing, and unavailable zone identifiers; strengthen wizard revision round-trip assertions. Refresh the complete 14-thread review audit, including 25 duplicate summary references and the absence of exposed suppressed/Previously missed findings. Source inspection and Git whitespace checks completed; the user subsequently confirmed the requested build/test checks passed; native runtime/install validation is deferred to issue #197. No builds/tests were rerun by the agent. No commit, push, review reply, thread resolution, or review request was made in this pass.
+
 ### Fixed - PR 158 intake, note recovery, and Web session review
 
 - Track server-owned accepted legacy payer fingerprints independently for primary and secondary insurance; reject changed or unknown legacy sources until explicitly reconciled. Intake projection rejects a policy inserted after source validation while explicit chart edits retain their upsert behavior.

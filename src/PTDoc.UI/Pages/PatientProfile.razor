@@ -223,7 +223,7 @@
         {
             await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/viewer-time-zone.js");
             var zoneId = await module.InvokeAsync<string>("getViewerTimeZone");
-            if (!disposed && TimeZoneInfo.TryFindSystemTimeZoneById(zoneId, out var zone))
+            if (!disposed && !string.IsNullOrWhiteSpace(zoneId) && TimeZoneInfo.TryFindSystemTimeZoneById(zoneId, out var zone))
             {
                 viewerTimeZone = zone;
                 foreach (var entry in timelineEntries) TimelineTimestampFormatter.Apply(entry, viewerTimeZone);

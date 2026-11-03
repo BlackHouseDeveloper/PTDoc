@@ -18,6 +18,51 @@ namespace PTDoc.Tests.Intake;
 public sealed class IntakeSubmissionConcurrencyTests
 {
     [Fact]
+    public async Task Save_ConcurrentProfileAcceptanceCannotBeOverwritten()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var race = new BeforeSave();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>(options).AddInterceptors(race).Options);
+        await db.Database.EnsureCreatedAsync();
+        var patient = new Patient { FirstName = "Synthetic", LastName = "Tabs" };
+        db.Patients.Add(patient);
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+        var stale = (await service.EnsureDraftAsync(patient.Id)).Draft!;
+        stale.MedicalHistoryNotes = "Stale save";
+        Guid? acceptedRevision = null;
+        race.Action = async () =>
+        {
+            await using var concurrent = new ApplicationDbContext(options);
+            var acceptingService = CreateService(concurrent);
+            var accepting = (await acceptingService.GetLatestByPatientIdAsync(patient.Id))!;
+            accepting.ProfileUpdate = new IntakeProfileUpdate
+            {
+                Action = IntakeProfileAction.UsePrimary,
+                ExpectedFingerprint = accepting.ProfilePrefill!.Fingerprint
+            };
+            await acceptingService.SaveDraftAsync(accepting);
+            acceptedRevision = (await acceptingService.GetLatestByPatientIdAsync(patient.Id))!.ProfileSourceRevision;
+        };
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => service.SaveDraftAsync(stale));
+
+        Assert.IsType<DbUpdateConcurrencyException>(error.InnerException);
+        Assert.Equal(IntakeProfileProvenance.StaleRevisionMessage, error.Message);
+        await using var verify = new ApplicationDbContext(options);
+        var saved = (await CreateService(verify).GetLatestByPatientIdAsync(patient.Id))!;
+        Assert.NotNull(acceptedRevision);
+        Assert.Equal(acceptedRevision, saved.ProfileSourceRevision);
+        Assert.Null(saved.MedicalHistoryNotes);
+        var reloaded = (await service.GetLatestByPatientIdAsync(patient.Id))!;
+        reloaded.MedicalHistoryNotes = "Recovered edit";
+        await service.SaveDraftAsync(reloaded);
+        Assert.Equal("Recovered edit", (await CreateService(verify).GetLatestByPatientIdAsync(patient.Id))!.MedicalHistoryNotes);
+    }
+
+    [Fact]
     public async Task Submit_ConcurrentChartEditRollsBackIntakeAndPolicyWrites()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

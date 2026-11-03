@@ -465,7 +465,14 @@ public static class IntakeEndpoints
         intake.ModifiedByUserId = identityContext.GetCurrentUserId();
         intake.SyncState = SyncState.Pending;
 
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Results.Conflict(new { error = IntakeProfileProvenance.StaleRevisionMessage });
+        }
         await syncEngine.EnqueueAsync("IntakeForm", intake.Id, SyncOperation.Update, cancellationToken);
         return Results.Ok(ToResponse(intake));
     }

@@ -318,7 +318,15 @@ public sealed class IntakeService : IIntakeService
             intake.SyncState = SyncState.Pending;
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            _context.Entry(intake).State = EntityState.Detached;
+            throw new InvalidOperationException(IntakeProfileProvenance.StaleRevisionMessage, ex);
+        }
     }
 
     public async Task SubmitAsync(IntakeResponseDraft state, CancellationToken cancellationToken = default)
@@ -455,6 +463,7 @@ public sealed class IntakeService : IIntakeService
         target.PatientId = source.PatientId;
         target.IntakeFlowVersion = source.IntakeFlowVersion;
         target.PrefilledPrimaryPolicyId = source.PrefilledPrimaryPolicyId;
+        target.ProfileSourceRevision = source.ProfileSourceRevision;
         target.PrefilledSecondaryPolicyId = source.PrefilledSecondaryPolicyId;
         target.PrefilledPrimaryPolicyModifiedUtc = source.PrefilledPrimaryPolicyModifiedUtc;
         target.PrefilledSecondaryPolicyModifiedUtc = source.PrefilledSecondaryPolicyModifiedUtc;

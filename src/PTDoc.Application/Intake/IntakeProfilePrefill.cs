@@ -74,7 +74,7 @@ public sealed class IntakeProfilePrefill
         string[] serverFields =
         [
             "intakeId", "patientId", "isLocked", "isSubmitted", "submittedAt",
-            "reviewedAtUtc", "reviewedByUserId", "lastModifiedUtc", "profilePrefill"
+            "reviewedAtUtc", "reviewedByUserId", "lastModifiedUtc", "profilePrefill", "profileSourceRevision"
         ];
         foreach (var key in original.Select(item => item.Key).Where(key => serverFields.Contains(key, StringComparer.OrdinalIgnoreCase)).ToArray())
             original.Remove(key);
@@ -92,6 +92,7 @@ public sealed class IntakeProfilePrefill
             "omitPrimaryPolicy",
             "omitSecondaryPolicy",
             "profileUpdate",
+            "profileSourceRevision",
             "fullName",
             "dateOfBirth",
             "emailAddress",
@@ -136,6 +137,8 @@ public sealed class IntakeProfilePrefill
     // Called only when the server creates an intake. Record absence as well as presence.
     public void InitializeSource(IntakeResponseDraft draft)
     {
+        // Older drafts remain editable until explicit reconciliation changes their sources.
+        draft.ProfileSourceRevision = null;
         draft.PrefilledDemographics = JsonSerializer.Deserialize<IntakeProfilePrefill>(JsonSerializer.Serialize(this));
         draft.PrefilledPrimaryPolicyId = PrimaryPolicyId;
         draft.PrefilledSecondaryPolicyId = SecondaryPolicyId;

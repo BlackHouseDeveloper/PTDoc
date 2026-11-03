@@ -7,6 +7,7 @@ namespace PTDoc.UI.Components.Intake.Models;
 public sealed class IntakeWizardState
 {
     public IntakeProfilePrefill? ProfilePrefill { get; set; }
+    public Guid? ProfileSourceRevision { get; set; }
     public IntakeProfilePrefill? PrefilledDemographics { get; set; }
     public bool OmitPrimaryPolicy { get; set; }
     public bool OmitSecondaryPolicy { get; set; }

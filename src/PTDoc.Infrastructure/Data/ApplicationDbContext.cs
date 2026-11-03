@@ -239,6 +239,7 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<IntakeForm>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.LastModifiedUtc).IsConcurrencyToken();
             entity.HasIndex(e => e.PatientId);
             entity.HasIndex(e => e.AccessToken).IsUnique();
             entity.HasIndex(e => e.LastModifiedUtc);
