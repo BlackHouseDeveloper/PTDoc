@@ -14,7 +14,7 @@
 
 .body-view-toggle__tab {
     background: transparent;
-    border: none;
+    border: 1px solid var(--border);
     border-radius: var(--radius-md);
     color: var(--muted-foreground);
     cursor: pointer;
@@ -28,7 +28,10 @@
 }
 
 .body-view-toggle__tab.is-active {
-    color: var(--primary);
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border-color: var(--primary);
+    font-weight: var(--font-weight-semibold);
 }
 
 .body-view-toggle__tab:focus-visible,
@@ -81,4 +84,10 @@
 
 .body-view-toggle__reset:hover {
     background: color-mix(in srgb, var(--tertiary) 75%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .body-view-toggle__indicator-dot {
+        transition: none;
+    }
 }

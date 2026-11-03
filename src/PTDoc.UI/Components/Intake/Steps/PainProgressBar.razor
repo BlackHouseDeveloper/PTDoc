@@ -1,13 +1,13 @@
 @using PTDoc.UI.Components.Intake.Models
 
 <div class="pain-progress" data-testid="pain-progress">
-    <div class="pain-progress__labels">
+    <div class="pain-progress__labels" role="region" aria-label="Intake progress; scroll horizontally to see all steps" tabindex="0">
         @for (var index = 0; index < _steps.Length; index++)
         {
             var step = _steps[index];
             var isActive = step == CurrentStep;
             var isComplete = (int)step < (int)CurrentStep;
-            <span class="@(isActive ? "is-active" : isComplete ? "is-complete" : string.Empty)">@_labels[index]</span>
+            <span aria-current="@(isActive ? "step" : null)" class="@(isActive ? "is-active" : isComplete ? "is-complete" : string.Empty)">@_labels[index]</span>
         }
     </div>
     <div class="pain-progress__track" aria-hidden="true">
