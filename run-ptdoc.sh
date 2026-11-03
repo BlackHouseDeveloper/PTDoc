@@ -7,6 +7,7 @@ set -euo pipefail
 #
 # Quick launcher for PTDoc applications across different platforms.
 # Automatically starts the API server when needed.
+# After native launch, keep this terminal open; Ctrl+C stops the API it started.
 #
 # Usage:
 #   ./run-ptdoc.sh
@@ -32,6 +33,7 @@ API_LOG_FILE="/tmp/ptdoc-api.log"
 DEV_SECRETS_SCRIPT="$ROOT_DIR/setup-dev-secrets.sh"
 DEV_SECRETS_LOG_FILE="/tmp/ptdoc-dev-secrets.log"
 SECRETS_BOOTSTRAPPED="false"
+ANDROID_DEVICE=""
 
 # Colors
 RESET=""; BOLD=""; RED=""; GREEN=""; YELLOW=""; BLUE=""
@@ -46,15 +48,67 @@ fi
 
 cleanup() {
   if [[ -n "$API_PID" ]]; then
+    local pid="$API_PID"
+    API_PID=""
     echo ""
-    echo "${YELLOW}Stopping API server (PID: $API_PID)...${RESET}"
-    kill "$API_PID" 2>/dev/null || true
-    wait "$API_PID" 2>/dev/null || true
+    echo "${YELLOW}Stopping API server (PID: $pid)...${RESET}"
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
     echo "${GREEN}✓ API server stopped${RESET}"
   fi
 }
 
-trap cleanup EXIT INT
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
+select_android_device() {
+  local adb_path devices serial state rest
+  adb_path="$(command -v adb || true)"
+  if [[ -z "$adb_path" ]]; then
+    for adb_path in "${ANDROID_HOME:-}/platform-tools/adb" \
+      "${ANDROID_SDK_ROOT:-}/platform-tools/adb" "$HOME/Library/Android/sdk/platform-tools/adb"; do
+      [[ -x "$adb_path" ]] && break
+    done
+  fi
+  if [[ ! -x "$adb_path" ]]; then
+    echo "${RED}❌ adb not found. Add Android SDK platform-tools to PATH or set ANDROID_HOME.${RESET}" >&2
+    return 1
+  fi
+  if ! devices="$("$adb_path" devices)"; then
+    echo "${RED}❌ Unable to list Android devices.${RESET}" >&2
+    return 1
+  fi
+  local ready_count=0
+  while read -r serial state rest; do
+    if [[ "$state" == "device" ]]; then
+      ANDROID_DEVICE="$serial"
+      ready_count=$((ready_count + 1))
+    fi
+  done <<< "$devices"
+  if [[ "$ready_count" -ne 1 ]]; then
+    echo "${RED}❌ Expected one ready Android device; found $ready_count.${RESET}" >&2
+    echo "$devices" >&2
+    echo "Start one emulator in Android Studio's Device Manager. For a physical device, authorize USB debugging. Disconnect additional devices and retry." >&2
+    return 1
+  fi
+  echo "${BLUE}Using Android device: $ANDROID_DEVICE${RESET}"
+}
+
+keep_native_api_running() {
+  # Native Run targets can return after deployment while the app keeps running.
+  # A reused API (or SKIP_API) is not owned by this launcher and needs no wait/cleanup.
+  [[ -n "$API_PID" ]] || return 0
+  echo ""
+  echo "${GREEN}Native launch command completed. API remains available at $API_URL.${RESET}"
+  echo "Keep this terminal open while testing. Press Ctrl+C to stop the launcher and its API."
+  local status=0
+  wait "$API_PID" || status=$?
+  API_PID=""
+  echo "${RED}❌ API exited during the native session (status: $status). Check $API_LOG_FILE.${RESET}" >&2
+  return 1
+}
 
 # Check .NET SDK
 if ! command -v dotnet >/dev/null 2>&1; then
@@ -216,6 +270,7 @@ start_api() {
     echo " ${YELLOW}Timed out${RESET}"
     kill "$API_PID" 2>/dev/null || true
     wait "$API_PID" 2>/dev/null || true
+    API_PID=""
 
     if [[ "$attempt" -eq 2 ]]; then
       echo "${RED}❌ API failed to become healthy. Check $API_LOG_FILE for details${RESET}"
@@ -265,11 +320,13 @@ case "$choice" in
   2)
     echo "${BLUE}Building and launching Android...${RESET}"
     echo ""
+    select_android_device
     start_api
     echo ""
     echo "${BLUE}Note: Android emulator uses http://10.0.2.2:5170 to reach host API${RESET}"
     echo ""
-    dotnet build -t:Run -f net8.0-android "$MAUI_CSPROJ"
+    dotnet build -t:Run -f net8.0-android "-p:AdbTarget=-s $ANDROID_DEVICE" "$MAUI_CSPROJ"
+    keep_native_api_running
     ;;
   3)
     echo "${BLUE}Building and launching iOS simulator...${RESET}"
@@ -277,6 +334,7 @@ case "$choice" in
     start_api
     echo ""
     dotnet build -t:Run -f net8.0-ios "$MAUI_CSPROJ"
+    keep_native_api_running
     ;;
   4)
     echo "${BLUE}Building and launching Mac Catalyst...${RESET}"
@@ -284,6 +342,7 @@ case "$choice" in
     start_api
     echo ""
     dotnet build -t:Run -f net8.0-maccatalyst "$MAUI_CSPROJ"
+    keep_native_api_running
     ;;
   *)
     echo "${RED}Invalid choice. Please enter 1-4${RESET}"
