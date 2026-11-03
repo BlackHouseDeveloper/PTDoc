@@ -1,13 +1,53 @@
 using System.Reflection;
 using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore;
+using PTDoc.Infrastructure.Data;
 
 namespace PTDoc.Tests.Tenancy;
 
 [Trait("Category", "Tenancy")]
 public sealed class OrganizationMigrationTests
 {
+    [Theory]
+    [InlineData("SqlServer")]
+    [InlineData("Postgres")]
+    [InlineData("Sqlite")]
+    public void ProviderMigrationAndSnapshot_BuildWithoutDuplicateIntegrationEntities(string provider)
+    {
+        var assembly = Assembly.Load($"PTDoc.Infrastructure.Migrations.{provider}");
+        var migration = (Migration)Activator.CreateInstance(assembly
+            .GetType("PTDoc.Infrastructure.Data.Migrations.AddOrganizationMemberships", true)!)!;
+        var snapshot = (ModelSnapshot)Activator.CreateInstance(assembly
+            .GetType("PTDoc.Infrastructure.Data.Migrations.ApplicationDbContextModelSnapshot", true)!, nonPublic: true)!;
+
+        foreach (var model in new[] { migration.TargetModel, snapshot.Model })
+        {
+            var connection = Assert.Single(model.GetEntityTypes(), entity => entity.Name == "PTDoc.Core.Models.IntegrationConnection");
+            Assert.Equal("IntegrationConnections", connection.GetTableName());
+            Assert.NotNull(connection.FindProperty("ClinicId"));
+            Assert.Equal(1024, model.FindEntityType("PTDoc.Core.Models.PatientDocument")!.FindProperty("StorageKey")!.GetMaxLength());
+            Assert.NotNull(model.FindEntityType("PTDoc.Core.Models.ProviderDirectoryEntry"));
+            Assert.NotNull(model.FindEntityType("PTDoc.Core.Models.Organization"));
+        }
+    }
+
+    [Fact]
+    public void SqlServerMigration_CompilesBackfillInASeparateCommandFromNewColumns()
+    {
+        var migration = (Migration)Activator.CreateInstance(Assembly.Load("PTDoc.Infrastructure.Migrations.SqlServer")
+            .GetType("PTDoc.Infrastructure.Data.Migrations.AddOrganizationMemberships", true)!)!;
+        using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlServer("Server=localhost;Database=unused;Integrated Security=True;TrustServerCertificate=True").Options);
+        var commands = db.GetService<IMigrationsSqlGenerator>().Generate(migration.UpOperations, migration.TargetModel);
+        var ddl = Assert.Single(commands, command => command.CommandText.Contains("ALTER TABLE [Clinics] ADD [OrganizationId]"));
+        var backfill = Assert.Single(commands, command => command.CommandText.Contains("UPDATE [Clinics] SET [OrganizationId]"));
+        Assert.NotSame(ddl, backfill);
+        Assert.True(commands.ToList().IndexOf(ddl) < commands.ToList().IndexOf(backfill));
+    }
+
     [Fact]
     public async Task SqliteAdministrationOnlySession_PreventsRollbackIntoClinicalSession()
     {

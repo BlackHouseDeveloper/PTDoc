@@ -1,10 +1,17 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Net;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
+using PTDoc.Application.LocalData.Entities;
+using PTDoc.Application.LocalData;
+using PTDoc.Infrastructure.LocalData;
+using PTDoc.Infrastructure.Services;
 using PTDoc.Maui.Auth;
 
 namespace PTDoc.Tests.Auth;
@@ -12,6 +19,81 @@ namespace PTDoc.Tests.Auth;
 [Trait("Category", "CoreCi")]
 public sealed class MauiUserServiceTests
 {
+    [Theory]
+    [InlineData(true, 0)]
+    [InlineData(true, 1)]
+    [InlineData(true, 2)]
+    [InlineData(false, 0)]
+    [InlineData(false, 1)]
+    [InlineData(false, 2)]
+    public async Task AuthenticationFailure_EndsUiSessionAndCacheAccessAfterLease_WithoutDeletingDrafts(bool syncOwnsLease, int failureMode)
+    {
+        var scope = new LocalDataScope();
+        var tokens = CreateTokens();
+        TokenResponse? stored = null;
+        var tokenStore = CreateTokenStore();
+        tokenStore.Setup(store => store.GetAsync(It.IsAny<CancellationToken>())).ReturnsAsync(() => stored);
+        tokenStore.Setup(store => store.SaveAsync(It.IsAny<TokenResponse>(), It.IsAny<CancellationToken>()))
+            .Callback<TokenResponse, CancellationToken>((value, _) => stored = value).Returns(Task.CompletedTask);
+        tokenStore.Setup(store => store.ClearAsync(It.IsAny<CancellationToken>()))
+            .Callback(() => stored = null).Returns(Task.CompletedTask);
+        var tokenService = new Mock<ITokenService>();
+        tokenService.Setup(service => service.LoginAsync(It.IsAny<LoginRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TokenLoginResult(Tokens: tokens));
+        tokenService.Setup(service => service.RefreshAsync(It.IsAny<RefreshTokenRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(failureMode == 2 ? tokens : null);
+        using var provider = new MauiAuthenticationStateProvider(tokenStore.Object, tokenService.Object,
+            NullLogger<MauiAuthenticationStateProvider>.Instance, scope);
+        using var user = new MauiUserService(tokenService.Object, tokenStore.Object, Mock.Of<IHttpClientFactory>(),
+            provider, NullLogger<MauiUserService>.Instance);
+        var authenticationChanges = new List<Task<AuthenticationState>>();
+        provider.AuthenticationStateChanged += state => authenticationChanges.Add(state);
+        Assert.True(await user.LoginAsync("clinician", "12345678"));
+        var originalKey = scope.Key;
+        Assert.NotNull(originalKey);
+        await using var db = new LocalDbContext(new DbContextOptionsBuilder<LocalDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options, scope);
+        var repository = new LocalRepository<LocalClinicalNoteDraft>(db);
+        var draft = await repository.UpsertAsync(new LocalClinicalNoteDraft { ContentJson = "retained pending work" });
+        if (failureMode == 0) stored = tokens with { ExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1) };
+        using var lease = syncOwnsLease ? await scope.EnterAsync() : null;
+        using var handler = new AuthenticatedHttpMessageHandler(tokenStore.Object, tokenService.Object, user, scope)
+        { InnerHandler = new UnauthorizedHandler() };
+        using var client = new HttpClient(handler);
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://ptdoc.test/api/v1/patients");
+        request.Options.Set(AuthenticatedHttpMessageHandler.LocalScopeLeaseHeld, syncOwnsLease);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        using var response = await client.SendAsync(request, timeout.Token);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Null(stored);
+        if (syncOwnsLease)
+        {
+            Assert.DoesNotContain(await Task.WhenAll(authenticationChanges), state => state.User.Identity?.IsAuthenticated != true);
+            // In-flight sync can still persist retry state before ending its lease.
+            draft.SyncState = PTDoc.Core.Models.SyncState.Pending;
+            await db.SaveChangesAsync(timeout.Token);
+            lease!.Dispose();
+        }
+        Assert.Single((await Task.WhenAll(authenticationChanges)).Where(state => state.User.Identity?.IsAuthenticated != true));
+        Assert.False(user.IsAuthenticated);
+        Assert.Null(user.CurrentUser);
+        Assert.Null(scope.Key);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => repository.GetAllAsync(timeout.Token));
+        Assert.Equal("retained pending work", (await db.ClinicalNoteDrafts.IgnoreQueryFilters().SingleAsync(timeout.Token)).ContentJson);
+        Assert.True(await user.LoginAsync("clinician", "12345678", cancellationToken: timeout.Token));
+        Assert.Equal(originalKey, scope.Key);
+        Assert.True(user.IsAuthenticated);
+        Assert.Equal(draft.LocalId, Assert.Single(await repository.GetAllAsync(timeout.Token)).LocalId);
+    }
+
+    private sealed class UnauthorizedHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized));
+    }
+
     [Theory]
     [InlineData("?returnUrl=%2Forganizations", null)]
     [InlineData("?clinicId=aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")]
@@ -245,6 +327,7 @@ public sealed class MauiUserServiceTests
             claims:
             [
                 new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()),
+                new Claim("clinic_id", Guid.NewGuid().ToString()),
                 new Claim(ClaimTypes.Name, "Clinician"),
                 new Claim(ClaimTypes.Email, "clinician@example.com")
             ],

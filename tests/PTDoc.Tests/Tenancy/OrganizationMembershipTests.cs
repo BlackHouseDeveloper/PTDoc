@@ -20,6 +20,79 @@ namespace PTDoc.Tests.Tenancy;
 public sealed class OrganizationMembershipTests
 {
     [Theory]
+    [InlineData("Patient")]
+    [InlineData("patient")]
+    public async Task PatientAccounts_AreExcludedFromStaffAdministrationAndInvitations(string role)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var patient = new User { Username = "portal", Email = "portal@example.test", Role = role, ClinicId = fixture.SecondClinic.Id };
+        fixture.Db.Users.Add(patient);
+        await fixture.Db.SaveChangesAsync();
+        Assert.DoesNotContain(await fixture.Service.GetStaffAsync(fixture.OrganizationId), item => item.UserId == patient.Id);
+        var membership = await fixture.Db.OrganizationMemberships.SingleAsync(item => item.UserId == patient.Id);
+        var grantCount = await fixture.Db.ClinicMemberships.CountAsync();
+        var auditCount = await fixture.Db.AuditLogs.CountAsync();
+
+        await Assert.ThrowsAsync<OrganizationAccessException>(() => fixture.Service.GetStaffClinicsAsync(fixture.OrganizationId, patient.Id));
+        await Assert.ThrowsAsync<OrganizationAccessException>(() => fixture.Service.SetClinicMembershipAsync(
+            fixture.OrganizationId, fixture.FirstClinic.Id, patient.Id, new(Roles.FrontDesk, true, 0)));
+        await Assert.ThrowsAsync<OrganizationAccessException>(() => fixture.Service.SetOrganizationMembershipAsync(
+            fixture.OrganizationId, patient.Id, new(OrganizationRole.Owner, true, membership.Version)));
+        await Assert.ThrowsAsync<OrganizationAccessException>(() => fixture.Service.InviteAsync(fixture.OrganizationId, patient.Email));
+        await Assert.ThrowsAsync<OrganizationAccessException>(() => fixture.For(patient.Id).GetOrganizationsAsync());
+
+        Assert.Equal(grantCount, await fixture.Db.ClinicMemberships.CountAsync());
+        Assert.Equal(auditCount, await fixture.Db.AuditLogs.CountAsync());
+        Assert.Empty(await fixture.Db.OrganizationInvitations.ToListAsync());
+        Assert.Equal(OrganizationRole.Member, membership.Role);
+        // Keep the portal's existing home grant; removing it would break patient authentication.
+        Assert.Equal(role, await ClinicMembershipAccess.ResolveRoleAsync(fixture.Db, patient, fixture.SecondClinic.Id));
+    }
+
+    [Fact]
+    public async Task Invitation_CannotBeAcceptedAfterAccountBecomesPatient()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var outsider = new User { Username = "invite-target", Email = "invite-target@example.test", Role = Roles.PT, ClinicId = fixture.ForeignClinic.Id };
+        fixture.Db.Users.Add(outsider);
+        await fixture.Db.SaveChangesAsync();
+        var invitation = await fixture.Service.InviteAsync(fixture.OrganizationId, outsider.Email);
+        outsider.Role = Roles.Patient;
+        await fixture.Db.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<OrganizationAccessException>(() => fixture.For(outsider.Id).AcceptInvitationAsync(invitation.Token));
+
+        Assert.Null((await fixture.Db.OrganizationInvitations.SingleAsync()).AcceptedAtUtc);
+        Assert.False(await fixture.Db.OrganizationMemberships.AnyAsync(item => item.OrganizationId == fixture.OrganizationId && item.UserId == outsider.Id));
+    }
+
+    [Fact]
+    public async Task RegistrationAdministrator_CannotEditOrReactivateAnOrganizationOwnerWithOrdinaryHomeRole()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        (await fixture.Db.OrganizationMemberships.SingleAsync(item => item.UserId == fixture.Staff.Id)).Role = OrganizationRole.Administrator;
+        fixture.Owner.Role = Roles.PT;
+        fixture.Owner.IsActive = false;
+        await fixture.Db.SaveChangesAsync();
+        var identity = new Mock<IIdentityContextAccessor>();
+        identity.Setup(item => item.TryGetCurrentUserId()).Returns(fixture.Staff.Id);
+        var service = new UserRegistrationService(fixture.Db, NullLogger<UserRegistrationService>.Instance, identity.Object);
+
+        Assert.Null(await service.GetPendingRegistrationAsync(fixture.Owner.Id));
+        var pending = await service.GetPendingRegistrationsAsync(new(null, "Pending", null, null, null, null, null));
+        Assert.DoesNotContain(pending.Items, item => item.Id == fixture.Owner.Id);
+        Assert.Equal(RegistrationStatus.NotFound, (await service.UpdatePendingRegistrationAsync(fixture.Owner.Id,
+            new("Changed Owner", "changed@example.test", new DateTime(1990, 1, 1), Roles.PT, "PT-123", "CA"), fixture.Staff.Id)).Status);
+        Assert.Equal(RegistrationStatus.NotFound, (await service.ApproveRegistrationAsync(fixture.Owner.Id, fixture.Staff.Id)).Status);
+        Assert.False(fixture.Owner.IsActive);
+        Assert.Equal("owner@example.test", fixture.Owner.Email);
+        Assert.Empty(await fixture.Db.AuditLogs.ToListAsync());
+        (await fixture.Db.OrganizationMemberships.SingleAsync(item => item.UserId == fixture.Staff.Id)).Role = OrganizationRole.Owner;
+        await fixture.Db.SaveChangesAsync();
+        Assert.NotNull(await service.GetPendingRegistrationAsync(fixture.Owner.Id));
+    }
+
+    [Theory]
     [InlineData("owner")]
     [InlineData("ADMIN")]
     public async Task RegistrationAdministrator_CannotReviewPrivilegedRoleWithDifferentCasing(string role)
@@ -103,13 +176,16 @@ public sealed class OrganizationMembershipTests
         Assert.Null(await service.GetPendingRegistrationAsync(fixture.Staff.Id));
     }
 
-    [Fact]
-    public async Task InactiveOwnerAccount_DoesNotAllowRemovingLastUsableOwner()
+    [Theory]
+    [InlineData(false, Roles.PT)]
+    [InlineData(true, Roles.Patient)]
+    public async Task UnusableOwnerAccount_DoesNotAllowRemovingLastUsableOwner(bool active, string role)
     {
         await using var fixture = await Fixture.CreateAsync();
         var member = await fixture.Db.OrganizationMemberships.SingleAsync(item => item.UserId == fixture.Staff.Id);
         member.Role = OrganizationRole.Owner;
-        fixture.Staff.IsActive = false;
+        fixture.Staff.IsActive = active;
+        fixture.Staff.Role = role;
         await fixture.Db.SaveChangesAsync();
         await Assert.ThrowsAsync<OrganizationConflictException>(() => fixture.Service.SetOrganizationMembershipAsync(
             fixture.OrganizationId, fixture.Owner.Id, new(OrganizationRole.Member, true, 1)));
@@ -150,8 +226,40 @@ public sealed class OrganizationMembershipTests
         Assert.Equal(Roles.PT, await ClinicMembershipAccess.ResolveRoleAsync(fixture.Db, fixture.Staff, fixture.FirstClinic.Id));
     }
 
-    [Fact]
-    public async Task OrganizationAdministrator_CannotGrantPrivilegedClinicRoles()
+    [Theory]
+    [InlineData(Roles.PT)]
+    [InlineData(Roles.PTA)]
+    [InlineData(Roles.FrontDesk)]
+    [InlineData(Roles.Billing)]
+    [InlineData(Roles.Aide)]
+    [InlineData(Roles.PracticeManager)]
+    public async Task OrganizationAdministrator_CanExplicitlyGrantOwnOrdinaryClinicAccess(string role)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var member = await fixture.Db.OrganizationMemberships.SingleAsync(item => item.UserId == fixture.Staff.Id);
+        member.Role = OrganizationRole.Administrator;
+        await fixture.Db.SaveChangesAsync();
+        var service = fixture.For(fixture.Staff.Id);
+        Assert.Null(await ClinicMembershipAccess.ResolveRoleAsync(fixture.Db, fixture.Staff, fixture.SecondClinic.Id));
+
+        await service.SetClinicMembershipAsync(fixture.OrganizationId, fixture.SecondClinic.Id, fixture.Staff.Id, new(role, true, 0));
+
+        Assert.Equal(role, await ClinicMembershipAccess.ResolveRoleAsync(fixture.Db, fixture.Staff, fixture.SecondClinic.Id));
+        Assert.Equal(fixture.FirstClinic.Id, fixture.Staff.ClinicId);
+        Assert.Equal(Roles.PT, fixture.Staff.Role);
+        Assert.Equal(OrganizationRole.Administrator, member.Role);
+        var audit = Assert.Single(await fixture.Db.AuditLogs.ToListAsync());
+        Assert.Equal("ClinicMembershipChanged", audit.EventType);
+        Assert.Equal(fixture.Staff.Id, audit.UserId);
+        await Assert.ThrowsAsync<OrganizationAccessException>(() => service.SetClinicMembershipAsync(
+            fixture.OrganizationId, fixture.ForeignClinic.Id, fixture.Staff.Id, new(role, true, 0)));
+        Assert.Null(await ClinicMembershipAccess.ResolveRoleAsync(fixture.Db, fixture.Staff, fixture.ForeignClinic.Id));
+    }
+
+    [Theory]
+    [InlineData(Roles.Admin)]
+    [InlineData(Roles.Owner)]
+    public async Task OrganizationAdministrator_CannotGrantPrivilegedClinicRoles(string role)
     {
         await using var fixture = await Fixture.CreateAsync();
         var member = await fixture.Db.OrganizationMemberships.SingleAsync(item => item.UserId == fixture.Staff.Id);
@@ -159,7 +267,7 @@ public sealed class OrganizationMembershipTests
         await fixture.Db.SaveChangesAsync();
         var service = fixture.For(fixture.Staff.Id);
         await Assert.ThrowsAsync<OrganizationAccessException>(() => service.SetClinicMembershipAsync(
-            fixture.OrganizationId, fixture.SecondClinic.Id, fixture.Staff.Id, new(Roles.Admin, true, 0)));
+            fixture.OrganizationId, fixture.SecondClinic.Id, fixture.Staff.Id, new(role, true, 0)));
         await Assert.ThrowsAsync<OrganizationAccessException>(() => service.SetOrganizationMembershipAsync(
             fixture.OrganizationId, fixture.Staff.Id, new(OrganizationRole.Owner, true, member.Version)));
     }

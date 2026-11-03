@@ -8,7 +8,7 @@ using PTDoc.Application.LocalData;
 using System.Security.Claims;
 using PTDoc.Infrastructure.Services;
 
-public sealed class MauiAuthenticationStateProvider : AuthenticationStateProvider
+public sealed class MauiAuthenticationStateProvider : AuthenticationStateProvider, IDisposable
 {
     private static readonly AuthenticationState AnonymousState =
         new AuthenticationState(new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity()));
@@ -31,6 +31,14 @@ public sealed class MauiAuthenticationStateProvider : AuthenticationStateProvide
         this.tokenService = tokenService;
         this.logger = logger;
         this.localScope = localScope;
+        if (localScope is not null) localScope.AuthenticationInvalidated += PublishAnonymousState;
+    }
+
+    private void PublishAnonymousState() => NotifyAuthenticationStateChanged(Task.FromResult(AnonymousState));
+
+    public void Dispose()
+    {
+        if (localScope is not null) localScope.AuthenticationInvalidated -= PublishAnonymousState;
     }
 
     public override async Task<AuthenticationState> GetAuthenticationStateAsync()

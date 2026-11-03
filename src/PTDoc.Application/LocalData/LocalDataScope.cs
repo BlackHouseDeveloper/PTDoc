@@ -4,12 +4,46 @@ namespace PTDoc.Application.LocalData;
 public sealed class LocalDataScope
 {
     private readonly SemaphoreSlim gate = new(1, 1);
-    public string? Key { get; private set; }
+    private readonly object stateLock = new();
+    private string? key;
+    private bool invalidationPending;
+    public string? Key { get { lock (stateLock) return key; } }
+
+    // Subscribers publish state synchronously; they must not block on a new lease.
+    public event Action? AuthenticationInvalidated;
+
+    /// <summary>Called only while holding a scope/authentication lease.</summary>
+    public void InvalidateAuthentication()
+    {
+        lock (stateLock)
+        {
+            invalidationPending = true;
+        }
+    }
+
+    private void SetKey(string? value)
+    {
+        lock (stateLock) key = value;
+    }
+
+    private void Release()
+    {
+        // Serialize publication with a new sign-in so a delayed anonymous event
+        // cannot overwrite the new session's state. No token/network work here.
+        lock (stateLock)
+        {
+            var notify = invalidationPending;
+            invalidationPending = false;
+            if (notify) key = null;
+            gate.Release();
+            if (notify) AuthenticationInvalidated?.Invoke();
+        }
+    }
 
     public async Task<IDisposable> EnterAuthenticationAsync(CancellationToken cancellationToken = default)
     {
         await gate.WaitAsync(cancellationToken);
-        return new Lease(gate);
+        return new Lease(this);
     }
 
     public async Task<T> RestoreAsync<T>(Func<Task<(T State, string? Key)>> restore)
@@ -18,10 +52,10 @@ public sealed class LocalDataScope
         try
         {
             var result = await restore();
-            Key = result.Key;
+            SetKey(result.Key);
             return result.State;
         }
-        finally { gate.Release(); }
+        finally { Release(); }
     }
 
     public async Task<IDisposable> EnterAsync(CancellationToken cancellationToken = default)
@@ -32,7 +66,7 @@ public sealed class LocalDataScope
             gate.Release();
             throw new InvalidOperationException("Sign in to a clinic before using offline data.");
         }
-        return new Lease(gate);
+        return new Lease(this);
     }
 
     public async Task ChangeAsync(string? key, Func<Task>? replaceTokens = null)
@@ -41,14 +75,14 @@ public sealed class LocalDataScope
         try
         {
             if (replaceTokens is not null) await replaceTokens();
-            Key = key;
+            SetKey(key);
         }
-        finally { gate.Release(); }
+        finally { Release(); }
     }
 
-    private sealed class Lease(SemaphoreSlim semaphore) : IDisposable
+    private sealed class Lease(LocalDataScope scope) : IDisposable
     {
         private int disposed;
-        public void Dispose() { if (Interlocked.Exchange(ref disposed, 1) == 0) semaphore.Release(); }
+        public void Dispose() { if (Interlocked.Exchange(ref disposed, 1) == 0) scope.Release(); }
     }
 }

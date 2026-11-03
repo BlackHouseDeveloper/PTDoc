@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 160 database-provider CI model construction
+
+- Diagnose both SQL Server and PostgreSQL failures in Database Provider CI run `41638885481`: EF failed while constructing `AddOrganizationMemberships.TargetModel`, before executing the migration SQL, because the integration helper attempted to register CLR entities over existing generated dictionary entities. Missing test reports were secondary to the failed migration steps.
+- Remove the redundant integration helper call from both providers' organization migration designers and current model snapshots. Preserve their generated integration mappings, patient-document storage-key limits and required enterprise-data helper calls. Retain the separate SQL Server backfill-command correction from the review pass.
+- Add regression coverage that constructs the migration target model and current snapshot for all three providers, checking retained integration, document, enterprise and organization metadata. Include the target model when generating SQL Server migration commands.
+- The user confirmed all required builds/tests passed before this CI correction. The changed migration metadata and new regression now require focused verification; no builds/tests were run by the agent. Commit, push and review-thread updates are pending this verification. Existing local review changes remain intact.
+
+### Fixed - PR 160 review findings
+
+- Separate SQL Server organization schema additions from their backfill command, with regression coverage of the generated command boundary. Provider execution remains required.
+- Exclude patient portal accounts from organization staff listings, grants, role changes and invitations while preserving their existing patient authentication memberships. Prevent organization administrators from editing or reactivating owners whose home-clinic role is ordinary.
+- Restore signed-out native password-reset requests. On native authentication failure, clear credentials and invalidate the clinical cache scope and UI session when the outer lease ends, preserving drafts and allowing in-flight sync outcome writes. Add regressions for expired tokens, failed refresh/retry, signed-out reset routes and subsequent sign-in.
+- Inventory all ten organization routes with their default authentication and service authorization requirements, and compare the inventory with mapped endpoint metadata. Document review classifications and prepare a local PR-description replacement; no GitHub metadata or review state was changed.
+- Record the user's decision permitting organization administrators to explicitly grant themselves ordinary clinic roles. Classify the proposed self-grant restriction as invalid under that approved policy; preserve existing server behavior and add coverage for all six ordinary roles, audited self-grants, foreign-clinic denial and both privileged-role denials. Proceed with the eight accessible findings as requested, retaining the limitation on inaccessible session-only feedback.
+- Replace blocking authentication-state task access in the native-session regression with awaited notifications, preserving assertions before and after lease disposal and addressing the reported xUnit1031 warning.
+- The user confirmed all required builds/tests passed for these review corrections, including the subsequent xUnit1031 correction. This confirmation predates the additional database-provider CI correction above. No builds/tests were run by the agent under repository rules. `git diff --check` passes. Suppressed/session-only findings are not exposed by the available GitHub feedback and remain unverified if any exist.
+
 ### Fixed - PR 160 explicit organization authority in registration fixtures
 
 - Record the user's follow-up run: 2,643 passed, 3 failed, 0 skipped, 2,646 total in 3 minutes 4 seconds. Only the positive registration integration cases remained failing.

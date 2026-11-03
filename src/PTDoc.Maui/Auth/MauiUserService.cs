@@ -10,7 +10,7 @@ using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
 using PTDoc.Infrastructure.Services;
 
-public sealed class MauiUserService : IUserService, IAuthenticationStepUserService
+public sealed class MauiUserService : IUserService, IAuthenticationStepUserService, IDisposable
 {
     private readonly ITokenService tokenService;
     private readonly ITokenStore tokenStore;
@@ -38,7 +38,19 @@ public sealed class MauiUserService : IUserService, IAuthenticationStepUserServi
         this.authStateProvider = (MauiAuthenticationStateProvider)authStateProvider;
         this.logger = logger;
         this.navigation = navigation;
+        this.authStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
     }
+
+    private void OnAuthenticationStateChanged(Task<AuthenticationState> state)
+    {
+        if (state.IsCompletedSuccessfully && state.Result.User.Identity?.IsAuthenticated != true)
+        {
+            currentUser = null;
+            CancelAuthenticationStep();
+        }
+    }
+
+    public void Dispose() => authStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
 
     public bool IsAuthenticated => currentUser?.Identity?.IsAuthenticated ?? false;
 

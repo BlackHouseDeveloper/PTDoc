@@ -56,7 +56,9 @@ public sealed class UserRegistrationService : IUserRegistrationService
             clinic.Id == user.ClinicId && clinic.IsActive && dbContext.OrganizationMemberships.Any(member =>
                 member.OrganizationId == clinic.OrganizationId && member.UserId == actorId && member.IsActive
                 && (member.Role == OrganizationRole.Owner || (member.Role == OrganizationRole.Administrator
-                    && user.Role.ToUpper() != "ADMIN" && user.Role.ToUpper() != "OWNER"))
+                    && user.Role.ToUpper() != "ADMIN" && user.Role.ToUpper() != "OWNER"
+                    && !dbContext.OrganizationMemberships.Any(target => target.OrganizationId == clinic.OrganizationId
+                        && target.UserId == user.Id && target.Role == OrganizationRole.Owner)))
                 && dbContext.Organizations.Any(organization => organization.Id == member.OrganizationId && organization.IsActive))));
     }
 

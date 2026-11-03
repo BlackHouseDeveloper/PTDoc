@@ -49,10 +49,6 @@ public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", tokens.AccessToken);
         }
-        else if (localScope is not null)
-        {
-            return CreateUnauthorizedResponse(request);
-        }
 
         var response = await base.SendAsync(request, cancellationToken);
 
@@ -90,12 +86,18 @@ public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
         return retryResponse;
     }
 
-    private Task HandleAuthenticationFailureAsync(CancellationToken cancellationToken)
+    private async Task HandleAuthenticationFailureAsync(CancellationToken cancellationToken)
     {
-        // Native sync owns the cache lease. Calling the UI logout callback here
-        // would reacquire that lease and deadlock. Clear credentials while holding
-        // it; the next authentication-state read becomes anonymous. Keep drafts.
-        return localScope is null ? userService.LogoutAsync(cancellationToken) : tokenStore.ClearAsync(cancellationToken);
+        if (localScope is null)
+        {
+            await userService.LogoutAsync(cancellationToken);
+            return;
+        }
+
+        // Invalidate under the existing lease without reentering logout. The lease
+        // publishes anonymous UI state when it is released; encrypted drafts remain.
+        localScope.InvalidateAuthentication();
+        await tokenStore.ClearAsync(CancellationToken.None);
     }
 
     private async Task<TokenResponse?> EnsureFreshTokenAsync(TokenResponse? tokens, CancellationToken cancellationToken)

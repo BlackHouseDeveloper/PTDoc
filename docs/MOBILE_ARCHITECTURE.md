@@ -224,9 +224,12 @@ The scope lease covers repository and complete sync request/write operations.
 Authentication restore, token refresh, sign-in replacement and explicit logout
 serialize with that lease. Sync marks its HTTP requests as already holding the
 lease so the authenticated handler does not acquire it twice. On a native HTTP
-authentication failure, the handler clears credentials while holding the lease;
-the next authentication-state read becomes anonymous. It does not call back into
-UI logout while sync holds the lease. Cached drafts remain intact.
+authentication failure, the handler clears credentials while holding the lease.
+When the outer request/sync lease ends, the scope becomes unavailable and publishes
+anonymous state to the authentication provider and user service. In-flight sync can
+finish recording its outcome before that transition. It does not call back into UI
+logout while sync holds the lease. Cached drafts remain intact, and signed-out
+password-reset requests can still reach their anonymous server endpoints.
 
 ### Upgrading an existing device
 

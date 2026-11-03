@@ -904,6 +904,19 @@ Owner/Admin grants or organization owners. Registration review is limited to cli
 in organizations the actor administers; account-wide credential resets retain their
 home-clinic administration boundary.
 
+Organization administrators may explicitly grant themselves ordinary clinic roles
+(PT, PTA, FrontDesk, Billing, Aide or PracticeManager) within their organization.
+The user confirmed this policy during PR 160 review. These grants use the same
+membership, version and audit checks as grants to other staff. Owner/Admin clinic
+grants and organization-role changes still require an organization owner; no
+clinical access is automatically conferred by an organization role.
+
+Patient portal accounts are excluded from organization staff listings, staff grants,
+organization-role changes and invitation issuance/acceptance. Their existing home
+memberships remain for patient authentication; those rows do not make them staff.
+Registration administrators cannot edit or reactivate an organization owner merely
+because that account has an ordinary home-clinic role.
+
 Invitations contain a random, single-use, 72-hour code; only its SHA-256 hash is
 persisted. The accepting account must be active and have the matching email. The
 inviter must still be an active owner/administrator. Acceptance creates an ordinary

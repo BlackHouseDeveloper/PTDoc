@@ -4214,7 +4214,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Sessions");
                 });
 #pragma warning disable 612, 618
-            ApplicationDbContext.ConfigureIntegrationSnapshotModels(modelBuilder);
             ApplicationDbContext.ConfigureEnterpriseDataSnapshotModels(modelBuilder, "Postgres");
             modelBuilder.Entity("PTDoc.Core.Models.OrganizationMembership").HasOne("PTDoc.Core.Models.Organization", null).WithMany().HasForeignKey("OrganizationId").OnDelete(DeleteBehavior.Restrict).IsRequired();
             modelBuilder.Entity("PTDoc.Core.Models.OrganizationMembership").HasOne("PTDoc.Core.Models.User", null).WithMany().HasForeignKey("UserId").OnDelete(DeleteBehavior.Restrict).IsRequired();

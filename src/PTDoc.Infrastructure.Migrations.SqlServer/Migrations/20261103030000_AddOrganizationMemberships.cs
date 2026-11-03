@@ -24,6 +24,9 @@ public partial class AddOrganizationMemberships : Migration
             ALTER TABLE [Clinics] ADD CONSTRAINT [FK_Clinics_Organizations_OrganizationId] FOREIGN KEY ([OrganizationId]) REFERENCES [Organizations] ([Id]);
             CREATE INDEX [IX_Clinics_OrganizationId] ON [Clinics] ([OrganizationId]);
             ALTER TABLE [Sessions] ADD [ClinicId] uniqueidentifier NULL;
+            """);
+        // SQL Server must compile the backfill after the new columns exist.
+        migrationBuilder.Sql("""
             INSERT INTO [Organizations] ([Id], [Name], [IsActive], [Version], [CreatedAtUtc]) SELECT [Id], [Name], [IsActive], 1, [CreatedAt] FROM [Clinics];
             UPDATE [Clinics] SET [OrganizationId] = [Id];
             CREATE TABLE [OrganizationMemberships] (

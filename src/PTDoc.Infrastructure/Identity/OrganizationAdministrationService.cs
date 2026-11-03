@@ -60,7 +60,7 @@ public sealed class OrganizationAdministrationService(
         await AuthorizeAsync(organizationId, false, cancellationToken);
         return await (from membership in db.OrganizationMemberships.AsNoTracking()
                       join user in db.Users on membership.UserId equals user.Id
-                      where membership.OrganizationId == organizationId
+                      where membership.OrganizationId == organizationId && user.Role.ToUpper() != "PATIENT"
                       orderby user.LastName, user.FirstName
                       select new OrganizationStaff(user.Id, user.FirstName + " " + user.LastName, user.Email,
                           membership.Role, membership.IsActive, membership.Version)).ToListAsync(cancellationToken);
@@ -87,7 +87,7 @@ public sealed class OrganizationAdministrationService(
             && (!request.IsActive || request.Role != OrganizationRole.Owner)
             && !await db.OrganizationMemberships.AnyAsync(item => item.OrganizationId == organizationId
                 && item.UserId != userId && item.IsActive && item.Role == OrganizationRole.Owner
-                && db.Users.Any(user => user.Id == item.UserId && user.IsActive), cancellationToken))
+                && db.Users.Any(user => user.Id == item.UserId && user.IsActive && user.Role.ToUpper() != "PATIENT"), cancellationToken))
             throw new OrganizationConflictException("An organization must retain an active owner.");
         membership.Role = request.Role;
         membership.IsActive = request.IsActive;
@@ -126,6 +126,10 @@ public sealed class OrganizationAdministrationService(
         await AuthorizeAsync(organizationId, false, cancellationToken);
         if (string.IsNullOrWhiteSpace(email) || email.Length > 255 || !new EmailAddressAttribute().IsValid(email))
             throw new ArgumentException("A valid staff email address is required.");
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        if (await db.Users.AnyAsync(user => user.Email != null && user.Email.ToLower() == normalizedEmail
+            && user.Role.ToUpper() == "PATIENT", cancellationToken))
+            throw new OrganizationAccessException("This account is not eligible for a staff invitation.");
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         var invitation = new OrganizationInvitation
         {
@@ -152,7 +156,7 @@ public sealed class OrganizationAdministrationService(
         var organization = await db.Organizations.SingleOrDefaultAsync(item => item.Id == invitation.OrganizationId && item.IsActive, cancellationToken);
         var inviterStillAuthorized = await db.OrganizationMemberships.AnyAsync(item => item.OrganizationId == invitation.OrganizationId
             && item.UserId == invitation.InvitedByUserId && item.IsActive && item.Role != OrganizationRole.Member
-            && db.Users.Any(user => user.Id == item.UserId && user.IsActive), cancellationToken);
+            && db.Users.Any(user => user.Id == item.UserId && user.IsActive && user.Role.ToUpper() != "PATIENT"), cancellationToken);
         if (organization is null || !inviterStillAuthorized) throw new OrganizationAccessException("Invitation is no longer available.");
         var membership = await db.OrganizationMemberships.SingleOrDefaultAsync(item => item.OrganizationId == organization.Id && item.UserId == actor.Id, cancellationToken);
         if (membership is not null) throw new OrganizationConflictException("You already have a membership. Ask the owner to manage it.");
@@ -179,7 +183,7 @@ public sealed class OrganizationAdministrationService(
     {
         var actorId = identity.TryGetCurrentUserId();
         if (!actorId.HasValue) throw new OrganizationAccessException("Sign in to continue.");
-        return await db.Users.AsNoTracking().SingleOrDefaultAsync(item => item.Id == actorId && item.IsActive, cancellationToken)
+        return await db.Users.AsNoTracking().SingleOrDefaultAsync(item => item.Id == actorId && item.IsActive && item.Role.ToUpper() != "PATIENT", cancellationToken)
             ?? throw new OrganizationAccessException("Account is unavailable.");
     }
 
@@ -198,7 +202,8 @@ public sealed class OrganizationAdministrationService(
     }
 
     private async Task<OrganizationMembership> RequireStaffAsync(Guid organizationId, Guid userId, CancellationToken cancellationToken)
-        => await db.OrganizationMemberships.SingleOrDefaultAsync(item => item.OrganizationId == organizationId && item.UserId == userId, cancellationToken)
+        => await db.OrganizationMemberships.SingleOrDefaultAsync(item => item.OrganizationId == organizationId && item.UserId == userId
+            && db.Users.Any(user => user.Id == item.UserId && user.Role.ToUpper() != "PATIENT"), cancellationToken)
             ?? throw new OrganizationAccessException("Staff member is not in this organization.");
 
     private async Task SaveAsync(Guid organizationId, string eventType, Guid entityId, CancellationToken cancellationToken)

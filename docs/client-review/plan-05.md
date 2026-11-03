@@ -1,11 +1,21 @@
 # Plan PR 05: Organization ownership and explicit clinic memberships
 
-**Implementation approved; code prepared, .NET/provider/native validation pending.**
+**Implementation approved and committed; review corrections await verification.**
 
 - Requirements: R001, R085
 - Branch: `codex/plan-05-organization-decision`; PR: #160; base: `main`
-- PR #160 was rebased onto main after PR #158 merged (`fb9dc06b`). The planning head was pushed as `7bd2714e`; this implementation is uncommitted.
+- PR #160 was rebased onto main after PR #158 merged (`fb9dc06b`). The implementation was committed as `58c2a6b0`; formatting followed in `0f32992c`.
 - The user approved implementation on 2026-11-02 and selected **all** of the proposed ownership/access choices below. This supersedes the earlier planning-only clarification gate.
+
+## Current review status
+
+The user confirmed all required builds/tests passed before the implementation commit.
+The earlier failed-run and pending-verification records below describe historical
+handoffs. They do not certify the subsequent review corrections, which are local
+and uncommitted. See [the review findings and exact verification commands](plan-05-review-findings.md)
+for current classifications, fixes, confirmed policy and feedback-access limitations.
+The GitHub title/body still require an explicitly authorized update to remove their
+planning-only description.
 
 ## Approved decisions
 
@@ -15,6 +25,7 @@
 | Staff membership | A staff account can have explicit memberships in one or more clinics. |
 | Organization administration | Owners/admins manage staff within their organization. |
 | Clinical access | Granted separately per clinic; organization roles never imply PHI access. |
+| Administrator self-grants | Explicitly permitted for ordinary clinic roles in their organization; privileged clinic grants and organization-role changes still require an owner. |
 | Existing data | Each clinic initially becomes its own organization; clinic IDs and patient ownership stay unchanged. |
 
 ## Development specification

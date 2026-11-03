@@ -13,6 +13,8 @@ public sealed class AuthenticatedHttpMessageHandlerTests
     public async Task NativeSyncAuthenticationFailure_ClearsTokensWithoutReenteringScopeOrLogout()
     {
         var scope = new LocalDataScope();
+        var notifications = 0;
+        scope.AuthenticationInvalidated += () => notifications++;
         await scope.ChangeAsync("user:clinic-a");
         using var syncLease = await scope.EnterAsync();
         var tokenStore = CreateTokenStore(Tokens("expired", "refresh", DateTimeOffset.UtcNow.AddMinutes(-1)));
@@ -35,6 +37,34 @@ public sealed class AuthenticatedHttpMessageHandlerTests
         tokenStore.Verify(store => store.ClearAsync(It.IsAny<CancellationToken>()), Times.Once);
         userService.Verify(service => service.LogoutAsync(It.IsAny<CancellationToken>()), Times.Never);
         Assert.Equal("user:clinic-a", scope.Key);
+        Assert.Equal(0, notifications);
+        syncLease.Dispose();
+        Assert.Null(scope.Key);
+        Assert.Equal(1, notifications);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => scope.EnterAsync());
+    }
+
+    [Theory]
+    [InlineData("send-email")]
+    [InlineData("send-sms")]
+    [InlineData("validate")]
+    [InlineData("complete")]
+    public async Task NativeSignedOutPasswordReset_ReachesServerWithoutBearerToken(string operation)
+    {
+        var scope = new LocalDataScope();
+        var tokenStore = CreateTokenStore(null);
+        var tokenService = new Mock<ITokenService>();
+        var inner = new SequencedHandler(HttpStatusCode.OK);
+        using var handler = new AuthenticatedHttpMessageHandler(tokenStore.Object, tokenService.Object, CreateUserService().Object, scope)
+        { InnerHandler = inner };
+        using var client = new HttpClient(handler);
+
+        using var response = await client.PostAsync($"https://ptdoc.test/api/communications/password-reset/{operation}", new StringContent("{}"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Null(Assert.Single(inner.AuthorizationParameters));
+        tokenService.Verify(service => service.RefreshAsync(It.IsAny<RefreshTokenRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Null(scope.Key);
     }
 
     [Fact]
