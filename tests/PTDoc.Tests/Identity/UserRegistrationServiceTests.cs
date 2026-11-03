@@ -621,7 +621,9 @@ public class UserRegistrationServiceTests
         foreach (var organization in await context.Organizations.ToListAsync())
             context.OrganizationMemberships.Add(new OrganizationMembership
             {
-                OrganizationId = organization.Id, UserId = actor.Id, Role = OrganizationRole.Owner
+                OrganizationId = organization.Id,
+                UserId = actor.Id,
+                Role = OrganizationRole.Owner
             });
         await context.SaveChangesAsync();
         var identity = new Moq.Mock<IIdentityContextAccessor>();

@@ -129,8 +129,11 @@ public sealed class OrganizationAdministrationService(
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         var invitation = new OrganizationInvitation
         {
-            OrganizationId = organizationId, Email = email.Trim().ToLowerInvariant(), TokenHash = Hash(token),
-            ExpiresAtUtc = clock.GetUtcNow().UtcDateTime.AddHours(72), InvitedByUserId = identity.GetCurrentUserId()
+            OrganizationId = organizationId,
+            Email = email.Trim().ToLowerInvariant(),
+            TokenHash = Hash(token),
+            ExpiresAtUtc = clock.GetUtcNow().UtcDateTime.AddHours(72),
+            InvitedByUserId = identity.GetCurrentUserId()
         };
         db.OrganizationInvitations.Add(invitation);
         await SaveAsync(organizationId, "OrganizationInvitationCreated", invitation.Id, cancellationToken);
@@ -204,8 +207,12 @@ public sealed class OrganizationAdministrationService(
         organization.Version++;
         db.AuditLogs.Add(new AuditLog
         {
-            EventType = eventType, UserId = identity.GetCurrentUserId(), EntityType = nameof(Organization), EntityId = entityId,
-            TimestampUtc = clock.GetUtcNow().UtcDateTime, MetadataJson = System.Text.Json.JsonSerializer.Serialize(new { organizationId })
+            EventType = eventType,
+            UserId = identity.GetCurrentUserId(),
+            EntityType = nameof(Organization),
+            EntityId = entityId,
+            TimestampUtc = clock.GetUtcNow().UtcDateTime,
+            MetadataJson = System.Text.Json.JsonSerializer.Serialize(new { organizationId })
         });
         try { await db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateException exception) when (exception is DbUpdateConcurrencyException

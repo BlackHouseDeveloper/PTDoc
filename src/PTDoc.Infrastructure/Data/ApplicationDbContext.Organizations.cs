@@ -80,7 +80,8 @@ public partial class ApplicationDbContext
                     && !OrganizationMemberships.Any(item => item.OrganizationId == organizationId && item.Role == OrganizationRole.Owner);
                 OrganizationMemberships.Add(new OrganizationMembership
                 {
-                    OrganizationId = organizationId, UserId = user.Id,
+                    OrganizationId = organizationId,
+                    UserId = user.Id,
                     Role = bootstrapOwner ? OrganizationRole.Owner : OrganizationRole.Member
                 });
             }
