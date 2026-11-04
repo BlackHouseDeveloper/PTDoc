@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Beta deployment test contention and migration readiness
+
+- **`.github/workflows/deploy-beta.yml`** — Run the complete deployment test suite with xUnit collection parallelism disabled after run `41752480381` failed with clustered 100-second HTTP timeouts in changing test sets (eight failures initially, four on the completed retry). Preserve all tests, assertions, HTTP timeouts and deployment gates; retain the TRX report even when the test step fails. Validation of the workflow adjustment is pending GitHub Actions.
+- With explicit operator approval, rehearse the committed SQL Server `20261103030000_AddOrganizationMemberships` migration on a temporary Basic-tier database copy, then apply it during a controlled beta stop/start. Verify hashes of existing clinic, user, patient, note, signature, appointment, schedule-block and session data, membership backfill and database constraints. Both rehearsal and live checks passed, and API/Web readiness recovered. Remove the temporary IP-only SQL firewall rule; retain the recovery copy until deployment verification completes.
+
 ### Fixed - PR 160 rollback authority and account eligibility
 
 - Verify six new review threads against `97708d8d`, deduplicating the three provider rollback reports into one issue. Four unique findings are valid; the eleven earlier threads remain addressed or invalid under the confirmed self-grant policy. No separately exposed suppressed/Previously missed entries were returned; inaccessible session-only feedback remains unverified.

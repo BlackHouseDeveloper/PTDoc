@@ -56,11 +56,23 @@ jobs:
 
     - name: Run tests
       run: |
+        # The full suite starts many in-process hosts; serialize collections to
+        # avoid starving HTTP continuations on the shared deployment runner.
         dotnet test "$TEST_PROJECT" \
           --no-build \
           --configuration "$DOTNET_CONFIGURATION" \
           --verbosity normal \
-          --logger "trx;LogFileName=beta-deploy-results.trx"
+          --logger "trx;LogFileName=beta-deploy-results.trx" \
+          -- xUnit.ParallelizeTestCollections=false
+
+    - name: Upload test results
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: beta-deploy-test-results
+        path: tests/PTDoc.Tests/TestResults/beta-deploy-results.trx
+        if-no-files-found: warn
+        retention-days: 30
 
     - name: Publish Web
       run: dotnet publish "$WEB_PROJECT" --no-restore --configuration "$DOTNET_CONFIGURATION" -o ./publish/web
