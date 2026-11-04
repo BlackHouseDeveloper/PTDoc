@@ -44,6 +44,46 @@ public sealed class OverrideServiceTests : IDisposable
         Assert.Empty(_context.AuditLogs);
     }
 
+    [Theory]
+    [InlineData(Roles.PT, Roles.PTA, true, false)]
+    [InlineData(Roles.PTA, Roles.PT, true, true)]
+    [InlineData(Roles.PT, Roles.PT, false, false)]
+    public async Task ApplyOverrideAsync_UsesLiveNoteClinicRole(string homeRole, string clinicRole, bool grantActive, bool allowed)
+    {
+        var (noteId, userId, _) = await SeedNoteAndUsersAsync();
+        var user = await _context.Users.SingleAsync(item => item.Id == userId);
+        user.Role = homeRole;
+        var grant = await _context.ClinicMemberships.SingleAsync(item => item.UserId == userId);
+        grant.Role = clinicRole;
+        grant.IsActive = grantActive;
+        var home = new Clinic { Name = "Other home clinic", Slug = $"override-home-{Guid.NewGuid():N}", OrganizationId = grant.ClinicId };
+        _context.Clinics.Add(home);
+        user.ClinicId = home.Id;
+        _context.ClinicMemberships.Add(new ClinicMembership { ClinicId = home.Id, UserId = userId, Role = homeRole });
+        await _context.SaveChangesAsync();
+        var request = new OverrideRequest
+        {
+            NoteId = noteId,
+            RuleType = ComplianceRuleType.EightMinuteRule,
+            Reason = "Clinical judgment supports additional unit",
+            AttestedBy = userId,
+            Timestamp = DateTime.UtcNow
+        };
+
+        if (allowed)
+        {
+            await _service.ApplyOverrideAsync(request);
+            Assert.Equal(userId, Assert.Single(_context.RuleOverrides).UserId);
+            Assert.Equal("OVERRIDE_APPLIED", Assert.Single(_context.AuditLogs).EventType);
+        }
+        else
+        {
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => _service.ApplyOverrideAsync(request));
+            Assert.Empty(_context.RuleOverrides);
+            Assert.Empty(_context.AuditLogs);
+        }
+    }
+
     [Fact]
     public async Task ApplyOverrideAsync_NonPtUser_ThrowsUnauthorizedAccessException()
     {

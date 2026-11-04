@@ -68,6 +68,7 @@ builder.Services.AddScoped<PTDoc.Application.NoteTemplates.INoteTemplateAdminist
 builder.Services.AddScoped<INotificationCenterService, HttpNotificationCenterService>();
 builder.Services.AddScoped<IDashboardAlertService, HttpDashboardAlertService>();
 builder.Services.AddScoped<INavigationBadgeService, HttpNavigationBadgeService>();
+builder.Services.AddScoped<IOrganizationAdministrationService, OrganizationApiClient>();
 builder.Services.AddScoped<SettingsAdministrationApiClient>();
 builder.Services.AddScoped<IRolePermissionAdministrationService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
 builder.Services.AddScoped<ISecurityPolicyAdministrationService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
@@ -377,6 +378,9 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
     var logger = httpContext.RequestServices.GetRequiredService<ILogger<Program>>();
     var form = await httpContext.Request.ReadFormAsync();
 
+    var requestedClinic = form["clinicId"].ToString();
+    if (!string.IsNullOrWhiteSpace(requestedClinic) && !Guid.TryParse(requestedClinic, out _))
+        return Results.BadRequest(new { error = "Invalid clinic selection." });
     var username = form["username"].ToString();
     var pin = form["pin"].ToString();
     var returnUrlValidation = ReturnUrlValidator.Normalize(form["returnUrl"].ToString());
@@ -385,6 +389,19 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
         logger.LogWarning("Rejected invalid returnUrl for web login.");
     }
     username = username.Trim();
+    string PreserveClinic(string redirect)
+    {
+        return string.IsNullOrWhiteSpace(requestedClinic) ? redirect
+            : redirect + (redirect.Contains('?') ? "&" : "?") + "clinicId=" + WebUtility.UrlEncode(requestedClinic);
+    }
+
+    string LoginFailureRedirect(string flag)
+    {
+        var redirect = "/login?" + flag;
+        if (!string.Equals(returnUrlValidation.Value, "/", StringComparison.Ordinal))
+            redirect += "&ReturnUrl=" + WebUtility.UrlEncode(returnUrlValidation.Value);
+        return PreserveClinic(redirect);
+    }
 
     var validationCodes = new List<string>();
     if (string.IsNullOrWhiteSpace(username))
@@ -404,7 +421,7 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
     if (validationCodes.Count > 0)
     {
         logger.LogInformation("Rejected web login attempt with validation errors.");
-        return Results.Redirect(BuildLoginValidationRedirect(validationCodes, returnUrlValidation.Value));
+        return Results.Redirect(PreserveClinic(BuildLoginValidationRedirect(validationCodes, returnUrlValidation.Value)));
     }
 
     HttpResponseMessage authResponse;
@@ -418,14 +435,15 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
             new WebPinLoginRequest
             {
                 Username = username,
-                Pin = pin
+                Pin = pin,
+                ClinicId = Guid.TryParse(form["clinicId"], out var selectedClinic) ? selectedClinic : null
             },
             httpContext);
     }
     catch (HttpRequestException ex)
     {
         logger.LogError(ex, "Web login failed because PTDocAuthApi is unreachable.");
-        return Results.Redirect("/login?auth_unavailable=1");
+        return Results.Redirect(LoginFailureRedirect("auth_unavailable=1"));
     }
 
     using (authResponse)
@@ -436,21 +454,21 @@ app.MapPost("/auth/login", async (HttpContext httpContext, IHttpClientFactory ht
             if (string.Equals(errorResponse?.AuthStatus, AuthStatus.PendingApproval.ToString(), StringComparison.OrdinalIgnoreCase)
                 || string.Equals(errorResponse?.StatusText, AuthStatus.PendingApproval.ToString(), StringComparison.OrdinalIgnoreCase))
             {
-                return Results.Redirect("/login?pending_approval=1");
+                return Results.Redirect(LoginFailureRedirect("pending_approval=1"));
             }
 
-            return Results.Redirect("/login?error=1");
+            return Results.Redirect(LoginFailureRedirect("error=1"));
         }
 
         if (authResponse.StatusCode == HttpStatusCode.Unauthorized)
         {
-            return Results.Redirect("/login?error=1");
+            return Results.Redirect(LoginFailureRedirect("error=1"));
         }
 
         if (!authResponse.IsSuccessStatusCode)
         {
             logger.LogWarning("Web login failed with upstream status code {StatusCode}", authResponse.StatusCode);
-            return Results.Redirect("/login?error=1");
+            return Results.Redirect(LoginFailureRedirect("error=1"));
         }
 
         return await WebAuthenticationStepFlow.HandleSuccessfulAuthenticationResponseAsync(
@@ -1034,6 +1052,7 @@ static bool IsSupportedLoginPin(string pin) =>
 
 file sealed class WebPinLoginRequest
 {
+    public Guid? ClinicId { get; init; }
     public required string Username { get; init; }
 
     public required string Pin { get; init; }

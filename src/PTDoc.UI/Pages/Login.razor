@@ -159,6 +159,7 @@
             @onsubmit="HandleLoginSubmitAsync"
             @onsubmit:preventDefault="true">
         <input type="hidden" name="returnUrl" value="@LoginReturnUrl" />
+        <input type="hidden" name="clinicId" value="@SelectedClinicId" />
         @if (supportsExternalIdentityLogin)
         {
           <div class="auth-info-alert">

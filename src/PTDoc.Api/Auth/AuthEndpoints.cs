@@ -14,6 +14,7 @@ public static class AuthEndpoints
         app.MapPost("/auth/token", async (
             LoginRequest request,
             IAuthService authService,
+            ClinicSignInContext clinicSignIn,
             JwtTokenIssuer issuer,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
@@ -23,6 +24,7 @@ public static class AuthEndpoints
                 return Results.Unauthorized();
             }
 
+            clinicSignIn.ClinicId = request.ClinicId;
             var result = await authService.AuthenticateAsync(
                 request.Username,
                 request.Password,

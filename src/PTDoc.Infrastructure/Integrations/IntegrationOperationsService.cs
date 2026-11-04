@@ -1,4 +1,5 @@
 using System.Globalization;
+using PTDoc.Infrastructure.Identity;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -1416,9 +1417,10 @@ public sealed class IntegrationOperationsService : IIntegrationOperationsService
             ReceivedAtUtc = metadata.ReceivedAtUtc
         };
         _db.InboundFaxes.Add(inbound);
+        var activeMembers = ClinicMembershipAccess.ActiveMemberships(_db, connection.ClinicId);
         var triageUsers = await _db.Users.IgnoreQueryFilters()
-            .Where(user => user.ClinicId == connection.ClinicId && user.IsActive &&
-                           (user.Role == Roles.Admin || user.Role == Roles.FrontDesk))
+            .Where(user => user.IsActive && activeMembers
+                .Any(member => member.UserId == user.Id && (member.Role == Roles.Admin || member.Role == Roles.FrontDesk)))
             .Select(user => user.Id)
             .ToListAsync(cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);

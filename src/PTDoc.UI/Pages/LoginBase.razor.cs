@@ -74,6 +74,7 @@ public abstract class LoginBase : ComponentBase, IDisposable
         ? "tel"
         : "email";
     protected string LoginReturnUrl => returnUrl;
+    protected string SelectedClinicId => TryGetQueryParameter(Navigation.Uri, "clinicId", out var value) ? value : string.Empty;
     protected string registrationConfirmationTitle = "Registration submitted";
     protected string registrationConfirmationMessage = PendingApprovalMessage;
     protected const string PendingApprovalMessage =

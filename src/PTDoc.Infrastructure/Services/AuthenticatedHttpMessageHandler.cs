@@ -3,6 +3,7 @@ namespace PTDoc.Infrastructure.Services;
 using System.Net;
 using System.Net.Http.Headers;
 using PTDoc.Application.Auth;
+using PTDoc.Application.LocalData;
 
 public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
 {
@@ -11,19 +12,28 @@ public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
     private readonly ITokenStore tokenStore;
     private readonly ITokenService tokenService;
     private readonly IUserService userService;
+    private readonly LocalDataScope? localScope;
+    public static readonly HttpRequestOptionsKey<bool> LocalScopeLeaseHeld = new("PTDoc.LocalScopeLeaseHeld");
 
     public AuthenticatedHttpMessageHandler(
         ITokenStore tokenStore,
         ITokenService tokenService,
-        IUserService userService)
+        IUserService userService,
+        LocalDataScope? localScope = null)
     {
         this.tokenStore = tokenStore;
         this.tokenService = tokenService;
         this.userService = userService;
+        this.localScope = localScope;
     }
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        // Sync already owns this lease across its request and local writes. Other
+        // requests acquire it here so token refresh cannot race a clinic change.
+        using var scopeLease = localScope is not null
+            && !(request.Options.TryGetValue(LocalScopeLeaseHeld, out var held) && held)
+            ? await localScope.EnterAuthenticationAsync(cancellationToken) : null;
         var original = await CloneHttpRequestMessageAsync(request, cancellationToken);
 
         var storedTokens = await tokenStore.GetAsync(cancellationToken);
@@ -31,7 +41,7 @@ public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
 
         if (storedTokens is not null && tokens is null)
         {
-            await userService.LogoutAsync(cancellationToken);
+            await HandleAuthenticationFailureAsync(cancellationToken);
             return CreateUnauthorizedResponse(request);
         }
 
@@ -49,7 +59,7 @@ public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
 
         if (tokens is null)
         {
-            await userService.LogoutAsync(cancellationToken);
+            await HandleAuthenticationFailureAsync(cancellationToken);
             return response;
         }
 
@@ -59,7 +69,7 @@ public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
 
         if (refreshed is null)
         {
-            await userService.LogoutAsync(cancellationToken);
+            await HandleAuthenticationFailureAsync(cancellationToken);
             return response;
         }
 
@@ -70,10 +80,24 @@ public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
         var retryResponse = await base.SendAsync(original, cancellationToken);
         if (retryResponse.StatusCode == HttpStatusCode.Unauthorized)
         {
-            await userService.LogoutAsync(cancellationToken);
+            await HandleAuthenticationFailureAsync(cancellationToken);
         }
 
         return retryResponse;
+    }
+
+    private async Task HandleAuthenticationFailureAsync(CancellationToken cancellationToken)
+    {
+        if (localScope is null)
+        {
+            await userService.LogoutAsync(cancellationToken);
+            return;
+        }
+
+        // Invalidate under the existing lease without reentering logout. The lease
+        // publishes anonymous UI state when it is released; encrypted drafts remain.
+        localScope.InvalidateAuthentication();
+        await tokenStore.ClearAsync(CancellationToken.None);
     }
 
     private async Task<TokenResponse?> EnsureFreshTokenAsync(TokenResponse? tokens, CancellationToken cancellationToken)

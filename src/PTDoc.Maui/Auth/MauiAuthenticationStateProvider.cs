@@ -3,15 +3,20 @@ namespace PTDoc.Maui.Auth;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Auth;
+using PTDoc.Application.Identity;
+using PTDoc.Application.LocalData;
+using System.Security.Claims;
 using PTDoc.Infrastructure.Services;
 
-public sealed class MauiAuthenticationStateProvider : AuthenticationStateProvider
+public sealed class MauiAuthenticationStateProvider : AuthenticationStateProvider, IDisposable
 {
     private static readonly AuthenticationState AnonymousState =
         new AuthenticationState(new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity()));
 
     private static readonly TimeSpan RefreshSkew = TimeSpan.FromMinutes(1);
 
+    private readonly SemaphoreSlim authenticationGate = new(1, 1);
+    private readonly LocalDataScope? localScope;
     private readonly ITokenStore tokenStore;
     private readonly ITokenService tokenService;
     private readonly ILogger<MauiAuthenticationStateProvider> logger;
@@ -19,86 +24,105 @@ public sealed class MauiAuthenticationStateProvider : AuthenticationStateProvide
     public MauiAuthenticationStateProvider(
         ITokenStore tokenStore,
         ITokenService tokenService,
-        ILogger<MauiAuthenticationStateProvider> logger)
+        ILogger<MauiAuthenticationStateProvider> logger,
+        LocalDataScope? localScope = null)
     {
         this.tokenStore = tokenStore;
         this.tokenService = tokenService;
         this.logger = logger;
+        this.localScope = localScope;
+        if (localScope is not null) localScope.AuthenticationInvalidated += PublishAnonymousState;
+    }
+
+    private void PublishAnonymousState() => NotifyAuthenticationStateChanged(Task.FromResult(AnonymousState));
+
+    public void Dispose()
+    {
+        if (localScope is not null) localScope.AuthenticationInvalidated -= PublishAnonymousState;
     }
 
     public override async Task<AuthenticationState> GetAuthenticationStateAsync()
     {
+        await authenticationGate.WaitAsync();
         try
         {
-            logger.LogInformation("Getting authentication state...");
-            var tokens = await tokenStore.GetAsync();
-
-            if (tokens is null)
+            if (localScope is null) return await ReadAuthenticationStateAsync();
+            return await localScope.RestoreAsync(async () =>
             {
-                logger.LogInformation("No tokens found - returning anonymous state");
-                return AnonymousState;
-            }
+                var state = await ReadAuthenticationStateAsync();
+                return (state, ScopeKey(state.User));
+            });
+        }
+        finally { authenticationGate.Release(); }
+    }
 
+    private async Task<AuthenticationState> ReadAuthenticationStateAsync()
+    {
+        try
+        {
+            var tokens = await tokenStore.GetAsync();
+            if (tokens is null) return AnonymousState;
             if (tokens.ExpiresAtUtc <= DateTimeOffset.UtcNow.Add(RefreshSkew))
             {
-                try
+                tokens = await tokenService.RefreshAsync(new RefreshTokenRequest(tokens.RefreshToken));
+                if (tokens is null)
                 {
-                    logger.LogInformation("Token expired, attempting refresh...");
-                    tokens = await tokenService.RefreshAsync(new RefreshTokenRequest(tokens.RefreshToken));
-                    if (tokens is null)
-                    {
-                        logger.LogWarning("Token refresh returned null - clearing tokens");
-                        await tokenStore.ClearAsync();
-                        return AnonymousState;
-                    }
-
-                    logger.LogInformation("Token refreshed successfully");
-                    await tokenStore.SaveAsync(tokens);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Token refresh failed - clearing tokens");
-                    // If refresh fails (e.g., network issue), clear tokens and return anonymous
                     await tokenStore.ClearAsync();
                     return AnonymousState;
                 }
+                await tokenStore.SaveAsync(tokens);
             }
-
             var principal = JwtClaimParser.CreatePrincipal(tokens.AccessToken);
-            if (principal.Identity?.IsAuthenticated != true)
-            {
-                logger.LogWarning("Stored access token could not be parsed - clearing tokens");
-                await tokenStore.ClearAsync();
-                return AnonymousState;
-            }
-
-            logger.LogInformation("Stored authentication tokens are valid.");
-            return new AuthenticationState(principal);
+            if (principal.Identity?.IsAuthenticated == true) return new AuthenticationState(principal);
+            await tokenStore.ClearAsync();
+            return AnonymousState;
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            logger.LogError(ex, "Error getting authentication state - returning anonymous");
-            // If anything goes wrong, return anonymous state
+            logger.LogWarning(exception, "Native authentication could not be restored.");
+            await tokenStore.ClearAsync();
             return AnonymousState;
         }
     }
 
     public async Task NotifyUserAuthenticationAsync(TokenResponse tokens)
     {
-        var principal = JwtClaimParser.CreatePrincipal(tokens.AccessToken);
-        if (principal.Identity?.IsAuthenticated != true)
+        await authenticationGate.WaitAsync();
+        try
         {
-            await NotifyUserLogoutAsync();
-            return;
-        }
+            var principal = JwtClaimParser.CreatePrincipal(tokens.AccessToken);
+            if (principal.Identity?.IsAuthenticated != true)
+            {
+                if (localScope is null) await tokenStore.ClearAsync();
+                else await localScope.ChangeAsync(null, () => tokenStore.ClearAsync());
+                NotifyAuthenticationStateChanged(Task.FromResult(AnonymousState));
+                return;
+            }
 
-        await tokenStore.SaveAsync(tokens);
-        NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(principal)));
+            if (localScope is null) await tokenStore.SaveAsync(tokens);
+            else await localScope.ChangeAsync(ScopeKey(principal), () => tokenStore.SaveAsync(tokens));
+            NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(principal)));
+        }
+        finally { authenticationGate.Release(); }
     }
 
     public async Task NotifyUserLogoutAsync()
     {
-        await tokenStore.ClearAsync();
-        NotifyAuthenticationStateChanged(Task.FromResult(AnonymousState));
+        await authenticationGate.WaitAsync();
+        try
+        {
+            if (localScope is null) await tokenStore.ClearAsync();
+            else await localScope.ChangeAsync(null, () => tokenStore.ClearAsync());
+            NotifyAuthenticationStateChanged(Task.FromResult(AnonymousState));
+        }
+        finally { authenticationGate.Release(); }
     }
+    private static string? ScopeKey(ClaimsPrincipal? principal)
+    {
+        return Guid.TryParse(principal?.FindFirst(PTDocClaimTypes.InternalUserId)?.Value
+                ?? principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId)
+            && Guid.TryParse(principal?.FindFirst("clinic_id")?.Value, out var clinicId) && clinicId != Guid.Empty
+            ? $"{userId:N}:{clinicId:N}" : null;
+    }
+
 }

@@ -1038,24 +1038,9 @@ public sealed class AppointmentApiIntegrationTests : IClassFixture<PtDocApiFacto
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await db.Database.MigrateAsync();
 
-        if (await db.Users.AnyAsync(user => user.Username == "integration-pt"))
-        {
-            return;
-        }
-
-        db.Users.Add(new User
-        {
-            Id = Guid.NewGuid(),
-            Username = "integration-pt",
-            PinHash = "integration-test-pin-hash",
-            FirstName = "Integration",
-            LastName = "PT",
-            Role = Roles.PT,
-            CreatedAt = DateTime.UtcNow,
-            IsActive = true
-        });
-
-        await db.SaveChangesAsync();
+        // Seed the deterministic PT/FrontDesk actors used by the test auth
+        // headers, including their explicit clinic memberships.
+        await PtDocApiFactory.SeedTestUsersAsync(db);
     }
 
     private sealed class FixedPaymentService(PaymentResult result) : IPaymentService

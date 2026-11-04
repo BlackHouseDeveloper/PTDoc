@@ -45,35 +45,18 @@ internal sealed class LocalJwtSecurityStateValidator(
             return false;
         }
 
-        var roleClaims = principal.FindAll(ClaimTypes.Role)
-            .Where(claim => !string.IsNullOrWhiteSpace(claim.Value))
-            .Select(claim => claim.Value)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        if (roleClaims.Length != 1
-            || !string.Equals(roleClaims[0], user.Role, StringComparison.OrdinalIgnoreCase))
+        var clinicClaims = principal.FindAll(HttpTenantContextAccessor.ClinicIdClaimType).ToArray();
+        Guid? selectedClinicId = null;
+        if (clinicClaims.Length > 1) return false;
+        if (clinicClaims.Length == 1)
         {
-            return false;
+            if (!Guid.TryParse(clinicClaims[0].Value, out var parsed)) return false;
+            selectedClinicId = parsed;
         }
-
-        var clinicClaims = principal.FindAll(HttpTenantContextAccessor.ClinicIdClaimType)
-            .Where(claim => !string.IsNullOrWhiteSpace(claim.Value))
-            .Select(claim => claim.Value)
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
-        if (user.ClinicId is { } clinicId)
-        {
-            if (clinicClaims.Length != 1
-                || !Guid.TryParse(clinicClaims[0], out var claimedClinicId)
-                || claimedClinicId != clinicId)
-            {
-                return false;
-            }
-        }
-        else if (clinicClaims.Length != 0)
-        {
-            return false;
-        }
+        var role = await ClinicMembershipAccess.ResolveRoleAsync(context, user, selectedClinicId, cancellationToken);
+        var roleClaims = principal.FindAll(ClaimTypes.Role).ToArray();
+        if (role is null || roleClaims.Length != 1 || roleClaims[0].Value != role) return false;
+        var policyClinicId = selectedClinicId == Guid.Empty ? user.ClinicId : selectedClinicId;
 
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
         if (user.ClinicId.HasValue && !user.PinChangedAtUtc.HasValue
@@ -85,13 +68,13 @@ internal sealed class LocalJwtSecurityStateValidator(
         var tokenHasMfaAssurance = principal.Claims.Any(claim =>
             (claim.Type == "amr" || claim.Type == PTDocClaimTypes.MappedAuthenticationMethodsReference)
             && string.Equals(claim.Value, "mfa", StringComparison.OrdinalIgnoreCase));
-        var policy = user.ClinicId.HasValue
+        var policy = policyClinicId.HasValue
             ? await context.ClinicSecurityPolicies
                 .IgnoreQueryFilters()
                 .AsNoTracking()
-                .SingleOrDefaultAsync(item => item.ClinicId == user.ClinicId.Value, cancellationToken)
+                .SingleOrDefaultAsync(item => item.ClinicId == policyClinicId.Value, cancellationToken)
             : null;
-        var mfaIsRequired = user.ClinicId.HasValue && MfaPolicyRules.RequiresMfa(
+        var mfaIsRequired = policyClinicId.HasValue && MfaPolicyRules.RequiresMfa(
             policy,
             nowUtc);
 

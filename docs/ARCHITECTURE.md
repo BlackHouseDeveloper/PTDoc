@@ -875,132 +875,142 @@ Options are read from `appsettings.json` (or environment variables):
    ```
 4. Add unit tests in `tests/PTDoc.Tests/BackgroundJobs/`.
 
-## Multi-Tenant / Multi-Clinic Architecture (Sprint J)
+## Organizations and clinic isolation
 
-PTDoc is designed to operate in a multi-clinic (multi-tenant) environment where each clinic's data is completely isolated from others.
+PTDoc uses a shared database and schema. Organizations contain clinics, while each
+patient and clinical record retains its owning `ClinicId`. Organization membership
+never confers patient access. These choices were approved for [Plan 05](client-review/plan-05.md).
 
-### Tenancy Model
+### Membership and administration
 
-PTDoc uses a **shared-database, shared-schema** tenancy model with row-level filtering. All clinics share the same database tables. Each row in tenant-scoped tables carries a `ClinicId` foreign key that identifies its owning clinic.
+`Organization`, `OrganizationMembership`, `ClinicMembership`, and
+`OrganizationInvitation` are Core entities. Application defines the administration
+contracts; Infrastructure owns persistence and authorization; API exposes the routes;
+the shared UI provides `/organizations` on Web and MAUI.
 
-This model was chosen because:
-- It avoids the operational complexity of database-per-tenant
-- It matches the current infrastructure and EF Core capabilities
-- Row-level filtering can be enforced at the ORM layer via global query filters
+| Authority | Organization staff metadata | Clinic/patient access |
+| --- | --- | --- |
+| Organization Owner | Create clinics, invite/approve staff, manage organization roles and all clinic grants; retain an active owner | Only through a separate active clinic membership |
+| Organization Administrator | Invite/approve ordinary staff and manage ordinary clinic grants in their organization | Only through a separate active clinic membership |
+| Organization Member | View own organizations and clinic grants; accept an email-bound invitation | Selected clinic membership's role/capabilities only |
+| Clinic Owner/Admin/PT/PTA/etc. | No organization administration from a clinic role alone | Existing role/capability policies within the selected clinic |
+| Platform/background service | Explicit operational scope only | No implicit organization-wide PHI grant |
 
-### Tenant Entity
+Memberships have composite organization/clinic + user keys, active state, and
+optimistic versions. Mutations update the organization's concurrency version before
+committing access changes and audit records. An owner cannot remove the last active
+owner account. Administrators cannot grant organization authority or manage clinic
+Owner/Admin grants or organization owners. Registration review is limited to clinics
+in organizations the actor administers; account-wide credential resets retain their
+home-clinic administration boundary.
+
+Organization administrators may explicitly grant themselves ordinary clinic roles
+(PT, PTA, FrontDesk, Billing, Aide or PracticeManager) within their organization.
+The user confirmed this policy during PR 160 review. These grants use the same
+membership, version and audit checks as grants to other staff. Owner/Admin clinic
+grants and organization-role changes still require an organization owner; no
+clinical access is automatically conferred by an organization role.
+
+Patient portal accounts are excluded from organization staff listings, staff grants,
+organization-role changes and invitation issuance/acceptance. Their existing home
+memberships remain for patient authentication; those rows do not make them staff.
+Registration administrators cannot edit or reactivate an organization owner merely
+because that account has an ordinary home-clinic role.
+
+Invitations contain a random, single-use, 72-hour code; only its SHA-256 hash is
+persisted. Issuance requires an existing active non-patient account with the matching
+email; patient addresses remain ineligible. The accepting account must still be
+active, non-patient and have the matching email. The
+inviter must still be an active owner/administrator. Acceptance creates an ordinary
+organization membership with no clinic grants. New staff use clinic registration
+and local organization approval. Invitation delivery is manual/private; PTDoc does
+not automatically send these codes.
+
+### One selected clinic per session
+
+`User.ClinicId` and `User.Role` remain the legacy home/registration values. They do
+not describe every grant. `ClinicMembership.Role` supplies the role in a selected
+clinic. Scheduling and fax triage use active memberships, allowing a clinician to
+work in two clinics without moving their user or patients.
+
+Compliance overrides, signing and co-signing resolve the actor's live role in the
+note's owning clinic through `ClinicMembershipAccess`; they do not infer authority
+from the home role. Overrides and co-signatures require PT in that clinic. Signing
+retains the existing PT/PTA note-type and co-signature rules.
+
+A local PIN sign-in accepts an optional `ClinicId`; omission selects the home clinic.
+Changing clinics requires fresh sign-in and the target clinic's PIN/MFA policy.
+Protected PIN/MFA challenges carry the selected clinic across requests. Opaque
+sessions persist that selection; JWTs and refresh tokens carry `clinic_id`. The
+session validator, local JWT validator, refresh-token store, and API membership
+middleware recheck active user, clinic, organization and memberships. The middleware
+also limits Entra roles to the current clinic grant. Entra continues using its
+provisioned tenant mapping; interactive multi-clinic selection uses local PIN sign-in.
+
+A missing clinic fails live role resolution. Legacy home-role fallback applies only
+to an existing active clinic without an organization, never to an orphaned clinic ID.
+
+`Guid.Empty` is a deliberate administration-only selection, distinct from null. It
+uses the account's home security policy, emits only `OrganizationMember`, and the
+API limits authenticated protected requests to organization and registration
+administration routes. It cannot become an unscoped clinical session. Real clinics
+must never use that reserved ID. Null session clinic values are legacy sessions and
+resolve to the home clinic.
+
+### Data isolation
+
+`ITenantContextAccessor` resolves the selected clinic. Authenticated principals
+without a tenant mapping fail provisioning. Clinical queries use global filters:
 
 ```csharp
-// PTDoc.Core/Models/Clinic.cs
-public class Clinic
-{
-    public Guid Id { get; set; }
-    public string Name { get; set; }    // Display name
-    public string Slug { get; set; }    // URL-friendly identifier (unique)
-    public bool IsActive { get; set; }
-    public DateTime CreatedAt { get; set; }
-}
-```
-
-### Tenant-Scoped Entities
-
-The following entities carry `ClinicId` and are subject to tenant filtering:
-
-| Entity           | ClinicId | Notes                                        |
-|------------------|----------|----------------------------------------------|
-| `Patient`        | ✓        | Root aggregate; all related data inherits scope |
-| `Appointment`    | ✓        | Denormalized from Patient for query efficiency |
-| `ClinicalNote`   | ✓        | Denormalized from Patient for query efficiency |
-| `IntakeForm`     | ✓        | Denormalized from Patient for query efficiency |
-| `User`           | ✓        | Clinicians belong to one clinic              |
-
-Non-clinical entities (`AuditLog`, `SyncQueueItem`, `Session`, etc.) are **not** tenant-scoped — they are system-level or user-level.
-
-### Data Access Isolation
-
-Tenant isolation is enforced via **EF Core global query filters** on `ApplicationDbContext`:
-
-```csharp
-// Applied automatically to every query on tenant-scoped entities
 modelBuilder.Entity<Patient>()
-    .HasQueryFilter(p => CurrentClinicId == null || p.ClinicId == null || p.ClinicId == CurrentClinicId);
+    .HasQueryFilter(patient => CurrentClinicId == null || patient.ClinicId == CurrentClinicId);
 ```
 
-- If a tenant scope is active (`clinic_id` claim present — set by either the JWT handler or `SessionTokenAuthHandler`), queries automatically add `WHERE ClinicId = @current` to every query.
-- If no tenant scope exists (system-level background jobs, unauthenticated requests), the filter is bypassed and all rows are visible.
-- Legacy rows with `ClinicId = NULL` (pre-Sprint J data) remain visible to all clinics for backward compatibility.
+Patients, appointments, notes, intakes, documents, and their scoped children retain
+these filters and existing endpoint/capability checks. Legacy null-owned records
+are not visible in a clinic-scoped request. Background jobs without an HTTP tenant
+must constrain their work explicitly; `IgnoreQueryFilters()` is not an organization
+authorization mechanism. Organization administration queries only staff metadata
+and always check the actor against the requested organization. Client-push creation
+stamps the selected clinic for patients and derives appointment ownership from the
+scoped patient; it never trusts a client-supplied tenant ID.
 
-To intentionally bypass filters for admin/migration operations:
-```csharp
-context.Set<Patient>().IgnoreQueryFilters().Where(...);
-```
+Registration administration follows the same separation: organization authority
+alone can review staff registrations, but cannot list, read, edit or approve Patient
+accounts. The retained patient-registration workflow additionally requires the
+patient's home clinic to be the selected clinic and a live Admin/Owner grant there.
+This requirement also applies when changing a staff registration's role to Patient.
+Null and administration-only selections do not authorize patient registration access.
+An actor whose account role is Patient cannot administer any registrations, even
+when an old organization Owner/Administrator membership remains active.
 
-### Tenant Context Flow
+MAUI partitions local data, drafts, pending sync and watermarks by user plus clinic.
+A shared scope lease serializes sync/cache operations with credential replacement.
+Unscoped legacy device data is retained for controlled recovery, never assigned to
+whichever clinic signs in next. See [MOBILE_ARCHITECTURE.md](MOBILE_ARCHITECTURE.md).
 
-PTDoc has two independent authentication paths. Both activate the same tenant query filters by populating `HttpContext.User` with a `ClaimsPrincipal` that includes the `clinic_id` claim.
+### Migration and clinic creation
 
-**JWT auth flow** (`POST /auth/token` → legacy endpoint):
-```
-Bearer JWT → JwtBearerDefaults.AuthenticationScheme
-    ↓ ASP.NET Core JWT middleware validates and sets HttpContext.User
-    ↓ (clinic_id claim must be embedded in JWT during token issuance)
-HttpTenantContextAccessor.GetCurrentClinicId() reads clinic_id from HttpContext.User
-    ↓
-ApplicationDbContext._tenantContext?.GetCurrentClinicId()
-    ↓
-EF Core global query filter evaluation per query
-```
+`20261103030000_AddOrganizationMemberships` exists for SQLite, SQL Server and Postgres.
+Every existing clinic initially receives its own organization, using the clinic ID
+as organization ID. Existing home users receive explicit memberships preserving
+their clinic role; active home Admin/Owner users become organization owners. Other
+users become ordinary organization members. Patient, note, signed-record and clinic
+IDs are unchanged. Null home users remain unassigned. See
+[EF_MIGRATIONS.md](EF_MIGRATIONS.md) for rehearsal and rollback requirements.
 
-**PIN / session-token auth flow** (`POST /api/v1/auth/pin-login`):
-```
-Bearer session-token → SessionTokenAuthHandler (registered as "SessionToken" scheme)
-    ↓ AuthService.ValidateSessionAsync resolves session → user → ClinicId
-    ↓ Handler sets HttpContext.User with clinic_id claim
-HttpTenantContextAccessor.GetCurrentClinicId() reads clinic_id from HttpContext.User
-    ↓
-ApplicationDbContext._tenantContext?.GetCurrentClinicId()
-    ↓
-EF Core global query filter evaluation per query
-```
+New clinic creation through `/api/v1/organizations/{organizationId}/clinics` is owner
+only and grants no staff access automatically. Legacy trusted clinic creation gets
+its own organization, and registration gets an explicit home membership while the
+account remains inactive. Trusted creation of the first already-active Admin/Owner
+can bootstrap an ownerless organization; public inactive registrations cannot.
+First assignment of an unassigned legacy home account gets initial memberships only
+if no memberships exist. Save-time compatibility never restores revoked grants.
 
-A `"Combined"` policy scheme (registered in `Program.cs`) automatically routes Bearer tokens to the correct handler based on token shape: JWTs have exactly 3 dot-separated parts; session tokens are opaque base64 strings without dots.
-
-### Identity Integration
-
-The `clinic_id` is surfaced through both auth flows:
-
-```
-POST /auth/token → ClaimsIdentity includes: Claim("clinic_id", user.ClinicId.ToString())
-POST /api/v1/auth/pin-login → AuthResult.ClinicId (returned to client); also
-    embedded in HttpContext.User via SessionTokenAuthHandler on subsequent requests
-GET /api/v1/auth/me → CurrentUserResponse.ClinicId
-```
-
-The `ITenantContextAccessor` interface (in `PTDoc.Application/Identity`) abstracts tenant-resolution. `HttpTenantContextAccessor` reads the `clinic_id` claim from `HttpContext.User` — this works for both JWT and session-token auth because both set `HttpContext.User` via their respective authentication handlers.
-
-### Backward Compatibility
-
-Existing deployments are preserved:
-- `ClinicId` is **nullable** on all entities — existing rows without a clinic assignment continue to work.
-- Legacy patients (null ClinicId) are visible to any tenant context.
-- New patients/appointments created by a clinic-scoped user automatically receive that clinic's ID (set at the service/API layer when creating records).
-
-### Development Default Clinic
-
-The `DatabaseSeeder` seeds a default development clinic (idempotent — safe to run on upgraded databases):
-- **ID:** `DatabaseSeeder.DefaultClinicId` = `00000000-0000-0000-0000-000000000100`
-- **Name:** `PTDoc Development Clinic`
-- **Slug:** `ptdoc-dev`
-- The `testuser` is assigned to this clinic (updated if already exists without a clinic assignment).
-- The demo `CredentialValidator` references `DatabaseSeeder.DefaultClinicId` (single source of truth).
-
-### Adding a New Clinic (Future)
-
-When implementing full clinic management:
-1. Create a `POST /api/v1/admin/clinics` endpoint
-2. Assign users to the new clinic via `User.ClinicId`
-3. New clinical records created by those users automatically inherit the clinic scope
-4. No data migration required for existing records (they remain `null`-scoped)
+There is no automatic merger of independently backfilled organizations, clinic
+reparenting, or reassignment of clinical records. The development default clinic
+remains `DatabaseSeeder.DefaultClinicId` (`00000000-0000-0000-0000-000000000100`).
 
 ## Intake reconciliation concurrency
 

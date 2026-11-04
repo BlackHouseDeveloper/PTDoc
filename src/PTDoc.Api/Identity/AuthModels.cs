@@ -10,6 +10,7 @@ public class PinLoginRequest
     /// </summary>
     public required string Username { get; init; }
     public required string Pin { get; init; }
+    public Guid? ClinicId { get; init; }
 }
 
 /// <summary>

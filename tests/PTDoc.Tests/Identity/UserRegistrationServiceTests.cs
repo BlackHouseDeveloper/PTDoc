@@ -306,7 +306,7 @@ public class UserRegistrationServiceTests
         context.Users.Add(user);
         await context.SaveChangesAsync();
 
-        var sut = new UserRegistrationService(context, NullLogger<UserRegistrationService>.Instance);
+        var sut = await CreateAdministrativeServiceAsync(context);
         var result = await sut.ApproveRegistrationAsync(user.Id, Guid.NewGuid());
 
         Assert.Equal(RegistrationStatus.Succeeded, result.Status);
@@ -352,7 +352,7 @@ public class UserRegistrationServiceTests
             });
         await context.SaveChangesAsync();
 
-        var sut = new UserRegistrationService(context, NullLogger<UserRegistrationService>.Instance);
+        var sut = await CreateAdministrativeServiceAsync(context);
 
         var page = await sut.GetPendingRegistrationsAsync(new PendingRegistrationsQuery(null, "Pending", null, null, null, null, null));
 
@@ -404,7 +404,7 @@ public class UserRegistrationServiceTests
             CreateRegistrationDecisionLog(rejectedDecisionUser.Id, "RegistrationRejected"));
         await context.SaveChangesAsync();
 
-        var sut = new UserRegistrationService(context, NullLogger<UserRegistrationService>.Instance);
+        var sut = await CreateAdministrativeServiceAsync(context);
 
         var page = await sut.GetPendingRegistrationsAsync(new PendingRegistrationsQuery(null, "Pending", null, null, null, null, null));
 
@@ -474,7 +474,7 @@ public class UserRegistrationServiceTests
         context.Users.Add(user);
         await context.SaveChangesAsync();
 
-        var sut = new UserRegistrationService(context, NullLogger<UserRegistrationService>.Instance);
+        var sut = await CreateAdministrativeServiceAsync(context);
         var adminId = Guid.NewGuid();
 
         var result = await sut.UpdatePendingRegistrationAsync(
@@ -530,7 +530,7 @@ public class UserRegistrationServiceTests
         context.Users.Add(user);
         await context.SaveChangesAsync();
 
-        var sut = new UserRegistrationService(context, NullLogger<UserRegistrationService>.Instance);
+        var sut = await CreateAdministrativeServiceAsync(context);
         var detail = await sut.GetPendingRegistrationAsync(user.Id);
 
         Assert.NotNull(detail);
@@ -563,7 +563,7 @@ public class UserRegistrationServiceTests
         context.Users.Add(user);
         await context.SaveChangesAsync();
 
-        var sut = new UserRegistrationService(context, NullLogger<UserRegistrationService>.Instance);
+        var sut = await CreateAdministrativeServiceAsync(context);
         var result = await sut.ApproveRegistrationAsync(user.Id, Guid.NewGuid());
 
         Assert.Equal(RegistrationStatus.ValidationFailed, result.Status);
@@ -579,9 +579,12 @@ public class UserRegistrationServiceTests
     {
         await using var context = CreateInMemoryContext();
         var adminId = Guid.NewGuid();
+        var clinic = new Clinic { Name = "Review clinic", Slug = "review" };
+        context.Clinics.Add(clinic);
         var user = new User
         {
             Username = "reject_me",
+            ClinicId = clinic.Id,
             PinHash = "hash",
             FirstName = "Reject",
             LastName = "Me",
@@ -593,7 +596,7 @@ public class UserRegistrationServiceTests
         context.Users.Add(user);
         await context.SaveChangesAsync();
 
-        var sut = new UserRegistrationService(context, NullLogger<UserRegistrationService>.Instance);
+        var sut = await CreateAdministrativeServiceAsync(context);
         var result = await sut.RejectRegistrationAsync(user.Id, adminId);
 
         Assert.Equal(RegistrationStatus.Succeeded, result.Status);
@@ -611,4 +614,22 @@ public class UserRegistrationServiceTests
         Assert.Equal(adminId, rejectionAudit.UserId);
         Assert.True(rejectionAudit.Success);
     }
+    private static async Task<UserRegistrationService> CreateAdministrativeServiceAsync(ApplicationDbContext context)
+    {
+        var actor = new User { Username = "registration-admin", Role = "System", IsActive = true };
+        context.Users.Add(actor);
+        foreach (var organization in await context.Organizations.ToListAsync())
+            context.OrganizationMemberships.Add(new OrganizationMembership
+            {
+                OrganizationId = organization.Id,
+                UserId = actor.Id,
+                Role = OrganizationRole.Owner
+            });
+        await context.SaveChangesAsync();
+        var identity = new Moq.Mock<IIdentityContextAccessor>();
+        identity.Setup(item => item.TryGetCurrentUserId()).Returns(actor.Id);
+        identity.Setup(item => item.GetCurrentUserId()).Returns(actor.Id);
+        return new UserRegistrationService(context, NullLogger<UserRegistrationService>.Instance, identity.Object);
+    }
+
 }

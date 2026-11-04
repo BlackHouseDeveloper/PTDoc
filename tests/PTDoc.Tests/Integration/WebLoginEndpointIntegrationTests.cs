@@ -368,8 +368,12 @@ public sealed class WebLoginEndpointIntegrationTests
         Assert.Equal(3, requestCount);
     }
 
-    [Fact]
-    public async Task AuthLogin_PendingApproval_RedirectsToPendingApprovalNotice()
+    [Theory]
+    [InlineData("/", null, "/login?pending_approval=1")]
+    [InlineData("/organizations", null, "/login?pending_approval=1&ReturnUrl=%2Forganizations")]
+    [InlineData("/organizations", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "/login?pending_approval=1&ReturnUrl=%2Forganizations&clinicId=aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")]
+    [InlineData("/", "00000000-0000-0000-0000-000000000000", "/login?pending_approval=1&clinicId=00000000-0000-0000-0000-000000000000")]
+    public async Task AuthLogin_PendingApproval_RedirectsToPendingApprovalNotice(string returnUrl, string? clinicId, string expectedRedirect)
     {
         var recordingFactory = new RecordingHttpClientFactory(_ =>
             new HttpResponseMessage(HttpStatusCode.Forbidden)
@@ -392,11 +396,12 @@ public sealed class WebLoginEndpointIntegrationTests
         {
             ["username"] = "pending.user",
             ["pin"] = "1234",
-            ["returnUrl"] = "/"
+            ["returnUrl"] = returnUrl,
+            ["clinicId"] = clinicId
         }));
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/login?pending_approval=1", response.Headers.Location?.OriginalString);
+        Assert.Equal(expectedRedirect, response.Headers.Location?.OriginalString);
     }
 
     [Theory]

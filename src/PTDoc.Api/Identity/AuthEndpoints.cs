@@ -44,6 +44,7 @@ public static class PinAuthEndpoints
     private static async Task<IResult> PinLogin(
         [FromBody] PinLoginRequest request,
         [FromServices] IAuthService authService,
+        [FromServices] ClinicSignInContext clinicSignIn,
         HttpContext httpContext)
     {
         if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Pin))
@@ -59,6 +60,7 @@ public static class PinAuthEndpoints
         var ipAddress = httpContext.Connection.RemoteIpAddress?.ToString();
         var userAgent = httpContext.Request.Headers.UserAgent.ToString();
 
+        clinicSignIn.ClinicId = request.ClinicId;
         var result = await authService.AuthenticateAsync(
             request.Username,
             request.Pin,

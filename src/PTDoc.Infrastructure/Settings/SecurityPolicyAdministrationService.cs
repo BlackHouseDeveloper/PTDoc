@@ -125,7 +125,8 @@ public sealed class SecurityPolicyAdministrationService(
             .Select(user => user.Id)
             .ToListAsync(cancellationToken);
         var sessions = await context.Sessions
-            .Where(session => userIds.Contains(session.UserId) && !session.IsRevoked)
+            .Where(session => !session.IsRevoked && (session.ClinicId == clinicId
+                || ((session.ClinicId == null || session.ClinicId == Guid.Empty) && userIds.Contains(session.UserId))))
             .ToListAsync(cancellationToken);
         var nowUtc = DateTime.UtcNow;
 
@@ -156,13 +157,14 @@ public sealed class SecurityPolicyAdministrationService(
 
     public async Task<MfaReadinessDto> GetMfaReadinessAsync(Guid clinicId, CancellationToken cancellationToken = default)
     {
-        var users = await context.Users
-            .Where(user => user.ClinicId == clinicId && user.IsActive)
-            .Select(user => new
-            {
-                user.Role,
-                IsEnrolled = user.MfaCredential != null && user.MfaCredential.IsActive
-            })
+        var users = await (from member in PTDoc.Infrastructure.Identity.ClinicMembershipAccess.ActiveMemberships(context, clinicId)
+                           join user in context.Users on member.UserId equals user.Id
+                           where user.IsActive
+                           select new
+                           {
+                               member.Role,
+                               IsEnrolled = context.UserMfaCredentials.IgnoreQueryFilters().Any(credential => credential.UserId == user.Id && credential.IsActive)
+                           })
             .ToListAsync(cancellationToken);
 
         return new MfaReadinessDto(

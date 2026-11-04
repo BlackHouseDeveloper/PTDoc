@@ -1,0 +1,202 @@
+@page "/organizations"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using PTDoc.Application.Identity
+@inject IOrganizationAdministrationService OrganizationsService
+
+<PageTitle>Organizations and Clinics - PTDoc</PageTitle>
+<div class="organizations-page">
+    <h1>Organizations and clinics</h1>
+    <p>Organization administration manages staff. Clinic access is granted separately.</p>
+    @if (error is not null) { <p role="alert">@error</p> }
+    @if (message is not null) { <p role="status">@message</p> }
+    <button type="button" disabled="@busy" @onclick="ReloadAsync">Reload</button>
+    @if (!loaded) { <p role="status">@(busy ? "Loading organizations…" : "Reload to try again.")</p> }
+    else
+    {
+        <section aria-labelledby="my-clinics-title">
+            <h2 id="my-clinics-title">My clinic access</h2>
+            <p>Save your current work before signing in to another clinic. Sign-in uses that clinic's security policy.</p>
+            <ul>
+                @foreach (var clinic in myClinics)
+                {
+                    <li>@clinic.ClinicName — @clinic.Role <a href="@SignInUrl(clinic.ClinicId)">Sign in to this clinic</a></li>
+                }
+            </ul>
+            <a href="@SignInUrl(Guid.Empty)">Sign in for organization administration only</a>
+        </section>
+        <section aria-labelledby="accept-title">
+            <h2 id="accept-title">Join an organization</h2>
+            <p>Sign in with the account matching the invitation email, then enter the invitation code. Joining does not grant clinic access.</p>
+            <label for="invitation-code">Invitation code</label>
+            <input id="invitation-code" type="password" autocomplete="off" @bind="invitationCode" disabled="@busy" />
+            <button type="button" disabled="@(busy || string.IsNullOrWhiteSpace(invitationCode))" @onclick="AcceptAsync">Accept invitation</button>
+        </section>
+        <section aria-labelledby="administration-title">
+            <h2 id="administration-title">Staff administration</h2>
+            <label for="organization-select">Organization</label>
+            <select id="organization-select" @bind="selectedOrganizationId" @bind:after="LoadOrganizationAsync" disabled="@busy">
+                <option value="">Choose an organization</option>
+                @foreach (var organization in organizations.Where(item => item.Role != OrganizationRole.Member))
+                { <option value="@organization.Id">@organization.Name (@organization.Role)</option> }
+            </select>
+            @if (selectedOrganizationId.HasValue && organizationLoaded)
+            {
+                <fieldset disabled="@busy">
+                    <legend>Invite staff</legend>
+                    <p>Invitations are for existing active accounts. New staff can register for a clinic and be approved locally below.</p>
+                    <label for="staff-email">Staff email</label>
+                    <input id="staff-email" type="email" @bind="inviteEmail" />
+                    <button type="button" @onclick="InviteAsync">Create invitation</button>
+                    @if (invitation is not null)
+                    {
+                        <p>Share this code privately with the invited person. It expires @invitation.ExpiresAtUtc.ToString("u").</p>
+                        <label for="created-invitation">Invitation code</label>
+                        <input id="created-invitation" readonly value="@invitation.Token" autocomplete="off" />
+                    }
+                </fieldset>
+                @if (IsOwner)
+                {
+                    <fieldset disabled="@busy">
+                        <legend>Add clinic</legend>
+                        <label for="clinic-name">Clinic name</label><input id="clinic-name" @bind="clinicName" maxlength="200" />
+                        <label for="clinic-slug">Clinic slug</label><input id="clinic-slug" @bind="clinicSlug" maxlength="100" />
+                        <label for="clinic-zone">Time zone</label><input id="clinic-zone" @bind="clinicZone" />
+                        <button type="button" @onclick="CreateClinicAsync">Add clinic</button>
+                    </fieldset>
+                }
+                <label for="staff-select">Staff member</label>
+                <select id="staff-select" @bind="selectedUserId" @bind:after="LoadStaffAsync" disabled="@busy">
+                    <option value="">Choose staff</option>
+                    @foreach (var staffOption in staff) { <option value="@staffOption.UserId">@staffOption.Name (@staffOption.Email)</option> }
+                </select>
+                @if (SelectedStaff is { } person && staffLoaded)
+                {
+                    @if (IsOwner)
+                    {
+                        <fieldset disabled="@busy">
+                            <legend>Organization membership</legend>
+                            <label for="organization-role">Administration role</label>
+                            <select id="organization-role" @bind="organizationRole">
+                                @foreach (var role in Enum.GetValues<OrganizationRole>()) { <option value="@role">@role</option> }
+                            </select>
+                            <label><input type="checkbox" @bind="organizationActive" /> Active organization membership</label>
+                            <button type="button" @onclick="SaveOrganizationRoleAsync">Save administration role</button>
+                        </fieldset>
+                    }
+                    <fieldset disabled="@(busy || !person.IsActive)">
+                        <legend>Explicit clinic access</legend>
+                        <label for="access-clinic">Clinic</label>
+                        <select id="access-clinic" @bind="selectedClinicId" @bind:after="SelectClinic">
+                            <option value="">Choose clinic</option>
+                            @foreach (var clinic in clinics) { <option value="@clinic.Id">@clinic.Name</option> }
+                        </select>
+                        <label for="clinic-role">Clinic role</label>
+                        <select id="clinic-role" @bind="clinicRole">
+                            @foreach (var role in AllowedClinicRoles) { <option value="@role">@role</option> }
+                        </select>
+                        <label><input type="checkbox" @bind="clinicActive" /> Active clinic access</label>
+                        <button type="button" disabled="@(!selectedClinicId.HasValue)" @onclick="SaveClinicAsync">Save clinic access</button>
+                    </fieldset>
+                }
+                <h3>New staff registrations</h3>
+                <p>These requests cover all organizations you administer. Use the clinic filter to narrow the list.</p>
+                <ApprovalsDashboard />
+            }
+        </section>
+    }
+</div>
+
+@code {
+    private bool busy, loaded, organizationLoaded, staffLoaded;
+    private string? error, message;
+    private IReadOnlyList<OrganizationSummary> organizations = [];
+    private IReadOnlyList<ClinicAccess> myClinics = [], staffClinics = [];
+    private IReadOnlyList<OrganizationClinic> clinics = [];
+    private IReadOnlyList<OrganizationStaff> staff = [];
+    private Guid? selectedOrganizationId, selectedUserId, selectedClinicId;
+    private string invitationCode = "", inviteEmail = "", clinicName = "", clinicSlug = "", clinicZone = "America/New_York";
+    private string clinicRole = Roles.PT;
+    private bool clinicActive = true, organizationActive;
+    private OrganizationRole organizationRole;
+    private OrganizationInviteResult? invitation;
+    private OrganizationStaff? SelectedStaff => staff.FirstOrDefault(item => item.UserId == selectedUserId);
+    private bool IsOwner => organizations.Any(item => item.Id == selectedOrganizationId && item.Role == OrganizationRole.Owner);
+    private IEnumerable<string> AllowedClinicRoles => IsOwner
+        ? [Roles.PT, Roles.PTA, Roles.FrontDesk, Roles.Billing, Roles.Aide, Roles.PracticeManager, Roles.Admin, Roles.Owner]
+        : [Roles.PT, Roles.PTA, Roles.FrontDesk, Roles.Billing, Roles.Aide, Roles.PracticeManager];
+    private static string SignInUrl(Guid clinicId) => $"/login?clinicId={clinicId:D}&returnUrl=%2Forganizations";
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+    private async Task RunAsync(Func<Task> action)
+    {
+        if (busy) return;
+        busy = true; error = null; message = null;
+        try { await action(); }
+        catch (Exception exception) when (exception is HttpRequestException or OrganizationAccessException or OrganizationConflictException or ArgumentException)
+        {
+            error = exception is HttpRequestException ? "The request could not be completed. Reload before retrying." : exception.Message;
+            organizationLoaded = false; staffLoaded = false;
+        }
+        finally { busy = false; }
+    }
+    private Task ReloadAsync() => RunAsync(async () =>
+    {
+        loaded = false; organizationLoaded = false; staffLoaded = false; invitation = null;
+        organizations = await OrganizationsService.GetOrganizationsAsync();
+        myClinics = await OrganizationsService.GetMyClinicsAsync();
+        loaded = true;
+        if (selectedOrganizationId.HasValue) await ReadOrganizationAsync();
+    });
+    private Task LoadOrganizationAsync() => RunAsync(ReadOrganizationAsync);
+    private async Task ReadOrganizationAsync()
+    {
+        organizationLoaded = false; staffLoaded = false; selectedUserId = null; selectedClinicId = null; invitation = null;
+        if (selectedOrganizationId is not { } id) return;
+        clinics = await OrganizationsService.GetClinicsAsync(id);
+        staff = await OrganizationsService.GetStaffAsync(id);
+        organizationLoaded = true;
+    }
+    private Task LoadStaffAsync() => RunAsync(async () =>
+    {
+        staffLoaded = false; selectedClinicId = null;
+        if (selectedOrganizationId is not { } organizationId || SelectedStaff is not { } person) return;
+        staffClinics = await OrganizationsService.GetStaffClinicsAsync(organizationId, person.UserId);
+        organizationRole = person.Role; organizationActive = person.IsActive; staffLoaded = true;
+    });
+    private void SelectClinic()
+    {
+        var membership = staffClinics.FirstOrDefault(item => item.ClinicId == selectedClinicId);
+        clinicRole = membership?.Role ?? Roles.PT; clinicActive = membership?.IsActive ?? true;
+    }
+    private Task SaveClinicAsync() => RunAsync(async () =>
+    {
+        if (selectedOrganizationId is not { } organizationId || selectedClinicId is not { } clinicId || selectedUserId is not { } userId) return;
+        var version = staffClinics.FirstOrDefault(item => item.ClinicId == clinicId)?.Version ?? 0;
+        await OrganizationsService.SetClinicMembershipAsync(organizationId, clinicId, userId, new(clinicRole, clinicActive, version));
+        staffClinics = await OrganizationsService.GetStaffClinicsAsync(organizationId, userId);
+        message = "Clinic access saved.";
+    });
+    private Task SaveOrganizationRoleAsync() => RunAsync(async () =>
+    {
+        if (selectedOrganizationId is not { } organizationId || SelectedStaff is not { } person) return;
+        await OrganizationsService.SetOrganizationMembershipAsync(organizationId, person.UserId, new(organizationRole, organizationActive, person.Version));
+        await ReadOrganizationAsync(); message = "Organization membership saved.";
+    });
+    private Task InviteAsync() => RunAsync(async () =>
+    {
+        if (selectedOrganizationId is { } id) invitation = await OrganizationsService.InviteAsync(id, inviteEmail);
+    });
+    private Task AcceptAsync() => RunAsync(async () =>
+    {
+        await OrganizationsService.AcceptInvitationAsync(invitationCode); invitationCode = "";
+        organizations = await OrganizationsService.GetOrganizationsAsync();
+        message = "Organization joined. An administrator can now grant clinic access.";
+    });
+    private Task CreateClinicAsync() => RunAsync(async () =>
+    {
+        if (selectedOrganizationId is not { } id) return;
+        await OrganizationsService.CreateClinicAsync(id, new(clinicName, clinicSlug, clinicZone));
+        await ReadOrganizationAsync(); clinicName = ""; clinicSlug = ""; message = "Clinic created. Grant staff access explicitly.";
+    });
+}

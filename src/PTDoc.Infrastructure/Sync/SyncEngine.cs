@@ -35,6 +35,7 @@ public class SyncEngine : ISyncEngine
     private readonly ApplicationDbContext _context;
     private readonly ILogger<SyncEngine> _logger;
     private readonly IIdentityContextAccessor? _identityContext;
+    private readonly ITenantContextAccessor? _tenantContext;
     private readonly IAuditService? _auditService;
     private readonly ISignatureService? _signatureService;
     private readonly INoteTemplateAdministrationService? _noteTemplates;
@@ -59,12 +60,14 @@ public class SyncEngine : ISyncEngine
         ITelemetrySink? telemetrySink = null,
         IOptions<SyncRetryOptions>? retryOptions = null,
         INoteTemplateAdministrationService? noteTemplates = null,
-        IClinicalVisitOrdinalAllocator? visitOrdinalAllocator = null)
+        IClinicalVisitOrdinalAllocator? visitOrdinalAllocator = null,
+        ITenantContextAccessor? tenantContext = null)
     {
         _context = context;
         _logger = logger;
         _runtimeStateStore = runtimeStateStore ?? new SyncRuntimeStateStore();
         _identityContext = identityContext;
+        _tenantContext = tenantContext;
         _auditService = auditService;
         _signatureService = signatureService;
         _telemetrySink = telemetrySink;
@@ -2317,6 +2320,7 @@ public class SyncEngine : ISyncEngine
                 var patient = new Patient
                 {
                     Id = serverId,
+                    ClinicId = _tenantContext?.GetCurrentClinicId(),
                     FirstName = root.TryGetProperty("firstName", out var fn) ? fn.GetString() ?? string.Empty
                               : root.TryGetProperty("FirstName", out fn) ? fn.GetString() ?? string.Empty : string.Empty,
                     LastName = root.TryGetProperty("lastName", out var ln) ? ln.GetString() ?? string.Empty
@@ -2358,9 +2362,14 @@ public class SyncEngine : ISyncEngine
                 var apptTypeRaw = TryGetInt(root, "appointmentType") ?? TryGetInt(root, "AppointmentType") ?? 0;
                 var statusRaw = TryGetInt(root, "status") ?? TryGetInt(root, "Status") ?? 0;
 
+                var owningClinic = await ResolvePatientClinicIdAsync(patientServerId, cancellationToken);
+                var selectedClinic = _tenantContext?.GetCurrentClinicId();
+                if (selectedClinic.HasValue && owningClinic != selectedClinic)
+                    throw new InvalidOperationException("Patient does not belong to the selected clinic.");
                 var appt = new Appointment
                 {
                     Id = serverId,
+                    ClinicId = owningClinic,
                     PatientId = patientServerId,
                     ClinicalId = clinicalId,
                     AppointmentType = Enum.IsDefined(typeof(AppointmentType), apptTypeRaw)

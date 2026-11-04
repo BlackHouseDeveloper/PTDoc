@@ -7,6 +7,7 @@ using PTDoc.Application.AI;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.Intake;
+using PTDoc.Application.Identity;
 using PTDoc.Application.LocalData;
 using PTDoc.Application.Outcomes;
 using PTDoc.Application.ReferenceData;
@@ -45,6 +46,7 @@ public static class MauiProgram
             ClientStaticCapabilityAuthorizationHandler>();
         builder.Services.AddScoped<AuthenticationStateProvider, MauiAuthenticationStateProvider>();
         builder.Services.AddScoped<ITokenStore, SecureStorageTokenStore>();
+        builder.Services.AddScoped<IOrganizationAdministrationService>(sp => new OrganizationApiClient(sp.GetRequiredService<IHttpClientFactory>().CreateClient("ApiClient")));
         // ITokenService is registered via typed HttpClient below
         builder.Services.AddScoped<IUserService, MauiUserService>();
         builder.Services.AddScoped<AuthenticatedHttpMessageHandler>();
@@ -109,6 +111,7 @@ public static class MauiProgram
         // remains open across all context lifetimes.
         // ----------------------------------------------------------------
         SqliteProviderBootstrapper.EnsureInitialized();
+        builder.Services.AddSingleton<LocalDataScope>();
         builder.Services.AddSingleton<IDbKeyProvider, SecureStorageDbKeyProvider>();
 
         builder.Services.AddSingleton<SqliteConnection>(sp =>

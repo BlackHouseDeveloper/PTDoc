@@ -33,8 +33,9 @@ public class User
 
     // Tenant / clinic scoping (Sprint J)
     /// <summary>
-    /// The clinic this user belongs to. Null for system-level users (e.g., background service account).
-    /// All clinical data access is restricted to the user's assigned clinic.
+    /// Legacy home clinic, retained for registration and account credential administration.
+    /// Clinical access requires an active ClinicMembership in the selected session clinic.
+    /// Null is retained for system-level users and unassigned legacy accounts.
     /// </summary>
     public Guid? ClinicId { get; set; }
 

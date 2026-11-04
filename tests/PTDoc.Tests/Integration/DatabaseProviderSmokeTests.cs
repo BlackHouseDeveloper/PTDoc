@@ -1,11 +1,13 @@
 using System;
 using System.Data;
+using System.Data.Common;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using PTDoc.Application.Services;
 using PTDoc.Application.Settings;
 using PTDoc.Core.Models;
@@ -37,8 +39,50 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
             await AssertProviderDowngradeAndExistingClinicSeedParityAsync(context);
         }
 
+        await AssertOrganizationRoleRollbackGuardAsync(context);
         await AssertSchemaQueryableAsync(context);
         await AssertCrudRoundTripAsync(context);
+    }
+
+    private static async Task AssertOrganizationRoleRollbackGuardAsync(ApplicationDbContext context)
+    {
+        var clinic = new Clinic { Name = "Rollback role guard", Slug = $"rollback-role-{Guid.NewGuid():N}" };
+        var staff = new User { Username = $"rollback-pt-{Guid.NewGuid():N}", Role = Roles.PT, ClinicId = clinic.Id, IsActive = true };
+        var owner = new User { Username = $"rollback-owner-{Guid.NewGuid():N}", Role = Roles.Owner, ClinicId = clinic.Id, IsActive = true };
+        context.AddRange(clinic, staff, owner);
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        var assembly = context.GetService<IMigrationsAssembly>();
+        var migration = assembly.CreateMigration(assembly.Migrations["20261103030000_AddOrganizationMemberships"], context.Database.ProviderName!);
+        var downSql = string.Join("\n", migration.DownOperations.Cast<SqlOperation>().Select(operation => operation.Sql));
+
+        // Establish that no other rollback predicate rejects this fixture.
+        await using (var baseline = await context.Database.BeginTransactionAsync())
+        {
+            await context.Database.ExecuteSqlRawAsync(downSql);
+            await baseline.RollbackAsync();
+        }
+
+        foreach (var (userId, changedRole, originalRole) in new[]
+        {
+            (staff.Id, OrganizationRole.Administrator, OrganizationRole.Member),
+            (staff.Id, OrganizationRole.Owner, OrganizationRole.Member),
+            (owner.Id, OrganizationRole.Member, OrganizationRole.Owner),
+            (owner.Id, OrganizationRole.Administrator, OrganizationRole.Owner)
+        })
+        {
+            await using (var transaction = await context.Database.BeginTransactionAsync())
+            {
+                var membership = await context.OrganizationMemberships.SingleAsync(item => item.OrganizationId == clinic.Id && item.UserId == userId);
+                membership.Role = changedRole;
+                await context.SaveChangesAsync();
+                var error = await Assert.ThrowsAnyAsync<DbException>(() => context.Database.ExecuteSqlRawAsync(downSql));
+                Assert.Contains(context.Database.IsSqlite() ? "CHECK constraint failed" : "Reconcile organization memberships", error.Message);
+                await transaction.RollbackAsync();
+            }
+            context.ChangeTracker.Clear();
+            Assert.Equal(originalRole, (await context.OrganizationMemberships.SingleAsync(item => item.OrganizationId == clinic.Id && item.UserId == userId)).Role);
+        }
     }
 
     private static async Task AssertProviderDowngradeAndExistingClinicSeedParityAsync(
@@ -738,6 +782,10 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
 
     private static async Task AssertSchemaQueryableAsync(ApplicationDbContext context)
     {
+        _ = await context.Organizations.CountAsync();
+        _ = await context.OrganizationMemberships.CountAsync();
+        _ = await context.ClinicMemberships.CountAsync();
+        _ = await context.OrganizationInvitations.CountAsync();
         _ = await context.Clinics.CountAsync();
         _ = await context.Patients.CountAsync();
         _ = await context.Users.CountAsync();

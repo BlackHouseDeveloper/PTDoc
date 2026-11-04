@@ -7,7 +7,8 @@ window.ptdocAuth = {
     const fields = {
       username: username || "",
       pin: pin || "",
-      returnUrl: returnUrl || "/"
+      returnUrl: returnUrl || "/",
+      clinicId: new URLSearchParams(window.location.search).get("clinicId") || ""
     };
 
     Object.entries(fields).forEach(([name, value]) => {

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Settings;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -15,8 +16,10 @@ public sealed class MfaAuthenticationService(
     ApplicationDbContext context,
     ISettingsSecretProtector protector,
     IAuditService auditService,
-    TimeProvider timeProvider) : IMfaAuthenticationService
+    TimeProvider timeProvider,
+    ClinicSignInContext? clinicSignIn = null) : IMfaAuthenticationService
 {
+    private readonly ClinicSignInContext signIn = clinicSignIn ?? new ClinicSignInContext();
     private const string ChallengeProtectionPurpose = "mfa-challenge";
     private const string SecretProtectionPurpose = "totp-secret";
     private const int TotpPeriodSeconds = 30;
@@ -78,7 +81,7 @@ public sealed class MfaAuthenticationService(
             payload.UserId,
             payload.Purpose,
             payload.CredentialId,
-            payload.StateBinding);
+            payload.StateBinding, payload.ClinicId);
         return true;
     }
 
@@ -96,6 +99,7 @@ public sealed class MfaAuthenticationService(
         }
 
         var credential = await context.UserMfaCredentials
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .SingleOrDefaultAsync(item => item.Id == payload.CredentialId.Value
                 && item.UserId == payload.UserId
@@ -119,6 +123,7 @@ public sealed class MfaAuthenticationService(
                     && item.ExpiresAt > now)
                 .ExecuteDeleteAsync(cancellationToken);
             var credentialIsStillCurrent = consumed == 1 && await context.UserMfaCredentials
+                .IgnoreQueryFilters()
                 .AsNoTracking()
                 .AnyAsync(item => item.Id == payload.CredentialId.Value
                     && item.UserId == payload.UserId
@@ -126,7 +131,7 @@ public sealed class MfaAuthenticationService(
                     && item.EncryptedSecret == credential.EncryptedSecret,
                     cancellationToken);
             return credentialIsStillCurrent
-                ? new MfaChallengePrincipal(payload.UserId, payload.Purpose, payload.CredentialId, payload.StateBinding)
+                ? new MfaChallengePrincipal(payload.UserId, payload.Purpose, payload.CredentialId, payload.StateBinding, payload.ClinicId)
                 : null;
         }
 
@@ -145,6 +150,7 @@ public sealed class MfaAuthenticationService(
 
         context.Sessions.Remove(pendingChallenge);
         var nonRelationalCredentialIsStillCurrent = await context.UserMfaCredentials
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .AnyAsync(item => item.Id == payload.CredentialId.Value
                 && item.UserId == payload.UserId
@@ -152,7 +158,7 @@ public sealed class MfaAuthenticationService(
                 && item.EncryptedSecret == credential.EncryptedSecret,
                 cancellationToken);
         return nonRelationalCredentialIsStillCurrent
-            ? new MfaChallengePrincipal(payload.UserId, payload.Purpose, payload.CredentialId, payload.StateBinding)
+            ? new MfaChallengePrincipal(payload.UserId, payload.Purpose, payload.CredentialId, payload.StateBinding, payload.ClinicId)
             : null;
     }
 
@@ -175,6 +181,7 @@ public sealed class MfaAuthenticationService(
         }
 
         var credential = await context.UserMfaCredentials
+            .IgnoreQueryFilters()
             .SingleOrDefaultAsync(item => item.UserId == user.Id, cancellationToken);
         if (credential?.IsActive == true)
         {
@@ -204,7 +211,7 @@ public sealed class MfaAuthenticationService(
         else
         {
             context.UserMfaRecoveryCodes.RemoveRange(
-                context.UserMfaRecoveryCodes.Where(item => item.UserMfaCredentialId == credential.Id));
+                context.UserMfaRecoveryCodes.IgnoreQueryFilters().Where(item => item.UserMfaCredentialId == credential.Id));
         }
 
         credential.EncryptedSecret = protector.Protect(SecretProtectionPurpose, Convert.ToBase64String(secret));
@@ -276,6 +283,7 @@ public sealed class MfaAuthenticationService(
         }
 
         var credential = await context.UserMfaCredentials
+            .IgnoreQueryFilters()
             .Include(item => item.User)
             .SingleOrDefaultAsync(item => item.Id == challenge.CredentialId && item.UserId == challenge.UserId, cancellationToken);
         if (credential?.User is null || !credential.User.IsActive || credential.IsActive)
@@ -346,6 +354,7 @@ public sealed class MfaAuthenticationService(
         CancellationToken cancellationToken = default)
     {
         var credential = await context.UserMfaCredentials
+            .IgnoreQueryFilters()
             .Include(item => item.User)
             .SingleOrDefaultAsync(item => item.UserId == userId && item.IsActive, cancellationToken);
         if (credential?.User is null)
@@ -370,6 +379,7 @@ public sealed class MfaAuthenticationService(
         }
 
         var priorCodes = await context.UserMfaRecoveryCodes
+            .IgnoreQueryFilters()
             .Where(item => item.UserMfaCredentialId == credential.Id)
             .ToListAsync(cancellationToken);
         context.UserMfaRecoveryCodes.RemoveRange(priorCodes);
@@ -418,6 +428,7 @@ public sealed class MfaAuthenticationService(
         }
 
         var credential = await context.UserMfaCredentials
+            .IgnoreQueryFilters()
             .Include(item => item.User)
             .SingleOrDefaultAsync(item => item.Id == challenge.CredentialId.Value
                 && item.UserId == challenge.UserId
@@ -541,6 +552,7 @@ public sealed class MfaAuthenticationService(
         }
 
         var candidates = await context.UserMfaRecoveryCodes
+            .IgnoreQueryFilters()
             .AsNoTracking()
             .Where(item => item.UserMfaCredentialId == credential.Id && item.UsedAtUtc == null)
             .ToListAsync(cancellationToken);
@@ -554,6 +566,7 @@ public sealed class MfaAuthenticationService(
         if (context.Database.IsRelational())
         {
             var claimed = await context.UserMfaRecoveryCodes
+                .IgnoreQueryFilters()
                 .Where(item => item.Id == match.Id && item.UsedAtUtc == null)
                 .ExecuteUpdateAsync(
                     setters => setters.SetProperty(item => item.UsedAtUtc, usedAtUtc),
@@ -562,6 +575,7 @@ public sealed class MfaAuthenticationService(
         }
 
         var trackedMatch = await context.UserMfaRecoveryCodes
+            .IgnoreQueryFilters()
             .SingleOrDefaultAsync(item => item.Id == match.Id && item.UsedAtUtc == null, cancellationToken);
         if (trackedMatch is null)
         {
@@ -581,6 +595,7 @@ public sealed class MfaAuthenticationService(
             var now = timeProvider.GetUtcNow().UtcDateTime;
             var lockedUntil = now.Add(LockoutDuration);
             await context.UserMfaCredentials
+                .IgnoreQueryFilters()
                 .Where(item => item.Id == credential.Id
                     && (item.LockedUntilUtc == null || item.LockedUntilUtc <= now))
                 .ExecuteUpdateAsync(
@@ -638,7 +653,8 @@ public sealed class MfaAuthenticationService(
             payload.UserId.ToString("N"),
             ((int)payload.Purpose).ToString(CultureInfo.InvariantCulture),
             payload.CredentialId?.ToString("N") ?? string.Empty,
-            payload.StateBinding ?? string.Empty);
+            payload.StateBinding ?? string.Empty,
+            (payload.ClinicId ?? signIn.ClinicId)?.ToString("N") ?? string.Empty);
         return protector.Protect(ChallengeProtectionPurpose, serialized);
     }
 
@@ -651,7 +667,7 @@ public sealed class MfaAuthenticationService(
         }
 
         var parts = serialized.Split('|');
-        if (parts.Length is not (3 or 4)
+        if (parts.Length is not (3 or 4 or 5)
             || !Guid.TryParseExact(parts[0], "N", out var userId)
             || !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var purposeValue)
             || !Enum.IsDefined(typeof(MfaChallengePurpose), purposeValue))
@@ -669,12 +685,19 @@ public sealed class MfaAuthenticationService(
         // Three-part challenges were issued before credential-state binding was
         // introduced. They remain readable during a rolling deployment, while
         // PIN completion and MFA verification reject them because their binding is null.
-        var stateBinding = parts.Length == 4 && parts[3].Length > 0 ? parts[3] : null;
+        var stateBinding = parts.Length >= 4 && parts[3].Length > 0 ? parts[3] : null;
+        Guid? clinicId = null;
+        if (parts.Length == 5 && parts[4].Length > 0)
+        {
+            if (!Guid.TryParseExact(parts[4], "N", out var parsedClinicId)) return false;
+            clinicId = parsedClinicId;
+        }
+        signIn.ClinicId = clinicId;
         payload = new ChallengePayload(
             userId,
             (MfaChallengePurpose)purposeValue,
             credentialId,
-            stateBinding);
+            stateBinding, clinicId);
         return true;
     }
 
@@ -755,5 +778,6 @@ public sealed class MfaAuthenticationService(
         Guid UserId,
         MfaChallengePurpose Purpose,
         Guid? CredentialId,
-        string? StateBinding);
+        string? StateBinding,
+        Guid? ClinicId = null);
 }

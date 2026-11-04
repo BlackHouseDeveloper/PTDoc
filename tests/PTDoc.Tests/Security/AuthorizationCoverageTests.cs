@@ -1,6 +1,11 @@
 using System.Collections.Generic;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using PTDoc.Api.Identity;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using Xunit;
@@ -57,6 +62,15 @@ public class AuthorizationCoverageTests
                 continue;
             }
 
+            if (entry.RequiresDefaultAuthentication)
+            {
+                Assert.Null(entry.RequiredPolicy);
+                Assert.False(string.IsNullOrWhiteSpace(entry.ServiceAuthorization));
+                Assert.Contains(authOptions.DefaultPolicy.Requirements,
+                    requirement => requirement is Microsoft.AspNetCore.Authorization.Infrastructure.DenyAnonymousAuthorizationRequirement);
+                continue;
+            }
+
             Assert.False(string.IsNullOrWhiteSpace(entry.RequiredPolicy),
                 $"Route [{entry.Method}] {entry.Route} is not marked anonymous but has no RequiredPolicy. " +
                 "Add an authorization policy or mark it IsIntentionallyAnonymous.");
@@ -67,6 +81,32 @@ public class AuthorizationCoverageTests
                 "which is not registered by AddPTDocAuthorizationPolicies(). " +
                 "Correct the policy name or add it to the registration.");
         }
+    }
+
+    [Fact]
+    public async Task OrganizationInventory_MatchesMappedRoutesAndAuthenticationMetadata()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.Services.AddSingleton(Moq.Mock.Of<IOrganizationAdministrationService>());
+        await using var app = builder.Build();
+        app.MapOrganizationEndpoints();
+        var endpoints = ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints)
+            .OfType<RouteEndpoint>().ToArray();
+        var inventory = BuildInventory().Where(entry => entry.Route.StartsWith("/api/v1/organizations", StringComparison.Ordinal)).ToArray();
+        var mapped = endpoints.SelectMany(endpoint => endpoint.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods
+            .Select(method => (method, endpoint.RoutePattern.RawText!))).ToHashSet();
+        Assert.Equal(mapped.OrderBy(item => item), inventory.Select(entry => (entry.Method, entry.Route)).OrderBy(item => item));
+        Assert.All(endpoints, endpoint =>
+        {
+            Assert.Null(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
+            Assert.Contains(endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>(),
+                data => string.IsNullOrEmpty(data.Policy) && string.IsNullOrEmpty(data.Roles));
+        });
+        Assert.All(inventory, entry =>
+        {
+            Assert.True(entry.RequiresDefaultAuthentication);
+            Assert.False(string.IsNullOrWhiteSpace(entry.ServiceAuthorization));
+        });
     }
 
     [Fact]
@@ -163,6 +203,8 @@ public class AuthorizationCoverageTests
         Assert.Contains(routes, r => r.StartsWith("/diagnostics"));
         // Auth (intentionally anonymous)
         Assert.Contains(routes, r => r == "/auth/token" || r == "/api/v1/auth/pin-login");
+        // Organizations
+        Assert.Contains(routes, r => r.StartsWith("/api/v1/organizations", StringComparison.Ordinal));
         // Settings administration
         Assert.Contains(routes, r => r.StartsWith("/api/v1/admin/security-policy", StringComparison.Ordinal));
         // Health probes (intentionally anonymous)
@@ -262,6 +304,28 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/auth/mfa/recovery-codes/regenerate", AuthorizationPolicies.Authenticated),
         // /me performs manual token validation; AllowAnonymous lets it return 401+body.
         new("GET",  "/api/v1/auth/me",        null, IsIntentionallyAnonymous: true),
+
+        // Organization routes use default authentication plus live resource checks in OrganizationAdministrationService.
+        new("GET", "/api/v1/organizations/", null, RequiresDefaultAuthentication: true,
+            ServiceAuthorization: "Active non-patient account; own active organization memberships."),
+        new("GET", "/api/v1/organizations/my-clinics", null, RequiresDefaultAuthentication: true,
+            ServiceAuthorization: "Active non-patient account; own active organization and clinic memberships."),
+        new("GET", "/api/v1/organizations/{organizationId:guid}/clinics", null, RequiresDefaultAuthentication: true,
+            ServiceAuthorization: "Active organization Owner or Administrator."),
+        new("POST", "/api/v1/organizations/{organizationId:guid}/clinics", null, RequiresDefaultAuthentication: true,
+            ServiceAuthorization: "Active organization Owner."),
+        new("GET", "/api/v1/organizations/{organizationId:guid}/staff", null, RequiresDefaultAuthentication: true,
+            ServiceAuthorization: "Active organization Owner or Administrator; non-patient targets."),
+        new("GET", "/api/v1/organizations/{organizationId:guid}/staff/{userId:guid}/clinics", null, RequiresDefaultAuthentication: true,
+            ServiceAuthorization: "Active organization Owner or Administrator; staff target in this organization."),
+        new("PUT", "/api/v1/organizations/{organizationId:guid}/staff/{userId:guid}", null, RequiresDefaultAuthentication: true,
+            ServiceAuthorization: "Active organization Owner; staff target, expected version and last-owner check."),
+        new("PUT", "/api/v1/organizations/{organizationId:guid}/clinics/{clinicId:guid}/staff/{userId:guid}", null, RequiresDefaultAuthentication: true,
+            ServiceAuthorization: "Active organization Owner or Administrator; same-organization clinic/staff; ordinary self-grants allowed; privileged grants require Owner."),
+        new("POST", "/api/v1/organizations/{organizationId:guid}/invitations", null, RequiresDefaultAuthentication: true,
+            ServiceAuthorization: "Active organization Owner or Administrator; eligible staff email."),
+        new("POST", "/api/v1/organizations/accept-invitation", null, RequiresDefaultAuthentication: true,
+            ServiceAuthorization: "Active non-patient account; matching email, unexpired single-use code and authorized inviter."),
 
         // ── Settings administration (Settings/SettingsAdministrationEndpoints.cs) ──
         new("GET", "/api/v1/admin/roles/permissions", AuthorizationPolicies.SettingsRead),
@@ -528,5 +592,7 @@ public class AuthorizationCoverageTests
         string Method,
         string Route,
         string? RequiredPolicy,
-        bool IsIntentionallyAnonymous = false);
+        bool IsIntentionallyAnonymous = false,
+        bool RequiresDefaultAuthentication = false,
+        string? ServiceAuthorization = null);
 }

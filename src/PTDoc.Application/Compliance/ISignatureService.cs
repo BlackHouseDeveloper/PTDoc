@@ -24,8 +24,8 @@ public interface ISignatureService
     /// <summary>
     /// PT co-signs (countersigns) a PTA-authored note that has RequiresCoSign = true.
     /// Returns an error if the note does not require co-sign.
-    /// PT role enforcement is handled at the API layer via AuthorizationPolicies.NoteCoSign;
-    /// this method assumes the caller has already been authorized as a PT.
+    /// The API requires AuthorizationPolicies.NoteCoSign; the service also validates
+    /// the signer's live PT membership in the note's owning clinic.
     /// </summary>
     Task<CoSignResult> CoSignNoteAsync(
         Guid noteId,

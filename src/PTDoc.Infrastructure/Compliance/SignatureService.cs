@@ -5,6 +5,7 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Identity;
 using PTDoc.Infrastructure.Services;
 using System.Text.Json;
 
@@ -69,12 +70,6 @@ public class SignatureService : ISignatureService
             return FailedSignature("Only PT and PTA users may sign notes.");
         }
 
-        var signerError = await ValidateSignerAsync(userId, normalizedRole, ct);
-        if (signerError is not null)
-        {
-            return FailedSignature(signerError);
-        }
-
         var note = await _context.ClinicalNotes
             .Include(n => n.ObjectiveMetrics)
             .FirstOrDefaultAsync(n => n.Id == noteId, ct);
@@ -82,6 +77,12 @@ public class SignatureService : ISignatureService
         if (note is null)
         {
             return FailedSignature("Note not found");
+        }
+
+        var signerError = await ValidateSignerAsync(userId, normalizedRole, note.ClinicId, ct);
+        if (signerError is not null)
+        {
+            return FailedSignature(signerError);
         }
 
         if (IsFinalized(note))
@@ -638,12 +639,11 @@ public class SignatureService : ISignatureService
         return null;
     }
 
-    private async Task<string?> ValidateSignerAsync(Guid userId, string normalizedRole, CancellationToken ct)
+    private async Task<string?> ValidateSignerAsync(Guid userId, string normalizedRole, Guid? clinicId, CancellationToken ct)
     {
         var signer = await _context.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)
-            .Select(u => new { u.Id, u.Role })
             .FirstOrDefaultAsync(ct);
 
         if (signer is null)
@@ -651,7 +651,8 @@ public class SignatureService : ISignatureService
             return "User not found";
         }
 
-        if (!string.Equals(signer.Role, normalizedRole, StringComparison.OrdinalIgnoreCase))
+        var clinicRole = await ClinicMembershipAccess.ResolveRoleAsync(_context, signer, clinicId, ct);
+        if (!string.Equals(clinicRole, normalizedRole, StringComparison.OrdinalIgnoreCase))
         {
             return "User role mismatch";
         }

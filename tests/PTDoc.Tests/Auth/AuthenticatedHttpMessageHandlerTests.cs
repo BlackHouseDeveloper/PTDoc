@@ -1,6 +1,7 @@
 using System.Net;
 using Moq;
 using PTDoc.Application.Auth;
+using PTDoc.Application.LocalData;
 using PTDoc.Infrastructure.Services;
 
 namespace PTDoc.Tests.Auth;
@@ -8,6 +9,64 @@ namespace PTDoc.Tests.Auth;
 [Trait("Category", "CoreCi")]
 public sealed class AuthenticatedHttpMessageHandlerTests
 {
+    [Fact]
+    public async Task NativeSyncAuthenticationFailure_ClearsTokensWithoutReenteringScopeOrLogout()
+    {
+        var scope = new LocalDataScope();
+        var notifications = 0;
+        scope.AuthenticationInvalidated += () => notifications++;
+        await scope.ChangeAsync("user:clinic-a");
+        using var syncLease = await scope.EnterAsync();
+        var tokenStore = CreateTokenStore(Tokens("expired", "refresh", DateTimeOffset.UtcNow.AddMinutes(-1)));
+        tokenStore.Setup(store => store.ClearAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        var tokenService = new Mock<ITokenService>();
+        tokenService.Setup(service => service.RefreshAsync(It.IsAny<RefreshTokenRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TokenResponse?)null);
+        var userService = CreateUserService();
+        var inner = new SequencedHandler(HttpStatusCode.OK);
+        using var handler = new AuthenticatedHttpMessageHandler(tokenStore.Object, tokenService.Object, userService.Object, scope) { InnerHandler = inner };
+        using var client = new HttpClient(handler);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://ptdoc.test/api/v1/sync/client/push");
+        request.Options.Set(AuthenticatedHttpMessageHandler.LocalScopeLeaseHeld, true);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var response = await client.SendAsync(request, timeout.Token);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Empty(inner.AuthorizationParameters);
+        tokenStore.Verify(store => store.ClearAsync(It.IsAny<CancellationToken>()), Times.Once);
+        userService.Verify(service => service.LogoutAsync(It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal("user:clinic-a", scope.Key);
+        Assert.Equal(0, notifications);
+        syncLease.Dispose();
+        Assert.Null(scope.Key);
+        Assert.Equal(1, notifications);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => scope.EnterAsync());
+    }
+
+    [Theory]
+    [InlineData("send-email")]
+    [InlineData("send-sms")]
+    [InlineData("validate")]
+    [InlineData("complete")]
+    public async Task NativeSignedOutPasswordReset_ReachesServerWithoutBearerToken(string operation)
+    {
+        var scope = new LocalDataScope();
+        var tokenStore = CreateTokenStore(null);
+        var tokenService = new Mock<ITokenService>();
+        var inner = new SequencedHandler(HttpStatusCode.OK);
+        using var handler = new AuthenticatedHttpMessageHandler(tokenStore.Object, tokenService.Object, CreateUserService().Object, scope)
+        { InnerHandler = inner };
+        using var client = new HttpClient(handler);
+
+        using var response = await client.PostAsync($"https://ptdoc.test/api/communications/password-reset/{operation}", new StringContent("{}"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Null(Assert.Single(inner.AuthorizationParameters));
+        tokenService.Verify(service => service.RefreshAsync(It.IsAny<RefreshTokenRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Null(scope.Key);
+    }
+
     [Fact]
     public async Task SendAsync_LogsOutWithoutCallingApi_WhenExpiredTokenCannotRefresh()
     {

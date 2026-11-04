@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 160 rollback authority and account eligibility
+
+- Verify six new review threads against `97708d8d`, deduplicating the three provider rollback reports into one issue. Four unique findings are valid; the eleven earlier threads remain addressed or invalid under the confirmed self-grant policy. No separately exposed suppressed/Previously missed entries were returned; inaccessible session-only feedback remains unverified.
+- Block organization migration downgrade when an organization role differs from the original backfill rule in SQLite, SQL Server and PostgreSQL. Add four promotion/demotion regressions with reconciliation and signed-data preservation, and run the actual provider rollback SQL inside transactional provider smoke checks.
+- Reject missing/inactive clinics before the legacy home-role fallback, deny Patient actors registration administration even with retained organization authority, and require an existing active non-patient account before issuing a staff invitation. Add focused eligibility/denial coverage and preserve case-insensitive email matching and patient-address exclusion.
+- Update architecture, the migration runbook and the complete review audit. A lightweight SQLite SQL rehearsal passed all four denied and reconciled rollback cases; .NET and SQL Server/PostgreSQL verification are pending user execution. No commit, push or review write was performed in this pass.
+
+### Fixed - PR 160 note-clinic authorization and patient registration isolation
+
+- Record the user's successful build (zero warnings/errors) and subsequent Debug test run: 2,696 passed, seven failed, zero skipped, 2,703 total in 3 minutes 6 seconds. The seven signing/override workflow cases used a null-tenant fixture that created unowned notes for clinic-bound users. Move only those scenarios to isolated hosts with production tenant resolution and seeded clinic grants; assert persisted patient/note clinic ownership. Keep production authorization unchanged. Corrected fixture verification is pending user execution.
+- Correct the new co-signature regression to query `Signature.SignedByUserId`, matching the Core model, instead of nonexistent `UserId`. The user's build stopped with CS1061 before tests ran; build/test verification remains pending.
+- Reverify all eleven exposed review findings against `fc811f69`: three new valid findings fixed locally, seven earlier findings already addressed, and one invalid self-grant restriction under the confirmed policy. Deduplicate nineteen summary references; retain the limitation on inaccessible session-only suppressed/Previously missed feedback.
+- Resolve compliance override and signature/co-signature authority from live membership in the note's owning clinic instead of home-role metadata. Add regressions for different home/clinic roles, revoked grants and inactive authority, including denial without signature/override/audit writes.
+- Require both organization administration and a live Admin/Owner grant in the selected patient clinic for patient registration reads and mutations, including proposed staff-to-Patient role changes. Cover missing/revoked/ordinary grants, null/administration-only/other selections, both organization roles, positive patient approval, and SQLite HTTP queries with production tenant resolution.
+- Refresh architecture and the review audit. The user-confirmed verification for the already-pushed first review/CI corrections does not cover this new diff; builds/tests are pending user execution. No commit, push, review reply, resolution, metadata update or review request was performed in this pass.
+
+### Fixed - PR 160 database-provider CI model construction
+
+- Diagnose both SQL Server and PostgreSQL failures in Database Provider CI run `41638885481`: EF failed while constructing `AddOrganizationMemberships.TargetModel`, before executing the migration SQL, because the integration helper attempted to register CLR entities over existing generated dictionary entities. Missing test reports were secondary to the failed migration steps.
+- Remove the redundant integration helper call from both providers' organization migration designers and current model snapshots. Preserve their generated integration mappings, patient-document storage-key limits and required enterprise-data helper calls. Retain the separate SQL Server backfill-command correction from the review pass.
+- Add regression coverage that constructs the migration target model and current snapshot for all three providers, checking retained integration, document, enterprise and organization metadata. Include the target model when generating SQL Server migration commands.
+- The user confirmed all required builds/tests passed before this CI correction. The changed migration metadata and new regression now require focused verification; no builds/tests were run by the agent. Commit, push and review-thread updates are pending this verification. Existing local review changes remain intact.
+
+### Fixed - PR 160 review findings
+
+- Separate SQL Server organization schema additions from their backfill command, with regression coverage of the generated command boundary. Provider execution remains required.
+- Exclude patient portal accounts from organization staff listings, grants, role changes and invitations while preserving their existing patient authentication memberships. Prevent organization administrators from editing or reactivating owners whose home-clinic role is ordinary.
+- Restore signed-out native password-reset requests. On native authentication failure, clear credentials and invalidate the clinical cache scope and UI session when the outer lease ends, preserving drafts and allowing in-flight sync outcome writes. Add regressions for expired tokens, failed refresh/retry, signed-out reset routes and subsequent sign-in.
+- Inventory all ten organization routes with their default authentication and service authorization requirements, and compare the inventory with mapped endpoint metadata. Document review classifications and prepare a local PR-description replacement; no GitHub metadata or review state was changed.
+- Record the user's decision permitting organization administrators to explicitly grant themselves ordinary clinic roles. Classify the proposed self-grant restriction as invalid under that approved policy; preserve existing server behavior and add coverage for all six ordinary roles, audited self-grants, foreign-clinic denial and both privileged-role denials. Proceed with the eight accessible findings as requested, retaining the limitation on inaccessible session-only feedback.
+- Replace blocking authentication-state task access in the native-session regression with awaited notifications, preserving assertions before and after lease disposal and addressing the reported xUnit1031 warning.
+- The user confirmed all required builds/tests passed for these review corrections, including the subsequent xUnit1031 correction. This confirmation predates the additional database-provider CI correction above. No builds/tests were run by the agent under repository rules. `git diff --check` passes. Suppressed/session-only findings are not exposed by the available GitHub feedback and remain unverified if any exist.
+
+### Fixed - PR 160 explicit organization authority in registration fixtures
+
+- Record the user's follow-up run: 2,643 passed, 3 failed, 0 skipped, 2,646 total in 3 minutes 4 seconds. Only the positive registration integration cases remained failing.
+- Explicitly seed organization Owner/Administrator memberships for the corresponding fixture accounts instead of relying on first-owner bootstrap ordering. The previous correction scoped pending applicants to the correct clinic but did not explicitly establish the reviewing account's organization authority. Production authorization is unchanged.
+- Exercise registration listing, editing and approval with both organization roles, use distinct applicant emails, and verify the authenticated organization's returned role before checking list results. Retain the foreign-organization denial test. Whitespace checks pass; focused and full .NET reruns remain for the user. No migrations, commits or pushes were performed.
+
+### Fixed - PR 160 membership regression fixtures and CI ownership
+
+- Record the user's full test run: 2,622 passed, 18 failed, 0 skipped, 2,640 total in 3 minutes 17 seconds. Correct the duplicate owner categories on the new organization/native suites; a lightweight source scan now confirms exactly one supported category for all 208 test files.
+- Seed real users and explicit clinic memberships in derived payment/Settings integration hosts, and place local registration fixtures in the test administrator's clinic. Keep production membership enforcement intact and add HTTP regressions for changed/revoked grants and foreign-organization registration denial.
+- Update JWT/refresh regressions to invalidate changed or revoked selected-clinic memberships while preserving explicit access when only home-account metadata changes. Restore the default pending-approval redirect and cover preservation of non-default return routes and selected/administration-only clinics.
+- Update Plan 05 verification evidence and CI ownership documentation. Source/whitespace checks pass; the corrected .NET tests await user execution. No builds/tests, database migrations, commits or pushes were performed by the agent.
+
+### Fixed - PR 160 API and native sign-in compilation
+
+- Add the optional selected clinic to the API-local `LoginRequest`, which shadows the Application request type in the JWT endpoint. Replace MAUI's unavailable ASP.NET Core WebUtilities query parser with built-in URI decoding, preserving selected and administration-only clinics while rejecting malformed/duplicate selections instead of silently choosing the home clinic.
+- Add native sign-in regression cases for home, selected, administration-only, encoded and invalid query values. The user's build stopped with CS0234 on all three MAUI targets and CS1061 in the API; tests did not run. Corrected sources await user build/test verification; no .NET commands or commits were run by the agent.
+
+### Fixed - PR 160 organization page compilation
+
+- Rename the staff dropdown loop variable to avoid colliding with the selected-staff pattern variable in Razor's generated scope (CS0136). The user's clean/restore completed, but compilation stopped before tests ran. Build/test verification remains pending; no agent-run .NET checks or commits were performed.
+
+### Added - PR 160 organization and clinic memberships (Plan 05)
+
+- Implement the user's approved organization-above-clinic model with explicit organization/staff and per-clinic role grants, owner/admin staff administration, local registration approval, and hashed, expiring, email-bound invitations. Organization authority never implies clinical access; protect the last active owner and reject stale/concurrent access changes.
+- Add organization management to the shared Web/MAUI UI and selected-clinic PIN sign-in, retaining the clinic across errors and PIN/MFA steps. Persist session selection, revalidate membership on API requests and token refresh, and provide administration-only sessions. Update scheduling/fax recipients and sync-created ownership for explicit memberships.
+- Add additive migrations and snapshots for SQLite, SQL Server and Postgres, preserving clinic IDs and patient/signed-record ownership. Backfill one organization per clinic and retain home roles as explicit memberships; guard rollback against unsafe access changes and selected sessions.
+- Partition native cache, drafts, queued work and watermarks by user/clinic, serialize credential replacement with sync, and retain unscoped legacy device data for verified recovery. Document the pre-upgrade pending-work requirement and absence of automatic legacy recovery.
+- Add authorization, refresh, registration, migration and native-scope regression sources; expand provider query checks and sign-in JavaScript coverage. Six JavaScript tests and the synthetic SQLite SQL migration rehearsal pass; .NET, EF model-drift, SQL Server/Postgres and browser/native verification await user execution under repo rules. Update architecture, migration, mobile and Plan 05 documentation. Implementation remains uncommitted and unpushed.
+
 ### Fixed - PR 158 temporary intake insurance provenance
 
 - Initialize temporary-patient intake provenance through the shared patient profile reader, including independent primary/secondary legacy payer fingerprints and normalized payer aliases, before the existing atomic patient/intake save. Caller-supplied source metadata cannot replace that initial server snapshot.
@@ -199,6 +262,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed - Client review Plan 07
 
 - Prefilled new intakes with clinic-scoped patient contact data and coherent primary/secondary policy values through both creation routes. Older editable drafts now offer explicit blank-field prefill; existing answers, submitted records and unknown response fields are retained. Added synthetic service, component and API coverage; no schema migration.
+
+### Planning - Client review Plan 05
+
+- Added Plan 05 evidence, development specification, acceptance criteria and exact decision/dependency gates. This is planning documentation; the feature is not implemented.
 
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 

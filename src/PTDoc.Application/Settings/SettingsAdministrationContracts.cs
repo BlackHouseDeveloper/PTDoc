@@ -183,7 +183,8 @@ public sealed record MfaChallengePrincipal(
     Guid UserId,
     MfaChallengePurpose Purpose,
     Guid? CredentialId = null,
-    string? StateBinding = null);
+    string? StateBinding = null,
+    Guid? ClinicId = null);
 
 public interface ISettingsSecretProtector
 {

@@ -63,6 +63,19 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
         string payloadJson,
         CancellationToken cancellationToken = default)
     {
+        using var scopeLease = await _localContext.EnterScopeAsync(cancellationToken);
+        if (_localContext.ScopeEnabled)
+        {
+            var belongsToScope = entityType switch
+            {
+                "Patient" => await _localContext.PatientSummaries.AnyAsync(item => item.LocalId == localEntityId, cancellationToken),
+                "Appointment" => await _localContext.AppointmentSummaries.AnyAsync(item => item.LocalId == localEntityId, cancellationToken),
+                "IntakeForm" => await _localContext.IntakeFormDrafts.AnyAsync(item => item.LocalId == localEntityId, cancellationToken),
+                "ClinicalNote" => await _localContext.ClinicalNoteDrafts.AnyAsync(item => item.LocalId == localEntityId, cancellationToken),
+                _ => false
+            };
+            if (!belongsToScope) throw new InvalidOperationException("Cannot queue data from another clinic.");
+        }
         var existing = await _localContext.SyncQueueItems
             .Where(q =>
                 q.EntityType == entityType &&
@@ -131,6 +144,7 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
     /// <inheritdoc/>
     public async Task<LocalPushResult> PushPendingAsync(CancellationToken cancellationToken = default)
     {
+        using var scopeLease = await _localContext.EnterScopeAsync(cancellationToken);
         var errors = new List<string>();
         var now = DateTime.UtcNow;
 
@@ -175,11 +189,12 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
 
             try
             {
-                var httpResponse = await _httpClient.PostAsJsonAsync(
-                    "/api/v1/sync/client/push",
-                    new ClientSyncPushRequest { Items = [pushItem] },
-                    _jsonOptions,
-                    cancellationToken);
+                using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/sync/client/push")
+                {
+                    Content = JsonContent.Create(new ClientSyncPushRequest { Items = [pushItem] }, options: _jsonOptions)
+                };
+                request.Options.Set(AuthenticatedHttpMessageHandler.LocalScopeLeaseHeld, _localContext.ScopeEnabled);
+                using var httpResponse = await _httpClient.SendAsync(request, cancellationToken);
 
                 if (!httpResponse.IsSuccessStatusCode)
                 {
@@ -255,6 +270,7 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
     /// <inheritdoc/>
     public async Task<LocalPullResult> PullChangesAsync(CancellationToken cancellationToken = default)
     {
+        using var scopeLease = await _localContext.EnterScopeAsync(cancellationToken);
         var errors = new List<string>();
         int pulledCount = 0, appliedCount = 0, conflictCount = 0;
 
@@ -282,7 +298,9 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
                 ? $"/api/v1/sync/client/pull?entityTypes={entityTypeList}"
                 : $"/api/v1/sync/client/pull?sinceUtc={Uri.EscapeDataString(sinceUtc.ToString("o"))}&entityTypes={entityTypeList}";
 
-            var httpResponse = await _httpClient.GetAsync(url, cancellationToken);
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Options.Set(AuthenticatedHttpMessageHandler.LocalScopeLeaseHeld, _localContext.ScopeEnabled);
+            using var httpResponse = await _httpClient.SendAsync(request, cancellationToken);
 
             if (!httpResponse.IsSuccessStatusCode)
             {
@@ -384,6 +402,7 @@ public class LocalSyncOrchestrator : ILocalSyncOrchestrator
     /// <inheritdoc/>
     public async Task<int> GetPendingCountAsync(CancellationToken cancellationToken = default)
     {
+        using var scopeLease = await _localContext.EnterScopeAsync(cancellationToken);
         // Count both Pending (not yet pushed) and Conflict (needs resolution) — neither is synced.
         var patientCount = await _localContext.PatientSummaries
             .CountAsync(p => p.SyncState == SyncState.Pending || p.SyncState == SyncState.Conflict, cancellationToken);
