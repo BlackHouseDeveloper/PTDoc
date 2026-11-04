@@ -93,6 +93,8 @@ public sealed class SubscriptionService(ApplicationDbContext db, IUserRegistrati
         var subscription = await OwnedAsync(ct);
         if (!GetOffer().Enabled) throw new SubscriptionUnavailableException("New payments are not available. Contact support.");
         if (subscription.PendingOperation is not null) throw Pending();
+        if (subscription.ProviderStatus == "canceled")
+            throw new SubscriptionConflictException("Contact support to reconcile canceled billing before restarting payment.");
         if (subscription.HasClinicalAccess(clock.GetUtcNow().UtcDateTime)) return View(subscription);
         if (!request.AcceptRecurringTerms || request.OpaqueDataDescriptor != "COMMON.ACCEPT.INAPP.PAYMENT" || string.IsNullOrWhiteSpace(request.OpaqueDataToken)
             || request.OpaqueDataToken.Length > 8192) throw new ArgumentException("Choose a payment method using the secure payment form.");
@@ -153,14 +155,14 @@ public sealed class SubscriptionService(ApplicationDbContext db, IUserRegistrati
     public async Task<SubscriptionAccount> CancelAsync(CancellationToken ct = default)
     {
         var subscription = await OwnedAsync(ct);
-        if (subscription.PendingOperation is not null && subscription.PendingOperation != "cancel") throw Pending();
+        if (subscription.PendingOperation is not null) throw Pending();
         if (subscription.RecurringSubscriptionId is null)
         {
             subscription.ProviderStatus = "canceled";
             await SaveAsync(subscription, "IndividualBillingCancelled", ct);
             return View(subscription);
         }
-        if (subscription.PendingOperation != "cancel") await BeginAsync(subscription, "cancel", ct);
+        await BeginAsync(subscription, "cancel", ct);
         await gateway.CancelAsync(subscription.RecurringSubscriptionId, ct);
         subscription.ProviderStatus = "canceled";
         subscription.PendingOperation = null;

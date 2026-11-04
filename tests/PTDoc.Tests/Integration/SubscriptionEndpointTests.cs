@@ -13,12 +13,116 @@ using PTDoc.Application.Integrations;
 using Moq;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Integrations.Services;
 
 namespace PTDoc.Tests.Integration;
 
 [Trait("Category", "CoreCi")]
 public sealed class SubscriptionEndpointTests(PtDocApiFactory factory) : IClassFixture<PtDocApiFactory>
 {
+    [Theory]
+    [InlineData("charge", "createTransactionRequest")]
+    [InlineData("profile", "createCustomerProfileFromTransactionRequest")]
+    [InlineData("recurring", "ARBCreateSubscriptionRequest")]
+    public async Task ProviderTimeout_Returns503_PreservesPendingState_AndBlocksRepeatMutation(string pending, string operation)
+    {
+        using var handler = new ProviderTimeoutHandler(operation);
+        using var providerClient = new HttpClient(handler);
+        var clients = new Mock<IHttpClientFactory>();
+        clients.Setup(item => item.CreateClient(nameof(AuthorizeNetSubscriptionGateway))).Returns(providerClient);
+        await using var host = factory.WithWebHostBuilder(builder => builder
+            .ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Subscriptions:Enabled"] = "true",
+                ["Subscriptions:Amount"] = "49",
+                ["Subscriptions:IntervalMonths"] = "1",
+                ["Subscriptions:AuthorizeNet:Environment"] = "Sandbox",
+                ["Subscriptions:AuthorizeNet:ApiLoginId"] = "test-login",
+                ["Subscriptions:AuthorizeNet:ClientKey"] = "test-client",
+                ["Subscriptions:AuthorizeNet:TransactionKey"] = "test-only",
+                ["Subscriptions:AuthorizeNet:SignatureKey"] = new string('A', 128)
+            }))
+            .ConfigureTestServices(services => services.Replace(ServiceDescriptor.Singleton<ISubscriptionGateway>(provider =>
+                new AuthorizeNetSubscriptionGateway(clients.Object, provider.GetRequiredService<IConfiguration>())))));
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            await db.Database.MigrateAsync();
+            await PtDocApiFactory.SeedTestUsersAsync(db);
+            var user = await db.Users.SingleAsync(item => item.Username == "integration-pt");
+            var clinic = await db.Clinics.SingleAsync(item => item.Id == user.ClinicId);
+            db.IndividualSubscriptions.Add(new IndividualSubscription
+            {
+                UserId = user.Id,
+                ClinicId = clinic.Id,
+                OrganizationId = clinic.OrganizationId!.Value,
+                Amount = 49,
+                IntervalMonths = 1,
+                Environment = "Sandbox"
+            });
+            await db.SaveChangesAsync();
+        }
+        using var client = host.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Role", "PT");
+        var payment = new SubscriptionPaymentRequest("COMMON.ACCEPT.INAPP.PAYMENT", "opaque", true);
+        var response = await client.PostAsJsonAsync("/api/v1/subscriptions/payment", payment);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Contains("Check billing status", await response.Content.ReadAsStringAsync());
+        var calls = handler.Operations.Count;
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync("/api/v1/subscriptions/payment", payment)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync("/api/v1/subscriptions/cancel", new { })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/v1/subscriptions/repair", new { })).StatusCode);
+        Assert.Equal(calls, handler.Operations.Count);
+        Assert.Equal(1, handler.Operations.Count(item => item == operation));
+        await using var verify = host.Services.CreateAsyncScope();
+        var verifiedDb = verify.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var subscription = await verifiedDb.IndividualSubscriptions.SingleAsync();
+        Assert.Equal(pending, subscription.PendingOperation);
+        Assert.Equal(pending != "charge", subscription.HasClinicalAccess(DateTime.UtcNow));
+        Assert.Equal(pending == "charge" ? 0 : 1, await verifiedDb.SubscriptionPayments.CountAsync());
+    }
+
+    private sealed class ProviderTimeoutHandler(string timeoutOperation) : HttpMessageHandler
+    {
+        public List<string> Operations { get; } = [];
+        private string? invoice;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            using var document = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+            var operation = document.RootElement.EnumerateObject().Single();
+            Operations.Add(operation.Name);
+            if (operation.Name == timeoutOperation) throw new TaskCanceledException("Provider timeout.");
+            if (operation.Name == "createTransactionRequest")
+                invoice = operation.Value.GetProperty("transactionRequest").GetProperty("order").GetProperty("invoiceNumber").GetString();
+            object result = operation.Name switch
+            {
+                "createTransactionRequest" => new { transactionResponse = new { responseCode = "1", transId = "123" } },
+                "getTransactionDetailsRequest" => new
+                {
+                    messages = new { resultCode = "Ok" },
+                    transaction = new
+                    {
+                        transId = "123",
+                        transactionStatus = "capturedPendingSettlement",
+                        responseCode = "1",
+                        settleAmount = "49.00",
+                        submitTimeUTC = DateTime.UtcNow.ToString("O"),
+                        order = new { invoiceNumber = invoice }
+                    }
+                },
+                "createCustomerProfileFromTransactionRequest" => new
+                {
+                    messages = new { resultCode = "Ok" },
+                    customerProfileId = "700",
+                    customerPaymentProfileIdList = new[] { "800" }
+                },
+                _ => throw new InvalidOperationException("Unexpected provider operation: " + operation.Name)
+            };
+            return new(HttpStatusCode.OK) { Content = JsonContent.Create(result) };
+        }
+    }
+
     [Fact]
     public async Task PublicOffer_ContainsNoMerchantSecrets_AndSignupDefaultsOff()
     {

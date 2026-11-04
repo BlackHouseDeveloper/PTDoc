@@ -28,6 +28,31 @@ public sealed class SubscriptionBillingTests : TestContext
     }
 
     [Fact]
+    public void CanceledAccountWithoutSchedule_ShowsSupportRecoveryWithoutPaymentInitialization()
+    {
+        using var handler = new BillingHandler { Account = Account() with { Status = "canceled" } };
+        RegisterClient(handler);
+        var module = JSInterop.SetupModule("./_content/PTDoc.UI/js/authorize-net-accept.js");
+        module.Mode = JSRuntimeMode.Loose;
+        var cut = RenderComponent<SubscriptionBilling>();
+        Assert.Empty(cut.FindAll(".AcceptUI"));
+        Assert.Contains("Contact support", cut.Markup);
+        Assert.DoesNotContain(module.Invocations, call => call.Identifier == "initialize");
+    }
+
+    [Fact]
+    public void PendingOperation_DisablesCancellationButAllowsStatusRefresh()
+    {
+        using var handler = new BillingHandler { Account = Account(recurring: true, pending: true) with { Status = "active" } };
+        RegisterClient(handler);
+        var cut = RenderComponent<SubscriptionBilling>();
+        Assert.True(cut.Find("input[type=checkbox]").HasAttribute("disabled"));
+        cut.Find("input[type=checkbox]").Change(true);
+        Assert.True(cut.FindAll("button").Single(button => button.TextContent == "Cancel recurring billing").HasAttribute("disabled"));
+        Assert.False(cut.FindAll("button").Single(button => button.TextContent == "Refresh billing status").HasAttribute("disabled"));
+    }
+
+    [Fact]
     public void PaymentIsEnabledOnlyAfterRenderedButtonIsInitialized()
     {
         using var handler = new BillingHandler();

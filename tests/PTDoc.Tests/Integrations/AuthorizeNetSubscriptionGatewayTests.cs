@@ -112,7 +112,55 @@ public sealed class AuthorizeNetSubscriptionGatewayTests
         Assert.False(subscription.TryGetProperty("payment", out _));
     }
 
-    private static AuthorizeNetSubscriptionGateway Create(CaptureHandler handler)
+    [Theory]
+    [InlineData("charge", false)]
+    [InlineData("profile", false)]
+    [InlineData("recurring", false)]
+    [InlineData("cancel", false)]
+    [InlineData("charge", true)]
+    [InlineData("profile", true)]
+    [InlineData("recurring", true)]
+    [InlineData("cancel", true)]
+    public async Task ProviderTimeout_IsUncertain_WhileCallerCancellationPropagates(string operation, bool callerCanceled)
+    {
+        using var cancellation = new CancellationTokenSource();
+        using var handler = new CancellationHandler(callerCanceled ? cancellation : null);
+        var gateway = Create(handler);
+        Task Invoke() => operation switch
+        {
+            "charge" => gateway.ChargeAsync("PDinvoice", 49, "descriptor", "token", cancellation.Token),
+            "profile" => gateway.CreateProfileAsync("123", cancellation.Token),
+            "recurring" => gateway.CreateRecurringAsync("PTDoc-test", 49, 1, new(2026, 12, 3), new("700", "800"), cancellation.Token),
+            _ => gateway.CancelAsync("456", cancellation.Token)
+        };
+        if (callerCanceled)
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(Invoke);
+        else
+        {
+            var exception = await Assert.ThrowsAsync<SubscriptionUnavailableException>(Invoke);
+            Assert.Contains("Check billing status", exception.Message);
+        }
+        Assert.Equal(operation == "cancel" ? 2 : 1, handler.Calls);
+    }
+
+    private sealed class CancellationHandler(CancellationTokenSource? caller) : HttpMessageHandler
+    {
+        public int Calls;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Calls++;
+            using var document = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+            if (document.RootElement.TryGetProperty("ARBGetSubscriptionRequest", out _))
+                return new(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""{"messages":{"resultCode":"Ok"},"subscription":{"status":"active"}}""", Encoding.UTF8, "application/json")
+                };
+            caller?.Cancel();
+            throw new TaskCanceledException("Provider request did not complete.");
+        }
+    }
+
+    private static AuthorizeNetSubscriptionGateway Create(HttpMessageHandler handler)
     {
         var client = new HttpClient(handler, disposeHandler: false);
         var factory = new Mock<IHttpClientFactory>();

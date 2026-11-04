@@ -1,6 +1,6 @@
 # Plan 06: Individual subscription and organization onboarding
 
-**Implemented in `6238b41e`; CI/review corrections published in `b0b5587e` after owner-confirmed required builds/tests. The follow-up review audit below adds local regression coverage and awaits verification. Provider-sandbox acceptance remains a release gate.**
+**Implemented in `6238b41e`; CI/review corrections published through `d79ccbfd` after owner-confirmed required builds/tests. The latest review pass below fixes three Previously missed findings locally and awaits fresh verification. Earlier audit sections are historical checkpoints. Provider-sandbox acceptance remains a release gate.**
 
 - Requirements: R084, R086
 - PR: [#161](https://github.com/BlackHouseDeveloper/PTDoc/pull/161)
@@ -368,3 +368,81 @@ and the PostgreSQL migration/test commands in the preceding provider handoff,
 using its disposable connection string, because the command-generation helper
 is shared across providers. No local build/test was run by the agent. Local
 whitespace checks pass; these fixes remain uncommitted and unpushed.
+
+
+## Review audit at `d79ccbfd` — three Previously missed findings
+
+Local HEAD, upstream and remote PR head were
+`d79ccbfd3ffd87318c9e99dca7bb8506067015e9` at retrieval. The owner confirmed all
+required verification before that commit was published. The only pre-existing
+local change was `src/PTDoc.Api/PTDoc.db`; it is preserved unchanged.
+
+Retrieved all five inline threads (one open, four resolved; two have outdated
+locations), eight review submissions, and zero PR conversation comments. GraphQL
+pagination reports no further thread, nested-comment, review, or conversation
+pages. The [latest Lite review](https://github.com/BlackHouseDeveloper/PTDoc/pull/161#pullrequestreview-5768158016)
+contains **three Previously missed issues**, each in its summary rather than a
+resolvable inline thread. Its “No open issues” banner does not mean these findings
+are absent. Summary references and the timeline's repeated representations are
+deduplicated below. No additional separately labeled suppressed finding is exposed
+by these APIs; private Copilot-only content cannot be guaranteed from them. In
+response to the request for additional suppressed findings, the user supplied the
+same three Previously missed titles and two resolved references. All five match
+the retrieved review; the supplied list introduces no additional unique finding.
+
+### Complete classification and supporting evidence
+
+| Unique finding / source | Classification | Current evidence, change or reason for no change |
+| --- | --- | --- |
+| **Previously missed:** Reject payments for canceled subscriptions, latest review above | **Valid actionable recovery-policy gap; claimed downstream cause invalid** | At the reviewed head, `PayAsync` resets `ProviderStatus` to `pending` before capture, so the assertion that `ProvisionRecurringAsync` immediately returns because status remains canceled is false. However, canceling an account without an ARB ID then paying bypasses the explicit operator restart procedure in this document. Add a server conflict before any state mutation/capture, hide the payment form for canceled accounts, and show support recovery. `CanceledAccountWithoutRecurringId_RejectsPaymentUntilOperatorRecovery` verifies unchanged persisted status/version/invoice/coverage, zero charges and ledger entries, then successful payment only after the documented operator status reset. The UI regression checks no payment initialization. |
+| **Previously missed:** Block cancellation while any operation is pending, latest review above | **Valid** | `CancelAsync` explicitly allowed pending `cancel`. The gateway does read provider status before canceling, so it is not wholly blind, but if that read remains active it can issue another mutation without the required `RepairAsync` boundary. Reject every pending operation before calling the gateway; persist a fresh marker only after the guard. Disable pending cancellation in the UI while preserving refresh. Four pending-state cases plus `UncertainCancellation_BlocksRepeatUntilReadOnlyReconciliationConfirmsOutcome` verify no second cancellation, preservation while provider status is active, and clearance only after a confirmed terminal status without losing paid coverage/history. |
+| **Previously missed:** Map provider timeouts to uncertain-operation responses, latest review above | **Valid** | The shared gateway transport did not catch `OperationCanceledException`; the endpoint filter handles `SubscriptionUnavailableException`/`HttpRequestException`, not this exception. Map transport cancellation to existing `Uncertain()` only when the caller token is not canceled. The existing filter returns JSON 503; `SubscriptionApiClient.CheckAsync` surfaces that message and `SubscriptionBilling.RunAsync` reloads account state. Eight adapter cases cover timeout versus caller cancellation across charge/profile/ARB/cancel (including the cancel mutation after its status read). Three HTTP cases use the real adapter/service, verify 503 and persisted charge/profile/recurring markers, paid-period retention after capture, and blocked repeat payment/cancellation without additional provider calls. |
+| [CodeQL Content-Length](https://github.com/BlackHouseDeveloper/PTDoc/pull/161#discussion_r4463310894), `PRRT_kwDOQt-faM6zb5MD` | **Invalid; still open** | Refreshed alert 21 still identifies the size condition at `SubscriptionEndpoints.cs:43` and the Unauthorized return at line 54 as its sensitive action. Both size exits reject with 413; all processing requires HMAC verification. `Webhook_SizeGateNeverBypassesSignatureOrProviderVerification` covers eight signed/unsigned, known/unknown length boundary cases with strict provider-call assertions. No code change, suppression or dismissal is justified. |
+| [Trailing-slash copay route](https://github.com/BlackHouseDeveloper/PTDoc/pull/161#discussion_r4463340832), `PRRT_kwDOQt-faM6zb9sK` | **Outdated — fixed** | `b0b5587e` added `TrimEnd('/')` before the case-insensitive payment suffix check. `ServerGuard_RechecksExpiryAndPlanLimits` covers both route forms, mixed case, denial codes and allowed ordinary check-in. Already resolved; no further correction. |
+| [Payment-button revisit](https://github.com/BlackHouseDeveloper/PTDoc/pull/161#discussion_r4463340866), `PRRT_kwDOQt-faM6zb9sU` | **Outdated — fixed** | `b0b5587e` shares `ShowPayment` for render/init, enables payment only after initialization, and uses disposable per-form provider host documents in the shared subscription/copay bridge. `SubscriptionBillingTests`, `WebStaticAssetIntegrationTests` and three `authorize-net-accept.spec.ts` cases cover readiness/revisit/disposal. Already resolved; the new canceled-state predicate is applied through the same shared render/init condition. |
+| [Renewal webhook routing](https://github.com/BlackHouseDeveloper/PTDoc/pull/161#discussion_r4463749996), `PRRT_kwDOQt-faM6zc7vV` | **Invalid** | The refreshed published provider event catalog lists payment notifications separately from subscription lifecycle events, without the alleged `customer.subscription.payment.*` family. Existing dispatch calls `ReceiveTransactionAsync` → verified transaction/recurring ID → `ApplyPaymentAsync`. `Webhook_DocumentedEvents_VerifyRenewalsAndKeepLifecycleSeparate` and duplicate/out-of-order service coverage prove documented renewal handling. Already resolved as invalid with explicit owner authorization; no additional change. |
+| [Captured-response precedence](https://github.com/BlackHouseDeveloper/PTDoc/pull/161#discussion_r4463750045), `PRRT_kwDOQt-faM6zc7vw` | **Invalid** | `or` remains part of the C# `is` pattern, so response code 1 is already required for both captured statuses. The suggested parentheses do not change behavior. Eleven `TransactionVerification_RequiresCapturedFunds` cases include all six non-success/captured combinations; `ApplyPaymentAsync` rejects `Captured=false`. Already resolved as invalid with explicit owner authorization; no change. |
+| Older review summaries, latest resolved references, pasted prior findings and duplicated timeline/API representations | **Duplicate** | These restate the eight unique findings above. They do not create additional independent fixes or inline threads. |
+
+Primary contracts rechecked: [Authorize.Net event catalog](https://developer.authorize.net/api/reference/features/webhooks.html),
+[C# pattern grammar](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/language-specification/patterns#11210-logical-pattern),
+and [.NET HttpClient timeout exceptions](https://learn.microsoft.com/en-us/dotnet/api/system.net.http.httpclient.sendasync?view=net-8.0).
+No code decision remains ambiguous among the retrieved and user-supplied items.
+Build/test verification remains outstanding; no additional finding was supplied.
+
+### Verification and eventual thread eligibility
+
+Nineteen new cases: six service cases, eight adapter cases, three HTTP cases and
+two UI cases. No new files, architecture change, migration, secret or generated
+artifact is introduced. Production changes are limited to subscription guards,
+transport timeout handling and the corresponding billing controls.
+
+Run from the repository root:
+
+```bash
+dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --configuration Release
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~SubscriptionServiceTests|FullyQualifiedName~AuthorizeNetSubscriptionGatewayTests|FullyQualifiedName~SubscriptionEndpointTests|FullyQualifiedName~SubscriptionBillingTests" --verbosity normal
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "Category=CoreCi" --verbosity normal -- xUnit.ParallelizeTestCollections=false
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --verbosity normal
+dotnet build src/PTDoc.Web/PTDoc.Web.csproj --configuration Release
+dotnet format src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --verify-no-changes --verbosity diagnostic
+dotnet format src/PTDoc.Integrations/PTDoc.Integrations.csproj --verify-no-changes --verbosity diagnostic
+dotnet format src/PTDoc.UI/PTDoc.UI.csproj --verify-no-changes --verbosity diagnostic
+dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity diagnostic
+```
+
+The shared UI also ships in native clients; rebuild the affected supported targets:
+
+```bash
+dotnet build src/PTDoc.Maui/PTDoc.csproj --configuration Release -f net8.0-android
+dotnet build src/PTDoc.Maui/PTDoc.csproj --configuration Release -f net8.0-ios
+dotnet build src/PTDoc.Maui/PTDoc.csproj --configuration Release -f net8.0-maccatalyst
+```
+
+No heavy verification was run by the agent. No commit, push, review reply,
+resolution, PR-level response or review request was made. After successful
+verification/publication and explicit authorization, the three corrected summary
+findings can be reported at review/PR level, but **none has an inline thread that
+can be replied to or resolved individually**. The only open inline thread is the
+invalid CodeQL finding; it is not fixed by these changes and remains untouched.
+The other four threads are already resolved and should not receive duplicate replies.

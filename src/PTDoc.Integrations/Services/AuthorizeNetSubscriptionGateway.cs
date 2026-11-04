@@ -124,18 +124,27 @@ public sealed class AuthorizeNetSubscriptionGateway(IHttpClientFactory clients, 
         };
         foreach (var item in payload) request.Add(item.Key, item.Value);
         var url = environment == "Production" ? "https://api.authorize.net/xml/v1/request.api" : "https://apitest.authorize.net/xml/v1/request.api";
-        using var response = await clients.CreateClient(nameof(AuthorizeNetSubscriptionGateway))
-            .PostAsJsonAsync(url, new Dictionary<string, object> { [operation] = request }, ct);
-        if (!response.IsSuccessStatusCode) throw Uncertain();
-        var result = JsonDocument.Parse((await response.Content.ReadAsStringAsync(ct)).TrimStart('\uFEFF'));
-        var responseRoot = result.RootElement;
-        if (responseRoot.TryGetProperty(operation.Replace("Request", "Response", StringComparison.Ordinal), out var wrapped)) responseRoot = wrapped;
-        if (requireSuccess && (!responseRoot.TryGetProperty("messages", out var messages) || Text(messages, "resultCode") != "Ok"))
+        try
         {
-            result.Dispose();
+            using var response = await clients.CreateClient(nameof(AuthorizeNetSubscriptionGateway))
+                .PostAsJsonAsync(url, new Dictionary<string, object> { [operation] = request }, ct);
+            if (!response.IsSuccessStatusCode) throw Uncertain();
+            var result = JsonDocument.Parse((await response.Content.ReadAsStringAsync(ct)).TrimStart('\uFEFF'));
+            var responseRoot = result.RootElement;
+            if (responseRoot.TryGetProperty(operation.Replace("Request", "Response", StringComparison.Ordinal), out var wrapped)) responseRoot = wrapped;
+            if (requireSuccess && (!responseRoot.TryGetProperty("messages", out var messages) || Text(messages, "resultCode") != "Ok"))
+            {
+                result.Dispose();
+                throw Uncertain();
+            }
+            return result;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // The provider may have applied the mutation before the client timed out.
+            // Leave the durable pending marker for reconciliation; never imply a safe retry.
             throw Uncertain();
         }
-        return result;
     }
 
     private static string Text(JsonElement element, string property) => element.TryGetProperty(property, out var value) ? value.ToString() : string.Empty;

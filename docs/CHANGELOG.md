@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 161 previously missed billing recovery findings
+
+- Reject payments for canceled subscriptions until the documented support recovery resets the account, and hide the secure payment form for canceled accounts. Preserve payment history and paid coverage.
+- Block cancellation whenever any durable operation is pending, including an uncertain cancellation. Keep status reconciliation available and disable repeat cancellation in the billing UI.
+- Convert provider timeouts to the existing uncertain-operation/503 response while preserving caller cancellation and persisted pending markers. Add 19 focused service, adapter, HTTP and UI cases for these boundaries.
+- Record all eight unique current findings, duplicate sources, Previously missed summary items, contract evidence and thread eligibility in Plan 06. The canceled-payment finding's asserted provisioning cause is inaccurate, but its restart-policy gap is actionable. Verification awaits user execution; no publication or GitHub review action was performed.
+- Match the user's supplied review list to the same three Previously missed findings and two already-resolved references; no additional unique finding or code change is required by that list.
+
 ### Tests - Await failed-save retry navigation
 
 - Make `FailedSaveNavigation_RetryRequiresIncompleteConfirmationBeforeLeaving` wait for an enabled retry control and await both asynchronous click handlers. The retry includes persistence and a 350 ms saving-state delay; the prior synchronous click started the modal assertion before that work completed. Preserve the modal, dirty-state and navigation assertions without increasing timeouts or changing production code.

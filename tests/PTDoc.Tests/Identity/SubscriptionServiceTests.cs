@@ -160,6 +160,74 @@ public sealed class SubscriptionServiceTests
     }
 
     [Fact]
+    public async Task CanceledAccountWithoutRecurringId_RejectsPaymentUntilOperatorRecovery()
+    {
+        await using var fixture = await Fixture.CreateAsync(subscriber: true);
+        await fixture.Service.CancelAsync();
+        fixture.Db.ChangeTracker.Clear();
+        var subscription = await fixture.Db.IndividualSubscriptions.SingleAsync();
+        var version = subscription.Version;
+
+        await Assert.ThrowsAsync<SubscriptionConflictException>(() => fixture.Service.PayAsync(new("COMMON.ACCEPT.INAPP.PAYMENT", "opaque", true)));
+        fixture.Db.ChangeTracker.Clear();
+        subscription = await fixture.Db.IndividualSubscriptions.SingleAsync();
+        Assert.Equal("canceled", subscription.ProviderStatus);
+        Assert.Equal(version, subscription.Version);
+        Assert.Null(subscription.PendingOperation);
+        Assert.Null(subscription.InvoiceNumber);
+        Assert.Null(subscription.PaidThroughUtc);
+        Assert.Empty(await fixture.Db.SubscriptionPayments.ToListAsync());
+        Assert.Equal(0, fixture.Gateway.Charges);
+        Assert.Equal(0, fixture.Gateway.RecurringCreates);
+
+        // The documented operator procedure explicitly resets status before a new consented payment.
+        subscription.ProviderStatus = "pending";
+        await fixture.Db.SaveChangesAsync();
+        Assert.True((await fixture.Service.PayAsync(new("COMMON.ACCEPT.INAPP.PAYMENT", "new-opaque", true))).HasRecurringBilling);
+        Assert.Equal(1, fixture.Gateway.Charges);
+    }
+
+    [Theory]
+    [InlineData("charge")]
+    [InlineData("profile")]
+    [InlineData("recurring")]
+    [InlineData("cancel")]
+    public async Task Cancellation_RejectsEveryPendingOperationWithoutProviderMutation(string operation)
+    {
+        await using var fixture = await Fixture.CreateAsync(subscriber: true);
+        var subscription = await fixture.Db.IndividualSubscriptions.SingleAsync();
+        subscription.PendingOperation = operation;
+        subscription.RecurringSubscriptionId = "900";
+        await fixture.Db.SaveChangesAsync();
+        await Assert.ThrowsAsync<SubscriptionConflictException>(() => fixture.Service.CancelAsync());
+        fixture.Db.ChangeTracker.Clear();
+        Assert.Equal(operation, (await fixture.Db.IndividualSubscriptions.SingleAsync()).PendingOperation);
+        Assert.Equal(0, fixture.Gateway.Cancellations);
+    }
+
+    [Fact]
+    public async Task UncertainCancellation_BlocksRepeatUntilReadOnlyReconciliationConfirmsOutcome()
+    {
+        await using var fixture = await Fixture.CreateAsync(subscriber: true);
+        var paid = await fixture.Service.PayAsync(new("COMMON.ACCEPT.INAPP.PAYMENT", "opaque", true));
+        fixture.Gateway.FailOperation = "cancel";
+        await Assert.ThrowsAsync<HttpRequestException>(() => fixture.Service.CancelAsync());
+        fixture.Db.ChangeTracker.Clear();
+        await Assert.ThrowsAsync<SubscriptionConflictException>(() => fixture.Service.CancelAsync());
+        Assert.Equal(1, fixture.Gateway.Cancellations);
+        Assert.True((await fixture.Service.RepairAsync()).NeedsReconciliation);
+        Assert.Equal(1, fixture.Gateway.Cancellations);
+
+        fixture.Gateway.Status = "canceled";
+        var reconciled = await fixture.Service.RepairAsync();
+        Assert.False(reconciled.NeedsReconciliation);
+        Assert.Equal("canceled", reconciled.Status);
+        Assert.Equal(paid.PaidThroughUtc, reconciled.PaidThroughUtc);
+        Assert.Single(await fixture.Db.SubscriptionPayments.ToListAsync());
+        Assert.Equal(1, fixture.Gateway.Cancellations);
+    }
+
+    [Fact]
     public async Task CancellationAndExpiry_RetainAccountAndPayments_AndLeaveBillingRecoveryAvailable()
     {
         await using var fixture = await Fixture.CreateAsync(subscriber: true);
@@ -324,7 +392,7 @@ public sealed class SubscriptionServiceTests
     {
         public TestClock Clock { get; set; } = null!;
         public Dictionary<string, SubscriptionTransaction> Transactions { get; } = new();
-        public int Charges, RecurringCreates;
+        public int Charges, RecurringCreates, Cancellations;
         public decimal ChargedAmount;
         public DateTime RecurringStart;
         public bool LoseChargeResponse;
@@ -355,6 +423,12 @@ public sealed class SubscriptionServiceTests
             return Task.FromResult("900");
         }
         public Task<RecurringSubscription> GetRecurringAsync(string subscriptionId, CancellationToken ct) => Task.FromResult(new RecurringSubscription(subscriptionId, Status));
-        public Task CancelAsync(string subscriptionId, CancellationToken ct) { Status = "canceled"; return Task.CompletedTask; }
+        public Task CancelAsync(string subscriptionId, CancellationToken ct)
+        {
+            Cancellations++;
+            if (FailOperation == "cancel") throw new HttpRequestException("Response lost");
+            Status = "canceled";
+            return Task.CompletedTask;
+        }
     }
 }
