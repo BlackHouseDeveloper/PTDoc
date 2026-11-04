@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -947,7 +948,9 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     [Fact]
     public async Task PT_Creates_DailyNote_WithOverride_PersistsOverrideLogAndAudit()
     {
-        using var client = _factory.CreateClientWithRole(Roles.PT);
+        using var clinicFactory = await CreateClinicScopedFactoryAsync();
+        using var client = clinicFactory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestRoleAuthHandler.RoleHeader, Roles.PT);
         var patientId = await CreatePatientAsync(client);
 
         var body = JsonContent(new CreateNoteRequest
@@ -977,10 +980,12 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         Assert.False(envelope.RequiresOverride);
         Assert.Contains(envelope.Warnings, warning => warning.Contains("8-minute threshold", StringComparison.OrdinalIgnoreCase));
 
-        await using var scope = _factory.Services.CreateAsyncScope();
+        await using var scope = clinicFactory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var noteId = envelope.Note!.Id;
 
+        Assert.Equal(PtDocApiFactory.AuthorizationClinicId,
+            (await db.ClinicalNotes.SingleAsync(note => note.Id == noteId)).ClinicId);
         var overrideLog = await db.RuleOverrides.SingleAsync(row => row.NoteId == noteId);
         Assert.Equal("EightMinuteRule", overrideLog.RuleName);
         Assert.Equal("Clinical judgment supports additional unit", overrideLog.Justification);
@@ -1419,11 +1424,12 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     [Fact]
     public async Task PT_Creates_Note_Then_Signs_Successfully()
     {
-        using var client = _factory.CreateClientWithRole(Roles.PT);
+        using var clinicFactory = await CreateClinicScopedFactoryAsync();
+        using var client = clinicFactory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestRoleAuthHandler.RoleHeader, Roles.PT);
         var patientId = await CreatePatientAsync(client);
 
-        // Use a Daily note — no blocking clinical-validation rules fire for Daily notes,
-        // so SignNoteAsync will always return Success=true, giving us a reliable 200 OK.
+        // Use a valid Daily note in the PT's clinic to exercise signing authorization.
         var createBody = JsonContent(new CreateNoteRequest
         {
             PatientId = patientId,
@@ -1439,6 +1445,15 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         var noteDoc = JsonSerializer.Deserialize<JsonDocument>(createContent, JsonOpts);
         var noteId = noteDoc!.RootElement.GetProperty("note").GetProperty("id").GetGuid();
 
+        await using (var scope = clinicFactory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            Assert.Equal(PtDocApiFactory.AuthorizationClinicId,
+                (await db.Patients.SingleAsync(patient => patient.Id == patientId)).ClinicId);
+            Assert.Equal(PtDocApiFactory.AuthorizationClinicId,
+                (await db.ClinicalNotes.SingleAsync(note => note.Id == noteId)).ClinicId);
+        }
+
         // Sign note — Daily notes have no blocking compliance violations, so expect 200 OK.
         using var signResp = await client.PostAsync(
             $"/api/v1/notes/{noteId}/sign",
@@ -1449,7 +1464,9 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     [Fact]
     public async Task PT_Can_Verify_Signed_Note_Using_Both_Verify_Routes()
     {
-        using var client = _factory.CreateClientWithRole(Roles.PT);
+        using var clinicFactory = await CreateClinicScopedFactoryAsync();
+        using var client = clinicFactory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestRoleAuthHandler.RoleHeader, Roles.PT);
         var patientId = await CreatePatientAsync(client);
 
         using var createResp = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
@@ -1487,7 +1504,9 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     [Fact]
     public async Task PT_Cannot_Update_Signed_Note_And_Response_Points_To_Addendum()
     {
-        using var client = _factory.CreateClientWithRole(Roles.PT);
+        using var clinicFactory = await CreateClinicScopedFactoryAsync();
+        using var client = clinicFactory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestRoleAuthHandler.RoleHeader, Roles.PT);
         var patientId = await CreatePatientAsync(client);
 
         using var createResponse = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
@@ -1522,7 +1541,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         Assert.Contains("Signed notes cannot be modified", errorJson, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("addendum", errorJson, StringComparison.OrdinalIgnoreCase);
 
-        await using var scope = _factory.Services.CreateAsyncScope();
+        await using var scope = clinicFactory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var stored = await db.ClinicalNotes.AsNoTracking().SingleAsync(note => note.Id == noteId);
         Assert.Equal(NoteStatus.Signed, stored.NoteStatus);
@@ -1532,7 +1551,9 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     [Fact]
     public async Task PT_Creates_Structured_Addendum_And_Stored_Content_Is_CanonicalWorkspaceV2()
     {
-        using var client = _factory.CreateClientWithRole(Roles.PT);
+        using var clinicFactory = await CreateClinicScopedFactoryAsync();
+        using var client = clinicFactory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestRoleAuthHandler.RoleHeader, Roles.PT);
         var patientId = await CreatePatientAsync(client);
 
         using var createResp = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
@@ -1571,7 +1592,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             JsonOpts);
         var addendumId = addendumDoc!.RootElement.GetProperty("addendumId").GetGuid();
 
-        await using var scope = _factory.Services.CreateAsyncScope();
+        await using var scope = clinicFactory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var addendum = await db.ClinicalNotes.SingleAsync(note => note.Id == addendumId);
         using var storedJson = JsonDocument.Parse(addendum.ContentJson);
@@ -2013,7 +2034,9 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     [Fact]
     public async Task PTA_Can_Export_PendingCoSign_Note_WithPendingStatus()
     {
-        using var client = _factory.CreateClientWithRole(Roles.PTA);
+        using var clinicFactory = await CreateClinicScopedFactoryAsync();
+        using var client = clinicFactory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestRoleAuthHandler.RoleHeader, Roles.PTA);
         var patientId = await CreatePatientAsync(client);
 
         using var createResponse = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
@@ -2036,11 +2059,12 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
             JsonContent(new { consentAccepted = true, intentConfirmed = true }));
         Assert.Equal(HttpStatusCode.OK, signResponse.StatusCode);
 
-        await using (var scope = _factory.Services.CreateAsyncScope())
+        await using (var scope = clinicFactory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var savedNote = await db.ClinicalNotes.SingleAsync(note => note.Id == noteId);
             Assert.Equal(NoteStatus.PendingCoSign, savedNote.NoteStatus);
+            Assert.Equal(PtDocApiFactory.AuthorizationClinicId, savedNote.ClinicId);
         }
 
         using var exportResponse = await client.PostAsync($"/api/v1/notes/{noteId}/export/pdf", null);
@@ -2301,7 +2325,9 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     [Fact]
     public async Task PT_Can_Export_Signed_Note_Returns_Pdf_File()
     {
-        using var client = _factory.CreateClientWithRole(Roles.PT);
+        using var clinicFactory = await CreateClinicScopedFactoryAsync();
+        using var client = clinicFactory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestRoleAuthHandler.RoleHeader, Roles.PT);
         var patientId = await CreatePatientAsync(client);
 
         using var createResponse = await client.PostAsync("/api/v1/notes", JsonContent(new CreateNoteRequest
@@ -2332,7 +2358,7 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         Assert.NotEmpty(bytes);
         Assert.StartsWith("%PDF", Encoding.UTF8.GetString(bytes));
 
-        await using var scope = _factory.Services.CreateAsyncScope();
+        await using var scope = clinicFactory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var exportAudits = await db.AuditLogs
             .Where(log => log.EventType == "PdfExport")
@@ -2662,6 +2688,23 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private async Task<WebApplicationFactory<Program>> CreateClinicScopedFactoryAsync()
+    {
+        // Signing and overrides require a note owned by the actor's selected clinic.
+        // Keep the broad fixture's unscoped legacy scenarios isolated from these flows.
+        var clinicFactory = _factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<ITenantContextAccessor>();
+                services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>();
+            }));
+        await using var scope = clinicFactory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await db.Database.MigrateAsync();
+        await PtDocApiFactory.SeedTestUsersAsync(db);
+        return clinicFactory;
+    }
 
     /// <summary>Creates a patient via the API and returns the new patient ID.</summary>
     internal static async Task<Guid> CreatePatientAsync(HttpClient client)

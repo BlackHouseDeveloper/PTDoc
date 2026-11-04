@@ -77,6 +77,90 @@ public sealed class SignatureServiceTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(savedSignature.AttestationText));
     }
 
+    [Theory]
+    [InlineData(Roles.PT, Roles.PTA)]
+    [InlineData(Roles.PTA, Roles.PT)]
+    public async Task SignNote_UsesNoteClinicRoleInsteadOfHomeRole(string homeRole, string clinicRole)
+    {
+        var (signer, note) = await CreateClinicScopedNoteAsync(homeRole, clinicRole);
+
+        var result = await _signatureService.SignNoteAsync(note.Id, signer.Id, clinicRole, true, true);
+
+        Assert.True(result.Success, result.ErrorMessage);
+        Assert.Equal(clinicRole == Roles.PTA ? NoteStatus.PendingCoSign : NoteStatus.Signed, note.NoteStatus);
+        Assert.Equal(clinicRole, Assert.Single(_context.Signatures).Role);
+        Assert.Equal(homeRole, signer.Role);
+    }
+
+    [Theory]
+    [InlineData("wrong-role")]
+    [InlineData("revoked-grant")]
+    [InlineData("inactive-user")]
+    [InlineData("inactive-organization-membership")]
+    public async Task SignNote_InvalidLiveClinicAuthority_DoesNotWriteSignature(string reason)
+    {
+        var (signer, note) = await CreateClinicScopedNoteAsync(Roles.PT, Roles.PT);
+        var grant = await _context.ClinicMemberships.SingleAsync(item => item.UserId == signer.Id && item.ClinicId == note.ClinicId);
+        if (reason == "wrong-role") grant.Role = Roles.PTA;
+        if (reason == "revoked-grant") grant.IsActive = false;
+        if (reason == "inactive-user") signer.IsActive = false;
+        if (reason == "inactive-organization-membership")
+            (await _context.OrganizationMemberships.SingleAsync(item => item.UserId == signer.Id)).IsActive = false;
+        await _context.SaveChangesAsync();
+
+        var result = await _signatureService.SignNoteAsync(note.Id, signer.Id, Roles.PT, true, true);
+
+        Assert.False(result.Success);
+        Assert.Equal("User role mismatch", result.ErrorMessage);
+        Assert.Equal(NoteStatus.Draft, note.NoteStatus);
+        Assert.Null(note.SignatureHash);
+        Assert.Empty(_context.Signatures);
+        _mockAuditService.Verify(service => service.LogSignatureEventAsync(It.IsAny<AuditEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(Roles.PTA, Roles.PT, true)]
+    [InlineData(Roles.PT, Roles.PTA, false)]
+    public async Task CoSignNote_RequiresLivePtRoleInNoteClinic(string homeRole, string clinicRole, bool allowed)
+    {
+        var (signer, note) = await CreateClinicScopedNoteAsync(homeRole, clinicRole);
+        var pta = await CreateUserAsync(Roles.PTA);
+        pta.ClinicId = signer.ClinicId;
+        _context.ClinicMemberships.Add(new ClinicMembership { ClinicId = note.ClinicId!.Value, UserId = pta.Id, Role = Roles.PTA });
+        await _context.SaveChangesAsync();
+        Assert.True((await _signatureService.SignNoteAsync(note.Id, pta.Id, Roles.PTA, true, true)).Success);
+        _mockAuditService.Invocations.Clear();
+
+        var result = await _signatureService.CoSignNoteAsync(note.Id, signer.Id, true, true);
+
+        Assert.Equal(allowed, result.Success);
+        Assert.Equal(allowed ? NoteStatus.Signed : NoteStatus.PendingCoSign, note.NoteStatus);
+        Assert.Equal(allowed ? signer.Id : (Guid?)null, note.CoSignedByUserId);
+        Assert.Equal(allowed ? 2 : 1, await _context.Signatures.CountAsync());
+        if (allowed)
+            Assert.Equal(Roles.PT, (await _context.Signatures.SingleAsync(item => item.SignedByUserId == signer.Id)).Role);
+        else
+            _mockAuditService.Verify(service => service.LogSignatureEventAsync(It.IsAny<AuditEvent>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    private async Task<(User Signer, ClinicalNote Note)> CreateClinicScopedNoteAsync(string homeRole, string clinicRole)
+    {
+        var home = new Clinic { Name = "Home clinic", Slug = $"home-{Guid.NewGuid():N}" };
+        var target = new Clinic { Name = "Note clinic", Slug = $"note-{Guid.NewGuid():N}", OrganizationId = home.Id };
+        _context.Clinics.AddRange(home, target);
+        await _context.SaveChangesAsync();
+        var signer = await CreateUserAsync(homeRole);
+        signer.ClinicId = home.Id;
+        await _context.SaveChangesAsync();
+        _context.ClinicMemberships.Add(new ClinicMembership { ClinicId = target.Id, UserId = signer.Id, Role = clinicRole });
+        var patient = await CreatePatientAsync();
+        patient.ClinicId = target.Id;
+        var note = await CreateNoteAsync(patient.Id, NoteType.Daily, CreateWorkspaceNoteContentWithDiagnosis(noteType: NoteType.Daily));
+        note.ClinicId = target.Id;
+        await _context.SaveChangesAsync();
+        return (signer, note);
+    }
+
     [Fact]
     public async Task SignNote_RelationalWrite_DoesNotLeaveSignatureFieldsDirtyBeforeAuditLogging()
     {

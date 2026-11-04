@@ -9,13 +9,23 @@
 
 ## Current review status
 
-The user confirmed all required builds/tests passed before the implementation commit.
-The earlier failed-run and pending-verification records below describe historical
-handoffs. They do not certify the subsequent review corrections, which are local
-and uncommitted. See [the review findings and exact verification commands](plan-05-review-findings.md)
-for current classifications, fixes, confirmed policy and feedback-access limitations.
-The GitHub title/body still require an explicitly authorized update to remove their
-planning-only description.
+The user confirmed all required builds/tests passed before `fc811f69`, which contains
+the first review corrections and SQL Server/PostgreSQL CI repair. That commit was
+pushed and the original eight threads were resolved with authorization. The GitHub
+title/body now describe the implementation. Earlier failed-run and pending-check
+records below are historical handoffs, not the latest verification status.
+
+The current review pass verifies all eleven exposed findings: seven are outdated
+because they are addressed, the self-grant restriction is invalid under the user's
+confirmed policy, and three new findings are valid. Local, uncommitted corrections
+use the note clinic's live role for overrides/signatures and require selected-clinic
+Admin/Owner authority for patient registration access. The user's latest build passed
+with zero warnings/errors; the Debug suite reported 2,696 passed and seven failures.
+The seven signing/override workflow cases now use clinic-scoped test hosts instead
+of creating unowned notes under a null-tenant fixture. Verification of that fixture
+correction is pending; the earlier pass confirmation does not certify it. See [the complete
+review classifications, evidence and commands](plan-05-review-findings.md), including
+the remaining limitation on inaccessible session-only feedback.
 
 ## Approved decisions
 

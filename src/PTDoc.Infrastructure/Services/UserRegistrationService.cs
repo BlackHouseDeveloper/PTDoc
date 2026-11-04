@@ -38,20 +38,30 @@ public sealed class UserRegistrationService : IUserRegistrationService
     private readonly ApplicationDbContext dbContext;
     private readonly ILogger<UserRegistrationService> logger;
     private readonly IIdentityContextAccessor? identity;
+    private readonly ITenantContextAccessor? tenant;
 
-    public UserRegistrationService(ApplicationDbContext dbContext, ILogger<UserRegistrationService> logger, IIdentityContextAccessor? identity = null)
+    public UserRegistrationService(ApplicationDbContext dbContext, ILogger<UserRegistrationService> logger, IIdentityContextAccessor? identity = null, ITenantContextAccessor? tenant = null)
     {
         this.dbContext = dbContext;
         this.logger = logger;
         this.identity = identity;
+        this.tenant = tenant;
     }
 
-    private IQueryable<User> AdministrativeUsers()
+    private IQueryable<User> AdministrativeUsers(bool requirePatientAccess = false)
     {
         // Public registration does not need an actor; administrative operations do.
         if (identity is null) return dbContext.Users.Where(_ => false);
         var actorId = identity.TryGetCurrentUserId();
+        var selectedClinicId = tenant?.GetCurrentClinicId();
         return dbContext.Users.Where(user => dbContext.Users.Any(actor => actor.Id == actorId && actor.IsActive)
+            // Patient registration requires the selected clinic's live Admin/Owner grant,
+            // in addition to organization administration; organization authority alone is insufficient.
+            && ((!requirePatientAccess && user.Role.ToUpper() != "PATIENT")
+                || (selectedClinicId != null && selectedClinicId != Guid.Empty && user.ClinicId == selectedClinicId
+                    && dbContext.ClinicMemberships.Any(grant => grant.ClinicId == user.ClinicId
+                        && grant.UserId == actorId && grant.IsActive
+                        && (grant.Role.ToUpper() == "ADMIN" || grant.Role.ToUpper() == "OWNER"))))
             && user.ClinicId != null && dbContext.Clinics.Any(clinic =>
             clinic.Id == user.ClinicId && clinic.IsActive && dbContext.OrganizationMemberships.Any(member =>
                 member.OrganizationId == clinic.OrganizationId && member.UserId == actorId && member.IsActive
@@ -434,6 +444,11 @@ public sealed class UserRegistrationService : IUserRegistrationService
 
         var suppliedRole = request.RoleKey?.Trim() ?? string.Empty;
         var normalizedRole = AllowedRoleKeys.FirstOrDefault(role => string.Equals(role, suppliedRole, StringComparison.OrdinalIgnoreCase)) ?? suppliedRole;
+        if (normalizedRole == Roles.Patient && !await AdministrativeUsers(requirePatientAccess: true)
+            .AnyAsync(candidate => candidate.Id == userId, cancellationToken))
+        {
+            return new RegistrationResult(RegistrationStatus.NotFound, null, "Registration not found.");
+        }
         if (identity is not null && normalizedRole is (Roles.Owner or Roles.Admin))
         {
             var actorId = identity.TryGetCurrentUserId();

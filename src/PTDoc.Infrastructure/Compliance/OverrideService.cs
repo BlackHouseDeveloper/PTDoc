@@ -5,6 +5,7 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Identity;
 
 namespace PTDoc.Infrastructure.Compliance;
 
@@ -33,7 +34,8 @@ public sealed class OverrideService(
             throw new KeyNotFoundException($"Attesting user {request.AttestedBy} not found.");
         }
 
-        if (!string.Equals(user.Role, Roles.PT, StringComparison.OrdinalIgnoreCase))
+        var clinicRole = await ClinicMembershipAccess.ResolveRoleAsync(db, user, note.ClinicId, ct);
+        if (!string.Equals(clinicRole, Roles.PT, StringComparison.OrdinalIgnoreCase))
         {
             throw new UnauthorizedAccessException("Only PT can override compliance warnings.");
         }

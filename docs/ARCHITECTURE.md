@@ -931,6 +931,11 @@ not describe every grant. `ClinicMembership.Role` supplies the role in a selecte
 clinic. Scheduling and fax triage use active memberships, allowing a clinician to
 work in two clinics without moving their user or patients.
 
+Compliance overrides, signing and co-signing resolve the actor's live role in the
+note's owning clinic through `ClinicMembershipAccess`; they do not infer authority
+from the home role. Overrides and co-signatures require PT in that clinic. Signing
+retains the existing PT/PTA note-type and co-signature rules.
+
 A local PIN sign-in accepts an optional `ClinicId`; omission selects the home clinic.
 Changing clinics requires fresh sign-in and the target clinic's PIN/MFA policy.
 Protected PIN/MFA challenges carry the selected clinic across requests. Opaque
@@ -965,6 +970,13 @@ authorization mechanism. Organization administration queries only staff metadata
 and always check the actor against the requested organization. Client-push creation
 stamps the selected clinic for patients and derives appointment ownership from the
 scoped patient; it never trusts a client-supplied tenant ID.
+
+Registration administration follows the same separation: organization authority
+alone can review staff registrations, but cannot list, read, edit or approve Patient
+accounts. The retained patient-registration workflow additionally requires the
+patient's home clinic to be the selected clinic and a live Admin/Owner grant there.
+This requirement also applies when changing a staff registration's role to Patient.
+Null and administration-only selections do not authorize patient registration access.
 
 MAUI partitions local data, drafts, pending sync and watermarks by user plus clinic.
 A shared scope lease serializes sync/cache operations with credential replacement.

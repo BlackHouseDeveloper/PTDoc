@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 160 note-clinic authorization and patient registration isolation
+
+- Record the user's successful build (zero warnings/errors) and subsequent Debug test run: 2,696 passed, seven failed, zero skipped, 2,703 total in 3 minutes 6 seconds. The seven signing/override workflow cases used a null-tenant fixture that created unowned notes for clinic-bound users. Move only those scenarios to isolated hosts with production tenant resolution and seeded clinic grants; assert persisted patient/note clinic ownership. Keep production authorization unchanged. Corrected fixture verification is pending user execution.
+- Correct the new co-signature regression to query `Signature.SignedByUserId`, matching the Core model, instead of nonexistent `UserId`. The user's build stopped with CS1061 before tests ran; build/test verification remains pending.
+- Reverify all eleven exposed review findings against `fc811f69`: three new valid findings fixed locally, seven earlier findings already addressed, and one invalid self-grant restriction under the confirmed policy. Deduplicate nineteen summary references; retain the limitation on inaccessible session-only suppressed/Previously missed feedback.
+- Resolve compliance override and signature/co-signature authority from live membership in the note's owning clinic instead of home-role metadata. Add regressions for different home/clinic roles, revoked grants and inactive authority, including denial without signature/override/audit writes.
+- Require both organization administration and a live Admin/Owner grant in the selected patient clinic for patient registration reads and mutations, including proposed staff-to-Patient role changes. Cover missing/revoked/ordinary grants, null/administration-only/other selections, both organization roles, positive patient approval, and SQLite HTTP queries with production tenant resolution.
+- Refresh architecture and the review audit. The user-confirmed verification for the already-pushed first review/CI corrections does not cover this new diff; builds/tests are pending user execution. No commit, push, review reply, resolution, metadata update or review request was performed in this pass.
+
 ### Fixed - PR 160 database-provider CI model construction
 
 - Diagnose both SQL Server and PostgreSQL failures in Database Provider CI run `41638885481`: EF failed while constructing `AddOrganizationMemberships.TargetModel`, before executing the migration SQL, because the integration helper attempted to register CLR entities over existing generated dictionary entities. Missing test reports were secondary to the failed migration steps.

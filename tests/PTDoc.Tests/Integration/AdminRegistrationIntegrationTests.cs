@@ -1,11 +1,15 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Identity;
 
 namespace PTDoc.Tests.Integration;
 
@@ -17,6 +21,89 @@ public sealed class AdminRegistrationIntegrationTests : IClassFixture<PtDocApiFa
     public AdminRegistrationIntegrationTests(PtDocApiFactory factory)
     {
         this.factory = factory;
+    }
+
+    [Theory]
+    [InlineData(Roles.Admin, false, false)]
+    [InlineData(Roles.Owner, false, false)]
+    [InlineData(Roles.Admin, false, true)]
+    [InlineData(Roles.Owner, false, true)]
+    [InlineData(Roles.Admin, true, false)]
+    [InlineData(Roles.Owner, true, false)]
+    public async Task PatientRegistration_RequiresAdministrationInSelectedClinic(string role, bool selectedClinic, bool activePatient)
+    {
+        using var scopedFactory = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<ITenantContextAccessor>();
+                services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>();
+            }));
+        Guid patientId;
+        const string email = "scoped-patient@example.test";
+        await using (var scope = scopedFactory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            await db.Database.MigrateAsync();
+            await PtDocApiFactory.SeedTestUsersAsync(db);
+            var clinicId = PtDocApiFactory.AuthorizationClinicId;
+            if (!selectedClinic)
+            {
+                var otherClinic = new Clinic
+                {
+                    Name = "Patient clinic",
+                    Slug = "patient-registration-clinic",
+                    OrganizationId = PtDocApiFactory.AuthorizationClinicId
+                };
+                db.Clinics.Add(otherClinic);
+                clinicId = otherClinic.Id;
+            }
+            var patient = new User
+            {
+                Username = "scoped-patient",
+                FirstName = "Patient",
+                LastName = "Applicant",
+                Email = email,
+                DateOfBirth = new DateTime(1990, 1, 1),
+                Role = "patient",
+                ClinicId = clinicId,
+                IsActive = activePatient
+            };
+            db.Users.Add(patient);
+            await db.SaveChangesAsync();
+            patientId = patient.Id;
+        }
+
+        using var client = scopedFactory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Role", role);
+        var page = await client.GetFromJsonAsync<PendingRegistrationsPage>(
+            $"/api/v1/admin/registrations/pending?status=All&q={Uri.EscapeDataString(email)}");
+        Assert.NotNull(page);
+        Assert.Equal(selectedClinic, page.Items.Any(item => item.Id == patientId));
+        using var detail = await client.GetAsync($"/api/v1/admin/registrations/{patientId}");
+        Assert.Equal(selectedClinic ? HttpStatusCode.OK : HttpStatusCode.NotFound, detail.StatusCode);
+        using var update = await client.PutAsJsonAsync($"/api/v1/admin/registrations/{patientId}",
+            new AdminRegistrationUpdateRequest("Patient Applicant", email, new DateTime(1990, 1, 1),
+                selectedClinic ? Roles.Patient : Roles.FrontDesk, null, null));
+        Assert.Equal(selectedClinic ? HttpStatusCode.OK : HttpStatusCode.NotFound, update.StatusCode);
+        using var approval = await client.PostAsync($"/api/v1/admin/registrations/{patientId}/approve", null);
+        Assert.Equal(selectedClinic ? HttpStatusCode.OK : HttpStatusCode.NotFound, approval.StatusCode);
+        if (!selectedClinic)
+        {
+            foreach (var action in new[] { "reject", "hold", "cancel" })
+            {
+                using var response = await client.PostAsync($"/api/v1/admin/registrations/{patientId}/{action}", null);
+                Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+            }
+        }
+
+        await using var verificationScope = scopedFactory.Services.CreateAsyncScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var saved = await verificationDb.Users.SingleAsync(item => item.Id == patientId);
+        Assert.Equal(selectedClinic || activePatient, saved.IsActive);
+        Assert.Equal(selectedClinic ? Roles.Patient : "patient", saved.Role);
+        Assert.Equal(email, saved.Email);
+        if (!selectedClinic)
+            Assert.Empty(await verificationDb.AuditLogs.Where(item => item.EntityId == patientId).ToListAsync());
     }
 
     [Fact]

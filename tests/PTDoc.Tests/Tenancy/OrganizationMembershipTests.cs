@@ -20,6 +20,96 @@ namespace PTDoc.Tests.Tenancy;
 public sealed class OrganizationMembershipTests
 {
     [Theory]
+    [InlineData(OrganizationRole.Owner, null, "target", true, false)]
+    [InlineData(OrganizationRole.Administrator, null, "target", true, false)]
+    [InlineData(OrganizationRole.Owner, Roles.PT, "target", true, false)]
+    [InlineData(OrganizationRole.Administrator, Roles.Admin, "other", true, false)]
+    [InlineData(OrganizationRole.Owner, Roles.Owner, "administration-only", true, false)]
+    [InlineData(OrganizationRole.Owner, Roles.Owner, "none", true, false)]
+    [InlineData(OrganizationRole.Administrator, Roles.Admin, "target", false, false)]
+    [InlineData(OrganizationRole.Administrator, Roles.Admin, "target", true, true)]
+    [InlineData(OrganizationRole.Owner, Roles.Owner, "target", true, true)]
+    public async Task PatientRegistration_RequiresSelectedClinicAdministrativeGrant(
+        OrganizationRole organizationRole, string? clinicRole, string selection, bool activeGrant, bool allowed)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        (await fixture.Db.OrganizationMemberships.SingleAsync(item => item.UserId == fixture.Staff.Id)).Role = organizationRole;
+        var patient = new User
+        {
+            Username = "patient-applicant",
+            FirstName = "Patient",
+            LastName = "Applicant",
+            Email = "patient-applicant@example.test",
+            DateOfBirth = new DateTime(1990, 1, 1),
+            Role = "patient",
+            ClinicId = fixture.SecondClinic.Id,
+            IsActive = false
+        };
+        fixture.Db.Users.Add(patient);
+        if (clinicRole is not null)
+            fixture.Db.ClinicMemberships.Add(new ClinicMembership
+            {
+                ClinicId = fixture.SecondClinic.Id,
+                UserId = fixture.Staff.Id,
+                Role = clinicRole,
+                IsActive = activeGrant
+            });
+        await fixture.Db.SaveChangesAsync();
+        var identity = new Mock<IIdentityContextAccessor>();
+        identity.Setup(item => item.TryGetCurrentUserId()).Returns(fixture.Staff.Id);
+        var tenant = new Mock<ITenantContextAccessor>();
+        tenant.Setup(item => item.GetCurrentClinicId()).Returns(selection switch
+        {
+            "target" => fixture.SecondClinic.Id,
+            "other" => fixture.FirstClinic.Id,
+            "administration-only" => Guid.Empty,
+            _ => (Guid?)null
+        });
+        var service = new UserRegistrationService(fixture.Db, NullLogger<UserRegistrationService>.Instance, identity.Object, tenant.Object);
+
+        var page = await service.GetPendingRegistrationsAsync(new(null, "All", null, null, null, null, null));
+        Assert.Equal(allowed, page.Items.Any(item => item.Id == patient.Id));
+        Assert.Equal(allowed, await service.GetPendingRegistrationAsync(patient.Id) is not null);
+        var edit = await service.UpdatePendingRegistrationAsync(patient.Id,
+            new("Patient Applicant", "updated-patient@example.test", patient.DateOfBirth,
+                allowed ? Roles.Patient : Roles.FrontDesk, null, null), fixture.Staff.Id);
+        Assert.Equal(allowed ? RegistrationStatus.Succeeded : RegistrationStatus.NotFound, edit.Status);
+        var approval = await service.ApproveRegistrationAsync(patient.Id, fixture.Staff.Id);
+        Assert.Equal(allowed ? RegistrationStatus.Succeeded : RegistrationStatus.NotFound, approval.Status);
+        Assert.Equal(allowed, patient.IsActive);
+        if (!allowed)
+        {
+            Assert.Equal(RegistrationStatus.NotFound, (await service.RejectRegistrationAsync(patient.Id, fixture.Staff.Id)).Status);
+            Assert.Equal(RegistrationStatus.NotFound, (await service.HoldRegistrationAsync(patient.Id, fixture.Staff.Id)).Status);
+            Assert.Equal(RegistrationStatus.NotFound, (await service.CancelRegistrationAsync(patient.Id, fixture.Staff.Id)).Status);
+            Assert.Equal("patient", patient.Role);
+            Assert.Equal("patient-applicant@example.test", patient.Email);
+            Assert.Empty(await fixture.Db.AuditLogs.ToListAsync());
+        }
+    }
+
+    [Fact]
+    public async Task OrganizationOnlyRegistrationAdmin_CannotConvertStaffRegistrationToPatient()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Staff.IsActive = false;
+        fixture.Staff.FirstName = "Staff";
+        fixture.Staff.LastName = "Applicant";
+        await fixture.Db.SaveChangesAsync();
+        var identity = new Mock<IIdentityContextAccessor>();
+        identity.Setup(item => item.TryGetCurrentUserId()).Returns(fixture.Owner.Id);
+        var service = new UserRegistrationService(fixture.Db, NullLogger<UserRegistrationService>.Instance, identity.Object);
+
+        var result = await service.UpdatePendingRegistrationAsync(fixture.Staff.Id,
+            new("Patient Applicant", "converted@example.test", new DateTime(1990, 1, 1), Roles.Patient, null, null), fixture.Owner.Id);
+
+        Assert.Equal(RegistrationStatus.NotFound, result.Status);
+        Assert.Equal(Roles.PT, fixture.Staff.Role);
+        Assert.Equal("staff@example.test", fixture.Staff.Email);
+        Assert.Empty(await fixture.Db.AuditLogs.ToListAsync());
+    }
+
+    [Theory]
     [InlineData("Patient")]
     [InlineData("patient")]
     public async Task PatientAccounts_AreExcludedFromStaffAdministrationAndInvitations(string role)
