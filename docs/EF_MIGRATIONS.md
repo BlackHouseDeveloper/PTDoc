@@ -37,7 +37,9 @@ Before rollout, rehearse against a protected copy for **each deployed provider**
 4. Run model-drift checks and provider smoke tests before deploying application
    code. Start the API before Web and verify sign-in in each intended clinic.
 
-The Down migration rejects multi-clinic or changed/inactive grants, inactive
+The Down migration rejects organization roles that differ from the backfill rule
+(active home Admin/Owner becomes organization Owner; everyone else becomes Member),
+including promotions and demotions. It also rejects multi-clinic or changed/inactive grants, inactive
 organizations, grouped clinics, cross-organization memberships, non-home selected
 sessions (including administration-only sessions), or invitations. Reconcile or
 restore from a verified backup instead of forcing a lossy downgrade. Organization

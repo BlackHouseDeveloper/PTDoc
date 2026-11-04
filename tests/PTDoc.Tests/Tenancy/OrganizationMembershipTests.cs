@@ -20,6 +20,85 @@ namespace PTDoc.Tests.Tenancy;
 public sealed class OrganizationMembershipTests
 {
     [Theory]
+    [InlineData("missing", true, false)]
+    [InlineData("legacy", true, true)]
+    [InlineData("legacy", false, false)]
+    [InlineData("inactive-legacy", true, false)]
+    public async Task ClinicRole_LegacyFallbackRequiresAnExistingActiveHomeClinic(string state, bool homeMatches, bool allowed)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var clinicId = state == "missing" ? Guid.NewGuid() : fixture.FirstClinic.Id;
+        fixture.FirstClinic.OrganizationId = null;
+        fixture.FirstClinic.IsActive = state != "inactive-legacy";
+        fixture.Staff.ClinicId = homeMatches ? clinicId : fixture.ForeignClinic.Id;
+        await fixture.Db.SaveChangesAsync();
+
+        Assert.Equal(allowed ? Roles.PT : null,
+            await ClinicMembershipAccess.ResolveRoleAsync(fixture.Db, fixture.Staff, clinicId));
+        if (state == "missing")
+        {
+            var auth = new AuthService(fixture.Db, NullLogger<AuthService>.Instance, Mock.Of<IAuditService>(),
+                clinicSignIn: new ClinicSignInContext { ClinicId = clinicId });
+            Assert.Null(await auth.AuthenticateAsync(fixture.Staff.Username, "12345678"));
+            Assert.Empty(await fixture.Db.Sessions.ToListAsync());
+        }
+    }
+
+    [Theory]
+    [InlineData(OrganizationRole.Owner, "Patient")]
+    [InlineData(OrganizationRole.Owner, "patient")]
+    [InlineData(OrganizationRole.Administrator, "Patient")]
+    [InlineData(OrganizationRole.Administrator, "patient")]
+    public async Task RegistrationAdministration_RejectsPatientActorWithRetainedOrganizationAuthority(OrganizationRole role, string patientRole)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Owner.Role = patientRole;
+        (await fixture.Db.OrganizationMemberships.SingleAsync(item => item.UserId == fixture.Owner.Id)).Role = role;
+        fixture.Staff.IsActive = false;
+        await fixture.Db.SaveChangesAsync();
+        Assert.Equal("OrganizationMember", await ClinicMembershipAccess.ResolveRoleAsync(fixture.Db, fixture.Owner, Guid.Empty));
+        var identity = new Mock<IIdentityContextAccessor>();
+        identity.Setup(item => item.TryGetCurrentUserId()).Returns(fixture.Owner.Id);
+        var tenant = new Mock<ITenantContextAccessor>();
+        tenant.Setup(item => item.GetCurrentClinicId()).Returns(Guid.Empty);
+        var service = new UserRegistrationService(fixture.Db, NullLogger<UserRegistrationService>.Instance, identity.Object, tenant.Object);
+
+        Assert.Empty((await service.GetPendingRegistrationsAsync(new(null, "All", null, null, null, null, null))).Items);
+        Assert.Null(await service.GetPendingRegistrationAsync(fixture.Staff.Id));
+        Assert.Equal(RegistrationStatus.NotFound, (await service.UpdatePendingRegistrationAsync(fixture.Staff.Id,
+            new("Edited Staff", "edited@example.test", new DateTime(1990, 1, 1), Roles.FrontDesk, null, null), fixture.Owner.Id)).Status);
+        Assert.Equal(RegistrationStatus.NotFound, (await service.ApproveRegistrationAsync(fixture.Staff.Id, fixture.Owner.Id)).Status);
+        Assert.Equal(RegistrationStatus.NotFound, (await service.RejectRegistrationAsync(fixture.Staff.Id, fixture.Owner.Id)).Status);
+        Assert.Equal(RegistrationStatus.NotFound, (await service.HoldRegistrationAsync(fixture.Staff.Id, fixture.Owner.Id)).Status);
+        Assert.Equal(RegistrationStatus.NotFound, (await service.CancelRegistrationAsync(fixture.Staff.Id, fixture.Owner.Id)).Status);
+        Assert.Equal("staff@example.test", fixture.Staff.Email);
+        Assert.Equal(Roles.PT, fixture.Staff.Role);
+        Assert.False(fixture.Staff.IsActive);
+        Assert.Empty(await fixture.Db.AuditLogs.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Invitation_RequiresAnExistingActiveStaffAccount(bool exists)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        const string email = "inactive-invite@example.test";
+        if (exists)
+        {
+            fixture.Db.Users.Add(new User { Username = "inactive-invite", Email = email, Role = Roles.PT, IsActive = false });
+            await fixture.Db.SaveChangesAsync();
+        }
+        var version = (await fixture.Db.Organizations.SingleAsync(item => item.Id == fixture.OrganizationId)).Version;
+
+        await Assert.ThrowsAsync<OrganizationAccessException>(() => fixture.Service.InviteAsync(fixture.OrganizationId, email));
+
+        Assert.Empty(await fixture.Db.OrganizationInvitations.ToListAsync());
+        Assert.Empty(await fixture.Db.AuditLogs.ToListAsync());
+        Assert.Equal(version, (await fixture.Db.Organizations.SingleAsync(item => item.Id == fixture.OrganizationId)).Version);
+    }
+
+    [Theory]
     [InlineData(OrganizationRole.Owner, null, "target", true, false)]
     [InlineData(OrganizationRole.Administrator, null, "target", true, false)]
     [InlineData(OrganizationRole.Owner, Roles.PT, "target", true, false)]
@@ -397,8 +476,9 @@ public sealed class OrganizationMembershipTests
         var outsider = new User { Username = "invited", Email = "invited@example.test", Role = Roles.PT, IsActive = true, ClinicId = fixture.ForeignClinic.Id };
         fixture.Db.Users.Add(outsider);
         await fixture.Db.SaveChangesAsync();
-        var invitation = await fixture.Service.InviteAsync(fixture.OrganizationId, outsider.Email);
+        var invitation = await fixture.Service.InviteAsync(fixture.OrganizationId, outsider.Email.ToUpperInvariant());
         var stored = await fixture.Db.OrganizationInvitations.SingleAsync();
+        Assert.Equal(outsider.Email, stored.Email);
         Assert.NotEqual(invitation.Token, stored.TokenHash);
         await Assert.ThrowsAsync<OrganizationAccessException>(() => fixture.For(fixture.Staff.Id).AcceptInvitationAsync(invitation.Token));
         await fixture.For(outsider.Id).AcceptInvitationAsync(invitation.Token);

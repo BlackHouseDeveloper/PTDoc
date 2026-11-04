@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 160 rollback authority and account eligibility
+
+- Verify six new review threads against `97708d8d`, deduplicating the three provider rollback reports into one issue. Four unique findings are valid; the eleven earlier threads remain addressed or invalid under the confirmed self-grant policy. No separately exposed suppressed/Previously missed entries were returned; inaccessible session-only feedback remains unverified.
+- Block organization migration downgrade when an organization role differs from the original backfill rule in SQLite, SQL Server and PostgreSQL. Add four promotion/demotion regressions with reconciliation and signed-data preservation, and run the actual provider rollback SQL inside transactional provider smoke checks.
+- Reject missing/inactive clinics before the legacy home-role fallback, deny Patient actors registration administration even with retained organization authority, and require an existing active non-patient account before issuing a staff invitation. Add focused eligibility/denial coverage and preserve case-insensitive email matching and patient-address exclusion.
+- Update architecture, the migration runbook and the complete review audit. A lightweight SQLite SQL rehearsal passed all four denied and reconciled rollback cases; .NET and SQL Server/PostgreSQL verification are pending user execution. No commit, push or review write was performed in this pass.
+
 ### Fixed - PR 160 note-clinic authorization and patient registration isolation
 
 - Record the user's successful build (zero warnings/errors) and subsequent Debug test run: 2,696 passed, seven failed, zero skipped, 2,703 total in 3 minutes 6 seconds. The seven signing/override workflow cases used a null-tenant fixture that created unowned notes for clinic-bound users. Move only those scenarios to isolated hosts with production tenant resolution and seeded clinic grants; assert persisted patient/note clinic ownership. Keep production authorization unchanged. Corrected fixture verification is pending user execution.

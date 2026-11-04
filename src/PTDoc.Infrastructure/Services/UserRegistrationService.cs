@@ -54,7 +54,8 @@ public sealed class UserRegistrationService : IUserRegistrationService
         if (identity is null) return dbContext.Users.Where(_ => false);
         var actorId = identity.TryGetCurrentUserId();
         var selectedClinicId = tenant?.GetCurrentClinicId();
-        return dbContext.Users.Where(user => dbContext.Users.Any(actor => actor.Id == actorId && actor.IsActive)
+        return dbContext.Users.Where(user => dbContext.Users.Any(actor => actor.Id == actorId && actor.IsActive
+                && actor.Role.ToUpper() != "PATIENT")
             // Patient registration requires the selected clinic's live Admin/Owner grant,
             // in addition to organization administration; organization authority alone is insufficient.
             && ((!requirePatientAccess && user.Role.ToUpper() != "PATIENT")

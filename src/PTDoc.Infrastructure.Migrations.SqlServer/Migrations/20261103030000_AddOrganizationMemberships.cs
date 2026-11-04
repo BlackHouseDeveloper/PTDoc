@@ -85,7 +85,8 @@ public partial class AddOrganizationMemberships : Migration
             OR EXISTS (SELECT 1 FROM [Organizations] WHERE [IsActive] <> 1)
             OR EXISTS (SELECT 1 FROM [Clinics] WHERE [OrganizationId] <> [Id])
             OR EXISTS (SELECT 1 FROM [OrganizationMemberships] m JOIN [Users] u ON u.[Id] = m.[UserId]
-                WHERE u.[ClinicId] IS NULL OR m.[OrganizationId] <> u.[ClinicId])
+                WHERE u.[ClinicId] IS NULL OR m.[OrganizationId] <> u.[ClinicId]
+                    OR m.[Role] <> CASE WHEN u.[IsActive] = 1 AND u.[Role] IN ('Admin','Owner') THEN 2 ELSE 0 END)
             OR EXISTS (SELECT 1 FROM [Sessions] s JOIN [Users] u ON u.[Id] = s.[UserId]
                 WHERE s.[ClinicId] IS NOT NULL AND (u.[ClinicId] IS NULL OR s.[ClinicId] <> u.[ClinicId]))
             OR EXISTS (SELECT 1 FROM [OrganizationInvitations]) THROW 51005, 'Reconcile organization memberships before rollback.', 1;

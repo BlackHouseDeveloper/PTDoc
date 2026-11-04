@@ -59,6 +59,33 @@ public sealed class OrganizationMigrationTests
         await AssertOwnershipAsync(connection);
     }
 
+    [Theory]
+    [InlineData("pt", 1, 0)]
+    [InlineData("pt", 2, 0)]
+    [InlineData("owner", 0, 2)]
+    [InlineData("owner", 1, 2)]
+    public async Task SqliteChangedOrganizationRole_BlocksRollbackUntilReconciled(string userId, int changedRole, int originalRole)
+    {
+        await using var connection = await CreateLegacyAsync();
+        var migration = CreateMigration();
+        await ExecuteAsync(connection, Sql(migration.UpOperations));
+        await using var update = connection.CreateCommand();
+        update.CommandText = "UPDATE OrganizationMemberships SET Role = $role WHERE UserId = $userId";
+        update.Parameters.AddWithValue("$role", changedRole);
+        update.Parameters.AddWithValue("$userId", userId);
+        await update.ExecuteNonQueryAsync();
+
+        var error = await Assert.ThrowsAsync<SqliteException>(() => ExecuteAsync(connection, Sql(migration.DownOperations)));
+        Assert.Equal(19, error.SqliteErrorCode);
+        Assert.Equal(3L, await ScalarAsync(connection, "SELECT COUNT(*) FROM OrganizationMemberships"));
+        await AssertOwnershipAsync(connection);
+
+        update.Parameters["$role"].Value = originalRole;
+        await update.ExecuteNonQueryAsync();
+        await ExecuteAsync(connection, Sql(migration.DownOperations));
+        await AssertOwnershipAsync(connection);
+    }
+
     [Fact]
     public async Task SqliteUpgradeAndDowngrade_PreserveOwnershipAndSignedRecords()
     {

@@ -918,7 +918,9 @@ Registration administrators cannot edit or reactivate an organization owner mere
 because that account has an ordinary home-clinic role.
 
 Invitations contain a random, single-use, 72-hour code; only its SHA-256 hash is
-persisted. The accepting account must be active and have the matching email. The
+persisted. Issuance requires an existing active non-patient account with the matching
+email; patient addresses remain ineligible. The accepting account must still be
+active, non-patient and have the matching email. The
 inviter must still be an active owner/administrator. Acceptance creates an ordinary
 organization membership with no clinic grants. New staff use clinic registration
 and local organization approval. Invitation delivery is manual/private; PTDoc does
@@ -944,6 +946,9 @@ session validator, local JWT validator, refresh-token store, and API membership
 middleware recheck active user, clinic, organization and memberships. The middleware
 also limits Entra roles to the current clinic grant. Entra continues using its
 provisioned tenant mapping; interactive multi-clinic selection uses local PIN sign-in.
+
+A missing clinic fails live role resolution. Legacy home-role fallback applies only
+to an existing active clinic without an organization, never to an orphaned clinic ID.
 
 `Guid.Empty` is a deliberate administration-only selection, distinct from null. It
 uses the account's home security policy, emits only `OrganizationMember`, and the
@@ -977,6 +982,8 @@ accounts. The retained patient-registration workflow additionally requires the
 patient's home clinic to be the selected clinic and a live Admin/Owner grant there.
 This requirement also applies when changing a staff registration's role to Patient.
 Null and administration-only selections do not authorize patient registration access.
+An actor whose account role is Patient cannot administer any registrations, even
+when an old organization Owner/Administrator membership remains active.
 
 MAUI partitions local data, drafts, pending sync and watermarks by user plus clinic.
 A shared scope lease serializes sync/cache operations with credential replacement.

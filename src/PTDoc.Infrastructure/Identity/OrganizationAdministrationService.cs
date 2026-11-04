@@ -128,7 +128,9 @@ public sealed class OrganizationAdministrationService(
             throw new ArgumentException("A valid staff email address is required.");
         var normalizedEmail = email.Trim().ToLowerInvariant();
         if (await db.Users.AnyAsync(user => user.Email != null && user.Email.ToLower() == normalizedEmail
-            && user.Role.ToUpper() == "PATIENT", cancellationToken))
+            && user.Role.ToUpper() == "PATIENT", cancellationToken)
+            || !await db.Users.AnyAsync(user => user.Email != null && user.Email.ToLower() == normalizedEmail
+                && user.IsActive && user.Role.ToUpper() != "PATIENT", cancellationToken))
             throw new OrganizationAccessException("This account is not eligible for a staff invitation.");
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         var invitation = new OrganizationInvitation

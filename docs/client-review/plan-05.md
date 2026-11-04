@@ -15,17 +15,20 @@ pushed and the original eight threads were resolved with authorization. The GitH
 title/body now describe the implementation. Earlier failed-run and pending-check
 records below are historical handoffs, not the latest verification status.
 
-The current review pass verifies all eleven exposed findings: seven are outdated
-because they are addressed, the self-grant restriction is invalid under the user's
-confirmed policy, and three new findings are valid. Local, uncommitted corrections
-use the note clinic's live role for overrides/signatures and require selected-clinic
-Admin/Owner authority for patient registration access. The user's latest build passed
-with zero warnings/errors; the Debug suite reported 2,696 passed and seven failures.
-The seven signing/override workflow cases now use clinic-scoped test hosts instead
-of creating unowned notes under a null-tenant fixture. Verification of that fixture
-correction is pending; the earlier pass confirmation does not certify it. See [the complete
-review classifications, evidence and commands](plan-05-review-findings.md), including
-the remaining limitation on inaccessible session-only feedback.
+The subsequent note-clinic and patient-registration corrections, including the
+seven workflow-fixture repairs, passed all required verification as confirmed by
+the user and were published in `97708d8d`. Their three threads were replied to and
+resolved with authorization.
+
+The current skill-driven pass retrieved seventeen threads: eleven resolved and six
+new open threads. The new threads contain four valid issues (one rollback defect
+reported against three providers). Local corrections guard changed organization
+roles on downgrade, reject orphaned clinics, exclude Patient actors from registration
+administration and require existing active staff for invitation issuance. A lightweight
+SQLite SQL rehearsal passes; .NET and real provider verification remain pending.
+See [the complete classifications, evidence and commands](plan-05-review-findings.md),
+including the limitation on inaccessible session-only feedback. No publication or
+review-write action was repeated in this pass.
 
 ## Approved decisions
 

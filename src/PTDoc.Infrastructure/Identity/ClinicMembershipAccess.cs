@@ -22,10 +22,10 @@ public static class ClinicMembershipAccess
                 ? "OrganizationMember" : null;
         if (!clinicId.HasValue) return user.ClinicId is null ? user.Role : null;
         var clinic = await db.Clinics.AsNoTracking().SingleOrDefaultAsync(item => item.Id == clinicId, cancellationToken);
+        if (clinic is null || !clinic.IsActive) return null;
         // Unmigrated synthetic/legacy records retain only their original clinic scope.
-        if (clinic?.OrganizationId is null)
-            return clinic?.IsActive != false && user.ClinicId == clinicId ? user.Role : null;
-        if (!clinic.IsActive) return null;
+        if (clinic.OrganizationId is null)
+            return user.ClinicId == clinicId ? user.Role : null;
         return await (from membership in db.ClinicMemberships.AsNoTracking()
                       join staff in db.OrganizationMemberships on new { OrganizationId = clinic.OrganizationId.Value, membership.UserId }
                           equals new { staff.OrganizationId, staff.UserId }
