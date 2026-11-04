@@ -251,6 +251,10 @@ builder.Services.AddScoped<ITenantContextAccessor, HttpTenantContextAccessor>();
 builder.Services.AddScoped<IPatientContextAccessor, HttpPatientContextAccessor>();
 builder.Services.AddScoped<ClinicSignInContext>();
 builder.Services.AddScoped<IOrganizationAdministrationService, OrganizationAdministrationService>();
+builder.Services.AddScoped<SubscriptionService>();
+builder.Services.AddScoped<ISubscriptionService>(sp => sp.GetRequiredService<SubscriptionService>());
+builder.Services.AddScoped<ISubscriptionGateway, AuthorizeNetSubscriptionGateway>();
+builder.Services.AddHttpClient(nameof(AuthorizeNetSubscriptionGateway), client => client.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserRegistrationService, UserRegistrationService>();
 builder.Services.AddScoped<IRolePermissionAdministrationService, RolePermissionAdministrationService>();
@@ -977,6 +981,7 @@ app.UseAuthentication();
 app.UseRateLimiter();
 app.UseMiddleware<ProvisioningGuardMiddleware>();
 app.UseMiddleware<ClinicMembershipGuardMiddleware>();
+app.UseMiddleware<SubscriptionAccessMiddleware>();
 app.UseMiddleware<ExternalMfaAssuranceMiddleware>();
 app.UseAuthorization();
 
@@ -1031,6 +1036,7 @@ if (legacyApiAuthEnabled)
     app.MapAuthEndpoints();
 }
 app.MapPinAuthEndpoints(); // New PIN-based auth
+app.MapSubscriptionEndpoints();
 app.MapRegistrationEndpoints(); // Self-service registration lookups and create
 app.MapOrganizationEndpoints();
 app.MapAdminRegistrationEndpoints(); // Admin approval/rejection for pending registrations

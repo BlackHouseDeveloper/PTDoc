@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 161 anonymous subscription endpoint inventory
+
+- Add the public subscription offer, individual signup and HMAC-verified Authorize.Net webhook to the authorization test's expected anonymous set, matching the existing route mappings and canonical inventory. Report missing/unexpected routes explicitly on future mismatches; runtime authorization is unchanged.
+- User verification: build succeeded with zero warnings/errors; the Debug test run passed 2,774 of 2,775 tests with zero skipped. The sole failure was the omitted expected routes, now corrected. Whitespace and source inventory checks pass; .NET rerun remains pending. No build, test, commit or push was run by the agent.
+
+### Fixed - PR 161 subscription gateway test compilation
+
+- Replace two interpolated raw JSON fixtures in `AuthorizeNetSubscriptionGatewayTests` with `JsonSerializer.Serialize` to remove closing-brace ambiguity (CS9007). Preserve response fields, JSON value types and existing assertions.
+- The user reported two compiler errors and zero warnings. Build/tests await user rerun; no build, test, commit or push was run by the agent.
+
+### Fixed - PR 161 subscription configuration compilation
+
+- **`SubscriptionService.GetOffer`** — Replace the three unavailable configuration-binder `GetValue` calls with configuration-indexer reads and built-in parsing, following Infrastructure's existing dependency-free pattern. Preserve the one-month default for an omitted interval; use invariant numeric parsing and disable billing for malformed amount, interval or enablement values. No package dependency is added.
+- Add configuration regressions covering decimal parsing under a non-English culture, missing defaults, malformed values and interval bounds. The user reported three CS1061 errors and zero warnings; the corrected build/tests remain pending user execution. Git whitespace checks pass; no build, test, commit or push was run by the agent.
+
+### Added - PR 161 individual subscription onboarding (Plan 06)
+
+- **Subscription services, Authorize.Net adapter and shared signup/billing pages** — Implement the user's approved one-clinician, EMR-only subscription using verified initial capture and subsequent recurring billing, explicit payment consent, cancellation and billing reconciliation. Add a separate organization demo route. Prices and merchant/demo configuration remain deployment inputs; signup/new payments default off.
+- **Subscription access and native local scope** — Enforce the selected no-grace paid-through boundary independently of login/session lifetime. Retain identity for billing recovery and preserve clinical records/encrypted drafts. Reject staff/clinic expansion and patient-payment routes on individual plans; leave existing pending registrations unchanged. Bind native offline access to the signed paid-through claim and reject sandbox/production entitlement mixing.
+- **Persistence and recovery** — Add subscription/transaction tables, unique ownership/payment indexes, concurrency markers and guarded rollback for SQLite, SQL Server and PostgreSQL. Verify signed webhook bodies and provider transaction details; deduplicate payments and reconcile missed renewal notifications. Uncertain mutations and restarting expired/canceled schedules use the documented operator recovery procedure instead of blind charges.
+- **Verification and publication** — Rebase PR 161 onto `eb9f9405` after PR 160 merged, preserve both changelog sides and push rebased planning commit `b7bfbba9` with an exact lease. Add service, transport, endpoint, authorization, native-expiry and migration regression sources; update architecture, migration and Plan 06 documentation. Git whitespace, tracked appsettings secret policy, JSON/source consistency and a synthetic SQLite migration-source rehearsal pass. No .NET build/test, EF model-drift, SQL Server/Postgres, browser/native or real provider-sandbox verification was run; those gates await user execution. Implementation remains uncommitted/unpushed; no merge, deployment or review write occurred.
+
+
 ### Planning - Client review Plan 06
 
 - Added Plan 06 evidence, development specification, acceptance criteria and exact decision/dependency gates. This is planning documentation; the feature is not implemented.

@@ -1,0 +1,7 @@
+.subscription-page { width: min(100%, 42rem); margin-inline: auto; padding: var(--spacing-6); color: var(--text-primary); }
+fieldset { margin-block: var(--spacing-6); padding: var(--spacing-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-card); }
+label { display: block; margin-block: var(--spacing-2); }
+input:not([type="checkbox"]), ::deep input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; padding: var(--spacing-2); color: var(--text-primary); background: var(--surface-input); border: 1px solid var(--border-input); }
+button { margin-block: var(--spacing-3); padding: var(--spacing-2) var(--spacing-4); }
+a { color: var(--primary); }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: var(--spacing-1); }

@@ -50,6 +50,7 @@ public sealed class MauiAuthenticationStateProvider : AuthenticationStateProvide
             return await localScope.RestoreAsync(async () =>
             {
                 var state = await ReadAuthenticationStateAsync();
+                localScope.SetClinicalAccessUntil(SubscriptionClaims.PaidThrough(state.User));
                 return (state, ScopeKey(state.User));
             });
         }
@@ -100,7 +101,11 @@ public sealed class MauiAuthenticationStateProvider : AuthenticationStateProvide
             }
 
             if (localScope is null) await tokenStore.SaveAsync(tokens);
-            else await localScope.ChangeAsync(ScopeKey(principal), () => tokenStore.SaveAsync(tokens));
+            else await localScope.ChangeAsync(ScopeKey(principal), async () =>
+            {
+                await tokenStore.SaveAsync(tokens);
+                localScope.SetClinicalAccessUntil(SubscriptionClaims.PaidThrough(principal));
+            });
             NotifyAuthenticationStateChanged(Task.FromResult(new AuthenticationState(principal)));
         }
         finally { authenticationGate.Release(); }

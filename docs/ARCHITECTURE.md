@@ -52,6 +52,12 @@ Humble Fax and Wibbi use clinic-scoped server-side provider adapters. Core owns 
 
 See [`HUMBLE_FAX_WIBBI_INTEGRATIONS.md`](HUMBLE_FAX_WIBBI_INTEGRATIONS.md) for configuration, data ownership, RBAC, deployment, and recovery.
 
+### Individual subscription access
+
+Plan 06 separates identity, organization/clinic membership and paid access. Core owns `IndividualSubscription` and the deduplicated `SubscriptionPayment` ledger; Application owns subscription/provider contracts; Infrastructure owns atomic signup, payment reconciliation and persistence; `PTDoc.Integrations` owns the Authorize.Net adapter. Subscription merchant credentials are separate from patient-copay configuration. The API checks paid coverage on every authenticated clinical request, independently of token lifetime, while retaining account authentication for billing recovery. Individual organizations cannot add staff/clinics or use patient-payment routes; ordinary clinical permissions and tenant isolation still apply.
+
+New individual accounts receive a single PT clinic grant and a separate unpaid subscription in one database transaction. Existing accounts are not converted. Verified capture grants a period; browser redirects and ARB status alone cannot do so. Durable pending-operation markers prevent blind repeats after uncertain remote mutations. Native JWTs carry the selected clinic's signed paid-through deadline; local data access checks expiry without deleting encrypted drafts or logging out billing identity. See [Plan 06](client-review/plan-06.md) for setup, manual reconciliation, limitations and validation gates.
+
 ### Reference Data Source Model
 
 Clinic reference markdown files under `docs/clinicrefdata/` are governed by the status index in `docs/clinicrefdata/README.md`, which classifies each file as an authoring source, reference-only material, or archived history.

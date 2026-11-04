@@ -1,0 +1,113 @@
+@page "/subscription"
+@attribute [Authorize]
+@rendermode InteractiveServer
+@using PTDoc.Application.Identity
+@using Microsoft.JSInterop
+@inject SubscriptionApiClient Billing
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<PageTitle>Subscription billing - PTDoc</PageTitle>
+<main class="subscription-page">
+    <h1>Subscription billing</h1>
+    @if (error is not null) { <p role="alert">@error</p> }
+    @if (!loaded) { <p role="status">Loading billing account…</p> }
+    else if (account is null) { <p>This account is managed through its organization and has no individual subscription.</p> }
+    else
+    {
+        <p>@Price every @account.IntervalMonths month(s). One clinician, one clinic, EMR only.</p>
+        <p role="status">@(account.HasClinicalAccess ? "Clinical access is active." : "Clinical access is suspended until payment is confirmed. Your records are retained.")</p>
+        @if (account.PaidThroughUtc is { } through) { <p>Paid through @through.ToString("u"). Cancellation stops future renewals; paid access lasts through this date.</p> }
+        <p>Recurring billing: @account.Status</p>
+        @if (account.NeedsReconciliation)
+        { <p role="status">A billing operation needs verification. Refresh billing status before paying again. Contact support if it remains pending.</p> }
+        <button type="button" disabled="@busy" @onclick="RepairAsync">Refresh billing status</button>
+        @if (account.HasRecurringBilling && account.Status is not ("canceled" or "terminated" or "expired"))
+        {
+            <label><input type="checkbox" @bind="confirmCancellation" disabled="@busy" /> Stop future recurring payments</label>
+            <button type="button" disabled="@(busy || !confirmCancellation)" @onclick="CancelAsync">Cancel recurring billing</button>
+        }
+        @if (!account.HasClinicalAccess && account.HasRecurringBilling)
+        { <p>Contact support to reconcile any pending renewal and restart billing safely. You can still refresh status or cancel future payments here.</p> }
+        @if (!account.HasClinicalAccess && !account.HasRecurringBilling && !account.NeedsReconciliation && offer?.Enabled == true)
+        {
+            <label><input type="checkbox" @bind="acceptTerms" disabled="@busy" /> I authorize @Price now and every @account.IntervalMonths month(s) until I cancel recurring billing.</label>
+            <button type="button" class="AcceptUI" disabled="@(busy || !acceptTerms || !paymentReady)"
+                    data-billingAddressOptions='{"show":true,"required":false}'
+                    data-apiLoginID="@offer.ApiLoginId" data-clientKey="@offer.ClientKey"
+                    data-acceptUIFormBtnTxt="Pay @Price" data-acceptUIFormHeaderTxt="PTDoc subscription"
+                    data-responseHandler="ptdocAuthorizeNetAcceptResponseHandler">Pay securely with Authorize.Net</button>
+        }
+        @if (account.HasClinicalAccess) { <p><a href="/">Open EMR</a></p> }
+    }
+</main>
+
+@code {
+    private SubscriptionOffer? offer;
+    private SubscriptionAccount? account;
+    private bool busy, loaded, acceptTerms, confirmCancellation, paymentReady, paymentInitializationAttempted;
+    private string? error;
+    private IJSObjectReference? module;
+    private DotNetObjectReference<SubscriptionBilling>? reference;
+    private readonly string paymentId = "subscription-" + Guid.NewGuid().ToString("N");
+    private string Price => (account?.Amount ?? 0).ToString("C", System.Globalization.CultureInfo.GetCultureInfo("en-US"));
+    protected override async Task OnInitializedAsync()
+    {
+        try { offer = await Billing.GetOfferAsync(); account = await Billing.GetAccountAsync(); }
+        catch (HttpRequestException exception) { error = exception.Message; }
+        finally { loaded = true; }
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!paymentInitializationAttempted && offer?.Enabled == true && account is not null)
+        {
+            paymentInitializationAttempted = true;
+            try
+            {
+                module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/authorize-net-accept.js");
+                reference = DotNetObjectReference.Create(this);
+                await module.InvokeVoidAsync("initialize", paymentId, reference, offer.Environment);
+                paymentReady = true;
+                StateHasChanged();
+            }
+            catch (JSException) { error = "The secure payment form could not load. Reload to try again."; StateHasChanged(); }
+        }
+    }
+    [JSInvokable]
+    public async Task HandleAuthorizeNetResponse(AcceptResponse response)
+    {
+        if (busy || !acceptTerms) return;
+        if (response.OpaqueData is not { } data) { error = "Payment details were not accepted. Try the secure form again."; StateHasChanged(); return; }
+        await RunAsync(() => Billing.PayAsync(new(data.DataDescriptor, data.DataValue, acceptTerms)));
+        acceptTerms = false;
+    }
+    private Task RepairAsync() => RunAsync(Billing.RepairAsync);
+    private Task CancelAsync() => RunAsync(Billing.CancelAsync);
+    private async Task RunAsync(Func<Task<SubscriptionAccount>> action)
+    {
+        if (busy) return;
+        busy = true; error = null;
+        try { account = await action(); }
+        catch (HttpRequestException exception)
+        {
+            error = exception.Message;
+            try { account = await Billing.GetAccountAsync(); } catch (HttpRequestException) { }
+        }
+        finally { busy = false; StateHasChanged(); }
+    }
+    public async ValueTask DisposeAsync()
+    {
+        if (module is not null)
+        {
+            try { await module.InvokeVoidAsync("dispose", paymentId); await module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+        reference?.Dispose();
+    }
+    public sealed class AcceptResponse { public OpaqueData? OpaqueData { get; set; } }
+    public sealed class OpaqueData
+    {
+        public string DataDescriptor { get; set; } = string.Empty;
+        public string DataValue { get; set; } = string.Empty;
+    }
+}
