@@ -51,18 +51,10 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
         context.AddRange(clinic, staff, owner);
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
-        var assembly = context.GetService<IMigrationsAssembly>();
-        var generator = context.GetService<IMigrationsSqlGenerator>();
         var applied = await context.Database.GetAppliedMigrationsAsync();
         // Rehearse the real dependency order: newer migrations must go down before
         // the organization tables they reference. Roll back the entire rehearsal.
-        var commands = applied.Where(id => string.CompareOrdinal(id, "20261103030000_AddOrganizationMemberships") >= 0)
-            .OrderByDescending(id => id, StringComparer.Ordinal)
-            .SelectMany(id =>
-            {
-                var migration = assembly.CreateMigration(assembly.Migrations[id], context.Database.ProviderName!);
-                return generator.Generate(migration.DownOperations, migration.TargetModel);
-            }).ToArray();
+        var commands = GenerateOrganizationRollbackCommands(context, applied);
         Assert.NotEmpty(commands);
         Assert.All(commands, command => Assert.False(command.TransactionSuppressed));
 
@@ -130,6 +122,29 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
             Assert.Empty(await context.SubscriptionPayments.ToListAsync());
             Assert.Equal(originalRole, (await context.OrganizationMemberships.SingleAsync(item => item.OrganizationId == clinic.Id && item.UserId == userId)).Role);
         }
+    }
+
+    internal static IReadOnlyList<MigrationCommand> GenerateOrganizationRollbackCommands(
+        ApplicationDbContext context, IEnumerable<string> applied)
+    {
+        var assembly = context.GetService<IMigrationsAssembly>();
+        var generator = context.GetService<IMigrationsSqlGenerator>();
+        var initializer = context.GetService<IModelRuntimeInitializer>();
+        var ordered = applied.OrderBy(id => id, StringComparer.Ordinal).ToArray();
+        var commands = new List<MigrationCommand>();
+        for (var index = ordered.Length - 1; index >= 0
+            && string.CompareOrdinal(ordered[index], "20261103030000_AddOrganizationMemberships") >= 0; index--)
+        {
+            var migration = assembly.CreateMigration(assembly.Migrations[ordered[index]], context.Database.ProviderName!);
+            var previous = index > 0
+                ? assembly.CreateMigration(assembly.Migrations[ordered[index - 1]], context.Database.ProviderName!)
+                : null;
+            // Match EF's Migrator.GenerateDownSql: SQL Server needs initialized
+            // relational metadata for the model that remains after this downgrade.
+            var model = previous is null ? null : initializer.Initialize(previous.TargetModel, designTime: true);
+            commands.AddRange(generator.Generate(migration.DownOperations, model));
+        }
+        return commands;
     }
 
     private static async Task AssertProviderDowngradeAndExistingClinicSeedParityAsync(

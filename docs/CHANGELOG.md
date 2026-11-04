@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Tests - Await failed-save retry navigation
+
+- Make `FailedSaveNavigation_RetryRequiresIncompleteConfirmationBeforeLeaving` wait for an enabled retry control and await both asynchronous click handlers. The retry includes persistence and a 350 ms saving-state delay; the prior synchronous click started the modal assertion before that work completed. Preserve the modal, dirty-state and navigation assertions without increasing timeouts or changing production code.
+- The owner reported a successful Debug build with zero warnings/errors and 2,803 passing tests out of 2,804; this single bUnit timeout remains pending rerun after the test synchronization correction. Existing review/CI edits and the unrelated local API database change are preserved. No build/test, commit, push or GitHub review action was run by the agent.
+### Fixed - PR 161 SQL Server rehearsal and Core CI scheduling
+
+- Initialize the previous migration's target model before generating rollback commands, matching EF Core's downgrade path. This corrects SQL Server's `GetRelationalModel` failure while preserving dependency order, rollback guards and transaction rollback. Add a CoreCi SQL-generation regression that requires no SQL Server connection.
+- Run Core CI test collections serially with the existing xUnit 2.5 runner after four unrelated HTTP tests timed out together and other tests stalled for 80–113 seconds. Keep the full category, existing assertions, timeouts and in-test concurrency coverage; this scheduling mitigation awaits a fresh run. Document current failure evidence and exact reproduction commands in Plan 06 and CI guidance.
+- Preserve the pending review-audit/test changes. The separate CodeQL check remains unresolved for the previously documented invalid size-check finding; no suppression, dismissal, commit, push, review write or remote rerun was performed. Builds/tests await user execution.
+
+### Tests - PR 161 follow-up payment review verification
+
+- Audit all five current review threads at `b0b5587e`: two previously fixed findings are outdated; the two new payment claims and the existing CodeQL claim are invalid against the documented provider/language contracts and current control flow. Record evidence, duplicate sources, private-session visibility limits and thread eligibility in Plan 06; production behavior is unchanged.
+- Add six gateway cases rejecting non-success response codes for captured/settled statuses and three signed HTTP cases for renewal verification, subscription lifecycle separation and duplicate delivery. Update the Plan 06 publication checkpoint. New builds/tests await user execution; no commit, push or GitHub review write was performed.
+
 ### Fixed - PR 161 provider CI and subscription review findings
 
 - Normalize trailing slashes for the individual-plan copay restriction and cover canonical, trailing-slash, mixed-case and ordinary check-in paths with denial-code assertions.

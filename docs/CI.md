@@ -33,6 +33,7 @@ Runs on every pull request against `main`. Validates:
 - Restore/build of the single `tests/PTDoc.Tests/PTDoc.Tests.csproj` dependency graph
 - `dotnet format` style checks
 - `[Category=CoreCi]` tests only
+- Serial test collections (`-- xUnit.ParallelizeTestCollections=false`) keep the pinned xUnit 2.5 runner's aggressive scheduling from competing across concurrent test hosts; individual tests retain their own concurrency checks and existing timeouts.
 - Superseded PR runs are canceled via workflow concurrency
 
 ### `ci-db.yml` – Database Provider CI (Sprint C) + Migration Validation (Sprint F)

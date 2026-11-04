@@ -50,12 +50,18 @@ public sealed class AuthorizeNetSubscriptionGatewayTests
     }
 
     [Theory]
-    [InlineData("capturedPendingSettlement", true)]
-    [InlineData("settledSuccessfully", true)]
-    [InlineData("authorizedPendingCapture", false)]
-    [InlineData("FDSAuthorizedPendingReview", false)]
-    [InlineData("voided", false)]
-    public async Task TransactionVerification_RequiresCapturedFunds(string status, bool captured)
+    [InlineData("capturedPendingSettlement", 1, true)]
+    [InlineData("settledSuccessfully", 1, true)]
+    [InlineData("authorizedPendingCapture", 1, false)]
+    [InlineData("FDSAuthorizedPendingReview", 1, false)]
+    [InlineData("voided", 1, false)]
+    [InlineData("capturedPendingSettlement", 2, false)]
+    [InlineData("capturedPendingSettlement", 3, false)]
+    [InlineData("capturedPendingSettlement", 4, false)]
+    [InlineData("settledSuccessfully", 2, false)]
+    [InlineData("settledSuccessfully", 3, false)]
+    [InlineData("settledSuccessfully", 4, false)]
+    public async Task TransactionVerification_RequiresCapturedFunds(string status, int responseCode, bool captured)
     {
         using var handler = new CaptureHandler(JsonSerializer.Serialize(new
         {
@@ -64,7 +70,7 @@ public sealed class AuthorizeNetSubscriptionGatewayTests
             {
                 transId = "123",
                 transactionStatus = status,
-                responseCode = 1,
+                responseCode,
                 settleAmount = "49.00",
                 submitTimeUTC = "2026-11-03T12:00:00Z",
                 order = new { invoiceNumber = "PDinvoice" },

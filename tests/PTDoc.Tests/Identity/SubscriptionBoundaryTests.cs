@@ -9,6 +9,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using PTDoc.Api.Identity;
 using PTDoc.Application.Identity;
 using PTDoc.Application.LocalData;
+using PTDoc.Infrastructure.Data;
+using PTDoc.Tests.Integration;
 
 namespace PTDoc.Tests.Identity;
 
@@ -79,6 +81,25 @@ public sealed class SubscriptionBoundaryTests
             Assert.Equal("TransactionId", payment.FindPrimaryKey()!.Properties.Single().Name);
         }
         Assert.Contains(migration.DownOperations.OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.SqlOperation>(), operation => operation.Sql.Contains("IndividualSubscriptions"));
+    }
+
+    [Fact]
+    public void SqlServerRollback_GeneratesInitializedCommandsInDependencyOrder()
+    {
+        using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlServer("Server=localhost;Database=unused;Integrated Security=True;TrustServerCertificate=True",
+                options => options.MigrationsAssembly("PTDoc.Infrastructure.Migrations.SqlServer")).Options);
+        var applied = db.GetService<IMigrationsAssembly>().Migrations.Keys;
+        var commands = DatabaseProviderSmokeTests.GenerateOrganizationRollbackCommands(db, applied);
+        Assert.NotEmpty(commands);
+        Assert.All(commands, command => Assert.False(command.TransactionSuppressed));
+        var sql = string.Join("\n", commands.Select(command => command.CommandText));
+        var paymentsDrop = sql.IndexOf("DROP TABLE [SubscriptionPayments]", StringComparison.Ordinal);
+        var subscriptionsDrop = sql.IndexOf("DROP TABLE [IndividualSubscriptions]", StringComparison.Ordinal);
+        var organizationsDrop = sql.IndexOf("DROP TABLE [Organizations]", StringComparison.Ordinal);
+        Assert.True(paymentsDrop >= 0 && subscriptionsDrop > paymentsDrop && organizationsDrop > subscriptionsDrop);
+        Assert.Contains("Reconcile subscriptions", sql);
+        Assert.Contains("Reconcile organization memberships", sql);
     }
 
     private sealed class TestClock : TimeProvider

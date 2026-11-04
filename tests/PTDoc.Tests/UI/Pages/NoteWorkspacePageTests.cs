@@ -91,14 +91,15 @@ public sealed class NoteWorkspacePageTests : TestContext
             autosave.MarkDirty();
             navigation.NavigateTo("/dashboard");
         });
-        cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='failed-save-retry']")));
+        cut.WaitForAssertion(() => Assert.False(cut.Find("[data-testid='failed-save-retry']").HasAttribute("disabled")));
         service.Setup(item => item.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new NoteWorkspaceSaveResult { Success = true, NoteId = Guid.NewGuid(), Status = NoteStatus.Draft });
-        await cut.InvokeAsync(() => cut.Find("[data-testid='failed-save-retry']").Click());
+        // Await persistence and the visible-saving delay before checking the confirmation render.
+        await cut.Find("[data-testid='failed-save-retry']").ClickAsync(new MouseEventArgs());
         cut.WaitForAssertion(() => Assert.NotNull(cut.Find("[data-testid='incomplete-note-modal']")));
         Assert.False(navigation.Uri.EndsWith("/dashboard", StringComparison.Ordinal));
         Assert.False(autosave.IsDirty);
-        cut.Find("[data-testid='incomplete-note-continue']").Click();
+        await cut.Find("[data-testid='incomplete-note-continue']").ClickAsync(new MouseEventArgs());
         cut.WaitForAssertion(() =>
         {
             Assert.EndsWith("/dashboard", navigation.Uri, StringComparison.Ordinal);

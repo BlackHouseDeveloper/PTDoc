@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -90,6 +91,78 @@ public sealed class SubscriptionEndpointTests(PtDocApiFactory factory) : IClassF
         Assert.Equal(expected, (await client.SendAsync(request)).StatusCode);
         gateway.Verify(service => service.GetTransactionAsync("123", It.IsAny<CancellationToken>()),
             expected == HttpStatusCode.OK ? Times.Once() : Times.Never());
+        gateway.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData("net.authorize.payment.authcapture.created", true, true)]
+    [InlineData("net.authorize.payment.authcapture.created", false, false)]
+    [InlineData("net.authorize.customer.subscription.updated", false, false)]
+    public async Task Webhook_DocumentedEvents_VerifyRenewalsAndKeepLifecycleSeparate(
+        string eventType, bool captured, bool extendsCoverage)
+    {
+        var paymentEvent = eventType == "net.authorize.payment.authcapture.created";
+        var starts = DateTime.UtcNow.Date.AddDays(-1);
+        var gateway = new Mock<ISubscriptionGateway>(MockBehavior.Strict);
+        if (paymentEvent)
+            gateway.Setup(service => service.GetTransactionAsync("123", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new SubscriptionTransaction("123", "", 49, starts, captured, "456", 1));
+        else
+            gateway.Setup(service => service.GetRecurringAsync("456", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new RecurringSubscription("456", "active"));
+        var key = new string('A', 128);
+        await using var host = factory.WithWebHostBuilder(builder => builder
+            .ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Subscriptions:AuthorizeNet:SignatureKey"] = key,
+                ["Subscriptions:AuthorizeNet:Environment"] = "Sandbox"
+            }))
+            .ConfigureTestServices(services => services.Replace(ServiceDescriptor.Singleton(gateway.Object))));
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            await db.Database.MigrateAsync();
+            var organization = new Organization { Name = "Renewal fixture" };
+            var clinic = new Clinic { OrganizationId = organization.Id, Name = "Renewal fixture", Slug = "renewal-fixture" };
+            var user = new User { Username = "renewal-fixture", Role = "PT", ClinicId = clinic.Id };
+            db.AddRange(organization, clinic, user, new IndividualSubscription
+            {
+                UserId = user.Id,
+                OrganizationId = organization.Id,
+                ClinicId = clinic.Id,
+                Amount = 49,
+                IntervalMonths = 1,
+                Environment = "Sandbox",
+                RecurringSubscriptionId = "456",
+                RecurringStartsAtUtc = starts,
+                PaidThroughUtc = starts
+            });
+            await db.SaveChangesAsync();
+        }
+        var body = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            eventType,
+            payload = new { entityName = paymentEvent ? "transaction" : "subscription", id = paymentEvent ? "123" : "456" }
+        });
+        using var client = host.CreateClient();
+        // Duplicate deliveries must not add another paid period or ledger entry.
+        for (var delivery = 0; delivery < 2; delivery++)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/subscriptions/authorize-net/webhook")
+            {
+                Content = new ByteArrayContent(body)
+            };
+            request.Headers.Add("X-ANET-Signature", "sha512=" + Convert.ToHexString(HMACSHA512.HashData(Convert.FromHexString(key), body)));
+            Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(request)).StatusCode);
+        }
+        await using var verify = host.Services.CreateAsyncScope();
+        var verifiedDb = verify.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var subscription = await verifiedDb.IndividualSubscriptions.SingleAsync();
+        Assert.Equal(extendsCoverage ? starts.AddMonths(1) : starts, subscription.PaidThroughUtc);
+        Assert.Equal(extendsCoverage ? 1 : 0, await verifiedDb.SubscriptionPayments.CountAsync());
+        if (!paymentEvent) Assert.Equal("active", subscription.ProviderStatus);
+        gateway.Verify(service => service.GetTransactionAsync("123", It.IsAny<CancellationToken>()), paymentEvent ? Times.Exactly(2) : Times.Never());
+        gateway.Verify(service => service.GetRecurringAsync("456", It.IsAny<CancellationToken>()), paymentEvent ? Times.Never() : Times.Exactly(2));
         gateway.VerifyNoOtherCalls();
     }
 

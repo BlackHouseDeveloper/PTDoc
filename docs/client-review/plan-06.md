@@ -1,6 +1,6 @@
 # Plan 06: Individual subscription and organization onboarding
 
-**Implemented and published in `6238b41e` after owner-confirmed required builds/tests. The 2026-11-04 CI/review corrections below are local and await verification. Provider-sandbox acceptance remains a release gate.**
+**Implemented in `6238b41e`; CI/review corrections published in `b0b5587e` after owner-confirmed required builds/tests. The follow-up review audit below adds local regression coverage and awaits verification. Provider-sandbox acceptance remains a release gate.**
 
 - Requirements: R084, R086
 - PR: [#161](https://github.com/BlackHouseDeveloper/PTDoc/pull/161)
@@ -248,3 +248,123 @@ dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosi
 Before release, also exercise the real sandbox form on Web/native clients, including
 cancel and retry, and rebuild affected MAUI targets with the existing commands in
 this document. Browser stubs verify lifecycle behavior, not real merchant acceptance.
+
+## Follow-up review audit at `b0b5587e` — 2026-11-04
+
+Local HEAD and remote PR head are `b0b5587e640c5329ff69fa3ca74a133a4161a561`.
+The working tree was clean before this pass. The owner confirmed the preceding
+builds/tests, including three isolated browser tests, before that commit was
+published. The earlier remediation section records its historical handoff state.
+
+Retrieved five current inline threads, five review submissions (including two
+owner replies), and zero PR conversation comments. GraphQL reports no further
+thread, nested-comment, review, or conversation pages. Three threads remain open;
+the two previously fixed threads are resolved and have outdated diff locations.
+The latest Lite review and its user-pasted text contain the same two new findings
+and two resolved references. Neither source exposes separate suppressed or
+**Previously missed** findings. The new private [Copilot session](https://github.com/BlackHouseDeveloper/PTDoc/sessions/ef512563-a6ae-4c4a-b95f-1db30d8343c5)
+returns 404 in the available signed-out browser; undisclosed private content
+cannot be independently inventoried. No additional unique finding was supplied.
+
+### Complete deduplicated classification
+
+| Source | Classification | Evidence and disposition |
+| --- | --- | --- |
+| [Renewal webhook routing](https://github.com/BlackHouseDeveloper/PTDoc/pull/161#discussion_r4463749996), `PRRT_kwDOQt-faM6zc7vV` | **Invalid as stated** | The provider's published event catalog lists payment events separately from subscription lifecycle events; it does not list the claimed `net.authorize.customer.subscription.payment.*` family. `SubscriptionEndpoints.Webhook` routes documented payment events to `ReceiveTransactionAsync`. That method fetches transaction details, matches the verified recurring ID, and calls `ApplyPaymentAsync`, which uses the payment number to extend coverage once. `DuplicateAndOutOfOrderEvents_DoNotExtendCoverageTwice` already covers that service behavior. Add HTTP-level signed renewal/lifecycle/duplicate-delivery coverage without introducing an undocumented event contract. A real provider notification or authoritative revised contract would justify reassessment. |
+| [Captured-response precedence](https://github.com/BlackHouseDeveloper/PTDoc/pull/161#discussion_r4463750045), `PRRT_kwDOQt-faM6zc7vw` | **Invalid** | C# `or` is a pattern combinator inside the right operand of `is`, not boolean `\|\|`. Gateway line 49 already requires response code `1` with either captured status. The proposed parentheses have identical semantics. `SubscriptionTransaction.Captured` is supplied by this adapter, and `ApplyPaymentAsync` rejects false. Extend the gateway theory with response codes 2/3/4 for both captured statuses; leave production code unchanged. |
+| [Content-Length CodeQL finding](https://github.com/BlackHouseDeveloper/PTDoc/pull/161#discussion_r4463310894), `PRRT_kwDOQt-faM6zb5MD` | **Invalid** | Alert 21 still points to endpoint line 43; its sensitive action is the unauthorized return at line 54. An oversized request returns 413, and every accepted processing path passes the HMAC check at lines 53–54. Existing `Webhook_SizeGateNeverBypassesSignatureOrProviderVerification` covers eight signed/unsigned and known/unknown-length boundary cases. No bypass or production fix is established; leave the finding untouched. |
+| [Trailing-slash copay route](https://github.com/BlackHouseDeveloper/PTDoc/pull/161#discussion_r4463340832), `PRRT_kwDOQt-faM6zb9sK` | **Outdated — fixed** | Commit `b0b5587e` added `TrimEnd('/')` before the case-insensitive suffix comparison at middleware line 33. The appointment payment endpoint still uses the same middleware; `ServerGuard_RechecksExpiryAndPlanLimits` covers canonical/trailing/mixed-case payment paths, denial codes and permitted ordinary check-in. Already replied to and resolved after owner verification; no further change/reply. |
+| [Payment-button revisit](https://github.com/BlackHouseDeveloper/PTDoc/pull/161#discussion_r4463340866), `PRRT_kwDOQt-faM6zb9sU` | **Outdated — fixed** | Commit `b0b5587e` makes rendering and initialization share `ShowPayment`, waits for bridge completion before setting `paymentReady`, and disposes each form's host/listeners. Both subscription and copay callers use the shared bridge. `SubscriptionBillingTests`, `WebStaticAssetIntegrationTests`, and three owner-passed `authorize-net-accept.spec.ts` cases cover the boundary. Already replied to and resolved; no further change/reply. |
+| Balanced/Lite review summaries, their resolved references, and the latest user-pasted text/suggested changesets | **Duplicate** | They repeat the same four Copilot findings above. No additional source thread or independent correction. |
+
+No verified valid production defect or ambiguous code finding remains among the
+accessible items. No production change is warranted by these comments.
+
+Primary contract evidence, retrieved for this pass:
+
+- [Authorize.Net webhook event types and payloads](https://developer.authorize.net/api/reference/features/webhooks.html): payment payloads carry transaction IDs; subscription lifecycle payloads carry subscription IDs. The published event catalog supports the existing dispatch. An unauthenticated live `/rest/v1/eventtypes` request returned 401; no merchant credentials were accessed.
+- [C# language specification, logical patterns](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/language-specification/patterns#11210-logical-pattern): pattern combinators within `is` bind more tightly than boolean logical operators. Thus the suggested grouping does not change the predicate.
+
+### Added regression coverage and verification handoff
+
+- `TransactionVerification_RequiresCapturedFunds` adds six cases rejecting
+  response codes 2, 3 and 4 with both captured statuses, preserving five existing
+  status cases and the original production expression.
+- `Webhook_DocumentedEvents_VerifyRenewalsAndKeepLifecycleSeparate` adds three
+  HTTP cases with a strict provider mock and persisted subscription: a captured
+  renewal extends coverage; an unverified payment does not; a lifecycle update
+  changes provider status without granting coverage. Each is delivered twice;
+  assertions verify the selected provider method, paid-through value and ledger
+  count, guarding against wrong dispatch and duplicate extension.
+
+Run from the repository root (same Release test graph as Core CI):
+
+```bash
+dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --configuration Release
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~AuthorizeNetSubscriptionGatewayTests|FullyQualifiedName~SubscriptionEndpointTests|FullyQualifiedName~SubscriptionServiceTests" --verbosity normal
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "Category=CoreCi" --verbosity normal
+dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity diagnostic
+```
+
+No build or test was run by the agent; the new coverage awaits user execution.
+No commit, push, review reply/resolution, PR-level response, dismissal or new
+review request was performed. These tests establish evidence rather than fix a
+production defect: no open thread becomes eligible for a **fix-based resolution**.
+Any evidence-based response/disposition of the three invalid findings requires
+explicit authorization; the two outdated threads are already resolved.
+
+## Current CI follow-up at `b0b5587e` — 2026-11-04
+
+The user additionally requested fixes for the current failing checks. This work
+preserves the pending review tests/audit above and does not publish them.
+
+| Check | Evidence | Disposition |
+| --- | --- | --- |
+| [DB SQL Server](https://github.com/BlackHouseDeveloper/PTDoc/actions/runs/41775323924/job/126394212098) | Schema migration succeeds. The provider smoke test fails in `AssertOrganizationRoleRollbackGuardAsync` at SQL generation: `GetRelationalModel` requires an initialized model; SQL Server's `DropTableOperation` path inspects this metadata. | **Valid, fixed locally.** Generate each Down operation against the initialized previous migration's target model, matching EF Core 8's migrator. Share the helper with a CoreCi regression checking generation, child-before-parent drop order, both rollback guards and no transaction suppression. Real SQL Server execution still needs verification. |
+| [Core CI](https://github.com/BlackHouseDeveloper/PTDoc/actions/runs/41775324021/job/126394212177) | Build/format complete; 2,283 tests pass and four fail at the 100-second HttpClient timeout. Failures cluster at 04:53:07 UTC across login validation, catalog validation, appointment creation and unauthenticated subscription cancellation. Several unrelated successful tests take 80–113 seconds during the same interval. | **Valid CI failure; scheduling contention is the working diagnosis.** Scope serial collection execution to this workflow via `-- xUnit.ParallelizeTestCollections=false`, supported by pinned runner 2.5.3. This removes cross-collection competition without increasing timeouts, skipping tests or removing assertions. The next complete CoreCi run must validate the mitigation; logs alone do not prove the exact scheduling bottleneck. |
+| [CodeQL check](https://github.com/BlackHouseDeveloper/PTDoc/runs/126396377416) | The CodeQL analysis job succeeds, but the separate alert check fails for the endpoint size gate examined above. | **Invalid finding, still open.** No suppression, dismissal or application rewrite. This check is not claimed fixed by the CI changes. |
+
+The four CoreCi failures were:
+
+- `WebLoginEndpointIntegrationTests.AuthLogin_InvalidPin_RedirectsToFieldValidationWithoutCallingApi` (empty PIN).
+- `NoteWorkspaceCatalogEndpointIntegrationTests.GetBodyRegionCatalog_InvalidEnumValue_ReturnsBadRequest`.
+- `AppointmentApiIntegrationTests.CreateAndUpdateAppointment_AcceptStableVisitTypeIdWithoutLegacyType`.
+- `SubscriptionEndpointTests.BillingEndpoints_RejectUnauthenticatedRequests` (`POST /cancel`).
+
+PostgreSQL, SQLite, migration validation, Secret Policy, release gates and the
+changelog check passed on the published head. No remote job was rerun.
+
+Implementation references: [EF Core 8.0.4 Migrator](https://github.com/dotnet/efcore/blob/v8.0.4/src/EFCore.Relational/Migrations/Internal/Migrator.cs)
+initializes the previous target model for downgrade SQL; [xUnit scheduling](https://xunit.net/docs/running-tests-in-parallel)
+documents the older aggressive algorithm, and [VSTest runsettings](https://xunit.net/docs/config-runsettings)
+documents the supported serial-collection switch. Serial CI execution may take
+longer; this change does not upgrade packages or alter production behavior.
+
+### Verification commands for the combined pending changes
+
+Run from the repository root. CoreCi includes the new payment tests and the
+SQL-generation regression `SqlServerRollback_GeneratesInitializedCommandsInDependencyOrder`.
+
+```bash
+dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "Category=CoreCi" --verbosity normal --logger "trx;LogFileName=test-results.trx" -- xUnit.ParallelizeTestCollections=false
+dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity diagnostic
+```
+
+For the SQL Server workflow reproduction, first start a disposable SQL Server
+instance, create `PTDoc_CI`, enable `READ_COMMITTED_SNAPSHOT`, and export its
+`Database__ConnectionString` as described in `.github/workflows/ci-db.yml`. Do not
+point this downgrade rehearsal at a shared or production database. Then run:
+
+```bash
+dotnet tool restore
+EF_PROVIDER=sqlserver Jwt__SigningKey=ci-sqlserver-ephemeral-key-migration-apply-placeholder dotnet tool run dotnet-ef database update -p src/PTDoc.Infrastructure.Migrations.SqlServer -s src/PTDoc.Api --context PTDoc.Infrastructure.Data.ApplicationDbContext --no-build --configuration Release
+DB_PROVIDER=sqlserver CI_DB_MIGRATIONS_ALREADY_APPLIED=true dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "Category=DatabaseProvider" --verbosity normal --logger "trx;LogFileName=db-sqlserver-results.trx"
+```
+
+Also rerun SQLite (`DB_PROVIDER=sqlite dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "Category=DatabaseProvider" --verbosity normal`)
+and the PostgreSQL migration/test commands in the preceding provider handoff,
+using its disposable connection string, because the command-generation helper
+is shared across providers. No local build/test was run by the agent. Local
+whitespace checks pass; these fixes remain uncommitted and unpushed.

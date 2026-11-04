@@ -63,12 +63,15 @@ jobs:
       env:
         TEST_VERBOSITY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.debug_mode == 'true' && 'detailed' || 'normal' }}
       run: |
+        # xUnit 2.5 uses aggressive scheduling; concurrent test hosts can starve
+        # HTTP continuations on this runner. Keep all tests and existing timeouts.
         dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj \
           --no-build \
           --configuration Release \
           --filter "Category=CoreCi" \
           --verbosity "$TEST_VERBOSITY" \
-          --logger "trx;LogFileName=test-results.trx"
+          --logger "trx;LogFileName=test-results.trx" \
+          -- xUnit.ParallelizeTestCollections=false
 
     - name: Publish test results
       uses: dorny/test-reporter@v1
