@@ -38,9 +38,9 @@ public static class SubscriptionEndpoints
 
     private static async Task<IResult> Webhook(HttpContext http, IConfiguration configuration, SubscriptionService service, CancellationToken ct)
     {
-        // Verify the exact bytes before parsing; bounded even for chunked requests.
+        // Bound actual bytes read for every request, including chunked bodies,
+        // then verify those exact bytes before parsing.
         const int limit = 65536;
-        if (http.Request.ContentLength > limit) return Results.StatusCode(413);
         using var body = new MemoryStream();
         var buffer = new byte[4096];
         int read;

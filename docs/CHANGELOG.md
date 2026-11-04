@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 161 CodeQL webhook size-check finding
+
+- Remove the redundant Content-Length early return in subscription webhooks and enforce the 64 KiB limit through the existing bounded read loop for every request. Oversized bodies still return 413 before parsing/provider calls, and accepted bodies still require exact-byte HMAC verification. The existing eight signed/unsigned and known/unknown-length boundary regressions cover the behavior.
+- The only failed check at `02e56615` is CodeQL alert 21; analysis execution, Core CI, all database providers, secret policy and release gates passed. This change removes the header-controlled branch identified by the alert without suppressing the rule or dismissing the finding. Fresh build/test and CodeQL verification remain required; no commit, push or review write was performed.
+
 ### Fixed - PR 161 previously missed billing recovery findings
 
 - Reject payments for canceled subscriptions until the documented support recovery resets the account, and hide the secure payment form for canceled accounts. Preserve payment history and paid coverage.
