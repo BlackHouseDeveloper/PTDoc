@@ -30,7 +30,7 @@ public sealed class SubscriptionAccessMiddleware(RequestDelegate next)
             || path.StartsWithSegments("/api/v1/admin/registrations")
             || path.StartsWithSegments("/api/v1/integrations/payment")
             || path.StartsWithSegments("/api/v1/billing")
-            || path.Value?.EndsWith("/check-in-payment", StringComparison.OrdinalIgnoreCase) == true;
+            || path.Value?.TrimEnd('/').EndsWith("/check-in-payment", StringComparison.OrdinalIgnoreCase) == true;
         if (!paid || excluded)
         {
             http.Response.StatusCode = StatusCodes.Status403Forbidden;

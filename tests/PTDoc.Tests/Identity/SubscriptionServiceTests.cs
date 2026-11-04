@@ -197,6 +197,9 @@ public sealed class SubscriptionServiceTests
     [InlineData(false, "/api/v1/auth/me", true)]
     [InlineData(true, "/api/v1/integrations/payment/process", false)]
     [InlineData(true, "/api/v1/appointments/123/check-in-payment", false)]
+    [InlineData(true, "/api/v1/appointments/123/check-in-payment/", false)]
+    [InlineData(true, "/api/v1/appointments/123/CHECK-IN-PAYMENT/", false)]
+    [InlineData(true, "/api/v1/appointments/123/check-in", true)]
     [InlineData(true, "/api/v1/organizations", false)]
     public async Task ServerGuard_RechecksExpiryAndPlanLimits(bool paid, string path, bool allowed)
     {
@@ -218,6 +221,12 @@ public sealed class SubscriptionServiceTests
         await new SubscriptionAccessMiddleware(_ => { invoked = true; return Task.CompletedTask; }).InvokeAsync(http, resolver, fixture.Db, fixture.Clock, fixture.Configuration);
         Assert.Equal(allowed, invoked);
         Assert.Equal(allowed ? 200 : 403, http.Response.StatusCode);
+        if (!allowed)
+        {
+            http.Response.Body.Position = 0;
+            var body = await new StreamReader(http.Response.Body).ReadToEndAsync();
+            Assert.Contains(paid ? "individual_plan_limit" : "subscription_payment_required", body);
+        }
     }
 
     [Fact]

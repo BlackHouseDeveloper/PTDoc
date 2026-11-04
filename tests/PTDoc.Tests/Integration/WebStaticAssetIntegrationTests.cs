@@ -21,11 +21,13 @@ public sealed class WebStaticAssetIntegrationTests
             { "Development", "/PTDoc.Web.styles.css", "text/css" },
             { "Development", "/js/auth.js", "javascript" },
             { "Development", "/_content/PTDoc.UI/js/modal.js", "javascript" },
+            { "Development", "/_content/PTDoc.UI/authorize-net-host.html", "text/html" },
             { "Development", "/_content/PTDoc.UI/images/nav-home.svg", "image/svg+xml" },
             { "Beta", "/_content/PTDoc.UI/css/app.css", "text/css" },
             { "Beta", "/_content/PTDoc.UI/PTDoc.UI.bundle.scp.css", "text/css" },
             { "Beta", "/PTDoc.Web.styles.css", "text/css" },
             { "Beta", "/_content/PTDoc.UI/js/theme.js", "javascript" },
+            { "Beta", "/_content/PTDoc.UI/authorize-net-host.html", "text/html" },
             { "Beta", "/_content/PTDoc.UI/ptdoclogo.png", "image/png" }
         };
 
@@ -187,6 +189,9 @@ public sealed class WebStaticAssetIntegrationTests
                 CopyFile(
                     Path.Combine(repositoryRoot, "src", "PTDoc.UI", "wwwroot", "ptdoclogo.png"),
                     Path.Combine(root, "_content", "PTDoc.UI", "ptdoclogo.png"));
+                CopyFile(
+                    Path.Combine(repositoryRoot, "src", "PTDoc.UI", "wwwroot", "authorize-net-host.html"),
+                    Path.Combine(root, "_content", "PTDoc.UI", "authorize-net-host.html"));
                 CopyFirstExisting(
                     [
                         Path.Combine(repositoryRoot, "src", "PTDoc.UI", "obj", "Debug", "net8.0", "scopedcss", "projectbundle", "PTDoc.UI.bundle.scp.css"),

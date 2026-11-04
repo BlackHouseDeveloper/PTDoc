@@ -29,12 +29,12 @@
         }
         @if (!account.HasClinicalAccess && account.HasRecurringBilling)
         { <p>Contact support to reconcile any pending renewal and restart billing safely. You can still refresh status or cancel future payments here.</p> }
-        @if (!account.HasClinicalAccess && !account.HasRecurringBilling && !account.NeedsReconciliation && offer?.Enabled == true)
+        @if (ShowPayment)
         {
             <label><input type="checkbox" @bind="acceptTerms" disabled="@busy" /> I authorize @Price now and every @account.IntervalMonths month(s) until I cancel recurring billing.</label>
-            <button type="button" class="AcceptUI" disabled="@(busy || !acceptTerms || !paymentReady)"
+            <button id="@paymentId" type="button" class="AcceptUI" disabled="@(busy || !acceptTerms || !paymentReady)"
                     data-billingAddressOptions='{"show":true,"required":false}'
-                    data-apiLoginID="@offer.ApiLoginId" data-clientKey="@offer.ClientKey"
+                    data-apiLoginID="@(offer!.ApiLoginId)" data-clientKey="@(offer!.ClientKey)"
                     data-acceptUIFormBtnTxt="Pay @Price" data-acceptUIFormHeaderTxt="PTDoc subscription"
                     data-responseHandler="ptdocAuthorizeNetAcceptResponseHandler">Pay securely with Authorize.Net</button>
         }
@@ -46,6 +46,9 @@
     private SubscriptionOffer? offer;
     private SubscriptionAccount? account;
     private bool busy, loaded, acceptTerms, confirmCancellation, paymentReady, paymentInitializationAttempted;
+    private bool disposed;
+    private bool ShowPayment => account is { HasClinicalAccess: false, HasRecurringBilling: false, NeedsReconciliation: false }
+        && offer?.Enabled == true;
     private string? error;
     private IJSObjectReference? module;
     private DotNetObjectReference<SubscriptionBilling>? reference;
@@ -59,18 +62,31 @@
     }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!paymentInitializationAttempted && offer?.Enabled == true && account is not null)
+        if (disposed) return;
+        if (!ShowPayment)
+        {
+            paymentReady = false;
+            paymentInitializationAttempted = false;
+            if (module is not null) await module.InvokeVoidAsync("dispose", paymentId);
+            return;
+        }
+        if (!paymentInitializationAttempted)
         {
             paymentInitializationAttempted = true;
             try
             {
-                module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/authorize-net-accept.js");
-                reference = DotNetObjectReference.Create(this);
-                await module.InvokeVoidAsync("initialize", paymentId, reference, offer.Environment);
+                module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/PTDoc.UI/js/authorize-net-accept.js");
+                if (disposed) return;
+                reference ??= DotNetObjectReference.Create(this);
+                await module.InvokeVoidAsync("initialize", paymentId, reference, offer!.Environment);
+                if (disposed) return;
                 paymentReady = true;
                 StateHasChanged();
             }
-            catch (JSException) { error = "The secure payment form could not load. Reload to try again."; StateHasChanged(); }
+            catch (JSException)
+            {
+                if (!disposed) { error = "The secure payment form could not load. Reload to try again."; StateHasChanged(); }
+            }
         }
     }
     [JSInvokable]
@@ -97,6 +113,7 @@
     }
     public async ValueTask DisposeAsync()
     {
+        disposed = true;
         if (module is not null)
         {
             try { await module.InvokeVoidAsync("dispose", paymentId); await module.DisposeAsync(); }

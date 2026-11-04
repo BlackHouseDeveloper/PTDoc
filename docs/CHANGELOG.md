@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 161 provider CI and subscription review findings
+
+- Normalize trailing slashes for the individual-plan copay restriction and cover canonical, trailing-slash, mixed-case and ordinary check-in paths with denial-code assertions.
+- Initialize subscription payment UI only after its button renders. Give each shared AcceptUI form a disposable same-origin host document so provider listeners and captured merchant configuration are recreated on revisits; cover subscription/copay revisits, readiness, late rendering, host-file serving and script-load failure.
+- Fix SQL Server/PostgreSQL provider smoke-test rollback order: reverse applied dependent migrations before organization tables inside the rolled-back rehearsal, retain the original role guards, and add subscription-guard/data-preservation coverage. Production migrations and foreign keys are unchanged.
+- Audit all three current review threads at `6238b41e`: two valid findings fixed locally; the CodeQL Content-Length finding is invalid because every early size exit rejects the request and every event-processing path requires HMAC verification. Add eight HTTP boundary regressions; leave the alert open without suppression or dismissal. Deduplicate the summary and provider-job failures. The user confirms no suppressed or Previously missed findings; full evidence, eligibility and verification commands are in Plan 06.
+- Whitespace, JavaScript syntax and tracked-appsettings secret-policy checks pass. New .NET/provider/browser verification awaits user execution; no commit, push, review reply/resolution, PR comment or review request was performed.
+
 ### Fixed - PR 161 anonymous subscription endpoint inventory
 
 - Add the public subscription offer, individual signup and HMAC-verified Authorize.Net webhook to the authorization test's expected anonymous set, matching the existing route mappings and canonical inventory. Report missing/unexpected routes explicitly on future mismatches; runtime authorization is unchanged.

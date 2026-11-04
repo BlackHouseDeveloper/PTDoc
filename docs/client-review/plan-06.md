@@ -1,6 +1,6 @@
 # Plan 06: Individual subscription and organization onboarding
 
-**Approved for implementation on 2026-11-03. Implementation is local; build, test and provider-sandbox verification remain pending.**
+**Implemented and published in `6238b41e` after owner-confirmed required builds/tests. The 2026-11-04 CI/review corrections below are local and await verification. Provider-sandbox acceptance remains a release gate.**
 
 - Requirements: R084, R086
 - PR: [#161](https://github.com/BlackHouseDeveloper/PTDoc/pull/161)
@@ -137,4 +137,114 @@ Browser/native acceptance: keyboard/screen-reader signup, PIN/MFA completion, se
 
 ## Publication boundary
 
-The rebase is pushed. Implementation remains uncommitted and unpushed pending the user's build/test confirmation. No merge, deployment, production mutation, review reply or review-thread resolution was performed.
+Implementation commit `6238b41e` is pushed. The subsequent CI/review corrections below remain uncommitted and unpushed pending verification and explicit publication authorization. No merge, deployment, production mutation, review reply or review-thread resolution was performed.
+
+## PR 161 review and CI remediation — 2026-11-04
+
+Reviewed remote/local head `6238b41e010ed5beb42bac2f5fc4715b4b90c256`.
+The working tree was clean at the start. GitHub GraphQL returned all three inline
+threads (all open, none outdated) and two review submissions, with no remaining
+thread/comment/review pages. The Copilot summary repeats its two inline findings.
+No suppressed or **Previously missed** findings were exposed by the APIs/public
+review UI; the linked private session returned 404. The user subsequently confirmed
+there are **no suppressed or Previously missed findings**, closing that coverage gap.
+
+### Complete classification
+
+| Finding / source | Classification | Current evidence and disposition | Reply/resolution eligibility |
+| --- | --- | --- | --- |
+| [Trailing-slash copay bypass](https://github.com/BlackHouseDeveloper/PTDoc/pull/161#discussion_r4463340832), thread `PRRT_kwDOQt-faM6zb9sK` | **Valid** | `AppointmentEndpoints` maps `/{id:guid}/check-in-payment` with `AppointmentsModify`; the middleware's raw suffix comparison missed a trailing slash. Normalize trailing slashes before the case-insensitive comparison. `ServerGuard_RechecksExpiryAndPlanLimits` now includes both spellings, mixed case, ordinary check-in, and the returned denial code. | Eligible after the changed tests pass and the fix is published, with separate authorization for reply/resolution. |
+| [Payment-button initialization/revisit](https://github.com/BlackHouseDeveloper/PTDoc/pull/161#discussion_r4463340866), thread `PRRT_kwDOQt-faM6zb9sU` | **Valid** | `SubscriptionBilling.OnAfterRenderAsync` previously initialized for any account even when its conditional button was absent. The bridge cached script promises, while the vendor script binds only the first `.AcceptUI` node and captures merchant attributes at load time. Use the same payment predicate for rendering and initialization, wait for successful binding before enabling Pay, and dispose on removal. Each rendered form gets a fresh same-origin host document and provider script, so old listeners/configuration cannot survive a revisit. The existing appointment-payment caller uses this same bridge. Component, static-asset and isolated browser regressions cover the changed boundaries. | Eligible after component/browser verification and publication, with separate authorization for reply/resolution. |
+| [CodeQL alert 21](https://github.com/BlackHouseDeveloper/PTDoc/security/code-scanning/21), [inline comment](https://github.com/BlackHouseDeveloper/PTDoc/pull/161#discussion_r4463310894), thread `PRRT_kwDOQt-faM6zb5MD` | **Invalid (false positive)** | The reported source is `SubscriptionEndpoints.cs:43`, the caller-controlled Content-Length check. Its only early exit is HTTP 413. The streaming byte-count guard also returns 413. All event parsing and `ReceiveTransactionAsync`/`ReceiveRecurringAsync` calls are after mandatory `VerifySignature` at lines 53–54. Choosing a length cannot grant successful processing without a valid HMAC. Existing exact-body/key signature tests support this; eight new HTTP boundary cases exercise known/unknown lengths, oversized bodies, invalid signatures and valid signatures with provider verification. No production change or scanner suppression is warranted. | Leave open: this is not a finding fixed by the change. Any false-positive dismissal is a separate authorized GitHub action; none was performed. |
+| [SQL Server job](https://github.com/BlackHouseDeveloper/PTDoc/actions/runs/41767809715/job/126370217413) and [PostgreSQL job](https://github.com/BlackHouseDeveloper/PTDoc/actions/runs/41767809715/job/126370217549) | **Valid — one shared CI cause** | Both apply migrations successfully, then fail `DatabaseProvider_Migrations_Queryability_AndCrud_Succeed` trying to drop `Organizations` with inbound foreign keys. `AssertOrganizationRoleRollbackGuardAsync`, introduced with PR #160, directly executed only the organization's Down SQL. PR #161 adds a referencing subscription table. Generate the applied migrations' Down commands in reverse dependency order, within the existing rolled-back rehearsal. Keep the original four role-change guard checks, assert subscription tables survive rollback, and add a populated-subscription guard/preservation case on each provider. No application migration, FK or rollback protection is removed. | No review thread exists for these jobs. Verification requires the real SQL Server and PostgreSQL workflow commands. |
+| Copilot summary's two linked issue bullets; duplicate SQL Server/PostgreSQL error presentations and test-reporter failures | **Duplicate** | Same two inline findings and the single provider-test cause above. The test-report publishing steps fail because the same failed test is present in their TRX inputs. | No additional reply or separate fix. |
+
+No outdated or ambiguous findings were identified. The CodeQL **analysis job**
+passed, but the separate **CodeQL alert check** fails because alert 21 remains open.
+That check remains unresolved pending an authorized false-positive disposition;
+this pass neither dismisses it nor weakens the scanner to obtain a green check.
+
+### Changed behavior and regression coverage
+
+- `SubscriptionAccessMiddleware` normalizes the payment-route suffix;
+  `SubscriptionServiceTests` exercises denial codes and route variants.
+- `SubscriptionBilling` waits for its actual payment button. The shared AcceptUI
+  bridge owns one disposable host frame per form, with a static same-origin
+  `authorize-net-host.html`; the vendor script is still fetched from Authorize.Net.
+  It has no public rebind/dispose method, so reloading it into the parent would
+  retain its private message listeners. Frame disposal removes those listeners and
+  captured merchant configuration together. No payment credentials or card data
+  are added to the static file.
+- `SubscriptionBillingTests` covers paid/recurring/pending/disabled states,
+  readiness, and a refresh that makes the button appear. `WebStaticAssetIntegrationTests`
+  covers the host file in Development and Beta. `authorize-net-accept.spec.ts`
+  uses intercepted provider traffic to cover revisiting both subscription and
+  copay forms, replacement merchant configuration, one callback per submission,
+  focus return, missing buttons, and provider-load failure.
+- `DatabaseProviderSmokeTests` executes dependent rollback commands first and
+  verifies empty and populated subscription boundaries without changing migrations.
+- `Webhook_SizeGateNeverBypassesSignatureOrProviderVerification` adds eight
+  HTTP cases with a strict provider mock. Rejected requests never call the provider;
+  signed, in-limit requests must still verify the transaction server-side.
+
+Provider evidence: [official Accept.js hosted-form instructions](https://developer.authorize.net/api/reference/features/acceptjs.html)
+require loading the library after the button exists. The inspected [sandbox script](https://jstest.authorize.net/v3/AcceptUI.js)
+uses `getElementsByClassName("AcceptUI")[0]` at initialization and captures the
+button's merchant attributes; SHA-256 of the inspected response was
+`49c79b8cfab664a901813911bcb7f5c721bc55df62bba4a1a3c295e0d386ed65`.
+The provider script was inspected in a temporary file and is not vendored.
+
+### Verification handoff
+
+Lightweight checks passed: `git diff --check`, JavaScript module syntax check, and
+the tracked-appsettings secret-policy scan. No .NET build/test, browser suite,
+provider database run, commit, push, review reply, thread resolution, PR comment,
+or new review request was performed in this remediation pass. Earlier owner-confirmed
+verification applies to `6238b41e`, not these new changes.
+
+Run from the repository root:
+
+```bash
+dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj
+dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "Category=CoreCi" --verbosity normal --logger "trx;LogFileName=test-results.trx"
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Subscription|FullyQualifiedName~AppointmentComponentsTests|FullyQualifiedName~WebStaticAssetIntegrationTests|FullyQualifiedName~AuthorizationCoverageTests" --verbosity normal
+dotnet build src/PTDoc.Web/PTDoc.Web.csproj --configuration Release
+DB_PROVIDER=sqlite CI_DB_MIGRATIONS_ALREADY_APPLIED=false dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "Category=DatabaseProvider" --verbosity normal
+```
+
+The isolated browser suite requires the existing Playwright installation but no
+running app or credentials, and makes no real provider requests:
+
+```bash
+cd tests/PTDoc.Web.UiQa
+PTDOC_UI_QA_REQUIRE_FULL_FIXTURES=false npm test -- tests/authorize-net-accept.spec.ts
+```
+
+For the failing provider jobs, use **disposable databases** matching
+`.github/workflows/ci-db.yml`; the smoke suite intentionally rehearses downgrades.
+Set `Database__ConnectionString` to the appropriate disposable database before each
+provider block and keep secrets out of command history. Run these from the repo root:
+
+```bash
+dotnet tool restore
+EF_PROVIDER=sqlserver Jwt__SigningKey=ci-sqlserver-ephemeral-key-migration-apply-placeholder dotnet tool run dotnet-ef database update -p src/PTDoc.Infrastructure.Migrations.SqlServer -s src/PTDoc.Api --context PTDoc.Infrastructure.Data.ApplicationDbContext --no-build --configuration Release
+DB_PROVIDER=sqlserver CI_DB_MIGRATIONS_ALREADY_APPLIED=true dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "Category=DatabaseProvider" --verbosity normal --logger "trx;LogFileName=db-sqlserver-results.trx"
+
+# Switch Database__ConnectionString to the disposable PostgreSQL database first.
+EF_PROVIDER=postgres Jwt__SigningKey=ci-postgres-ephemeral-key-migration-apply-placeholder dotnet tool run dotnet-ef database update -p src/PTDoc.Infrastructure.Migrations.Postgres -s src/PTDoc.Api --context PTDoc.Infrastructure.Data.ApplicationDbContext --no-build --configuration Release
+DB_PROVIDER=postgres CI_DB_MIGRATIONS_ALREADY_APPLIED=true dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "Category=DatabaseProvider" --verbosity normal --logger "trx;LogFileName=db-postgres-results.trx"
+```
+
+The existing SQL Server CI setup also enables `READ_COMMITTED_SNAPSHOT` on the
+disposable database. Use the exact service setup in the workflow or the existing
+provider runbook. Run the Core CI format gate for the changed API/tests projects:
+
+```bash
+dotnet format src/PTDoc.Api/PTDoc.Api.csproj --verify-no-changes --verbosity diagnostic
+dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity diagnostic
+```
+
+Before release, also exercise the real sandbox form on Web/native clients, including
+cancel and retry, and rebuild affected MAUI targets with the existing commands in
+this document. Browser stubs verify lifecycle behavior, not real merchant acceptance.
