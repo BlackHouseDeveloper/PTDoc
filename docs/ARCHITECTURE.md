@@ -58,6 +58,12 @@ Plan 06 separates identity, organization/clinic membership and paid access. Core
 
 New individual accounts receive a single PT clinic grant and a separate unpaid subscription in one database transaction. Existing accounts are not converted. Verified capture grants a period; browser redirects and ARB status alone cannot do so. Durable pending-operation markers prevent blind repeats after uncertain remote mutations. Native JWTs carry the selected clinic's signed paid-through deadline; local data access checks expiry without deleting encrypted drafts or logging out billing identity. See [Plan 06](client-review/plan-06.md) for setup, manual reconciliation, limitations and validation gates.
 
+### Encounter intake questionnaires
+
+An issued `IntakeForm` binds a patient, clinic, saved draft note and immutable questionnaire definition ID. Evaluation/Re-evaluation retain the full intake. Daily, Progress and Discharge use versioned patient-only answers in `ResponseJson`, rendered with the corresponding shared Subjective components. Short visits never write profile, insurance, assessment, plan or clinician-only discharge decisions. Progress activity baselines/catalog choices are issued by the server and validated against that saved snapshot, including for standalone patient links.
+
+Submitted answers reach the matching editable note only after explicit clinician review/copy. `WorkspaceSeedContextV2` retains source intake ID, definition ID and answer version. Objective/assessment/plan data remain owned by the destination note. See [Plan 08](client-review/plan-08.md) for acceptance context. Patient outcome collection remains a subsequent review layer.
+
 ### Reference Data Source Model
 
 Clinic reference markdown files under `docs/clinicrefdata/` are governed by the status index in `docs/clinicrefdata/README.md`, which classifies each file as an authoring source, reference-only material, or archived history.

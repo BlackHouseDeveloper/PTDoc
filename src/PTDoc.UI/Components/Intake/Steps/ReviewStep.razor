@@ -25,8 +25,13 @@
         </div>
 
         <ul class="review-step__checklist">
-            <li>Verify all contact information is correct.</li>
-            <li>Ensure the Medical History / Pain Assessment step details are accurate.</li>
+            @if (IntakeQuestionnaireDefinitions.IsShort(State.QuestionnaireDefinitionId))
+            { <li>Check the answers for this visit before submitting.</li> }
+            else
+            {
+                <li>Verify all contact information is correct.</li>
+                <li>Ensure the Medical History / Pain Assessment step details are accurate.</li>
+            }
             <li>Review treatment goals, permissions, and expectations.</li>
         </ul>
     </section>
@@ -63,6 +68,17 @@
         </section>
     }
 
+    @if (IntakeQuestionnaireDefinitions.IsShort(State.QuestionnaireDefinitionId) && State.VisitQuestionnaire is { } visit)
+    {
+        <h2>Review your visit answers</h2>
+        <VisitQuestionnaireFields Value="@visit" DefinitionId="@(State.QuestionnaireDefinitionId!)" IsReadOnly="true" />
+        @if (!IsReadOnlyReview)
+        {
+            <button type="button" class="btn review-step__secondary-action" @onclick="() => OnEditRequestedAsync(IntakeStep.Demographics)">Edit visit answers</button>
+        }
+    }
+    else
+    {
     <section class="review-step__card">
         <div class="review-step__card-header">
             <div>
@@ -491,6 +507,8 @@
         </div>
     </section>
 
+    }
+
     <section class="review-step__card">
         <div class="review-step__card-header">
             <div>
@@ -521,6 +539,15 @@
                 <input type="checkbox" class="form-check-input" checked="@(ConsentPacket.HipaaAcknowledged == true)" @onchange="OnHipaaChanged" disabled="@IsReadOnlyReview" />
                 <span>I acknowledge receipt of the HIPAA Notice of Privacy Practices.</span>
             </label>
+
+            @if (IntakeQuestionnaireDefinitions.IsShort(State.QuestionnaireDefinitionId))
+            {
+                <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
+                    <input type="checkbox" class="form-check-input" data-testid="intake-treatment-consent"
+                           checked="@(ConsentPacket.TreatmentConsentAccepted == true)" @onchange="OnTreatmentChanged" disabled="@IsReadOnlyReview" />
+                    <span>I consent to receive physical therapy treatment.</span>
+                </label>
+            }
 
             <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
                 <input type="checkbox" class="form-check-input" checked="@FinalAttestationAccepted" @onchange="OnAccuracyChanged" disabled="@IsReadOnlyReview" />
@@ -1064,6 +1091,13 @@
         var accepted = ToBool(args);
         ConsentPacket.FinalAttestationAccepted = accepted;
         State.AccuracyConfirmed = accepted;
+    });
+
+    private Task OnTreatmentChanged(ChangeEventArgs args) => UpdateStateAsync(() =>
+    {
+        var accepted = ToBool(args);
+        ConsentPacket.TreatmentConsentAccepted = accepted;
+        State.ConsentToTreatAcknowledged = accepted;
     });
 
     private Task OnRevokeHipaaChanged(ChangeEventArgs args) => UpdateStateAsync(() =>

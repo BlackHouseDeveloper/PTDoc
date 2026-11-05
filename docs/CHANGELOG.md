@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - With explicit operator approval, rehearse the committed SQL Server `20261103030000_AddOrganizationMemberships` migration on a temporary Basic-tier database copy, then apply it during a controlled beta stop/start. Verify hashes of existing clinic, user, patient, note, signature, appointment, schedule-block and session data, membership backfill and database constraints. Both rehearsal and live checks passed, and API/Web readiness recovered. Remove the temporary IP-only SQL firewall rule and, after successful deployment verification, delete the recovery copy.
 - **Deploy Beta run `41775391240`** — Successfully deploy source `5ac1e92b04469f594a0b7aa40f9da1102a4b3167` as release `beta-31-1` to both apps. All 2,717 tests passed in 7 minutes 27 seconds, with no failures or skips. API health, all four seeded-role sign-ins, authenticated source/release parity, Web health, shared CSS and WebSockets negotiation passed. Independent live checks confirmed HTTP 200 for both apps' liveness/readiness and shared CSS, plus advertised WebSockets. The fix was committed/pushed with explicit permission before local build/test confirmation; no local .NET build/test commands were run.
 
+### Added - Visit-specific Subjective intake
+
+- Enable versioned Daily, Progress and Discharge intake with the corresponding Subjective components, issued activity choices, partial draft saves, explicit current-pain validation, review and fresh consent choices.
+- Copy submitted answers only into their matching editable note after clinician review. Preserve chart facts, prior locked encounters and clinician-owned content; retain exact-record patient access and concurrency checks.
+- Reuse shared progress/footer components and app tokens, including a readable mobile step header. Keep models stable during typing and discard stale submit results after encounter navigation.
+- Patient outcome definitions, scoring and collection are reviewed in subsequent layers. Tests for the visit contract, API/OTP scope, save/review/consent and keyboard behavior accompany this layer.
+
 ### Added - Daily questionnaire and Progress activity foundations
 
 - Integrate the existing Plan 20 / PR 176 Daily questionnaire and Plan 30 / PR 187 activity tracking, carry-forward, note/PDF and historical-evidence safeguards on the PR 163 encounter foundation.

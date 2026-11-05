@@ -15,6 +15,7 @@ public static class IntakeProfileUpdates
 
     public static async Task<string> PrepareAsync(ApplicationDbContext db, IntakeForm intake, string? incomingJson, CancellationToken ct)
     {
+        if (IntakeEncounterRules.IsShort(intake)) return IntakeEncounterRules.PrepareShortResponse(intake, incomingJson);
         var json = IntakeProfileProvenance.Preserve(intake.ResponseJson, incomingJson);
         var draft = JsonSerializer.Deserialize<IntakeResponseDraft>(json, Options)!;
         var before = JsonSerializer.SerializeToNode(draft, Options)!.AsObject();

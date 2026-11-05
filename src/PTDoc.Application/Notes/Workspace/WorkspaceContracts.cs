@@ -177,6 +177,8 @@ public sealed class WorkspaceSeedContextV2
 {
     public WorkspaceSeedKind Kind { get; set; }
     public Guid? SourceIntakeId { get; set; }
+    public string? SourceIntakeDefinitionId { get; set; }
+    public DateTime? SourceIntakeVersionUtc { get; set; }
     public bool FromLockedSubmittedIntake { get; set; }
     public Guid? SourceNoteId { get; set; }
     public NoteType? SourceNoteType { get; set; }
