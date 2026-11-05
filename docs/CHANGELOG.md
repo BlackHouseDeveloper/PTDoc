@@ -10,7 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - Restore the deployment fix to main after PR 161
 
 - Diagnose Deploy Beta run `42026288423` at `a787e848`: 2,817 tests passed and six unrelated HTTP cases hit the same clustered 100-second timeout. The previously verified deployment fix remained in draft PR 199 and was absent from main; update that PR onto the subscription merge while preserving both changelog histories. The user authorized the complete repair, publication, migration and deployment workflow.
-- Keep the full 2,823-test deployment suite and serial collection setting, and document deployment-test scheduling alongside Core CI. Verify current PR 199 feedback: no review threads were returned. Fresh CI, the subscription migration prerequisite and deployment verification are pending.
+- Keep the full 2,823-test deployment suite and serial collection setting, and document deployment-test scheduling alongside Core CI. Verify current PR 199 feedback: no review threads or active review findings were returned. Track final CI and deployment evidence in PR 199 and the linked Deploy Beta run.
+- Generate the subscription upgrade SQL with pinned EF tooling; rehearse it twice on a temporary Basic-tier database copy to verify idempotence, data/signature preservation and new constraints, then roll back the copy. Apply `20261104010000_AddIndividualSubscriptions` during a controlled beta stop/start only after that rehearsal passes. The live transaction passed the same preservation and schema checks; no payment gateway calls or subscriber records were created.
+- Record a separate pre-existing SQL Server model-metadata limitation: the drift probe proposes three legacy directory/insurance/template filter-quoting changes and four nonunique foreign-key indexes, with no subscription-table differences. Restore the original snapshot after inspection; do not apply the diagnostic migration or broaden this deployment fix into unrelated schema changes.
 
 ### Fixed - Beta deployment test contention and migration readiness
 
