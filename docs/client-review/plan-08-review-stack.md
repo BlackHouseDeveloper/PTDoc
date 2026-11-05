@@ -195,3 +195,13 @@ dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosi
 #### Publication verification confirmation
 
 The user subsequently confirmed all required builds and tests passed, including the requested Compliance tests and format check, and authorized committing the verified changes, a normal push and evidence-based review-thread disposition. This supersedes the pending verification status above. No code or test changes followed that confirmation; only this verification record and the changelog status were refreshed. Builds/tests were not rerun. Unrelated CI command guidance remains excluded from this commit.
+
+### Layer 2 — visit-specific intake
+
+- Release test-project build: PASS, zero warnings/errors.
+- Intake, note-workspace service/page and Progress activity regressions: **581/581 PASS**, zero skipped. Includes API/OTP scoping, short-visit validation, partial saves, consent, matching-note copying and keyboard model stability.
+- No `PatientOutcomes`, outcome persistence/projection or patient measure component is introduced in this layer. Clinical outcome collection remains unavailable.
+
+#### PR 201 rebase — 2026-11-11
+
+Rebase the visit-intake layer onto `main` at `84846eee` after PR 200 merged. Preserve the merged PR 163/200 review fixes, navigation-generation guards and all tests from both histories. Combine successful draft-save validation clearing with the current-operation guard; retain the formatted invalid-Progress HTTP regression once. The historical 581-test result above predates this rebase; fresh build and test verification awaits user execution.

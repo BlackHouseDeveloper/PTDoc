@@ -1,19 +1,21 @@
 @using PTDoc.UI.Components.Intake.Models
 
-<div class="pain-progress" data-testid="pain-progress">
-    <div class="pain-progress__labels">
-        @for (var index = 0; index < _steps.Length; index++)
+<nav class="pain-progress" data-testid="pain-progress" aria-label="Intake progress">
+    <div class="pain-progress__labels @(IsShortVisit ? "pain-progress__labels--short" : string.Empty)">
+        @for (var index = 0; index < Steps.Length; index++)
         {
-            var step = _steps[index];
-            var isActive = step == CurrentStep;
+            var step = Steps[index];
+            var isActive = step == CurrentStep || (IsShortVisit && index == 0 && CurrentStep != IntakeStep.Review);
             var isComplete = (int)step < (int)CurrentStep;
-            <span class="@(isActive ? "is-active" : isComplete ? "is-complete" : string.Empty)">@_labels[index]</span>
+            <span class="@(isActive ? "is-active" : isComplete ? "is-complete" : string.Empty)"
+                  aria-current="@(isActive ? "step" : null)"
+                  data-step-label="@($"Step {index + 1} of {Steps.Length}: ")">@Labels[index]</span>
         }
     </div>
     <div class="pain-progress__track" aria-hidden="true">
         <div class="@GetFillClass()"></div>
     </div>
-</div>
+</nav>
 
 @code {
     private readonly IntakeStep[] _steps =
@@ -35,9 +37,18 @@
     };
 
     [Parameter, EditorRequired] public IntakeStep CurrentStep { get; set; }
+    [Parameter] public bool IsShortVisit { get; set; }
+
+    private static readonly IntakeStep[] ShortSteps = [IntakeStep.Demographics, IntakeStep.Review];
+    private static readonly string[] ShortLabels = ["Visit questionnaire", "Review and consent"];
+    private IntakeStep[] Steps => IsShortVisit ? ShortSteps : _steps;
+    private string[] Labels => IsShortVisit ? ShortLabels : _labels;
 
     private string GetFillClass()
     {
+        if (IsShortVisit)
+            return CurrentStep == IntakeStep.Review ? "pain-progress__fill pain-progress__fill--5" : "pain-progress__fill pain-progress__fill--half";
+
         return CurrentStep switch
         {
             IntakeStep.Demographics => "pain-progress__fill pain-progress__fill--1",

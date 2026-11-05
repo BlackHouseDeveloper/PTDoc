@@ -470,10 +470,10 @@ public static class IntakeEndpoints
         {
             return Results.Conflict(new { error = ex.Message });
         }
-        intake.PainMapData = painMapData;
+        if (!IntakeEncounterRules.IsShort(intake)) intake.PainMapData = painMapData;
         intake.Consents = normalizedConsents;
         intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, responseJson);
-        if (request.StructuredData is not null)
+        if (request.StructuredData is not null && !IntakeEncounterRules.IsShort(intake))
         {
             intake.StructuredDataJson = structuredDataJson;
         }
@@ -538,8 +538,11 @@ public static class IntakeEndpoints
         if (!TryNormalizeConsents(intake.Consents, requireHipaaAcknowledgement: true, out var normalizedConsents, out var consentPacket, out var submitValidationProblem))
             return submitValidationProblem!;
 
-        if (!await IntakeDomainProjection.HasCurrentPolicySourcesAsync(db, intake.PatientId, intake.ClinicId, intake.ResponseJson, cancellationToken))
+        if (!IntakeEncounterRules.IsShort(intake) && !await IntakeDomainProjection.HasCurrentPolicySourcesAsync(db, intake.PatientId, intake.ClinicId, intake.ResponseJson, cancellationToken))
             return Results.Conflict(new { error = IntakeDomainProjection.StalePolicySourceMessage });
+
+        if (IntakeEncounterRules.ValidateSubmission(intake) is { } submissionProblem)
+            return Results.UnprocessableEntity(new { error = submissionProblem });
 
         var nowUtc = DateTime.UtcNow;
         intake.Consents = normalizedConsents;
@@ -558,7 +561,7 @@ public static class IntakeEndpoints
         try
         {
             ApplySubmittedIntakePatientFields(intake);
-            if (intake.Patient is not null)
+            if (intake.Patient is not null && !IntakeEncounterRules.IsShort(intake))
             {
                 await IntakeDomainProjection.UpsertAsync(db, intake.Patient, intake.ResponseJson, intake.ModifiedByUserId, cancellationToken);
             }
@@ -948,6 +951,7 @@ public static class IntakeEndpoints
 
     internal static void ApplySubmittedIntakePatientFields(IntakeForm intake)
     {
+        if (IntakeEncounterRules.IsShort(intake)) return;
         if (intake.Patient is null)
         {
             return;

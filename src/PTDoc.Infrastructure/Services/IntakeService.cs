@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
@@ -25,6 +26,7 @@ public sealed class IntakeService : IIntakeService
     private readonly IIdentityContextAccessor _identityContext;
     private readonly IIntakeReferenceDataCatalogService _intakeReferenceData;
     private readonly IIntakeDraftCanonicalizer _draftCanonicalizer;
+    private readonly IWorkspaceReferenceCatalogService? _workspaceCatalogs;
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -37,13 +39,15 @@ public sealed class IntakeService : IIntakeService
         ITenantContextAccessor tenantContext,
         IIdentityContextAccessor identityContext,
         IIntakeReferenceDataCatalogService intakeReferenceData,
-        IIntakeDraftCanonicalizer draftCanonicalizer)
+        IIntakeDraftCanonicalizer draftCanonicalizer,
+        IWorkspaceReferenceCatalogService? workspaceCatalogs = null)
     {
         _context = context;
         _tenantContext = tenantContext;
         _identityContext = identityContext;
         _intakeReferenceData = intakeReferenceData;
         _draftCanonicalizer = draftCanonicalizer;
+        _workspaceCatalogs = workspaceCatalogs;
     }
 
     public async Task<IntakeResponseDraft?> GetDraftByPatientIdAsync(Guid patientId, CancellationToken cancellationToken = default)
@@ -91,18 +95,49 @@ public sealed class IntakeService : IIntakeService
         var existing = await _context.IntakeForms.AsNoTracking()
             .FirstOrDefaultAsync(form => form.EncounterNoteId == noteId && form.PatientId == patientId && form.ClinicId == note.ClinicId, cancellationToken);
         if (existing is not null) return IntakeEnsureDraftResult.Existing(await WithProfilePrefillAsync(existing, cancellationToken));
-        if (note.NoteType != NoteType.Evaluation || note.NoteStatus != NoteStatus.Draft || note.IsFinalized || note.IsAddendum)
-            return IntakeEnsureDraftResult.Locked("Encounter intake is available for draft evaluations and re-evaluations. Other questionnaires are not yet enabled.");
+        if (IntakeQuestionnaireDefinitions.ForNoteType(note.NoteType) is null || note.NoteStatus != NoteStatus.Draft || note.IsFinalized || note.IsAddendum)
+            return IntakeEnsureDraftResult.Locked("Encounter intake is available only for editable draft visits.");
 
         // A new encounter starts with profile facts only, never earlier symptom answers or consents.
         var draft = new IntakeResponseDraft
         {
             PatientId = patientId,
             EncounterNoteId = note.Id,
-            QuestionnaireDefinitionId = IntakeEncounterRules.EvaluationDefinition,
+            QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.ForNoteType(note.NoteType),
             EncounterIsReEvaluation = note.IsReEvaluation,
-            IntakeFlowVersion = 2
+            IntakeFlowVersion = 2,
+            AllowPhoneCalls = false,
+            AllowTextMessages = false,
+            AllowEmailMessages = false,
+            DryNeedlingEligible = false,
+            PelvicFloorTherapyEligible = false,
+            PhiReleaseAuthorized = false,
+            BillingConsentAuthorized = false
         };
+        if (IntakeQuestionnaireDefinitions.IsShort(draft.QuestionnaireDefinitionId))
+        {
+            var source = string.IsNullOrWhiteSpace(note.ContentJson) ? new NoteWorkspaceV2Payload()
+                : JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(note.ContentJson, SerializerOptions) ?? new();
+            if (source.DryNeedling is not null)
+                return IntakeEnsureDraftResult.Locked("Dry needling uses its separate clinical workflow.");
+            draft.VisitQuestionnaire = new IntakeVisitQuestionnaire
+            {
+                Daily = note.NoteType == NoteType.Daily ? new DailyQuestionnaireV1() : null,
+                Progress = note.NoteType == NoteType.ProgressNote ? new WorkspaceProgressNoteQuestionnaireV2
+                { Activities = source.ProgressQuestionnaire.Activities is { } recorded
+                    ? new ProgressActivityTrackingV1 { Baseline = recorded.Baseline.ToList() }
+                    : ProgressActivityTracking.BaselineFrom(new NoteWorkspaceV2Payload { Subjective = source.Subjective }, note.Id) } : null,
+                Discharge = note.NoteType == NoteType.Discharge ? new WorkspaceDischargeV2() : null
+            };
+            if (draft.VisitQuestionnaire.Progress?.Activities is { } activities)
+            {
+                var regions = activities.Baseline.Select(a => a.BodyPart).Append(source.Objective.PrimaryBodyPart)
+                    .Where(region => region != BodyPart.Other).Distinct();
+                if (_workspaceCatalogs is not null)
+                    draft.VisitQuestionnaire.ActivityOptions = regions.SelectMany(region =>
+                        ProgressActivityTracking.CatalogOptions(_workspaceCatalogs.GetBodyRegionCatalog(region))).DistinctBy(a => a.Id).ToList();
+            }
+        }
         var profile = await IntakeProfilePrefillReader.ReadAsync(_context, patientId, note.ClinicId, cancellationToken);
         profile?.InitializeSource(draft);
         profile?.ApplyTo(draft);
@@ -111,7 +146,7 @@ public sealed class IntakeService : IIntakeService
             PatientId = patientId,
             ClinicId = note.ClinicId,
             EncounterNoteId = note.Id,
-            QuestionnaireDefinitionId = IntakeEncounterRules.EvaluationDefinition,
+            QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.ForNoteType(note.NoteType),
             EncounterIsReEvaluation = note.IsReEvaluation,
             TemplateVersion = "1.0",
             AccessToken = GenerateAccessTokenPlaceholderHash(),
@@ -383,8 +418,11 @@ public sealed class IntakeService : IIntakeService
             var responseJson = await IntakeProfileUpdates.PrepareAsync(
                 _context, intake, SerializeDraft(canonicalState), cancellationToken);
             intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, responseJson);
-            intake.StructuredDataJson = SerializeStructuredData(canonicalState.StructuredData);
-            intake.PainMapData = BuildPainMapJson(canonicalState);
+            if (!IntakeEncounterRules.IsShort(intake))
+            {
+                intake.StructuredDataJson = SerializeStructuredData(canonicalState.StructuredData);
+                intake.PainMapData = BuildPainMapJson(canonicalState);
+            }
             intake.Consents = BuildConsentsJson(canonicalState);
             intake.LastModifiedUtc = DateTime.UtcNow;
             intake.ModifiedByUserId = userId;
@@ -431,10 +469,17 @@ public sealed class IntakeService : IIntakeService
 
         canonicalState = JsonSerializer.Deserialize<IntakeResponseDraft>(await IntakeProfileUpdates.PrepareAsync(
             _context, intake, SerializeDraft(canonicalState), cancellationToken), SerializerOptions)!;
-        if (!await IntakeDomainProjection.HasCurrentPolicySourcesAsync(
+        if (!IntakeEncounterRules.IsShort(intake) && !await IntakeDomainProjection.HasCurrentPolicySourcesAsync(
                 _context, patientId, intake.ClinicId, canonicalState, cancellationToken))
         {
             throw new InvalidOperationException(IntakeDomainProjection.StalePolicySourceMessage);
+        }
+
+        if (IntakeEncounterRules.IsShort(intake))
+        {
+            var errors = canonicalState.VisitQuestionnaire!.Validate(
+                IntakeQuestionnaireDefinitions.NoteTypeFor(intake.QuestionnaireDefinitionId)!.Value, submitting: true);
+            if (errors.Count > 0) throw new InvalidOperationException(string.Join(" ", errors));
         }
 
         var nowUtc = DateTime.UtcNow;
@@ -463,7 +508,7 @@ public sealed class IntakeService : IIntakeService
         var patient = await _context.Patients
             .FirstOrDefaultAsync(p => p.Id == patientId, cancellationToken);
 
-        if (patient is not null)
+        if (patient is not null && !IntakeEncounterRules.IsShort(intake))
         {
             canonicalState = IntakeProfileUpdates.ForPatientWrite(canonicalState, patient);
             var name = canonicalState.FullName?.Trim() ?? string.Empty;
@@ -550,6 +595,7 @@ public sealed class IntakeService : IIntakeService
         target.PatientId = source.PatientId;
         target.EncounterNoteId = source.EncounterNoteId;
         target.QuestionnaireDefinitionId = source.QuestionnaireDefinitionId;
+        target.VisitQuestionnaire = source.VisitQuestionnaire;
         target.EncounterIsReEvaluation = source.EncounterIsReEvaluation;
         target.IntakeFlowVersion = source.IntakeFlowVersion;
         target.PrefilledPrimaryPolicyId = source.PrefilledPrimaryPolicyId;

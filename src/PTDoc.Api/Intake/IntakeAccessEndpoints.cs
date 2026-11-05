@@ -365,10 +365,10 @@ public static class IntakeAccessEndpoints
         {
             return Results.Conflict(new { error = ex.Message });
         }
-        intake.PainMapData = painMapData;
+        if (!IntakeEncounterRules.IsShort(intake)) intake.PainMapData = painMapData;
         intake.Consents = normalizedConsents;
         intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, responseJson);
-        if (request.StructuredData is not null)
+        if (request.StructuredData is not null && !IntakeEncounterRules.IsShort(intake))
         {
             intake.StructuredDataJson = structuredDataJson;
         }
@@ -434,8 +434,11 @@ public static class IntakeAccessEndpoints
             return validationProblem!;
         }
 
-        if (!await IntakeDomainProjection.HasCurrentPolicySourcesAsync(db, intake.PatientId, intake.ClinicId, intake.ResponseJson, cancellationToken))
+        if (!IntakeEncounterRules.IsShort(intake) && !await IntakeDomainProjection.HasCurrentPolicySourcesAsync(db, intake.PatientId, intake.ClinicId, intake.ResponseJson, cancellationToken))
             return Results.Conflict(new { error = IntakeDomainProjection.StalePolicySourceMessage });
+
+        if (IntakeEncounterRules.ValidateSubmission(intake) is { } submissionProblem)
+            return Results.UnprocessableEntity(new { error = submissionProblem });
 
         var nowUtc = DateTime.UtcNow;
         intake.Consents = normalizedConsents;

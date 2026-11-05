@@ -7,12 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - PR 201 rebase after PR 209 merge
+
+- Rebase visit-specific intake onto `main` at `2c292348` after the shared beta PIN fix merged. Preserve both changelog histories; application code and tests replay unchanged. Earlier build/test results predate this combined head; fresh verification awaits user execution.
+
 ### Fixed - Required PIN changes on retrying database providers
 
 - **`DatabaseSeeder` / `BetaAccessSeederTests`** — Honor the user-requested shared-PIN policy for all `.beta` fixtures during enabled Beta startup: restore the Azure-managed shared PIN, clear pending PIN changes, and retain a non-expiring legacy migration allowance. Additional fixtures retain roles/memberships/activation; other accounts and MFA keep their normal rules. Add five regressions for expired grace, restarted seeding, additional fixtures and unaffected staff; document the policy in the beta runbook and security guidance.
 - **`AuthService.CompletePinChangeAsync`** — Execute the required PIN change and its audit record inside the provider execution strategy so SQL Server/PostgreSQL retry policies do not reject the explicit transaction. Reload tracked state after a rolled-back attempt and recognize this invocation's exact salted hash after a lost commit acknowledgement, preserving single-use challenges and issuing the session only after the write completes.
 - **`SettingsAdministrationTests`** — Add six relational regressions covering ordinary execution, failure before commit, and failure after commit for Web sessions and native identity-only completion; verify policy rejection, one audit record, challenge replay rejection, and sign-in with the updated PIN. The user authorized local testing and beta deployment; the expanded focused build/test run passed 56 tests with zero failures or skips, and changed-file formatting verification passed. This hotfix is based on the deployed beta revision `e894d2ad` and requires no database migration.
 - **Beta deployment verification (November 11)** — [Deploy Beta run 43053209302](https://github.com/BlackHouseDeveloper/PTDoc/actions/runs/43053209302) passed all 2,834 tests with zero failures/skips and deployed hotfix `c05b5b10` as `beta-34-1`. All four shared beta accounts returned successful API sessions without PIN-change challenges; `january.beta` also completed Web sign-in and opened `/patients` with HTTP 200. API/Web health, WebSockets/static assets, and release identity checks passed; verification sessions were logged out. The equivalent main-based runtime commit `e6034fb3` passed all 15 PR checks.
+
+### Changed - PR 201 rebase after PR 200 merge
+
+- Rebase visit-specific intake onto `main` at `84846eee`, retaining the merged questionnaire/history fixes, encounter navigation safeguards, review evidence and regression coverage from both branches. Combine draft-save validation clearing with the current-operation guard and retain the duplicated invalid-Progress HTTP test once. Fresh build/test verification awaits user execution.
 
 ### Changed - PR 200 November 11 review and signing compatibility
 
@@ -72,6 +80,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.github/workflows/deploy-beta.yml`** — Run the complete deployment test suite with xUnit collection parallelism disabled after run `41752480381` failed with clustered 100-second HTTP timeouts in changing test sets (eight failures initially, four on the completed retry). Preserve all tests, assertions, HTTP timeouts and deployment gates; retain the TRX report even when the test step fails.
 - With explicit operator approval, rehearse the committed SQL Server `20261103030000_AddOrganizationMemberships` migration on a temporary Basic-tier database copy, then apply it during a controlled beta stop/start. Verify hashes of existing clinic, user, patient, note, signature, appointment, schedule-block and session data, membership backfill and database constraints. Both rehearsal and live checks passed, and API/Web readiness recovered. Remove the temporary IP-only SQL firewall rule and, after successful deployment verification, delete the recovery copy.
 - **Deploy Beta run `41775391240`** — Successfully deploy source `5ac1e92b04469f594a0b7aa40f9da1102a4b3167` as release `beta-31-1` to both apps. All 2,717 tests passed in 7 minutes 27 seconds, with no failures or skips. API health, all four seeded-role sign-ins, authenticated source/release parity, Web health, shared CSS and WebSockets negotiation passed. Independent live checks confirmed HTTP 200 for both apps' liveness/readiness and shared CSS, plus advertised WebSockets. The fix was committed/pushed with explicit permission before local build/test confirmation; no local .NET build/test commands were run.
+
+### Added - Visit-specific Subjective intake
+
+- Enable versioned Daily, Progress and Discharge intake with the corresponding Subjective components, issued activity choices, partial draft saves, explicit current-pain validation, review and fresh consent choices.
+- Copy submitted answers only into their matching editable note after clinician review. Preserve chart facts, prior locked encounters and clinician-owned content; retain exact-record patient access and concurrency checks.
+- Reuse shared progress/footer components and app tokens, including a readable mobile step header. Keep models stable during typing and discard stale submit results after encounter navigation.
+- Patient outcome definitions, scoring and collection are reviewed in subsequent layers. Tests for the visit contract, API/OTP scope, save/review/consent and keyboard behavior accompany this layer.
 
 ### Added - Daily questionnaire and Progress activity foundations
 

@@ -1554,9 +1554,7 @@ public sealed class IntakeServiceTests : IDisposable
     }
 
     [Theory]
-    [InlineData(NoteType.Daily, NoteStatus.Draft, false, false)]
-    [InlineData(NoteType.ProgressNote, NoteStatus.Draft, false, false)]
-    [InlineData(NoteType.Discharge, NoteStatus.Draft, false, false)]
+    [InlineData((NoteType)999, NoteStatus.Draft, false, false)]
     [InlineData(NoteType.Evaluation, NoteStatus.Signed, false, false)]
     [InlineData(NoteType.Evaluation, NoteStatus.Draft, true, false)]
     [InlineData(NoteType.Evaluation, NoteStatus.Draft, false, true)]

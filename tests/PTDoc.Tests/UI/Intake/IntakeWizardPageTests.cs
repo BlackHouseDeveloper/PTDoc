@@ -9,6 +9,7 @@ using System.Net;
 using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Intake;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Outcomes;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
@@ -272,6 +273,134 @@ public sealed class IntakeWizardPageTests : TestContext
         draft.QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.EvaluationFullV1;
         draft.LastModifiedUtc = DateTime.UtcNow;
         return draft;
+    }
+
+    [Theory]
+    [InlineData(NoteType.Daily, "daily-subjective-section")]
+    [InlineData(NoteType.ProgressNote, "progress-subjective-section")]
+    [InlineData(NoteType.Discharge, "discharge-subjective-section")]
+    public async Task ShortVisit_ShowsCorrespondingSubjectiveAndReviewWithoutHistoryModules(NoteType type, string selector)
+    {
+        var patientId = Guid.NewGuid();
+        var draft = EncounterDraft(patientId);
+        draft.QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.ForNoteType(type);
+        draft.CurrentStep = (int)IntakeStep.Demographics;
+        draft.PhiReleaseAuthorized = false;
+        draft.VisitQuestionnaire = new()
+        {
+            CurrentPain = 0,
+            Daily = type == NoteType.Daily ? new() : null,
+            Progress = type == NoteType.ProgressNote ? new() { Activities = new() } : null,
+            Discharge = type == NoteType.Discharge ? new() : null
+        };
+        var service = ConfigureEncounterDrafts(draft);
+        service.Setup(value => value.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        service.Setup(value => value.SubmitAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var workspace = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        Services.AddSingleton(workspace.Object);
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}?noteId={draft.EncounterNoteId}");
+        var cut = RenderPage(patientId);
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll($"[data-testid='{selector}']")));
+        Assert.Contains("Step 1 of 2", cut.Markup);
+        Assert.Empty(cut.FindAll("[data-testid='intake-insurance-reconciliation']"));
+        Assert.Empty(cut.FindAll("#discharge-reason"));
+        Assert.DoesNotContain("Medical History / Pain Assessment", cut.Markup);
+        await cut.FindAll("button").Single(button => button.TextContent == "Review answers").ClickAsync(new());
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll("[data-testid='review-step']")));
+        Assert.Contains("Review your visit answers", cut.Markup);
+        Assert.Contains("Step 2 of 2", cut.Markup);
+        Assert.DoesNotContain("<h2>Medical History</h2>", cut.Markup);
+        service.Verify(value => value.SaveDraftAsync(It.Is<IntakeResponseDraft>(saved =>
+            saved.VisitQuestionnaire != null && saved.VisitQuestionnaire.CurrentPain == 0 && saved.IntakeId == draft.IntakeId),
+            It.IsAny<CancellationToken>()), Times.Once);
+        cut.Find("#terms-privacy-ack").Change(true);
+        foreach (var label in new[] { "I acknowledge receipt of the HIPAA", "I have reviewed my answers" })
+            cut.FindAll("label").Single(element => element.TextContent.Contains(label, StringComparison.Ordinal))
+                .QuerySelector("input")!.Change(true);
+        Assert.True(cut.FindAll("button").Single(button => button.TextContent.Trim() == "Submit Intake Form").HasAttribute("disabled"));
+        cut.Find("[data-testid='intake-treatment-consent']").Change(true);
+        var submit = cut.FindAll("button").Single(button => button.TextContent.Trim() == "Submit Intake Form");
+        Assert.False(submit.HasAttribute("disabled"));
+        await submit.ClickAsync(new());
+        service.Verify(value => value.SubmitAsync(It.Is<IntakeResponseDraft>(saved =>
+            saved.ConsentPacket != null && saved.ConsentPacket.TreatmentConsentAccepted == true && saved.HipaaAcknowledged),
+            It.IsAny<CancellationToken>()), Times.Once);
+        workspace.VerifyNoOtherCalls(); // Patient questionnaires use their issued activity catalog, not staff APIs.
+    }
+
+    [Theory]
+    [InlineData(NoteType.Daily)]
+    [InlineData(NoteType.ProgressNote)]
+    [InlineData(NoteType.Discharge)]
+    public async Task ShortVisit_PartialSaveAllowsMissingPain_AndReviewShowsValidation(NoteType type)
+    {
+        var draft = EncounterDraft(Guid.NewGuid());
+        draft.QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.ForNoteType(type);
+        draft.CurrentStep = (int)IntakeStep.Demographics;
+        draft.VisitQuestionnaire = new()
+        {
+            Daily = type == NoteType.Daily ? new() : null,
+            Progress = type == NoteType.ProgressNote ? new() { Activities = new() } : null,
+            Discharge = type == NoteType.Discharge ? new() : null
+        };
+        var service = ConfigureEncounterDrafts(draft);
+        service.Setup(value => value.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        Services.AddSingleton(new Mock<INoteWorkspaceService>(MockBehavior.Strict).Object);
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{draft.PatientId}?noteId={draft.EncounterNoteId}");
+        var cut = RenderPage(draft.PatientId);
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll("[data-testid='intake-save-partial']")));
+        await cut.Find("[data-testid='intake-save-partial']").ClickAsync(new());
+        service.Verify(value => value.SaveDraftAsync(It.Is<IntakeResponseDraft>(saved =>
+            saved.VisitQuestionnaire != null && saved.VisitQuestionnaire.CurrentPain == null), It.IsAny<CancellationToken>()), Times.Once);
+        await cut.FindAll("button").Single(button => button.TextContent == "Review answers").ClickAsync(new());
+        Assert.NotEmpty(cut.Find("[data-testid='intake-page-feedback']").TextContent);
+        Assert.Empty(cut.FindAll("[data-testid='review-step']"));
+    }
+
+    [Theory]
+    [InlineData(NoteType.Daily, "daily-additional-information")]
+    [InlineData(NoteType.ProgressNote, "progress-additional-information")]
+    [InlineData(NoteType.Discharge, "discharge-goals-met")]
+    public async Task ShortVisit_TypingRetainsFormModelAndSavesCompleteText(NoteType type, string fieldId)
+    {
+        var draft = EncounterDraft(Guid.NewGuid());
+        draft.QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.ForNoteType(type);
+        draft.CurrentStep = (int)IntakeStep.Demographics;
+        draft.VisitQuestionnaire = new()
+        {
+            Daily = type == NoteType.Daily ? new() : null,
+            Progress = type == NoteType.ProgressNote ? new() { Activities = new() } : null,
+            Discharge = type == NoteType.Discharge ? new() : null
+        };
+        var service = ConfigureEncounterDrafts(draft);
+        IntakeResponseDraft? saved = null;
+        service.Setup(value => value.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()))
+            .Callback<IntakeResponseDraft, CancellationToken>((value, _) => saved = value)
+            .Returns(Task.CompletedTask);
+        Services.AddSingleton(new Mock<INoteWorkspaceService>(MockBehavior.Strict).Object);
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{draft.PatientId}?noteId={draft.EncounterNoteId}");
+        var cut = RenderPage(draft.PatientId);
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll($"#{fieldId}")));
+        var form = cut.FindComponent<Microsoft.AspNetCore.Components.Forms.EditForm>();
+        var model = form.Instance.Model;
+        foreach (var text in new[] { "I", "I ", "I can walk" })
+        {
+            cut.Find($"#{fieldId}").Input(text);
+            // A new EditForm model replaces its control subtree, dropping live browser focus.
+            Assert.Same(model, form.Instance.Model);
+        }
+        await cut.Find("[data-testid='intake-save-partial']").ClickAsync(new());
+        Assert.NotNull(saved?.VisitQuestionnaire);
+        var actual = type switch
+        {
+            NoteType.Daily => saved.VisitQuestionnaire.Daily!.AdditionalInformation,
+            NoteType.ProgressNote => saved.VisitQuestionnaire.Progress!.AdditionalInformation,
+            _ => saved.VisitQuestionnaire.Discharge!.GoalsMetStatus
+        };
+        Assert.Equal("I can walk", actual);
     }
 
     private static IntakeResponseDraft EncounterDraft(Guid patientId) => new()
