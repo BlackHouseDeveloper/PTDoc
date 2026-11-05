@@ -323,6 +323,8 @@ builder.Services.AddHttpClient("AzureOpenAI"); // Used by OpenAiService to avoid
 
 // Register Sprint M: Outcome Measure services
 builder.Services.AddSingleton<PTDoc.Application.Outcomes.IOutcomeMeasureRegistry, PTDoc.Infrastructure.Outcomes.OutcomeMeasureRegistry>();
+// Client-source definitions and owner-authorized selection/completion rules are pinned by the release manifest.
+builder.Services.AddSingleton<PTDoc.Application.Outcomes.IVersionedOutcomeRegistry>(_ => PTDoc.Infrastructure.Outcomes.PatientOutcomeRelease.Registry);
 builder.Services.AddSingleton<IIntakeDraftCanonicalizer, IntakeDraftCanonicalizer>();
 builder.Services.AddScoped<PTDoc.Application.Outcomes.IOutcomeMeasureService, PTDoc.Infrastructure.Outcomes.OutcomeMeasureService>();
 

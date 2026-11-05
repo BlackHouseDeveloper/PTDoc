@@ -332,3 +332,25 @@ Rebuild Release, run `FullyQualifiedName~NoteWorkspacePageTests`, then repeat th
 #### Publication verification confirmation
 
 The user subsequently confirmed all builds and tests passed for the completed PR 201 changes, including the route-loading correction, and authorized committing only the verified changes, a normal push, and replies/resolution for conclusively addressed findings. This supersedes the pending verification status above. No implementation or test changes followed confirmation; only this record and changelog status were updated. Builds/tests were not rerun. Unrelated staged `AGENTS.md` CI-command guidance and its local changelog entry remain excluded.
+
+### Layer 3 — outcome definitions and scoring
+
+- Release test-project build: PASS, zero warnings/errors.
+- Outcome regression suite: **151/151 PASS**, zero skipped; includes versioned activation, malformed definitions, source arithmetic, missing/N/A policies and corrected HOOS/FAAM subscales.
+- All thirteen definitions preserve the combined implementation's exact catalog hash: `af058df5455a52c928847d0d5b53c866859049c9948554f74356e8b5e63266ca`.
+- PR 180's one unique actionable null-item/option finding and its regression are retained. The review-summary bullet duplicates the same finding; the thread remains unchanged.
+- No intake collection or note/PDF projection hook is added in this layer.
+
+#### PR 202 rebase after PR 201 merge — 2026-11-14
+
+Replay only the outcome-scoring layer from `b4e09dd7` (old parent `9558b287`) onto `main` at `ad5582d6`, which includes the merged PR 201 fixes. Retain the complete merged PR 201 review/verification history and the layer-3 scoring evidence above; their append-only documentation conflict requires no behavior or scoring-policy decision. Add this rebase record and a changelog entry without altering the layer's implementation or tests.
+
+The remaining review order is `main` → PR 202 (`codex/plan08-outcome-scoring`) → PR 203 (`codex/plan08-patient-outcomes`). PR 203 retains its base on PR 202 and its existing head `6152d727`; it is outside this rebase request and will need a separate rebase after PR 202 is published. No original lower-layer commits are replayed into PR 202.
+
+The historical 151-test result above predates this rebase and does not establish verification of the combined head. Builds/tests are not run automatically under the repository policy. Before publication/merge acceptance, run:
+
+```sh
+dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --configuration Release
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Outcomes" --verbosity normal -- xUnit.ParallelizeTestCollections=false
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "Category=CoreCi" --verbosity normal -- xUnit.ParallelizeTestCollections=false
+```
