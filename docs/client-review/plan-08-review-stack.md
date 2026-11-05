@@ -14,6 +14,14 @@ Keep each feature's tests with its implementation. The large generated migration
 
 No new schema migration is required by the four completion layers. Layers 1–2 do not activate patient outcome collection. Layer 3 exposes the scoring service to server composition but adds no patient collection surface. Layer 4 connects the full outcome workflow and its evidence protections together.
 
+## PR 203 rebase after PR 202 merge — 2026-11-15
+
+PR 202 is merged into `main` at `230a8269`, and PR 203 now targets `main`. Replay only PR 203's three commits after its original layer-3 parent `b4e09dd7`; the recovery branch `codex/backup-pr203-pre-rebase-20261115` preserves its published head `6152d727`. The earlier stack positions and verification results below are historical.
+
+Retain both the merged Daily outcome write guards and PR 203's submitted-intake outcome validation in generic and sync writes. Keep the intake wizard's newer route/load-generation guard before applying returned patient outcomes. Preserve the full lower-layer review history, corrected source instructions, LF catalog policy and pinned catalog hash. These conflict resolutions combine existing behavior without selecting a new clinical or workflow policy.
+
+Builds/tests are not run automatically under `AGENTS.md`; earlier passing results do not verify the combined head. Run the Release test-project build and CoreCi suite, including the intake, outcome, note-write, sync and UI regressions, before merge acceptance.
+
 ## Verification and CI
 
 Use the per-layer evidence below and each PR's description. The prior combined implementation's 2,455-case CoreCi result and browser/PDF evidence are historical context, not proof of an intermediate layer. Release test-project builds include API, Web and the shared UI; native builds and live SQL Server/PostgreSQL checks remain separate release gates.
@@ -388,3 +396,15 @@ Two sandboxed startup attempts stalled before listening and were cleaned up. The
 #### PR 202 publication authorization — 2026-11-14
 
 After the passing user-run build/tests and the scoped localhost verification, the user authorized committing and pushing the three fixes and their evidence on `codex/plan08-outcome-scoring`. No implementation or test changes followed verification. Unrelated local `AGENTS.md` CI-command guidance and its changelog entry remain excluded. This authorization does not include review replies, thread resolution, merging, deployment or changes to PR 203; remote CI results are not claimed here.
+
+### Layer 4 — complete patient outcome workflow
+
+- Release test-project build with `--no-incremental`: PASS, zero warnings/errors. Restoring backup timestamps initially reused intermediate assemblies; refreshing those timestamps and rebuilding the graph removed that build-artifact issue without source changes.
+- Dedicated Web Release build: PASS, zero warnings/errors.
+- Full CoreCi suite on the final reconstructed source: **2,455/2,455 PASS**, zero skipped, 4m32s.
+- All 69 changed application/test files match the preserved combined implementation byte-for-byte; no unexpected source files were introduced. The catalog hash and prior styling remain unchanged.
+- `git diff --check` and the tracked appsettings secret-policy scan pass. Prior headed browser and PDF evidence remains applicable to the unchanged UI/source, but was not rerun solely for the Git split.
+
+## Publication status
+
+Four incremental Git trees, replayable patches and PR descriptions are prepared locally. No implementation commit or branch push has been made by this split; PR 163 and the older PRs remain unchanged. Before implementation commits, `AGENTS.md` requires owner confirmation that the relevant build/tests passed or explicit permission to commit without that confirmation. Remote formatter/provider/release gates and native acceptance are not claimed by these local checks.

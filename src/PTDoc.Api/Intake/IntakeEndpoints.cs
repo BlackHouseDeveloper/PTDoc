@@ -183,6 +183,9 @@ public static class IntakeEndpoints
         try
         {
             responseJson = profile.ApplyToNewResponseJson(request.ResponseJson);
+            responseJson = IntakeOutcomePersistence.InitializeEvaluationJson(responseJson,
+                string.IsNullOrWhiteSpace(structuredDataJson) ? null
+                    : JsonSerializer.Deserialize<IntakeStructuredDataDto>(structuredDataJson, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         }
         catch (JsonException)
         {
@@ -460,7 +463,9 @@ public static class IntakeEndpoints
         string responseJson;
         try
         {
-            responseJson = await IntakeProfileUpdates.PrepareAsync(db, intake, request.ResponseJson, cancellationToken);
+            responseJson = await IntakeProfileUpdates.PrepareAsync(db, intake, request.ResponseJson, cancellationToken,
+                string.IsNullOrWhiteSpace(structuredDataJson) ? new IntakeStructuredDataDto()
+                    : JsonSerializer.Deserialize<IntakeStructuredDataDto>(structuredDataJson, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         }
         catch (JsonException)
         {

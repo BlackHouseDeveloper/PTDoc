@@ -132,4 +132,86 @@ public sealed class PatientOutcomeWorkflowTests
             answers.Add(new("rating-adl", OutcomeAnswerState.Answered, NumericValue: 101))).Result);
     }
 
+    [Fact]
+    public void Save_IgnoresForgedTotalsAndChoices_PreservesPartialAnswersAndDeselection()
+    {
+        var saved = new IntakeResponseDraft { PatientOutcomes = IntakeOutcomePersistence.Issue(new()
+            { Objective = new() { PrimaryBodyPart = BodyPart.Shoulder } }, NoteType.ProgressNote) };
+        var intake = new IntakeForm { EncounterNoteId = Guid.NewGuid(), QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.ProgressV1,
+            ResponseJson = JsonSerializer.Serialize(saved, Json) };
+        var submitted = JsonSerializer.Deserialize<IntakeResponseDraft>(intake.ResponseJson, Json)!;
+        var definition = Questionnaire("quickdash").Definition;
+        var partial = Answers("quickdash", "3").Take(9).ToImmutableArray();
+        submitted.PatientOutcomes!.Choices = [Questionnaire("lefs")];
+        submitted.PatientOutcomes.RecordedRegions = [BodyPart.Knee];
+        submitted.PatientOutcomes.Responses = [new("quickdash", definition.Version, partial, Score("quickdash", Answers("quickdash", "5")))];
+        IntakeOutcomePersistence.Prepare(intake, submitted);
+        var response = Assert.Single(submitted.PatientOutcomes.Responses);
+        Assert.Equal(OutcomeCompletion.Incomplete, response.Result!.Calculation.Completion);
+        Assert.Empty(response.Result.Calculation.Scores);
+        Assert.Equal(9, response.Answers.Count(a => a.State == OutcomeAnswerState.Answered));
+        Assert.DoesNotContain(submitted.PatientOutcomes.Choices, c => c.Definition.InstrumentId == "lefs");
+        intake.ResponseJson = JsonSerializer.Serialize(submitted, Json);
+        submitted.PatientOutcomes.Responses = [response with { Selected = false, Answers = [] }];
+        IntakeOutcomePersistence.Prepare(intake, submitted);
+        Assert.False(submitted.PatientOutcomes.Responses.Single().Selected);
+        Assert.Equal(9, submitted.PatientOutcomes.Responses.Single().Answers.Count(a => a.State == OutcomeAnswerState.Answered));
+        submitted.PatientOutcomes.Responses = [new("lefs", Questionnaire("lefs").Definition.Version, Answers("lefs", "4"))];
+        Assert.Throws<InvalidOperationException>(() => IntakeOutcomePersistence.Prepare(intake, submitted));
+    }
+
+    [Fact]
+    public void NewIntake_DiscardsClientIssuedOptionsAndComputedResults()
+    {
+        var empty = new IntakeResponseDraft();
+        IntakeOutcomePersistence.InitializeEvaluation(empty);
+        Assert.Empty(empty.PatientOutcomes!.Choices);
+        var draft = new IntakeResponseDraft { StructuredData = new() { BodyPartSelections = [new() { BodyPartId = "thigh" }] },
+            PatientOutcomes = new() { RecordedRegions = [BodyPart.Shoulder], Choices = [Questionnaire("spadi")],
+                Responses = [new("spadi", Questionnaire("spadi").Definition.Version, Answers("spadi", "10"), Score("spadi", Answers("spadi", "10")))] } };
+        IntakeOutcomePersistence.InitializeEvaluation(draft);
+        Assert.Empty(draft.PatientOutcomes!.Responses);
+        Assert.Empty(draft.PatientOutcomes.RecordedRegions);
+        Assert.Equal("lefs", Assert.Single(draft.PatientOutcomes.Choices).Definition.InstrumentId);
+        Assert.True(IntakeOutcomePersistence.HasOutcomeWorkflow(JsonSerializer.Serialize(draft, Json)));
+        Assert.False(IntakeOutcomePersistence.HasOutcomeWorkflow("""{"initialOutcomeMeasureReports":[],"patientOutcomes":null}"""));
+    }
+
+    [Fact]
+    public async Task LegacyNoteWithoutOutcomeSnapshot_RemainsCompatible()
+    {
+        await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        const string legacy = """{"subjective":"Legacy patient narrative"}""";
+        var note = new ClinicalNote { ContentJson = legacy };
+        Assert.Equal(legacy, await IntakeOutcomeProjection.PrepareJsonAsync(db, note, Guid.NewGuid(), note.Id, legacy, default));
+        var forged = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            { IntakeOutcomes = new(Guid.NewGuid(), DateTime.UtcNow, [], []) }, Json)
+            .Replace("\"intakeOutcomes\"", "\"\\u0069ntakeOutcomes\"", StringComparison.Ordinal);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.PrepareJsonAsync(
+            db, note, Guid.NewGuid(), note.Id, forged, default));
+    }
+
+    [Fact]
+    public async Task NoteProjection_UsesLockedMatchingSource_RejectsSiblingAndEvidenceRemoval()
+    {
+        await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var patientId = Guid.NewGuid(); var noteId = Guid.NewGuid();
+        var definition = Questionnaire("lefs").Definition;
+        var outcomes = new IntakePatientOutcomes { Choices = [Questionnaire("lefs")], Responses =
+            [new("lefs", definition.Version, Answers("lefs", "2"), Score("lefs", Answers("lefs", "2")))] };
+        var intake = new IntakeForm { PatientId = patientId, EncounterNoteId = noteId, IsLocked = true,
+            QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.EvaluationFullV1,
+            SubmittedAt = DateTime.UtcNow, ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft { PatientOutcomes = outcomes }, Json) };
+        db.IntakeForms.Add(intake); await db.SaveChangesAsync();
+        var snapshot = IntakeOutcomeProjection.From(intake)!;
+        var payload = new NoteWorkspaceV2Payload { IntakeOutcomes = snapshot with { Responses = [] } };
+        await IntakeOutcomeProjection.ValidateAsync(db, null, patientId, noteId, payload, default);
+        Assert.Equal(40m, payload.IntakeOutcomes!.Responses.Single().Result!.Calculation.Scores.Single().Value);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.ValidateAsync(db, null, patientId, Guid.NewGuid(), payload, default));
+        var note = new ClinicalNote { Id = noteId, PatientId = patientId, ContentJson = JsonSerializer.Serialize(payload, Json) };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.ValidateAsync(db, note, patientId, noteId, new(), default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.PrepareJsonAsync(db, note, patientId, noteId, "null", default));
+    }
 }

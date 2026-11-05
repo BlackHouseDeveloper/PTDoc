@@ -13,12 +13,14 @@ public static class IntakeProfileUpdates
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
     public const string RefreshMessage = "Saved information changed. Refresh the saved information and review it again.";
 
-    public static async Task<string> PrepareAsync(ApplicationDbContext db, IntakeForm intake, string? incomingJson, CancellationToken ct)
+    public static async Task<string> PrepareAsync(ApplicationDbContext db, IntakeForm intake, string? incomingJson, CancellationToken ct,
+        IntakeStructuredDataDto? authoritativeStructuredData = null)
     {
         if (IntakeEncounterRules.IsShort(intake)) return IntakeEncounterRules.PrepareShortResponse(intake, incomingJson);
         var json = IntakeProfileProvenance.Preserve(intake.ResponseJson, incomingJson);
         var draft = JsonSerializer.Deserialize<IntakeResponseDraft>(json, Options)!;
         var before = JsonSerializer.SerializeToNode(draft, Options)!.AsObject();
+        IntakeOutcomePersistence.Prepare(intake, draft, authoritativeStructuredData);
         if (draft.ProfileUpdate is { } update)
         {
             var profile = await IntakeProfilePrefillReader.ReadAsync(db, intake.PatientId, intake.ClinicId, ct);

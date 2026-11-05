@@ -58,6 +58,7 @@ public sealed class NoteWriteService(
             ProgressActivityTracking.ValidateJsonWrite(request.ContentJson, normalizedContentJson);
             normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(db, null, request.PatientId, noteId, normalizedContentJson, ct);
             DailyOutcomeWriteValidator.Validate(request.NoteType, null, normalizedContentJson);
+            normalizedContentJson = await IntakeOutcomeProjection.PrepareJsonAsync(db, null, request.PatientId, noteId, normalizedContentJson, ct);
         }
         catch (InvalidOperationException ex)
         {
@@ -217,6 +218,7 @@ public sealed class NoteWriteService(
         DailyQuestionnaireDefinition.ValidateJsonWrite(request.ContentJson ?? note.ContentJson, normalizedContentJson);
         normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(db, note, note.PatientId, note.Id, normalizedContentJson, ct);
         DailyOutcomeWriteValidator.Validate(note.NoteType, note, normalizedContentJson);
+        normalizedContentJson = await IntakeOutcomeProjection.PrepareJsonAsync(db, note, note.PatientId, note.Id, normalizedContentJson, ct);
         var isDryNeedling = IsDryNeedlingContent(
             note.NoteType,
             note.IsReEvaluation,

@@ -264,12 +264,10 @@ public sealed class IntakeApiService(
             throw await CreateHttpRequestExceptionAsync(response, cancellationToken);
         }
         state.IntakeId = existing.Id;
-        if (existing.EncounterNoteId.HasValue)
-        {
-            var saved = await response.Content.ReadFromJsonAsync<IntakeResponse>(SerializerOptions, cancellationToken)
-                ?? throw new InvalidOperationException("The saved intake version was not returned.");
-            state.LastModifiedUtc = saved.LastModifiedUtc;
-        }
+        var saved = await response.Content.ReadFromJsonAsync<IntakeResponse>(SerializerOptions, cancellationToken)
+            ?? throw new InvalidOperationException("The saved intake version was not returned.");
+        state.LastModifiedUtc = saved.LastModifiedUtc;
+        state.PatientOutcomes = JsonSerializer.Deserialize<IntakeResponseDraft>(saved.ResponseJson, SerializerOptions)?.PatientOutcomes;
     }
 
     public async Task SubmitAsync(IntakeResponseDraft state, CancellationToken cancellationToken = default)

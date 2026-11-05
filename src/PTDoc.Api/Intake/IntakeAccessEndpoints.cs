@@ -355,7 +355,9 @@ public static class IntakeAccessEndpoints
         string responseJson;
         try
         {
-            responseJson = await IntakeProfileUpdates.PrepareAsync(db, intake, request.ResponseJson, cancellationToken);
+            responseJson = await IntakeProfileUpdates.PrepareAsync(db, intake, request.ResponseJson, cancellationToken,
+                string.IsNullOrWhiteSpace(structuredDataJson) ? new IntakeStructuredDataDto()
+                    : JsonSerializer.Deserialize<IntakeStructuredDataDto>(structuredDataJson, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         }
         catch (JsonException)
         {

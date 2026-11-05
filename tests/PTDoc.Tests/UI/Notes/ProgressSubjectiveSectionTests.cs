@@ -14,6 +14,21 @@ public sealed class ProgressSubjectiveSectionTests : TestContext
 {
     public ProgressSubjectiveSectionTests() => Services.AddSingleton(new Mock<INoteWorkspaceService>(MockBehavior.Loose).Object);
     [Fact]
+    public void ProgressSubjectiveSection_RecordsExplicitZeroWithoutMovingSlider()
+    {
+        var subjective = new SubjectiveVm();
+        var cut = RenderComponent<ProgressSubjectiveSection>(parameters => parameters
+            .Add(component => component.Vm, subjective)
+            .Add(component => component.ProgressSubjective, new ProgressSubjectiveVm())
+            .Add(component => component.VmChanged, EventCallback.Factory.Create<SubjectiveVm>(this, updated => subjective = updated)));
+
+        Assert.False(subjective.IsPainScoreDocumented);
+        cut.Find("#progress-record-no-pain").Click();
+        Assert.True(subjective.IsPainScoreDocumented);
+        Assert.Equal(0, subjective.CurrentPainScore);
+    }
+
+    [Fact]
     public void ProgressSubjectiveSection_UsesSliderForCurrentPain()
     {
         var subjective = new SubjectiveVm();

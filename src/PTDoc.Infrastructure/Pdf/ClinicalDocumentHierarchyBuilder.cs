@@ -428,6 +428,22 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
                 BuildOutcomeNotes(entry)))
             .ToList() ?? [];
 
+        if (context.WorkspacePayload?.IntakeOutcomes is { } submitted)
+        {
+            foreach (var response in submitted.Responses)
+            {
+                var definition = submitted.Questionnaires.FirstOrDefault(q => q.Definition.InstrumentId == response.InstrumentId)?.Definition;
+                var calculation = response.Result?.Calculation;
+                var score = calculation?.Completion is PTDoc.Application.Outcomes.OutcomeCompletion.Complete or PTDoc.Application.Outcomes.OutcomeCompletion.Partial
+                    ? string.Join("; ", calculation.Scores.Select(s => $"{s.DomainId}: {s.Value.ToString("0.##", CultureInfo.InvariantCulture)} {s.Unit}"))
+                    : "Incomplete - no calculated score";
+                if (calculation?.Completion == PTDoc.Application.Outcomes.OutcomeCompletion.Partial)
+                    score += "; remaining subscales incomplete";
+                rows.Add(Row(definition?.Name ?? response.InstrumentId, score,
+                    $"Patient questionnaire; {response.DefinitionVersion}; intake {submitted.IntakeId}; {submitted.AnswerVersionUtc:O}"));
+            }
+        }
+
         return TableNode("Outcome Measure Table", ClinicalDocumentSourceKind.Note,
             columns:
             [
