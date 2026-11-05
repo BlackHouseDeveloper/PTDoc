@@ -1,0 +1,89 @@
+@page "/signup/individual"
+@page "/signup/organization"
+@layout AuthLayout
+@rendermode InteractiveServer
+@using PTDoc.Application.Identity
+@using System.ComponentModel.DataAnnotations
+@inject SubscriptionApiClient Billing
+@inject NavigationManager Navigation
+
+<PageTitle>Join PTDoc</PageTitle>
+<main class="subscription-page">
+    <h1>@(OrganizationPath ? "Organization onboarding" : "Individual EMR subscription")</h1>
+    @if (error is not null) { <p role="alert">@error</p> }
+    @if (offer is null) { <p role="status">Subscription information is unavailable until loading completes.</p> }
+    else if (OrganizationPath)
+    {
+        <p>Start with a demo and approved organization setup. Your organization owner can then add clinics and manage staff access.</p>
+        @if (offer.OrganizationDemoUrl is { } demo)
+        { <a href="@demo" rel="noopener noreferrer">Book an organization demo</a> }
+        else { <p role="status">Demo scheduling is not yet available. Contact your PTDoc representative to arrange onboarding.</p> }
+    }
+    else if (!offer.Enabled) { <p role="status">Individual subscriptions are not available yet.</p> }
+    else if (registered)
+    {
+        <p role="status">Your billing account is ready. Sign in, then complete payment to activate clinical access.</p>
+        <a href="/login?returnUrl=%2Fsubscription">Sign in to complete payment</a>
+    }
+    else
+    {
+        <p>@offer.Amount.ToString("C", System.Globalization.CultureInfo.GetCultureInfo("en-US")) every @offer.IntervalMonths month(s). One clinician, one clinic, EMR only. Staff and patient billing are not included.</p>
+        <EditForm Model="form" OnValidSubmit="RegisterAsync" FormName="IndividualSubscriptionSignup">
+            <DataAnnotationsValidator /><ValidationSummary />
+            <fieldset disabled="@busy">
+                <legend>Your account</legend>
+                <label for="individual-name">Full name</label><InputText id="individual-name" @bind-Value="form.FullName" maxlength="200" autocomplete="name" />
+                <label for="individual-email">Email</label><InputText id="individual-email" type="email" @bind-Value="form.Email" maxlength="255" autocomplete="email" />
+                <label for="individual-dob">Date of birth</label><InputDate id="individual-dob" @bind-Value="form.DateOfBirth" />
+                <label for="individual-pin">PIN (8–12 digits)</label><InputText id="individual-pin" type="password" inputmode="numeric" @bind-Value="form.Pin" minlength="8" maxlength="12" autocomplete="new-password" />
+                <label for="individual-confirm">Confirm PIN</label><InputText id="individual-confirm" type="password" @bind-Value="form.ConfirmPin" autocomplete="new-password" />
+                <label for="individual-license">PT license number</label><InputText id="individual-license" @bind-Value="form.LicenseNumber" maxlength="50" />
+                <label for="individual-state">License state</label><InputText id="individual-state" @bind-Value="form.LicenseState" maxlength="2" />
+                <label for="individual-clinic">Clinic name</label><InputText id="individual-clinic" @bind-Value="form.ClinicName" maxlength="200" />
+                <label for="individual-zone">Clinic time zone</label><InputText id="individual-zone" @bind-Value="form.TimeZoneId" maxlength="100" />
+                <button type="submit">@(busy ? "Creating account…" : "Create billing account")</button>
+            </fieldset>
+        </EditForm>
+    }
+    <p><a href="/signup/individual">Individual subscription</a> · <a href="/signup/organization">Organization demo</a> · <a href="/signup">Join an existing clinic</a> · <a href="/login">Sign in</a></p>
+</main>
+
+@code {
+    private bool OrganizationPath => new Uri(Navigation.Uri).AbsolutePath.EndsWith("/organization", StringComparison.OrdinalIgnoreCase);
+    private SubscriptionOffer? offer;
+    private string? error;
+    private bool busy, registered;
+    private readonly SignupForm form = new();
+    protected override async Task OnInitializedAsync()
+    {
+        try { offer = await Billing.GetOfferAsync(); }
+        catch (HttpRequestException) { error = "Unable to load subscription information. Reload to try again."; }
+    }
+    private async Task RegisterAsync()
+    {
+        if (busy) return;
+        busy = true; error = null;
+        try
+        {
+            var result = await Billing.RegisterAsync(new(form.FullName, form.Email, form.DateOfBirth!.Value, form.Pin,
+                form.LicenseNumber, form.LicenseState, form.ClinicName, form.TimeZoneId));
+            registered = result.Succeeded;
+            if (!registered) error = result.Error ?? "Check the entered information.";
+            if (registered) { form.Pin = string.Empty; form.ConfirmPin = string.Empty; }
+        }
+        catch (HttpRequestException exception) { error = exception.Message; }
+        finally { busy = false; }
+    }
+    private sealed class SignupForm
+    {
+        [Required, StringLength(200)] public string FullName { get; set; } = string.Empty;
+        [Required, EmailAddress, StringLength(255)] public string Email { get; set; } = string.Empty;
+        [Required] public DateTime? DateOfBirth { get; set; }
+        [Required, RegularExpression("^[0-9]{8,12}$")] public string Pin { get; set; } = string.Empty;
+        [Required, Compare(nameof(Pin))] public string ConfirmPin { get; set; } = string.Empty;
+        [Required, StringLength(50)] public string LicenseNumber { get; set; } = string.Empty;
+        [Required, StringLength(2, MinimumLength = 2)] public string LicenseState { get; set; } = string.Empty;
+        [Required, StringLength(200)] public string ClinicName { get; set; } = string.Empty;
+        [Required, StringLength(100)] public string TimeZoneId { get; set; } = "America/New_York";
+    }
+}

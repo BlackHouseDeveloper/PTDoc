@@ -3,95 +3,92 @@ const scriptUrls = {
   sandbox: "https://jstest.authorize.net/v3/AcceptUI.js",
 };
 
-const activeModals = new Map();
-const scriptPromises = new Map();
+const activeForms = new Map();
 
-function resolveScriptUrl(environment) {
-  return String(environment || "").toLowerCase() === "production"
-    ? scriptUrls.production
-    : scriptUrls.sandbox;
-}
-
-function loadScript(environment) {
-  const scriptUrl = resolveScriptUrl(environment);
-  const cachedPromise = scriptPromises.get(scriptUrl);
-  if (cachedPromise) {
-    return cachedPromise;
+export async function initialize(formId, dotNetRef, environment) {
+  dispose(formId);
+  const root = document.getElementById(formId);
+  const button = root?.matches(".AcceptUI") ? root : root?.querySelector(".AcceptUI");
+  if (!button?.isConnected) {
+    throw new Error("The secure payment button must render before initialization.");
   }
 
-  const existing = document.querySelector(`script[data-ptdoc-authorize-net="true"][src="${scriptUrl}"]`);
-  if (existing) {
-    if (existing.dataset.ptdocAuthorizeNetLoaded === "true" || typeof window.AcceptUI !== "undefined") {
-      existing.dataset.ptdocAuthorizeNetLoaded = "true";
-      return Promise.resolve();
-    }
+  const scriptUrl = String(environment || "").toLowerCase() === "production"
+    ? scriptUrls.production : scriptUrls.sandbox;
+  const providerOrigin = new URL(scriptUrl).origin;
+  // AcceptUI binds only the first button when its script executes and has no
+  // public rebind/dispose API. A fresh document owns its listeners and captured
+  // merchant settings; removing it also removes the old provider callbacks.
+  const frame = document.createElement("iframe");
+  frame.src = new URL("../authorize-net-host.html", import.meta.url).href;
+  frame.title = "Authorize.Net secure payment";
+  frame.style.cssText = "display:none;position:fixed;inset:0;width:100%;height:100%;border:0;z-index:1000000;background:transparent";
+  const state = { frame, button, cancel: null, open: null };
+  activeForms.set(formId, state);
+  const current = () => activeForms.get(formId) === state && button.isConnected;
+  const close = () => {
+    frame.style.display = "none";
+    if (current()) button.focus();
+  };
 
-    const existingPromise = new Promise((resolve, reject) => {
-      existing.addEventListener(
-        "load",
-        () => {
-          existing.dataset.ptdocAuthorizeNetLoaded = "true";
-          resolve();
-        },
-        { once: true },
-      );
-      existing.addEventListener(
-        "error",
-        () => {
-          existing.remove();
-          scriptPromises.delete(scriptUrl);
-          reject(new Error("Authorize.net AcceptUI script failed to load."));
-        },
-        { once: true },
-      );
+  try {
+    await new Promise((resolve, reject) => {
+      state.cancel = () => reject(new Error("Payment form was disposed."));
+      frame.onload = resolve;
+      frame.onerror = () => reject(new Error("Payment host failed to load."));
+      document.body.appendChild(frame);
     });
-    scriptPromises.set(scriptUrl, existingPromise);
-    return existingPromise;
-  }
-
-  const scriptPromise = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = scriptUrl;
-    script.async = true;
-    script.dataset.ptdocAuthorizeNet = "true";
-    script.onload = () => {
-      script.dataset.ptdocAuthorizeNetLoaded = "true";
-      resolve();
+    if (!current()) throw new Error("Payment button was removed.");
+    const host = frame.contentDocument;
+    const hostWindow = frame.contentWindow;
+    host.body.style.margin = "0";
+    const trigger = button.cloneNode(true);
+    trigger.removeAttribute("id");
+    trigger.removeAttribute("disabled");
+    trigger.hidden = true;
+    host.body.appendChild(trigger);
+    hostWindow.ptdocAuthorizeNetAcceptResponseHandler = response => {
+      if (!current()) return;
+      close();
+      dotNetRef.invokeMethodAsync("HandleAuthorizeNetResponse", response);
     };
-    script.onerror = () => {
-      scriptPromises.delete(scriptUrl);
-      script.remove();
-      reject(new Error("Authorize.net AcceptUI script failed to load."));
+    // AcceptUI handles provider messages in its own document. Observe its close
+    // notification only to hide our outer frame; this never grants paid access.
+    hostWindow.addEventListener("message", event => {
+      const providerWindow = host.getElementById("AcceptUIContainer")?.querySelector("iframe")?.contentWindow;
+      if (event.origin === providerOrigin && event.source === providerWindow
+          && event.data?.verifyOrigin === "AcceptMain" && event.data.type === "CLOSE_IFRAME") close();
+    });
+    await new Promise((resolve, reject) => {
+      state.cancel = () => reject(new Error("Payment form was disposed."));
+      const script = host.createElement("script");
+      script.src = scriptUrl;
+      script.async = true;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error("Authorize.Net AcceptUI script failed to load."));
+      host.head.appendChild(script);
+    });
+    if (!current()) throw new Error("Payment button was removed.");
+    state.cancel = null;
+    state.open = event => {
+      if (!current() || button.disabled) return;
+      event.preventDefault();
+      frame.style.display = "block";
+      trigger.click();
+      host.getElementById("AcceptUIContainer")?.querySelector("iframe")?.focus();
     };
-    document.head.appendChild(script);
-  });
-
-  scriptPromises.set(scriptUrl, scriptPromise);
-  return scriptPromise;
-}
-
-export async function initialize(modalId, dotNetRef, environment) {
-  activeModals.set(modalId, dotNetRef);
-  window.PTDocAuthorizeNetAccept = window.PTDocAuthorizeNetAccept || {};
-  window.PTDocAuthorizeNetAccept.responseHandler = responseHandler;
-  window.PTDocAuthorizeNetAccept.activeModalId = modalId;
-  window.ptdocAuthorizeNetAcceptResponseHandler = responseHandler;
-  await loadScript(environment);
-}
-
-export function dispose(modalId) {
-  activeModals.delete(modalId);
-  if (window.PTDocAuthorizeNetAccept?.activeModalId === modalId) {
-    window.PTDocAuthorizeNetAccept.activeModalId = null;
+    button.addEventListener("click", state.open);
+  } catch (error) {
+    if (activeForms.get(formId) === state) dispose(formId);
+    throw error;
   }
 }
 
-function responseHandler(response) {
-  const modalId = window.PTDocAuthorizeNetAccept?.activeModalId;
-  const dotNetRef = modalId ? activeModals.get(modalId) : null;
-  if (!dotNetRef) {
-    return;
-  }
-
-  dotNetRef.invokeMethodAsync("HandleAuthorizeNetResponse", response);
+export function dispose(formId) {
+  const state = activeForms.get(formId);
+  if (!state) return;
+  activeForms.delete(formId);
+  state.cancel?.();
+  if (state.open) state.button.removeEventListener("click", state.open);
+  state.frame.remove();
 }

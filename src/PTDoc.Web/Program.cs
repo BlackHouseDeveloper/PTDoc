@@ -69,6 +69,8 @@ builder.Services.AddScoped<INotificationCenterService, HttpNotificationCenterSer
 builder.Services.AddScoped<IDashboardAlertService, HttpDashboardAlertService>();
 builder.Services.AddScoped<INavigationBadgeService, HttpNavigationBadgeService>();
 builder.Services.AddScoped<IOrganizationAdministrationService, OrganizationApiClient>();
+builder.Services.AddScoped(sp => new SubscriptionApiClient(
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient("PTDocAuthApi"), sp.GetRequiredService<HttpClient>()));
 builder.Services.AddScoped<SettingsAdministrationApiClient>();
 builder.Services.AddScoped<IRolePermissionAdministrationService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
 builder.Services.AddScoped<ISecurityPolicyAdministrationService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());

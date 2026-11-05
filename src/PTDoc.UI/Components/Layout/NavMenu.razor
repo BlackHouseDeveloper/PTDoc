@@ -20,6 +20,9 @@
         <nav class="ptdoc-nav" aria-label="Main navigation">
             <AuthorizeView>
                 <Authorized>
+                    <NavLink class="ptdoc-nav-item" href="subscription" @onclick="HandleNavigate">
+                        <span class="ptdoc-nav-text">Subscription billing</span>
+                    </NavLink>
                     <NavLink class="ptdoc-nav-item" href="organizations" @onclick="HandleNavigate">
                         <div class="ptdoc-nav-content">
                             <img src="_content/PTDoc.UI/images/nav-settings.svg" alt="" class="ptdoc-nav-icon" aria-hidden="true" />

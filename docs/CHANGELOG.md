@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 161 CodeQL webhook size-check finding
+
+- Remove the redundant Content-Length early return in subscription webhooks and enforce the 64 KiB limit through the existing bounded read loop for every request. Oversized bodies still return 413 before parsing/provider calls, and accepted bodies still require exact-byte HMAC verification. The existing eight signed/unsigned and known/unknown-length boundary regressions cover the behavior.
+- The only failed check at `02e56615` is CodeQL alert 21; analysis execution, Core CI, all database providers, secret policy and release gates passed. This change removes the header-controlled branch identified by the alert without suppressing the rule or dismissing the finding. Fresh build/test and CodeQL verification remain required; no commit, push or review write was performed.
+
+### Fixed - PR 161 previously missed billing recovery findings
+
+- Reject payments for canceled subscriptions until the documented support recovery resets the account, and hide the secure payment form for canceled accounts. Preserve payment history and paid coverage.
+- Block cancellation whenever any durable operation is pending, including an uncertain cancellation. Keep status reconciliation available and disable repeat cancellation in the billing UI.
+- Convert provider timeouts to the existing uncertain-operation/503 response while preserving caller cancellation and persisted pending markers. Add 19 focused service, adapter, HTTP and UI cases for these boundaries.
+- Record all eight unique current findings, duplicate sources, Previously missed summary items, contract evidence and thread eligibility in Plan 06. The canceled-payment finding's asserted provisioning cause is inaccurate, but its restart-policy gap is actionable. Verification awaits user execution; no publication or GitHub review action was performed.
+- Match the user's supplied review list to the same three Previously missed findings and two already-resolved references; no additional unique finding or code change is required by that list.
+
+### Tests - Await failed-save retry navigation
+
+- Make `FailedSaveNavigation_RetryRequiresIncompleteConfirmationBeforeLeaving` wait for an enabled retry control and await both asynchronous click handlers. The retry includes persistence and a 350 ms saving-state delay; the prior synchronous click started the modal assertion before that work completed. Preserve the modal, dirty-state and navigation assertions without increasing timeouts or changing production code.
+- The owner reported a successful Debug build with zero warnings/errors and 2,803 passing tests out of 2,804; this single bUnit timeout remains pending rerun after the test synchronization correction. Existing review/CI edits and the unrelated local API database change are preserved. No build/test, commit, push or GitHub review action was run by the agent.
+### Fixed - PR 161 SQL Server rehearsal and Core CI scheduling
+
+- Initialize the previous migration's target model before generating rollback commands, matching EF Core's downgrade path. This corrects SQL Server's `GetRelationalModel` failure while preserving dependency order, rollback guards and transaction rollback. Add a CoreCi SQL-generation regression that requires no SQL Server connection.
+- Run Core CI test collections serially with the existing xUnit 2.5 runner after four unrelated HTTP tests timed out together and other tests stalled for 80–113 seconds. Keep the full category, existing assertions, timeouts and in-test concurrency coverage; this scheduling mitigation awaits a fresh run. Document current failure evidence and exact reproduction commands in Plan 06 and CI guidance.
+- Preserve the pending review-audit/test changes. The separate CodeQL check remains unresolved for the previously documented invalid size-check finding; no suppression, dismissal, commit, push, review write or remote rerun was performed. Builds/tests await user execution.
+
+### Tests - PR 161 follow-up payment review verification
+
+- Audit all five current review threads at `b0b5587e`: two previously fixed findings are outdated; the two new payment claims and the existing CodeQL claim are invalid against the documented provider/language contracts and current control flow. Record evidence, duplicate sources, private-session visibility limits and thread eligibility in Plan 06; production behavior is unchanged.
+- Add six gateway cases rejecting non-success response codes for captured/settled statuses and three signed HTTP cases for renewal verification, subscription lifecycle separation and duplicate delivery. Update the Plan 06 publication checkpoint. New builds/tests await user execution; no commit, push or GitHub review write was performed.
+
+### Fixed - PR 161 provider CI and subscription review findings
+
+- Normalize trailing slashes for the individual-plan copay restriction and cover canonical, trailing-slash, mixed-case and ordinary check-in paths with denial-code assertions.
+- Initialize subscription payment UI only after its button renders. Give each shared AcceptUI form a disposable same-origin host document so provider listeners and captured merchant configuration are recreated on revisits; cover subscription/copay revisits, readiness, late rendering, host-file serving and script-load failure.
+- Fix SQL Server/PostgreSQL provider smoke-test rollback order: reverse applied dependent migrations before organization tables inside the rolled-back rehearsal, retain the original role guards, and add subscription-guard/data-preservation coverage. Production migrations and foreign keys are unchanged.
+- Audit all three current review threads at `6238b41e`: two valid findings fixed locally; the CodeQL Content-Length finding is invalid because every early size exit rejects the request and every event-processing path requires HMAC verification. Add eight HTTP boundary regressions; leave the alert open without suppression or dismissal. Deduplicate the summary and provider-job failures. The user confirms no suppressed or Previously missed findings; full evidence, eligibility and verification commands are in Plan 06.
+- Whitespace, JavaScript syntax and tracked-appsettings secret-policy checks pass. New .NET/provider/browser verification awaits user execution; no commit, push, review reply/resolution, PR comment or review request was performed.
+
+### Fixed - PR 161 anonymous subscription endpoint inventory
+
+- Add the public subscription offer, individual signup and HMAC-verified Authorize.Net webhook to the authorization test's expected anonymous set, matching the existing route mappings and canonical inventory. Report missing/unexpected routes explicitly on future mismatches; runtime authorization is unchanged.
+- User verification: build succeeded with zero warnings/errors; the Debug test run passed 2,774 of 2,775 tests with zero skipped. The sole failure was the omitted expected routes, now corrected. Whitespace and source inventory checks pass; .NET rerun remains pending. No build, test, commit or push was run by the agent.
+
+### Fixed - PR 161 subscription gateway test compilation
+
+- Replace two interpolated raw JSON fixtures in `AuthorizeNetSubscriptionGatewayTests` with `JsonSerializer.Serialize` to remove closing-brace ambiguity (CS9007). Preserve response fields, JSON value types and existing assertions.
+- The user reported two compiler errors and zero warnings. Build/tests await user rerun; no build, test, commit or push was run by the agent.
+
+### Fixed - PR 161 subscription configuration compilation
+
+- **`SubscriptionService.GetOffer`** — Replace the three unavailable configuration-binder `GetValue` calls with configuration-indexer reads and built-in parsing, following Infrastructure's existing dependency-free pattern. Preserve the one-month default for an omitted interval; use invariant numeric parsing and disable billing for malformed amount, interval or enablement values. No package dependency is added.
+- Add configuration regressions covering decimal parsing under a non-English culture, missing defaults, malformed values and interval bounds. The user reported three CS1061 errors and zero warnings; the corrected build/tests remain pending user execution. Git whitespace checks pass; no build, test, commit or push was run by the agent.
+
+### Added - PR 161 individual subscription onboarding (Plan 06)
+
+- **Subscription services, Authorize.Net adapter and shared signup/billing pages** — Implement the user's approved one-clinician, EMR-only subscription using verified initial capture and subsequent recurring billing, explicit payment consent, cancellation and billing reconciliation. Add a separate organization demo route. Prices and merchant/demo configuration remain deployment inputs; signup/new payments default off.
+- **Subscription access and native local scope** — Enforce the selected no-grace paid-through boundary independently of login/session lifetime. Retain identity for billing recovery and preserve clinical records/encrypted drafts. Reject staff/clinic expansion and patient-payment routes on individual plans; leave existing pending registrations unchanged. Bind native offline access to the signed paid-through claim and reject sandbox/production entitlement mixing.
+- **Persistence and recovery** — Add subscription/transaction tables, unique ownership/payment indexes, concurrency markers and guarded rollback for SQLite, SQL Server and PostgreSQL. Verify signed webhook bodies and provider transaction details; deduplicate payments and reconcile missed renewal notifications. Uncertain mutations and restarting expired/canceled schedules use the documented operator recovery procedure instead of blind charges.
+- **Verification and publication** — Rebase PR 161 onto `eb9f9405` after PR 160 merged, preserve both changelog sides and push rebased planning commit `b7bfbba9` with an exact lease. Add service, transport, endpoint, authorization, native-expiry and migration regression sources; update architecture, migration and Plan 06 documentation. Git whitespace, tracked appsettings secret policy, JSON/source consistency and a synthetic SQLite migration-source rehearsal pass. No .NET build/test, EF model-drift, SQL Server/Postgres, browser/native or real provider-sandbox verification was run; those gates await user execution. Implementation remains uncommitted/unpushed; no merge, deployment or review write occurred.
+
+
+### Planning - Client review Plan 06
+
+- Added Plan 06 evidence, development specification, acceptance criteria and exact decision/dependency gates. This is planning documentation; the feature is not implemented.
+
 ### Fixed - PR 160 rollback authority and account eligibility
 
 - Verify six new review threads against `97708d8d`, deduplicating the three provider rollback reports into one issue. Four unique findings are valid; the eleven earlier threads remain addressed or invalid under the confirmed self-grant policy. No separately exposed suppressed/Previously missed entries were returned; inaccessible session-only feedback remains unverified.

@@ -7,7 +7,6 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
-using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using PTDoc.Application.Services;
 using PTDoc.Application.Settings;
 using PTDoc.Core.Models;
@@ -52,16 +51,54 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
         context.AddRange(clinic, staff, owner);
         await context.SaveChangesAsync();
         context.ChangeTracker.Clear();
-        var assembly = context.GetService<IMigrationsAssembly>();
-        var migration = assembly.CreateMigration(assembly.Migrations["20261103030000_AddOrganizationMemberships"], context.Database.ProviderName!);
-        var downSql = string.Join("\n", migration.DownOperations.Cast<SqlOperation>().Select(operation => operation.Sql));
+        var applied = await context.Database.GetAppliedMigrationsAsync();
+        // Rehearse the real dependency order: newer migrations must go down before
+        // the organization tables they reference. Roll back the entire rehearsal.
+        var commands = GenerateOrganizationRollbackCommands(context, applied);
+        Assert.NotEmpty(commands);
+        Assert.All(commands, command => Assert.False(command.TransactionSuppressed));
+
+        async Task ExecuteDownAsync()
+        {
+            foreach (var command in commands)
+                await context.Database.ExecuteSqlRawAsync(command.CommandText);
+        }
 
         // Establish that no other rollback predicate rejects this fixture.
         await using (var baseline = await context.Database.BeginTransactionAsync())
         {
-            await context.Database.ExecuteSqlRawAsync(downSql);
+            await ExecuteDownAsync();
             await baseline.RollbackAsync();
         }
+        Assert.Empty(await context.IndividualSubscriptions.ToListAsync());
+        Assert.Empty(await context.SubscriptionPayments.ToListAsync());
+
+        // Paid-account enforcement must not disappear during an older migration's
+        // rollback either. The newer subscription guard runs first on every provider.
+        var subscription = new IndividualSubscription
+        {
+            UserId = staff.Id,
+            ClinicId = clinic.Id,
+            OrganizationId = clinic.Id,
+            Amount = 49,
+            IntervalMonths = 1,
+            CreatedAtUtc = new DateTime(2026, 11, 4, 0, 0, 0, DateTimeKind.Utc),
+            PaidThroughUtc = new DateTime(2026, 12, 4, 0, 0, 0, DateTimeKind.Utc)
+        };
+        context.IndividualSubscriptions.Add(subscription);
+        await context.SaveChangesAsync();
+        await using (var transaction = await context.Database.BeginTransactionAsync())
+        {
+            var error = await Assert.ThrowsAnyAsync<DbException>(ExecuteDownAsync);
+            Assert.Contains(context.Database.IsSqlite() ? "CHECK constraint failed" : "Reconcile subscriptions", error.Message);
+            await transaction.RollbackAsync();
+        }
+        context.ChangeTracker.Clear();
+        Assert.Equal(subscription.PaidThroughUtc,
+            (await context.IndividualSubscriptions.SingleAsync(item => item.Id == subscription.Id)).PaidThroughUtc);
+        context.IndividualSubscriptions.Remove(await context.IndividualSubscriptions.SingleAsync(item => item.Id == subscription.Id));
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
 
         foreach (var (userId, changedRole, originalRole) in new[]
         {
@@ -76,13 +113,38 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
                 var membership = await context.OrganizationMemberships.SingleAsync(item => item.OrganizationId == clinic.Id && item.UserId == userId);
                 membership.Role = changedRole;
                 await context.SaveChangesAsync();
-                var error = await Assert.ThrowsAnyAsync<DbException>(() => context.Database.ExecuteSqlRawAsync(downSql));
+                var error = await Assert.ThrowsAnyAsync<DbException>(ExecuteDownAsync);
                 Assert.Contains(context.Database.IsSqlite() ? "CHECK constraint failed" : "Reconcile organization memberships", error.Message);
                 await transaction.RollbackAsync();
             }
             context.ChangeTracker.Clear();
+            Assert.Empty(await context.IndividualSubscriptions.ToListAsync());
+            Assert.Empty(await context.SubscriptionPayments.ToListAsync());
             Assert.Equal(originalRole, (await context.OrganizationMemberships.SingleAsync(item => item.OrganizationId == clinic.Id && item.UserId == userId)).Role);
         }
+    }
+
+    internal static IReadOnlyList<MigrationCommand> GenerateOrganizationRollbackCommands(
+        ApplicationDbContext context, IEnumerable<string> applied)
+    {
+        var assembly = context.GetService<IMigrationsAssembly>();
+        var generator = context.GetService<IMigrationsSqlGenerator>();
+        var initializer = context.GetService<IModelRuntimeInitializer>();
+        var ordered = applied.OrderBy(id => id, StringComparer.Ordinal).ToArray();
+        var commands = new List<MigrationCommand>();
+        for (var index = ordered.Length - 1; index >= 0
+            && string.CompareOrdinal(ordered[index], "20261103030000_AddOrganizationMemberships") >= 0; index--)
+        {
+            var migration = assembly.CreateMigration(assembly.Migrations[ordered[index]], context.Database.ProviderName!);
+            var previous = index > 0
+                ? assembly.CreateMigration(assembly.Migrations[ordered[index - 1]], context.Database.ProviderName!)
+                : null;
+            // Match EF's Migrator.GenerateDownSql: SQL Server needs initialized
+            // relational metadata for the model that remains after this downgrade.
+            var model = previous is null ? null : initializer.Initialize(previous.TargetModel, designTime: true);
+            commands.AddRange(generator.Generate(migration.DownOperations, model));
+        }
+        return commands;
     }
 
     private static async Task AssertProviderDowngradeAndExistingClinicSeedParityAsync(

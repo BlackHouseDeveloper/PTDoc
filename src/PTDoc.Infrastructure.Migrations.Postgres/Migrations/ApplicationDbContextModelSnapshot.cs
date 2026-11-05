@@ -4222,6 +4222,48 @@ namespace PTDoc.Infrastructure.Data.Migrations
             modelBuilder.Entity("PTDoc.Core.Models.OrganizationInvitation").HasOne("PTDoc.Core.Models.Organization", null).WithMany().HasForeignKey("OrganizationId").OnDelete(DeleteBehavior.Restrict).IsRequired();
             modelBuilder.Entity("PTDoc.Core.Models.OrganizationInvitation").HasOne("PTDoc.Core.Models.User", null).WithMany().HasForeignKey("InvitedByUserId").OnDelete(DeleteBehavior.Restrict).IsRequired();
             modelBuilder.Entity("PTDoc.Core.Models.Clinic").HasOne("PTDoc.Core.Models.Organization", null).WithMany().HasForeignKey("OrganizationId").OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity("PTDoc.Core.Models.IndividualSubscription", b =>
+            {
+                b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
+                b.Property<Guid>("UserId").HasColumnType("uuid");
+                b.Property<Guid>("OrganizationId").HasColumnType("uuid");
+                b.Property<Guid>("ClinicId").HasColumnType("uuid");
+                b.Property<decimal>("Amount").HasPrecision(18, 2).HasColumnType("numeric(18,2)");
+                b.Property<int>("IntervalMonths").HasColumnType("integer");
+                b.Property<string>("Environment").IsRequired().HasMaxLength(16).HasColumnType("character varying(16)");
+                b.Property<DateTime>("CreatedAtUtc").HasColumnType("timestamp with time zone");
+                b.Property<DateTime?>("PaidThroughUtc").HasColumnType("timestamp with time zone");
+                b.Property<string>("InvoiceNumber").HasMaxLength(20).HasColumnType("character varying(20)");
+                b.Property<string>("InitialTransactionId").HasMaxLength(64).HasColumnType("character varying(64)");
+                b.Property<string>("CustomerProfileId").HasMaxLength(64).HasColumnType("character varying(64)");
+                b.Property<string>("PaymentProfileId").HasMaxLength(64).HasColumnType("character varying(64)");
+                b.Property<string>("RecurringSubscriptionId").HasMaxLength(64).HasColumnType("character varying(64)");
+                b.Property<DateTime?>("RecurringStartsAtUtc").HasColumnType("timestamp with time zone");
+                b.Property<string>("ProviderStatus").IsRequired().HasMaxLength(32).HasColumnType("character varying(32)");
+                b.Property<string>("PendingOperation").HasMaxLength(32).HasColumnType("character varying(32)");
+                b.Property<long>("Version").IsConcurrencyToken().HasColumnType("bigint");
+                b.HasKey("Id");
+                b.HasIndex("UserId").IsUnique();
+                b.HasIndex("OrganizationId").IsUnique();
+                b.HasIndex("ClinicId").IsUnique();
+                b.HasIndex("InvoiceNumber").IsUnique().HasFilter("\"InvoiceNumber\" IS NOT NULL");
+                b.HasIndex("RecurringSubscriptionId").IsUnique().HasFilter("\"RecurringSubscriptionId\" IS NOT NULL");
+                b.ToTable("IndividualSubscriptions");
+                b.HasOne("PTDoc.Core.Models.User", null).WithMany().HasForeignKey("UserId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                b.HasOne("PTDoc.Core.Models.Organization", null).WithMany().HasForeignKey("OrganizationId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+                b.HasOne("PTDoc.Core.Models.Clinic", null).WithMany().HasForeignKey("ClinicId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+            });
+            modelBuilder.Entity("PTDoc.Core.Models.SubscriptionPayment", b =>
+            {
+                b.Property<string>("TransactionId").IsRequired().HasMaxLength(64).HasColumnType("character varying(64)");
+                b.Property<Guid>("SubscriptionId").HasColumnType("uuid");
+                b.Property<DateTime>("PaidAtUtc").HasColumnType("timestamp with time zone");
+                b.Property<DateTime>("CoveredThroughUtc").HasColumnType("timestamp with time zone");
+                b.HasKey("TransactionId");
+                b.HasIndex("SubscriptionId");
+                b.ToTable("SubscriptionPayments");
+                b.HasOne("PTDoc.Core.Models.IndividualSubscription", null).WithMany().HasForeignKey("SubscriptionId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+            });
 #pragma warning restore 612, 618
         }
     }
