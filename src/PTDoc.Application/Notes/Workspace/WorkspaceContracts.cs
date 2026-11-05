@@ -77,6 +77,7 @@ public sealed class WorkspaceBillingSettingsV2
 
 public sealed class WorkspaceDailyTreatmentV2
 {
+    public DailyQuestionnaireV1? Questionnaire { get; set; }
     public string ChangesSinceLastVisit { get; set; } = string.Empty;
     public string PainLevelChanges { get; set; } = string.Empty;
     public string SubjectiveUpdate { get; set; } = string.Empty;
@@ -502,6 +503,8 @@ public sealed class ComputedPlanOfCareV2
 
 public sealed class WorkspaceProgressNoteQuestionnaireV2
 {
+    public decimal? PercentImproved { get; set; }
+    public ProgressActivityTrackingV1? Activities { get; set; }
     public string OverallCondition { get; set; } = string.Empty;
     public string GoalProgress { get; set; } = string.Empty;
     public int CurrentPainLevel { get; set; }

@@ -331,6 +331,8 @@ public sealed class NoteWorkspacePayloadMapper
             },
             ProgressSubjective = new ProgressSubjectiveVm
             {
+                PercentImproved = progressQuestionnaire.PercentImproved,
+                Activities = progressQuestionnaire.Activities is null ? null : ProgressActivityTracking.Clone(progressQuestionnaire.Activities),
                 OverallCondition = progressQuestionnaire.OverallCondition,
                 GoalProgress = progressQuestionnaire.GoalProgress,
                 PainChange = progressQuestionnaire.PainChange,
@@ -350,6 +352,7 @@ public sealed class NoteWorkspacePayloadMapper
             },
             DailyTreatment = new DailyTreatmentVm
             {
+                Questionnaire = DailyQuestionnaireDefinition.Clone(dailyTreatment.Questionnaire),
                 ChangesSinceLastVisit = dailyTreatment.ChangesSinceLastVisit,
                 PainLevelChanges = dailyTreatment.PainLevelChanges,
                 SubjectiveUpdate = dailyTreatment.SubjectiveUpdate,
@@ -550,6 +553,7 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.Discharge.PatientReportedOutcome = TrimToNull(dischargeSubjective.PatientReportedOutcome);
 
         var dailyTreatment = payload.DailyTreatment ?? new DailyTreatmentVm();
+        preservedPayload.DailyTreatment.Questionnaire = DailyQuestionnaireDefinition.Clone(dailyTreatment.Questionnaire);
         preservedPayload.DailyTreatment.ChangesSinceLastVisit = dailyTreatment.ChangesSinceLastVisit?.Trim() ?? string.Empty;
         preservedPayload.DailyTreatment.PainLevelChanges = dailyTreatment.PainLevelChanges?.Trim() ?? string.Empty;
         preservedPayload.DailyTreatment.SubjectiveUpdate = dailyTreatment.SubjectiveUpdate?.Trim() ?? string.Empty;
@@ -563,6 +567,8 @@ public sealed class NoteWorkspacePayloadMapper
         preservedPayload.DailyTreatment.ResponseToTreatment = dailyTreatment.ResponseToTreatment?.Trim() ?? string.Empty;
 
         var progressSubjective = payload.ProgressSubjective ?? new ProgressSubjectiveVm();
+        preservedPayload.ProgressQuestionnaire.PercentImproved = progressSubjective.PercentImproved;
+        preservedPayload.ProgressQuestionnaire.Activities = progressSubjective.Activities is null ? null : ProgressActivityTracking.Clone(progressSubjective.Activities);
         preservedPayload.ProgressQuestionnaire.OverallCondition = progressSubjective.OverallCondition?.Trim() ?? string.Empty;
         preservedPayload.ProgressQuestionnaire.GoalProgress = progressSubjective.GoalProgress?.Trim() ?? string.Empty;
         preservedPayload.ProgressQuestionnaire.CurrentPainLevel = payload.Subjective.CurrentPainScore;
