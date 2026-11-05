@@ -2,6 +2,8 @@ namespace PTDoc.UI.Components.Notes.Models;
 
 public sealed class ProgressSubjectiveVm
 {
+    public decimal? PercentImproved { get; set; }
+    public PTDoc.Application.Notes.Workspace.ProgressActivityTrackingV1? Activities { get; set; }
     public string OverallCondition { get; set; } = string.Empty;
     public string GoalProgress { get; set; } = string.Empty;
     public string PainChange { get; set; } = string.Empty;

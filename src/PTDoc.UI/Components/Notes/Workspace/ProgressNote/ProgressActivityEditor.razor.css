@@ -1,0 +1,51 @@
+.progress-activities {
+    border: 0;
+    padding: 0;
+    min-width: 0;
+}
+
+.progress-activities legend,
+.progress-activities h4 {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--foreground);
+    margin-bottom: var(--spacing-3);
+}
+
+.progress-activities p {
+    font-size: var(--text-sm);
+    color: var(--muted-foreground);
+}
+
+.progress-activities__row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    margin-block: var(--spacing-2);
+    min-height: var(--touch-target-mobile);
+    font-size: var(--text-sm);
+    color: var(--foreground);
+    overflow-wrap: anywhere;
+}
+
+.progress-activities__row span {
+    flex: 1;
+    min-width: 0;
+}
+
+.progress-activities__row .form-select {
+    flex: 0 1 calc(var(--spacing-16) * 3);
+    min-width: 0;
+}
+
+@media (max-width: 767px) {
+    .progress-activities__row:has(select) {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .progress-activities__row .form-select {
+        flex-basis: auto;
+        width: 100%;
+    }
+}
