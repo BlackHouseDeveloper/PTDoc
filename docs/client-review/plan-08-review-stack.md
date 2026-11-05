@@ -2,13 +2,13 @@
 
 The owner approved splitting the combined Plan 08 completion on 2026-11-05. PR 163 stays focused on encounter-bound Evaluation/Re-evaluation intake and its provider migrations. The additional review units build on it in the following order; each PR targets the preceding branch so its diff contains only its own changes.
 
-| Order | Proposed branch | Scope | Prior PR relationship |
+| Order | Branch / published PR | Scope | Prior PR relationship |
 | --- | --- | --- | --- |
 | Base | `codex/plan-08-note-type-intake` | Existing encounter association, scoped access, concurrency and Evaluation flow | PR 163 stays intact |
-| 1 | `codex/plan08-questionnaire-foundations` | Daily questionnaire and Progress activities, including history safeguards and verified review fixes | Incorporates PRs 176 and 187; do not merge duplicate foundations |
-| 2 | `codex/plan08-visit-intake` | Daily/Progress/Discharge Subjective intake, issued choices, review/consent and matching-note answers | Completes the visit-flow portion of Plan 08 |
-| 3 | `codex/plan08-outcome-scoring` | Versioned contracts, clinical definitions, source manifests and scoring | Incorporates PR 180 plus approved patient source/scoring decisions |
-| 4 | `codex/plan08-patient-outcomes` | Patient selection and save/resume, server enforcement, locked note/PDF evidence and styling | Covers patient portions of Plans 24/25; clinician instruments remain separate |
+| 1 | `codex/plan08-questionnaire-foundations` · [PR #200](https://github.com/BlackHouseDeveloper/PTDoc/pull/200) | Daily questionnaire and Progress activities, including history safeguards and verified review fixes | Incorporates PRs 176 and 187; do not merge duplicate foundations |
+| 2 | `codex/plan08-visit-intake` · [PR #201](https://github.com/BlackHouseDeveloper/PTDoc/pull/201) | Daily/Progress/Discharge Subjective intake, issued choices, review/consent and matching-note answers | Completes the visit-flow portion of Plan 08 |
+| 3 | `codex/plan08-outcome-scoring` · [PR #202](https://github.com/BlackHouseDeveloper/PTDoc/pull/202) | Versioned contracts, clinical definitions, source manifests and scoring | Incorporates PR 180 plus approved patient source/scoring decisions |
+| 4 | `codex/plan08-patient-outcomes` · [PR #203](https://github.com/BlackHouseDeveloper/PTDoc/pull/203) | Patient selection and save/resume, server enforcement, locked note/PDF evidence and styling | Covers patient portions of Plans 24/25; clinician instruments remain separate |
 
 Keep each feature's tests with its implementation. The large generated migration metadata remains with PR 163. The clinical questionnaire JSON stays readable and source-pinned in layer 3; it is not minified or hidden to reduce the diff count.
 
@@ -57,4 +57,6 @@ PRs 176, 187 and 180 remain open until the replacement layer is accepted; their 
 
 ## Publication status
 
-Four incremental Git trees, replayable patches and PR descriptions are prepared locally. No implementation commit or branch push has been made by this split; PR 163 and the older PRs remain unchanged. Before implementation commits, `AGENTS.md` requires owner confirmation that the relevant build/tests passed or explicit permission to commit without that confirmation. Remote formatter/provider/release gates and native acceptance are not claimed by these local checks.
+On 2026-11-05 the owner confirmed the passing build/test results and explicitly approved committing and publishing the four dependent draft PRs, satisfying the `AGENTS.md` commit-confirmation requirement. PRs [#200](https://github.com/BlackHouseDeveloper/PTDoc/pull/200), [#201](https://github.com/BlackHouseDeveloper/PTDoc/pull/201), [#202](https://github.com/BlackHouseDeveloper/PTDoc/pull/202) and [#203](https://github.com/BlackHouseDeveloper/PTDoc/pull/203) are published in that order, each targeting its predecessor. GitHub stack #195 now contains merged PR #162 as historical context, PR #163 and the four new drafts. PR #163 still targets `main` at `cd0810f255346fa266a7e3f96cbe42fd6d0b678f`; its implementation and all older PRs remain unchanged.
+
+Review and merge from the bottom upward, then rebase/retarget dependent layers and run the required checks at their resulting heads. No merge or deployment was performed. Remote formatter/provider/release gates and native acceptance are not claimed by the local checks. The publication follow-up changes only review-delivery documentation; the verified application and test sources remain identical.

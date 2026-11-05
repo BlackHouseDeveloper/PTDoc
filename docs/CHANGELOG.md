@@ -26,9 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed - Plan 08 review delivery
 
-- Preserve PR 163 as the encounter-intake foundation and prepare four incremental review layers: Daily/Progress foundations, visit-specific intake, source-pinned outcome scoring, and the complete patient outcome workflow.
+- Preserve PR 163 as the encounter-intake foundation and publish four dependent draft PRs (#200–#203): Daily/Progress foundations, visit-specific intake, source-pinned outcome scoring, and the complete patient outcome workflow.
 - Keep related tests with each layer, retain the corrected styling, clinical source data and all existing safeguards, and record independent build/test evidence and the existing-PR reconciliation map in `docs/client-review/plan-08-review-stack.md`.
-- Verify the four layers with 256, 581 and 151 passing targeted tests and a final 2,455/2,455 CoreCi pass. Release builds have zero warnings/errors; whitespace and secret-policy checks pass. Publication remains subject to the repository commit-confirmation rule.
+- Verify the four layers with 256, 581 and 151 passing targeted tests and a final 2,455/2,455 CoreCi pass. Release builds have zero warnings/errors; whitespace and secret-policy checks pass. The owner confirmed these results and approved publication on 2026-11-05; the drafts are linked in existing GitHub stack #195.
 - The final application and test files match the preserved combined implementation byte-for-byte. Only review-delivery documentation is added or reconciled. No feature code or clinical definitions are removed to reduce the line count.
 
 ### Added - Versioned patient outcome definitions and scoring
