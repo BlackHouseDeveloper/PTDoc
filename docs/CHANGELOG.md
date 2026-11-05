@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Restore the deployment fix to main after PR 161
+
+- Diagnose Deploy Beta run `42026288423` at `a787e848`: 2,817 tests passed and six unrelated HTTP cases hit the same clustered 100-second timeout. The previously verified deployment fix remained in draft PR 199 and was absent from main; update that PR onto the subscription merge while preserving both changelog histories. The user authorized the complete repair, publication, migration and deployment workflow.
+- Keep the full 2,823-test deployment suite and serial collection setting, and document deployment-test scheduling alongside Core CI. Verify current PR 199 feedback: no review threads or active review findings were returned. Track final CI and deployment evidence in PR 199 and the linked Deploy Beta run.
+- Generate the subscription upgrade SQL with pinned EF tooling; rehearse it twice on a temporary Basic-tier database copy to verify idempotence, data/signature preservation and new constraints, then roll back the copy. Apply `20261104010000_AddIndividualSubscriptions` during a controlled beta stop/start only after that rehearsal passes. The live transaction passed the same preservation and schema checks; no payment gateway calls or subscriber records were created.
+- Record a separate pre-existing SQL Server model-metadata limitation: the drift probe proposes three legacy directory/insurance/template filter-quoting changes and four nonunique foreign-key indexes, with no subscription-table differences. Restore the original snapshot after inspection; do not apply the diagnostic migration or broaden this deployment fix into unrelated schema changes.
+
+### Fixed - Beta deployment test contention and migration readiness
+
+- **`.github/workflows/deploy-beta.yml`** — Run the complete deployment test suite with xUnit collection parallelism disabled after run `41752480381` failed with clustered 100-second HTTP timeouts in changing test sets (eight failures initially, four on the completed retry). Preserve all tests, assertions, HTTP timeouts and deployment gates; retain the TRX report even when the test step fails.
+- With explicit operator approval, rehearse the committed SQL Server `20261103030000_AddOrganizationMemberships` migration on a temporary Basic-tier database copy, then apply it during a controlled beta stop/start. Verify hashes of existing clinic, user, patient, note, signature, appointment, schedule-block and session data, membership backfill and database constraints. Both rehearsal and live checks passed, and API/Web readiness recovered. Remove the temporary IP-only SQL firewall rule and, after successful deployment verification, delete the recovery copy.
+- **Deploy Beta run `41775391240`** — Successfully deploy source `5ac1e92b04469f594a0b7aa40f9da1102a4b3167` as release `beta-31-1` to both apps. All 2,717 tests passed in 7 minutes 27 seconds, with no failures or skips. API health, all four seeded-role sign-ins, authenticated source/release parity, Web health, shared CSS and WebSockets negotiation passed. Independent live checks confirmed HTTP 200 for both apps' liveness/readiness and shared CSS, plus advertised WebSockets. The fix was committed/pushed with explicit permission before local build/test confirmation; no local .NET build/test commands were run.
+
 ### Fixed - PR 161 CodeQL webhook size-check finding
 
 - Remove the redundant Content-Length early return in subscription webhooks and enforce the 64 KiB limit through the existing bounded read loop for every request. Oversized bodies still return 413 before parsing/provider calls, and accepted bodies still require exact-byte HMAC verification. The existing eight signed/unsigned and known/unknown-length boundary regressions cover the behavior.
