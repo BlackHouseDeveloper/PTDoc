@@ -29,9 +29,14 @@ public sealed class IntakeVisitQuestionnaire
         NoteType = type,
         Subjective = new()
         {
-            CurrentPainScore = CurrentPain ?? 0, BestPainScore = BestPain ?? 0, WorstPainScore = WorstPain ?? 0,
-            IsPainScoreDocumented = CurrentPain.HasValue, PainFrequency = PainFrequency,
-            Locations = Locations, OtherLocation = LocationDetails, KnownCause = PainDescription
+            CurrentPainScore = CurrentPain ?? 0,
+            BestPainScore = BestPain ?? 0,
+            WorstPainScore = WorstPain ?? 0,
+            IsPainScoreDocumented = CurrentPain.HasValue,
+            PainFrequency = PainFrequency,
+            Locations = Locations,
+            OtherLocation = LocationDetails,
+            KnownCause = PainDescription
         },
         DailyTreatment = new() { Questionnaire = Daily, AssociatedSymptoms = AssociatedSymptoms },
         ProgressQuestionnaire = Progress ?? new(),
@@ -43,8 +48,10 @@ public sealed class IntakeVisitQuestionnaire
         CurrentPain = value.Subjective.IsPainScoreDocumented ? value.Subjective.CurrentPainScore : null,
         BestPain = value.Subjective.BestPainScore,
         WorstPain = value.Subjective.WorstPainScore,
-        PainFrequency = value.Subjective.PainFrequency, Locations = value.Subjective.Locations,
-        LocationDetails = value.Subjective.OtherLocation, PainDescription = value.Subjective.KnownCause,
+        PainFrequency = value.Subjective.PainFrequency,
+        Locations = value.Subjective.Locations,
+        LocationDetails = value.Subjective.OtherLocation,
+        PainDescription = value.Subjective.KnownCause,
         AssociatedSymptoms = value.DailyTreatment.AssociatedSymptoms,
         Daily = value.NoteType == NoteType.Daily ? value.DailyTreatment.Questionnaire : null,
         Progress = value.NoteType == NoteType.ProgressNote ? value.ProgressQuestionnaire : null,

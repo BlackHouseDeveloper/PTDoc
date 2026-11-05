@@ -60,10 +60,19 @@ public class PdfIntegrationTests : IAsyncDisposable
         // Keep the provenance fixture stable. Random IDs can contain "ff", which
         // the PDF font shapes as a ligature omitted by this text extractor.
         var intakeId = Guid.Parse("12345678-9012-3456-7890-123456789012");
-        var payload = new NoteWorkspaceV2Payload { NoteType = NoteType.ProgressNote, IntakeOutcomes = new(intakeId,
-            DateTime.UtcNow, [questionnaire], [new("hoos", questionnaire.Definition.Version, result.Answers, result)]) };
-        var pdf = await _renderer.ExportNoteToPdfAsync(new NoteExportDto { NoteId = Guid.NewGuid(),
-            NoteType = NoteType.ProgressNote, DateOfService = DateTime.UtcNow, ContentJson = JsonSerializer.Serialize(payload) });
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.ProgressNote,
+            IntakeOutcomes = new(intakeId,
+            DateTime.UtcNow, [questionnaire], [new("hoos", questionnaire.Definition.Version, result.Answers, result)])
+        };
+        var pdf = await _renderer.ExportNoteToPdfAsync(new NoteExportDto
+        {
+            NoteId = Guid.NewGuid(),
+            NoteType = NoteType.ProgressNote,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = JsonSerializer.Serialize(payload)
+        });
         var text = ExtractPdfText(pdf.PdfBytes);
         Assert.Contains("pain: 75 points", text);
         // PDF text extraction may join words at wrapped table-cell line boundaries.

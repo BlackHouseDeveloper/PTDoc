@@ -135,10 +135,17 @@ public sealed class PatientOutcomeWorkflowTests
     [Fact]
     public void Save_IgnoresForgedTotalsAndChoices_PreservesPartialAnswersAndDeselection()
     {
-        var saved = new IntakeResponseDraft { PatientOutcomes = IntakeOutcomePersistence.Issue(new()
-            { Objective = new() { PrimaryBodyPart = BodyPart.Shoulder } }, NoteType.ProgressNote) };
-        var intake = new IntakeForm { EncounterNoteId = Guid.NewGuid(), QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.ProgressV1,
-            ResponseJson = JsonSerializer.Serialize(saved, Json) };
+        var saved = new IntakeResponseDraft
+        {
+            PatientOutcomes = IntakeOutcomePersistence.Issue(new()
+            { Objective = new() { PrimaryBodyPart = BodyPart.Shoulder } }, NoteType.ProgressNote)
+        };
+        var intake = new IntakeForm
+        {
+            EncounterNoteId = Guid.NewGuid(),
+            QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.ProgressV1,
+            ResponseJson = JsonSerializer.Serialize(saved, Json)
+        };
         var submitted = JsonSerializer.Deserialize<IntakeResponseDraft>(intake.ResponseJson, Json)!;
         var definition = Questionnaire("quickdash").Definition;
         var partial = Answers("quickdash", "3").Take(9).ToImmutableArray();
@@ -166,9 +173,16 @@ public sealed class PatientOutcomeWorkflowTests
         var empty = new IntakeResponseDraft();
         IntakeOutcomePersistence.InitializeEvaluation(empty);
         Assert.Empty(empty.PatientOutcomes!.Choices);
-        var draft = new IntakeResponseDraft { StructuredData = new() { BodyPartSelections = [new() { BodyPartId = "thigh" }] },
-            PatientOutcomes = new() { RecordedRegions = [BodyPart.Shoulder], Choices = [Questionnaire("spadi")],
-                Responses = [new("spadi", Questionnaire("spadi").Definition.Version, Answers("spadi", "10"), Score("spadi", Answers("spadi", "10")))] } };
+        var draft = new IntakeResponseDraft
+        {
+            StructuredData = new() { BodyPartSelections = [new() { BodyPartId = "thigh" }] },
+            PatientOutcomes = new()
+            {
+                RecordedRegions = [BodyPart.Shoulder],
+                Choices = [Questionnaire("spadi")],
+                Responses = [new("spadi", Questionnaire("spadi").Definition.Version, Answers("spadi", "10"), Score("spadi", Answers("spadi", "10")))]
+            }
+        };
         IntakeOutcomePersistence.InitializeEvaluation(draft);
         Assert.Empty(draft.PatientOutcomes!.Responses);
         Assert.Empty(draft.PatientOutcomes.RecordedRegions);
@@ -186,7 +200,7 @@ public sealed class PatientOutcomeWorkflowTests
         var note = new ClinicalNote { ContentJson = legacy };
         Assert.Equal(legacy, await IntakeOutcomeProjection.PrepareJsonAsync(db, note, Guid.NewGuid(), note.Id, legacy, default));
         var forged = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
-            { IntakeOutcomes = new(Guid.NewGuid(), DateTime.UtcNow, [], []) }, Json)
+        { IntakeOutcomes = new(Guid.NewGuid(), DateTime.UtcNow, [], []) }, Json)
             .Replace("\"intakeOutcomes\"", "\"\\u0069ntakeOutcomes\"", StringComparison.Ordinal);
         await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.PrepareJsonAsync(
             db, note, Guid.NewGuid(), note.Id, forged, default));
@@ -199,11 +213,21 @@ public sealed class PatientOutcomeWorkflowTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         var patientId = Guid.NewGuid(); var noteId = Guid.NewGuid();
         var definition = Questionnaire("lefs").Definition;
-        var outcomes = new IntakePatientOutcomes { Choices = [Questionnaire("lefs")], Responses =
-            [new("lefs", definition.Version, Answers("lefs", "2"), Score("lefs", Answers("lefs", "2")))] };
-        var intake = new IntakeForm { PatientId = patientId, EncounterNoteId = noteId, IsLocked = true,
+        var outcomes = new IntakePatientOutcomes
+        {
+            Choices = [Questionnaire("lefs")],
+            Responses =
+            [new("lefs", definition.Version, Answers("lefs", "2"), Score("lefs", Answers("lefs", "2")))]
+        };
+        var intake = new IntakeForm
+        {
+            PatientId = patientId,
+            EncounterNoteId = noteId,
+            IsLocked = true,
             QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.EvaluationFullV1,
-            SubmittedAt = DateTime.UtcNow, ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft { PatientOutcomes = outcomes }, Json) };
+            SubmittedAt = DateTime.UtcNow,
+            ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft { PatientOutcomes = outcomes }, Json)
+        };
         db.IntakeForms.Add(intake); await db.SaveChangesAsync();
         var snapshot = IntakeOutcomeProjection.From(intake)!;
         var payload = new NoteWorkspaceV2Payload { IntakeOutcomes = snapshot with { Responses = [] } };

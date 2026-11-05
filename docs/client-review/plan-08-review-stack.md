@@ -52,11 +52,17 @@ PRs 176, 187 and 180 remain open until the replacement layer is accepted; their 
 - Release test-project build with `--no-incremental`: PASS, zero warnings/errors. Restoring backup timestamps initially reused intermediate assemblies; refreshing those timestamps and rebuilding the graph removed that build-artifact issue without source changes.
 - Dedicated Web Release build: PASS, zero warnings/errors.
 - Full CoreCi suite on the final reconstructed source: **2,455/2,455 PASS**, zero skipped, 4m32s.
-- All 69 changed application/test files match the preserved combined implementation byte-for-byte; no unexpected source files were introduced. The catalog hash and prior styling remain unchanged.
+- At initial stack publication, all 69 changed application/test files matched the preserved combined implementation byte-for-byte; no unexpected source files were introduced. The later CI formatting follow-up changes whitespace only. The catalog hash and prior styling remain unchanged.
 - `git diff --check` and the tracked appsettings secret-policy scan pass. Prior headed browser and PDF evidence remains applicable to the unchanged UI/source, but was not rerun solely for the Git split.
 
 ## Publication status
 
 On 2026-11-05 the owner confirmed the passing build/test results and explicitly approved committing and publishing the four dependent draft PRs, satisfying the `AGENTS.md` commit-confirmation requirement. PRs [#200](https://github.com/BlackHouseDeveloper/PTDoc/pull/200), [#201](https://github.com/BlackHouseDeveloper/PTDoc/pull/201), [#202](https://github.com/BlackHouseDeveloper/PTDoc/pull/202) and [#203](https://github.com/BlackHouseDeveloper/PTDoc/pull/203) are published in that order, each targeting its predecessor. GitHub stack #195 now contains merged PR #162 as historical context, PR #163 and the four new drafts. PR #163 still targets `main` at `cd0810f255346fa266a7e3f96cbe42fd6d0b678f`; its implementation and all older PRs remain unchanged.
 
-Review and merge from the bottom upward, then rebase/retarget dependent layers and run the required checks at their resulting heads. No merge or deployment was performed. Remote formatter/provider/release gates and native acceptance are not claimed by the local checks. The publication follow-up changes only review-delivery documentation; the verified application and test sources remain identical.
+Review and merge from the bottom upward, then rebase/retarget dependent layers and run the required checks at their resulting heads. No merge or deployment was performed. Remote formatter/provider/release gates and native acceptance are not claimed by the local checks. The initial publication follow-up changed only review-delivery documentation.
+
+## CI formatting follow-up
+
+Core CI run [42030383895](https://github.com/BlackHouseDeveloper/PTDoc/actions/runs/42030383895) stopped at the Application format check on the initial published top head. The owner then ran `dotnet format` and confirmed a successful build with zero warnings/errors and a Debug `net8.0` run of 2,965 tests: **2,964 passed, zero failed and one skipped**. The skipped case is `DatabaseProviderSmokeTests.PostgresEncounterSaveSaveSubmit_ReturnedVersionsMatchStorage_AndStaleWritesStillFail`; this local result does not establish that PostgreSQL-specific coverage passed.
+
+The ten resulting C# diffs were inspected and preserve every non-whitespace byte; `git diff --check` passes. Publish these formatting changes as a follow-up on PR #203, with no changes to its base or the lower layers. The owner-provided verification satisfies the repository commit-confirmation requirement. The exact formatter invocation/output was not supplied, so the owner-run formatter is not represented as an independently observed CI format-gate pass; the new remote run determines that result.

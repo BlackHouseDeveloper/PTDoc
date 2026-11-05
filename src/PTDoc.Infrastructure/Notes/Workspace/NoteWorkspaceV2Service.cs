@@ -113,8 +113,10 @@ public sealed class NoteWorkspaceV2Service(
             if (note.NoteType == NoteType.Discharge) payload.Discharge = answers.Discharge!;
             payload.SeedContext = new WorkspaceSeedContextV2
             {
-                Kind = WorkspaceSeedKind.IntakePrefill, SourceIntakeId = intake.Id,
-                FromLockedSubmittedIntake = true, SourceReferenceDateUtc = intake.SubmittedAt
+                Kind = WorkspaceSeedKind.IntakePrefill,
+                SourceIntakeId = intake.Id,
+                FromLockedSubmittedIntake = true,
+                SourceReferenceDateUtc = intake.SubmittedAt
             };
         }
         payload.SeedContext.SourceIntakeDefinitionId = intake.QuestionnaireDefinitionId;
@@ -122,8 +124,10 @@ public sealed class NoteWorkspaceV2Service(
         payload.SeedContext.SourceIntakeVersionUtc = intake.LastModifiedUtc;
         return new NoteWorkspaceV2EvaluationSeedResponse
         {
-            PatientId = patientId, SourceIntakeId = intake.Id,
-            FromLockedSubmittedIntake = true, Payload = payload
+            PatientId = patientId,
+            SourceIntakeId = intake.Id,
+            FromLockedSubmittedIntake = true,
+            Payload = payload
         };
     }
 

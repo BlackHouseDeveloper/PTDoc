@@ -28,7 +28,7 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var note = (await db.ClinicalNotes.FindAsync(noteId))!;
             note.ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
-                { NoteType = NoteType.ProgressNote, Objective = new() { PrimaryBodyPart = BodyPart.Shoulder } }, json);
+            { NoteType = NoteType.ProgressNote, Objective = new() { PrimaryBodyPart = BodyPart.Shoulder } }, json);
             await db.SaveChangesAsync();
         }
         var issued = await IssueAsync(staff, patientId, noteId);
@@ -41,10 +41,10 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
         var link = (await linkResponse.Content.ReadFromJsonAsync<IntakeDeliveryBundleResponse>())!;
         var invite = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(link.InviteUrl).Query)["invite"].ToString();
         using var sent = await patient.PostAsJsonAsync("/api/v1/intake/access/send-otp", new SendIntakeOtpRequest
-            { InviteToken = invite, Contact = email, Channel = OtpChannel.Email });
+        { InviteToken = invite, Contact = email, Channel = OtpChannel.Email });
         Assert.Equal(HttpStatusCode.OK, sent.StatusCode);
         using var verified = await patient.PostAsJsonAsync("/api/v1/intake/access/verify-otp", new VerifyIntakeOtpRequest
-            { InviteToken = invite, Contact = email, Channel = OtpChannel.Email, OtpCode = factory.LastIntakeOtpCode! });
+        { InviteToken = invite, Contact = email, Channel = OtpChannel.Email, OtpCode = factory.LastIntakeOtpCode! });
         var access = (await verified.Content.ReadFromJsonAsync<IntakeInviteResult>())!;
         patient.DefaultRequestHeaders.Add(IntakeAccessHeaders.AccessToken, access.AccessToken);
         draft.VisitQuestionnaire!.CurrentPain = 0;
@@ -321,7 +321,8 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
         var draft = JsonSerializer.Deserialize<IntakeResponseDraft>(issued.ResponseJson, options)!;
         var update = new UpdateIntakeRequest
         {
-            ExpectedLastModifiedUtc = issued.LastModifiedUtc, ResponseJson = JsonSerializer.Serialize(draft, options),
+            ExpectedLastModifiedUtc = issued.LastModifiedUtc,
+            ResponseJson = JsonSerializer.Serialize(draft, options),
             Consents = """{"hipaaAcknowledged":true,"treatmentConsentAccepted":true,"termsOfServiceAccepted":true}"""
         };
         using var response = await client.PutAsJsonAsync($"/api/v1/intake/{issued.Id}", update);
@@ -342,10 +343,13 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
         var (patientId, _, _) = await CreateFixtureAsync(client);
         using var response = await client.PostAsJsonAsync("/api/v1/notes/", new CreateNoteRequest
         {
-            PatientId = patientId, DateOfService = new DateTime(2026, 11, 4), NoteType = NoteType.ProgressNote,
+            PatientId = patientId,
+            DateOfService = new DateTime(2026, 11, 4),
+            NoteType = NoteType.ProgressNote,
             ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
             {
-                NoteType = NoteType.ProgressNote, ProgressQuestionnaire = new() { PercentImproved = 101 }
+                NoteType = NoteType.ProgressNote,
+                ProgressQuestionnaire = new() { PercentImproved = 101 }
             })
         });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);

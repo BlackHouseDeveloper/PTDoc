@@ -19,8 +19,12 @@ public sealed class PatientOutcomeFieldsTests : TestContext
             .Select(i => new OutcomeAnswer(i.Id, OutcomeAnswerState.Answered, "2")).ToImmutableArray();
         var result = PatientOutcomeRelease.Registry.Score("faam", questionnaire.Definition.Version,
             OutcomeAdministration.PatientReported, answers).Result!;
-        var state = new IntakePatientOutcomes { Choices = [questionnaire], Responses =
-            [new("faam", questionnaire.Definition.Version, answers, result)] };
+        var state = new IntakePatientOutcomes
+        {
+            Choices = [questionnaire],
+            Responses =
+            [new("faam", questionnaire.Definition.Version, answers, result)]
+        };
         var cut = RenderComponent<PatientOutcomeFields>(p => p.Add(c => c.Value, state)
             .Add(c => c.ValueChanged, EventCallback.Factory.Create<IntakePatientOutcomes>(this, value => state = value)));
         Assert.Contains("adl: 50 %", cut.Markup);
@@ -38,8 +42,11 @@ public sealed class PatientOutcomeFieldsTests : TestContext
     [Fact]
     public void PatientSelectsRelevantQuestionnaire_ZeroIsSavedAsAnAnswer_AndReviewIsReadOnly()
     {
-        var state = new IntakePatientOutcomes { Choices = PatientOutcomeSelection.Relevant(
-            PatientOutcomeRelease.Catalog, [BodyPart.Shoulder], NoteType.ProgressNote).ToList() };
+        var state = new IntakePatientOutcomes
+        {
+            Choices = PatientOutcomeSelection.Relevant(
+            PatientOutcomeRelease.Catalog, [BodyPart.Shoulder], NoteType.ProgressNote).ToList()
+        };
         var cut = RenderComponent<PatientOutcomeFields>(p => p.Add(c => c.Value, state)
             .Add(c => c.ValueChanged, EventCallback.Factory.Create<IntakePatientOutcomes>(this, value => state = value)));
         Assert.Empty(cut.FindAll("select"));

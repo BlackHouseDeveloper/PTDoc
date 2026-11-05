@@ -24,12 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - With explicit operator approval, rehearse the committed SQL Server `20261103030000_AddOrganizationMemberships` migration on a temporary Basic-tier database copy, then apply it during a controlled beta stop/start. Verify hashes of existing clinic, user, patient, note, signature, appointment, schedule-block and session data, membership backfill and database constraints. Both rehearsal and live checks passed, and API/Web readiness recovered. Remove the temporary IP-only SQL firewall rule and, after successful deployment verification, delete the recovery copy.
 - **Deploy Beta run `41775391240`** — Successfully deploy source `5ac1e92b04469f594a0b7aa40f9da1102a4b3167` as release `beta-31-1` to both apps. All 2,717 tests passed in 7 minutes 27 seconds, with no failures or skips. API health, all four seeded-role sign-ins, authenticated source/release parity, Web health, shared CSS and WebSockets negotiation passed. Independent live checks confirmed HTTP 200 for both apps' liveness/readiness and shared CSS, plus advertised WebSockets. The fix was committed/pushed with explicit permission before local build/test confirmation; no local .NET build/test commands were run.
 
+### Fixed - Plan 08 CI formatting
+
+- Apply the owner-run `dotnet format` changes to ten intake, workspace and regression-test files, including the two Application files reported by the Core CI formatting gate. The source changes contain only whitespace and line breaks; clinical rules and test assertions are unchanged.
+- Record the owner-confirmed successful build with zero warnings/errors and Debug `net8.0` test run: 2,964 passed, zero failed and one PostgreSQL-specific test skipped. Remote CI must verify the published follow-up independently.
+
 ### Changed - Plan 08 review delivery
 
 - Preserve PR 163 as the encounter-intake foundation and publish four dependent draft PRs (#200–#203): Daily/Progress foundations, visit-specific intake, source-pinned outcome scoring, and the complete patient outcome workflow.
 - Keep related tests with each layer, retain the corrected styling, clinical source data and all existing safeguards, and record independent build/test evidence and the existing-PR reconciliation map in `docs/client-review/plan-08-review-stack.md`.
 - Verify the four layers with 256, 581 and 151 passing targeted tests and a final 2,455/2,455 CoreCi pass. Release builds have zero warnings/errors; whitespace and secret-policy checks pass. The owner confirmed these results and approved publication on 2026-11-05; the drafts are linked in existing GitHub stack #195.
-- The final application and test files match the preserved combined implementation byte-for-byte. Only review-delivery documentation is added or reconciled. No feature code or clinical definitions are removed to reduce the line count.
+- At initial stack publication, the application and test files matched the preserved combined implementation byte-for-byte. The later CI formatting follow-up changes whitespace only. No feature code or clinical definitions are removed to reduce the line count.
 
 ### Added - Versioned patient outcome definitions and scoring
 
