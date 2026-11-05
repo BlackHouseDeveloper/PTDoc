@@ -33,6 +33,7 @@ Runs on every pull request against `main`. Validates:
 - Restore/build of the single `tests/PTDoc.Tests/PTDoc.Tests.csproj` dependency graph
 - `dotnet format` style checks
 - `[Category=CoreCi]` tests only
+- Serial test collections (`-- xUnit.ParallelizeTestCollections=false`) keep the pinned xUnit 2.5 runner's aggressive scheduling from competing across concurrent test hosts; individual tests retain their own concurrency checks and existing timeouts.
 - Superseded PR runs are canceled via workflow concurrency
 
 ### `ci-db.yml` – Database Provider CI (Sprint C) + Migration Validation (Sprint F)
@@ -75,7 +76,10 @@ tokens. The workflow supports the existing Basic plans and validates API health 
 seeded access before deploying Web; direct deployment does not provide slot-swap
 rollback. See
 `docs/deployment/BETA_DEPLOYMENT.md` for required OIDC/RBAC configuration, Azure app
-settings, Cloudflare domains, and smoke checks.
+settings, Cloudflare domains, and smoke checks. The complete deployment test suite runs with
+`-- xUnit.ParallelizeTestCollections=false`, matching Core CI scheduling while
+retaining every test and timeout. Its TRX report is uploaded even after a failure
+and retained for 30 days.
 
 Legacy workflows `phase8-validation.yml` and `update-docs-on-merge.yml` have been retired. Current CI uses the workflows above plus reusable gate logic under `.github/workflows/_dotnet-category-gate.yml`.
 

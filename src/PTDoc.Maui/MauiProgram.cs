@@ -46,6 +46,8 @@ public static class MauiProgram
             ClientStaticCapabilityAuthorizationHandler>();
         builder.Services.AddScoped<AuthenticationStateProvider, MauiAuthenticationStateProvider>();
         builder.Services.AddScoped<ITokenStore, SecureStorageTokenStore>();
+        builder.Services.AddScoped(sp => new SubscriptionApiClient(sp.GetRequiredService<IHttpClientFactory>().CreateClient("ApiClient"),
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient("ApiClient")));
         builder.Services.AddScoped<IOrganizationAdministrationService>(sp => new OrganizationApiClient(sp.GetRequiredService<IHttpClientFactory>().CreateClient("ApiClient")));
         // ITokenService is registered via typed HttpClient below
         builder.Services.AddScoped<IUserService, MauiUserService>();

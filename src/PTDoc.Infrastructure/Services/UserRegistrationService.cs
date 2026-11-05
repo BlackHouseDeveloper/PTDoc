@@ -54,7 +54,8 @@ public sealed class UserRegistrationService : IUserRegistrationService
         if (identity is null) return dbContext.Users.Where(_ => false);
         var actorId = identity.TryGetCurrentUserId();
         var selectedClinicId = tenant?.GetCurrentClinicId();
-        return dbContext.Users.Where(user => dbContext.Users.Any(actor => actor.Id == actorId && actor.IsActive
+        return dbContext.Users.Where(user => !dbContext.IndividualSubscriptions.Any(subscription => subscription.ClinicId == user.ClinicId)
+            && dbContext.Users.Any(actor => actor.Id == actorId && actor.IsActive
                 && actor.Role.ToUpper() != "PATIENT")
             // Patient registration requires the selected clinic's live Admin/Owner grant,
             // in addition to organization administration; organization authority alone is insufficient.
@@ -94,7 +95,8 @@ public sealed class UserRegistrationService : IUserRegistrationService
         }
 
         var clinicExists = await dbContext.Clinics
-            .AnyAsync(c => c.Id == request.ClinicId.Value && c.IsActive, cancellationToken);
+            .AnyAsync(c => c.Id == request.ClinicId.Value && c.IsActive
+                && !dbContext.IndividualSubscriptions.Any(subscription => subscription.ClinicId == c.Id), cancellationToken);
 
         if (!clinicExists)
         {
@@ -210,7 +212,7 @@ public sealed class UserRegistrationService : IUserRegistrationService
     {
         return await dbContext.Clinics
             .AsNoTracking()
-            .Where(c => c.IsActive)
+            .Where(c => c.IsActive && !dbContext.IndividualSubscriptions.Any(subscription => subscription.ClinicId == c.Id))
             .OrderBy(c => c.Name)
             .Select(c => new ClinicSummary(c.Id, c.Name))
             .ToListAsync(cancellationToken);

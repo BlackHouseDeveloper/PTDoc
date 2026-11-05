@@ -213,8 +213,8 @@ public class AuthorizationCoverageTests
 
     /// <summary>
     /// Verifies that the set of intentionally-anonymous endpoints is exactly the
-    /// expected set (auth flows + health probes + HEP launch callback + /me with
-    /// manual-token-validation). Any addition to or removal from this set is a
+    /// expected set, including public subscription signup and the signed billing
+    /// webhook. Any addition to or removal from this set is a
     /// conscious security decision that must be reviewed.
     /// </summary>
     [Fact]
@@ -251,6 +251,11 @@ public class AuthorizationCoverageTests
             // /me performs manual token validation in-handler; AllowAnonymous lets the
             // request reach the handler so it can return 401 with a body when no token is present.
             "GET /api/v1/auth/me",
+            // Public offer and account creation precede authentication.
+            "GET /api/v1/subscriptions/offer",
+            "POST /api/v1/subscriptions/individual",
+            // Provider webhook validates HMAC and re-verifies payment details in-handler.
+            "POST /api/v1/subscriptions/authorize-net/webhook",
             // Health probes (liveness + readiness)
             "GET /health",
             "GET /health/live",
@@ -270,7 +275,9 @@ public class AuthorizationCoverageTests
             "POST /api/v1/integrations/webhooks/humblefax/{connectionToken}",
         };
 
-        Assert.Equal(expectedAnonymous, actualAnonymous);
+        Assert.True(expectedAnonymous.SetEquals(actualAnonymous),
+            $"Missing anonymous endpoints: {string.Join(", ", expectedAnonymous.Except(actualAnonymous).OrderBy(route => route))}. " +
+            $"Unexpected anonymous endpoints: {string.Join(", ", actualAnonymous.Except(expectedAnonymous).OrderBy(route => route))}.");
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -304,6 +311,15 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/auth/mfa/recovery-codes/regenerate", AuthorizationPolicies.Authenticated),
         // /me performs manual token validation; AllowAnonymous lets it return 401+body.
         new("GET",  "/api/v1/auth/me",        null, IsIntentionallyAnonymous: true),
+
+        // Individual subscription routes: billing owner only; webhooks require HMAC and server re-verification.
+        new("GET", "/api/v1/subscriptions/offer", null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/subscriptions/individual", null, IsIntentionallyAnonymous: true),
+        new("POST", "/api/v1/subscriptions/authorize-net/webhook", null, IsIntentionallyAnonymous: true),
+        new("GET", "/api/v1/subscriptions/account", null, RequiresDefaultAuthentication: true, ServiceAuthorization: "Own subscription only."),
+        new("POST", "/api/v1/subscriptions/payment", null, RequiresDefaultAuthentication: true, ServiceAuthorization: "Own subscription, recurring consent, server price and pending-operation guard."),
+        new("POST", "/api/v1/subscriptions/repair", null, RequiresDefaultAuthentication: true, ServiceAuthorization: "Own subscription; server provider reconciliation."),
+        new("POST", "/api/v1/subscriptions/cancel", null, RequiresDefaultAuthentication: true, ServiceAuthorization: "Own subscription; verified provider cancellation."),
 
         // Organization routes use default authentication plus live resource checks in OrganizationAdministrationService.
         new("GET", "/api/v1/organizations/", null, RequiresDefaultAuthentication: true,

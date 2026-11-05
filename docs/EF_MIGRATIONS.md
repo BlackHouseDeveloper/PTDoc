@@ -54,6 +54,23 @@ check or SQL Server/Postgres execution. The committed `OrganizationMigrationTest
 repeat the SQLite cases under .NET; those and all provider runs await user execution.
 Commands are in [Plan 05](client-review/plan-05.md#validation-to-run).
 
+## Plan 06 individual subscription migration
+
+`20261104010000_AddIndividualSubscriptions` adds `IndividualSubscriptions` and
+`SubscriptionPayments` in SQLite, SQL Server and PostgreSQL. Unique user,
+organization, clinic, invoice and recurring-schedule indexes prevent duplicate
+provisioning; transaction IDs deduplicate confirmed payments. The subscription
+version is an optimistic concurrency token. No existing account, clinic grant,
+pending registration, patient or signed record is changed/backfilled.
+
+Apply this migration before the updated API. Rehearse upgrade and model drift for
+every deployed provider. Down refuses to drop entitlement enforcement while any
+subscriber rows exist; reconcile through an approved recovery procedure or restore
+a verified backup instead. Running older application code while subscribers remain
+would bypass their new access controls. Migration/model metadata and regression
+sources are included; .NET/EF/provider verification awaits user execution. See
+[Plan 06](client-review/plan-06.md#validation-to-run) for commands and sandbox gates.
+
 ## Provider Configuration
 
 Set the active database provider in `appsettings.json` (or environment):

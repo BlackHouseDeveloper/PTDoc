@@ -160,6 +160,8 @@ public sealed class OrganizationAdministrationService(
             && item.UserId == invitation.InvitedByUserId && item.IsActive && item.Role != OrganizationRole.Member
             && db.Users.Any(user => user.Id == item.UserId && user.IsActive && user.Role.ToUpper() != "PATIENT"), cancellationToken);
         if (organization is null || !inviterStillAuthorized) throw new OrganizationAccessException("Invitation is no longer available.");
+        if (await db.IndividualSubscriptions.AnyAsync(item => item.OrganizationId == organization.Id, cancellationToken))
+            throw new OrganizationAccessException("Individual subscriptions cannot accept additional staff.");
         var membership = await db.OrganizationMemberships.SingleOrDefaultAsync(item => item.OrganizationId == organization.Id && item.UserId == actor.Id, cancellationToken);
         if (membership is not null) throw new OrganizationConflictException("You already have a membership. Ask the owner to manage it.");
         db.OrganizationMemberships.Add(new OrganizationMembership { OrganizationId = organization.Id, UserId = actor.Id });
@@ -192,6 +194,8 @@ public sealed class OrganizationAdministrationService(
     private async Task<OrganizationRole> AuthorizeAsync(Guid organizationId, bool ownerOnly, CancellationToken cancellationToken)
     {
         var actor = await ActorAsync(cancellationToken);
+        if (await db.IndividualSubscriptions.AnyAsync(item => item.OrganizationId == organizationId, cancellationToken))
+            throw new OrganizationAccessException("Individual subscriptions do not include staff or additional clinics.");
         // Track the root version before reading authorization. SaveAsync updates it, so
         // concurrent access revocation or last-owner changes cause an atomic conflict.
         var organization = await db.Organizations.SingleOrDefaultAsync(item => item.Id == organizationId && item.IsActive, cancellationToken);

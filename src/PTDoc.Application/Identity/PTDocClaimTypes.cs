@@ -10,6 +10,7 @@ public static class PTDocClaimTypes
     public const string AuthenticationType = "ptdoc_auth_type";
     public const string MfaCredentialBinding = "ptdoc_mfa_credential_binding";
     public const string PinCredentialBinding = "ptdoc_pin_credential_binding";
+    public const string SubscriptionPaidThrough = "ptdoc_subscription_paid_through";
     public const string MappedAuthenticationMethodsReference = "http://schemas.microsoft.com/claims/authnmethodsreferences";
     // Server-selected identity types, not claims supplied by the token issuer.
     public const string EntraJwtIdentityType = "PTDoc.EntraJwt";

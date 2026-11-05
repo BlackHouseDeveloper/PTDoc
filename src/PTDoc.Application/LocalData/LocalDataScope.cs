@@ -1,13 +1,21 @@
 namespace PTDoc.Application.LocalData;
 
 /// <summary>Serializes native token replacement with cache/sync operations.</summary>
-public sealed class LocalDataScope
+public sealed class LocalDataScope(TimeProvider? timeProvider = null)
 {
+    private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly object stateLock = new();
     private string? key;
     private bool invalidationPending;
-    public string? Key { get { lock (stateLock) return key; } }
+    private DateTimeOffset? clinicalAccessUntil;
+    public string? Key { get { lock (stateLock) return clinicalAccessUntil <= clock.GetUtcNow() ? null : key; } }
+
+    /// <summary>Set from the server-issued token while holding the authentication lease.</summary>
+    public void SetClinicalAccessUntil(DateTimeOffset? value)
+    {
+        lock (stateLock) clinicalAccessUntil = value;
+    }
 
     // Subscribers publish state synchronously; they must not block on a new lease.
     public event Action? AuthenticationInvalidated;

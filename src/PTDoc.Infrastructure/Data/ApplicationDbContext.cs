@@ -129,6 +129,7 @@ public partial class ApplicationDbContext : DbContext
         base.OnModelCreating(modelBuilder);
         ConfigureSettingsModels(modelBuilder);
         ConfigureOrganizationModels(modelBuilder);
+        ConfigureSubscriptionModels(modelBuilder);
 
         // Configure Patient
         modelBuilder.Entity<Patient>(entity =>

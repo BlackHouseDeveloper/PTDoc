@@ -28,7 +28,8 @@ public sealed class ClinicMembershipGuardMiddleware(RequestDelegate next)
             }
             if (principal.ClinicId == Guid.Empty
                 && !http.Request.Path.StartsWithSegments("/api/v1/organizations")
-                && !http.Request.Path.StartsWithSegments("/api/v1/admin/registrations"))
+                && !http.Request.Path.StartsWithSegments("/api/v1/admin/registrations")
+                && !http.Request.Path.StartsWithSegments("/api/v1/subscriptions"))
             {
                 http.Response.StatusCode = StatusCodes.Status403Forbidden;
                 return;

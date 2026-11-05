@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using PTDoc.Application.Auth;
 using PTDoc.Application.LocalData;
+using PTDoc.Application.Identity;
 
 public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
 {
@@ -74,6 +75,7 @@ public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
         }
 
         await tokenStore.SaveAsync(refreshed, cancellationToken);
+        localScope?.SetClinicalAccessUntil(SubscriptionClaims.PaidThrough(JwtClaimParser.CreatePrincipal(refreshed.AccessToken)));
 
         response.Dispose();
         original.Headers.Authorization = new AuthenticationHeaderValue("Bearer", refreshed.AccessToken);
@@ -119,6 +121,7 @@ public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
         }
 
         await tokenStore.SaveAsync(refreshed, cancellationToken);
+        localScope?.SetClinicalAccessUntil(SubscriptionClaims.PaidThrough(JwtClaimParser.CreatePrincipal(refreshed.AccessToken)));
         return refreshed;
     }
 
