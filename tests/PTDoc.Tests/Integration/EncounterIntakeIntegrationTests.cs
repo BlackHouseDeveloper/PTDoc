@@ -138,7 +138,7 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var note = (await db.ClinicalNotes.FindAsync(noteId))!;
             note.ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
-                { NoteType = NoteType.ProgressNote, Objective = new() { PrimaryBodyPart = BodyPart.Shoulder } }, json);
+            { NoteType = NoteType.ProgressNote, Objective = new() { PrimaryBodyPart = BodyPart.Shoulder } }, json);
             await db.SaveChangesAsync();
         }
         var issued = await IssueAsync(staff, patientId, noteId);
@@ -151,10 +151,10 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
         var link = (await linkResponse.Content.ReadFromJsonAsync<IntakeDeliveryBundleResponse>())!;
         var invite = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(link.InviteUrl).Query)["invite"].ToString();
         using var sent = await patient.PostAsJsonAsync("/api/v1/intake/access/send-otp", new SendIntakeOtpRequest
-            { InviteToken = invite, Contact = email, Channel = OtpChannel.Email });
+        { InviteToken = invite, Contact = email, Channel = OtpChannel.Email });
         Assert.Equal(HttpStatusCode.OK, sent.StatusCode);
         using var verified = await patient.PostAsJsonAsync("/api/v1/intake/access/verify-otp", new VerifyIntakeOtpRequest
-            { InviteToken = invite, Contact = email, Channel = OtpChannel.Email, OtpCode = factory.LastIntakeOtpCode! });
+        { InviteToken = invite, Contact = email, Channel = OtpChannel.Email, OtpCode = factory.LastIntakeOtpCode! });
         var access = (await verified.Content.ReadFromJsonAsync<IntakeInviteResult>())!;
         patient.DefaultRequestHeaders.Add(IntakeAccessHeaders.AccessToken, access.AccessToken);
         draft.VisitQuestionnaire!.CurrentPain = 0;
