@@ -96,6 +96,23 @@ else
             </AuthorizeView>
         }
 
+        @if (_note.StructuredWorkspacePayload?.IntakeOutcomes is { } outcomes)
+        {
+            <details class="note-workspace__intake-outcomes">
+                <summary>Submitted patient outcome questionnaires</summary>
+                <div class="note-workspace__intake-outcome-content">
+                <p class="note-workspace__intake-provenance">Source: this visit's submitted intake. Recorded @outcomes.AnswerVersionUtc.ToString("yyyy-MM-dd HH:mm 'UTC'").</p>
+                @foreach (var questionnaire in outcomes.Questionnaires)
+                {
+                    <p class="note-workspace__intake-provenance">@questionnaire.Definition.Name — version @questionnaire.Definition.Version</p>
+                }
+                <PTDoc.UI.Components.Intake.Steps.PatientOutcomeFields
+                    Value="@(new PTDoc.Application.Outcomes.IntakePatientOutcomes { Choices = outcomes.Questionnaires.ToList(), Responses = outcomes.Responses.ToList() })"
+                    IsReadOnly="true" />
+                </div>
+            </details>
+        }
+
         @if (!string.IsNullOrWhiteSpace(_workspaceNotice))
         {
             <div class="note-workspace__alert note-workspace__alert--info" role="status" data-testid="note-workspace-notice">
@@ -2661,6 +2678,7 @@ else
         {
             _note.StructuredWorkspacePayload.Subjective = payload.StructuredPayload.Subjective;
             _note.StructuredWorkspacePayload.SeedContext = payload.StructuredPayload.SeedContext;
+            _note.StructuredWorkspacePayload.IntakeOutcomes = payload.StructuredPayload.IntakeOutcomes;
             if (IsDailyTreatment) _note.StructuredWorkspacePayload.DailyTreatment = payload.StructuredPayload.DailyTreatment;
             if (IsProgressNote) _note.StructuredWorkspacePayload.ProgressQuestionnaire = payload.StructuredPayload.ProgressQuestionnaire;
             if (IsDischargeNote) _note.StructuredWorkspacePayload.Discharge = payload.StructuredPayload.Discharge;

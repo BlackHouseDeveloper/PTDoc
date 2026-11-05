@@ -114,6 +114,9 @@ public sealed class IntakeService : IIntakeService
             PhiReleaseAuthorized = false,
             BillingConsentAuthorized = false
         };
+        var outcomeSource = string.IsNullOrWhiteSpace(note.ContentJson) ? new NoteWorkspaceV2Payload()
+            : JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(note.ContentJson, SerializerOptions) ?? new();
+        draft.PatientOutcomes = IntakeOutcomePersistence.Issue(outcomeSource, note.NoteType);
         if (IntakeQuestionnaireDefinitions.IsShort(draft.QuestionnaireDefinitionId))
         {
             var source = string.IsNullOrWhiteSpace(note.ContentJson) ? new NoteWorkspaceV2Payload()
@@ -209,6 +212,7 @@ public sealed class IntakeService : IIntakeService
         var userId = _identityContext.GetCurrentUserId();
         var clinicId = _tenantContext.GetCurrentClinicId();
         var draft = Clone(seedState ?? new IntakeResponseDraft());
+        IntakeOutcomePersistence.InitializeEvaluation(draft);
         var profile = await IntakeProfilePrefillReader.ReadAsync(_context, patientId, clinicId, cancellationToken);
         draft.PatientId = patientId;
         draft.IsLocked = false;
@@ -330,6 +334,7 @@ public sealed class IntakeService : IIntakeService
         var draft = new IntakeResponseDraft();
         // Copy state properties
         CopyDraftProperties(canonicalState, draft);
+        IntakeOutcomePersistence.InitializeEvaluation(draft);
         var initialProfile = await IntakeProfilePrefillReader.ReadAsync(_context, patient, cancellationToken);
         initialProfile.InitializeSource(draft);
         draft.PatientId = patient.Id;
@@ -394,6 +399,7 @@ public sealed class IntakeService : IIntakeService
             var clinicId = _tenantContext.GetCurrentClinicId();
             var profile = await IntakeProfilePrefillReader.ReadAsync(_context, patientId, clinicId, cancellationToken);
             profile?.InitializeSource(canonicalState);
+            IntakeOutcomePersistence.InitializeEvaluation(canonicalState);
             intake = new IntakeForm
             {
                 PatientId = patientId,
@@ -439,6 +445,7 @@ public sealed class IntakeService : IIntakeService
         }
         state.IntakeId = intake.Id;
         state.LastModifiedUtc = intake.LastModifiedUtc;
+        state.PatientOutcomes = DeserializeDraft(intake).PatientOutcomes;
     }
 
     public async Task SubmitAsync(IntakeResponseDraft state, CancellationToken cancellationToken = default)
@@ -595,6 +602,7 @@ public sealed class IntakeService : IIntakeService
         target.EncounterNoteId = source.EncounterNoteId;
         target.QuestionnaireDefinitionId = source.QuestionnaireDefinitionId;
         target.VisitQuestionnaire = source.VisitQuestionnaire;
+        target.PatientOutcomes = source.PatientOutcomes;
         target.EncounterIsReEvaluation = source.EncounterIsReEvaluation;
         target.IntakeFlowVersion = source.IntakeFlowVersion;
         target.PrefilledPrimaryPolicyId = source.PrefilledPrimaryPolicyId;

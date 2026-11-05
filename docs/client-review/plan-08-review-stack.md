@@ -46,3 +46,15 @@ PRs 176, 187 and 180 remain open until the replacement layer is accepted; their 
 - All thirteen definitions preserve the combined implementation's exact catalog hash: `af058df5455a52c928847d0d5b53c866859049c9948554f74356e8b5e63266ca`.
 - PR 180's one unique actionable null-item/option finding and its regression are retained. The review-summary bullet duplicates the same finding; the thread remains unchanged.
 - No intake collection or note/PDF projection hook is added in this layer.
+
+### Layer 4 — complete patient outcome workflow
+
+- Release test-project build with `--no-incremental`: PASS, zero warnings/errors. Restoring backup timestamps initially reused intermediate assemblies; refreshing those timestamps and rebuilding the graph removed that build-artifact issue without source changes.
+- Dedicated Web Release build: PASS, zero warnings/errors.
+- Full CoreCi suite on the final reconstructed source: **2,455/2,455 PASS**, zero skipped, 4m32s.
+- All 69 changed application/test files match the preserved combined implementation byte-for-byte; no unexpected source files were introduced. The catalog hash and prior styling remain unchanged.
+- `git diff --check` and the tracked appsettings secret-policy scan pass. Prior headed browser and PDF evidence remains applicable to the unchanged UI/source, but was not rerun solely for the Git split.
+
+## Publication status
+
+Four incremental Git trees, replayable patches and PR descriptions are prepared locally. No implementation commit or branch push has been made by this split; PR 163 and the older PRs remain unchanged. Before implementation commits, `AGENTS.md` requires owner confirmation that the relevant build/tests passed or explicit permission to commit without that confirmation. Remote formatter/provider/release gates and native acceptance are not claimed by these local checks.

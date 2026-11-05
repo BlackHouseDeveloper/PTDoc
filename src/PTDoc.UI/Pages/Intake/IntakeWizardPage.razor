@@ -171,6 +171,10 @@
                             <div class="intake-page__visit">
                             <VisitQuestionnaireFields Value="@visit" ValueChanged="HandleVisitChangedAsync"
                                 DefinitionId="@(State.QuestionnaireDefinitionId!)" IsReadOnly="@(!CanEditDraft)" />
+                            @if (State.QuestionnaireDefinitionId != IntakeQuestionnaireDefinitions.DailyV1)
+                            {
+                                <PatientOutcomeFields Value="@State.PatientOutcomes" ValueChanged="HandleOutcomesChangedAsync" IsReadOnly="@(!CanEditDraft)" />
+                            }
                             <IntakeFooterActions PrimaryText="Review answers" PrimaryTestId="intake-review-answers" OnPrimary="HandleVisitContinueAsync" />
                             </div>
                         }
@@ -499,6 +503,12 @@
         }
     }
 
+    private Task HandleOutcomesChangedAsync(PTDoc.Application.Outcomes.IntakePatientOutcomes answers)
+    {
+        State.PatientOutcomes = answers;
+        return HandleStateChangedAsync();
+    }
+
     private Task HandleVisitChangedAsync(IntakeVisitQuestionnaire answers)
     {
         if (!CanEditDraft) return Task.CompletedTask;
@@ -699,6 +709,7 @@
         {
             await IntakeService.SubmitAsync(submittedDraft);
             if (!ReferenceEquals(State, submittingState)) return;
+            State.PatientOutcomes = submittedDraft.PatientOutcomes;
             State.IsDirty = false;
             State.IsSubmitted = true;
             State.IsLocked = true;
@@ -735,6 +746,7 @@
         if (!ReferenceEquals(State, savingState)) return;
         savingState.IntakeId = draft.IntakeId;
         savingState.LastModifiedUtc = draft.LastModifiedUtc;
+        savingState.PatientOutcomes = draft.PatientOutcomes;
     }
 
     private async Task RefreshProfileAsync()
@@ -1000,6 +1012,7 @@
             EncounterNoteId = state.EncounterNoteId,
             QuestionnaireDefinitionId = state.QuestionnaireDefinitionId,
             VisitQuestionnaire = state.VisitQuestionnaire,
+            PatientOutcomes = state.PatientOutcomes,
             EncounterIsReEvaluation = state.EncounterIsReEvaluation,
             ProfilePrefill = state.ProfilePrefill,
             PrefilledDemographics = state.PrefilledDemographics,
@@ -1142,6 +1155,7 @@
             EncounterNoteId = hydratedDraft.EncounterNoteId,
             QuestionnaireDefinitionId = hydratedDraft.QuestionnaireDefinitionId,
             VisitQuestionnaire = hydratedDraft.VisitQuestionnaire,
+            PatientOutcomes = hydratedDraft.PatientOutcomes,
             EncounterIsReEvaluation = hydratedDraft.EncounterIsReEvaluation,
             ProfilePrefill = hydratedDraft.ProfilePrefill,
             PrefilledDemographics = hydratedDraft.PrefilledDemographics,

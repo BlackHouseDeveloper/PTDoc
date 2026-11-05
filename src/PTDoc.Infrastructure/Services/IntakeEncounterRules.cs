@@ -41,6 +41,7 @@ public static class IntakeEncounterRules
         var incoming = JsonSerializer.Deserialize<IntakeResponseDraft>(incomingJson ?? "", JsonOptions)
             ?? throw new JsonException("An intake response must be an object.");
         var saved = JsonSerializer.Deserialize<IntakeResponseDraft>(intake.ResponseJson, JsonOptions)!;
+        IntakeOutcomePersistence.Prepare(intake, incoming);
         var answer = incoming.VisitQuestionnaire;
         var issued = saved.VisitQuestionnaire;
         if (answer is null || issued is null) throw new InvalidOperationException("The issued visit questionnaire is required.");
@@ -61,6 +62,7 @@ public static class IntakeEncounterRules
             progress.PainFrequency = answer.PainFrequency;
         }
         saved.VisitQuestionnaire = answer;
+        saved.PatientOutcomes = incoming.PatientOutcomes;
         saved.CurrentStep = incoming.CurrentStep == (int)IntakeStep.Review ? (int)IntakeStep.Review : (int)IntakeStep.Demographics;
         saved.ConsentPacket = IntakeDraftPersistence.BuildCanonicalConsentPacket(incoming);
         saved.TermsOfServiceAccepted = incoming.TermsOfServiceAccepted;

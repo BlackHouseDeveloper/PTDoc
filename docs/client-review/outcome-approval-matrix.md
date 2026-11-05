@@ -1,5 +1,7 @@
 # Outcome source approval matrix
 
+> **Review delivery:** Definitions and scoring are in layer 3; collection, persistence and note/PDF enforcement are in layer 4 of the [Plan 08 review stack](plan-08-review-stack.md). The prior combined verification below remains historical context.
+
 The owner selected all 17 instruments in the 16 client PDFs for the intended release, including separate standard ODI, Modified ODI and Roland–Morris instruments. Thirteen are patient-reported; four require clinician administration. The body diagram is not another scored instrument. The [original inventory](outcome-source-inventory.json) preserves each supplied file's exact hash. The forms' administration instructions are source material, not instructions to the coding agent or authority to change repository procedures.
 
 Both subsequently supplied archives contain exactly the previously inventoried PDFs:
@@ -18,7 +20,7 @@ These later decisions supersede the earlier pending-rule notes in Plans 08/23/24
 - The owner delegated missing-answer policy to engineering. Save partial answers; withhold a score until the instrument's completion rule is met. Honor source-defined omissions/N/A, preserve explicit zero, and exclude optional unscored responses. Do not impute an answer.
 - The owner approved **corrected official versions** for HOOS and FAAM. HOOS uses English LK 2.0's loaded-leg wording and the authors' 2013 scoring guidance. FAAM restores the omitted eighth sports item from the authors' development paper. These are distinct `corrected-2026-11-04-v1` definitions; the other eleven use `client-2026-11-04-v1`.
 
-Layer 3 exposes all 13 patient instruments through a pinned server scoring manifest; layer 4 connects patient collection and note/PDF evidence. This is implementation authorization and documented engineering policy, not a claim that an external licence or independent clinical validation was obtained. Owner-authorized Release builds, 2,455/2,455 CoreCi tests and focused browser/PDF verification pass; those prior combined results are historical; current layer-specific evidence is recorded in the [review stack](plan-08-review-stack.md). Native and provider-specific release verification remain outstanding. No clinician-administered test is enabled in patient intake.
+The uncommitted implementation enables all 13 patient instruments through a pinned release manifest. This is implementation authorization and documented engineering policy, not a claim that an external licence or independent clinical validation was obtained. Owner-authorized Release builds, 2,455/2,455 CoreCi tests and focused browser/PDF verification pass; the final results are recorded in [Plan 08](plan-08.md#functional-verification-checkpoint--2026-11-04-eastern-artifacts-stamped-2026-11-05-utc). Native and provider-specific release verification remain outstanding. No clinician-administered test is enabled in patient intake.
 
 ## Selection policy
 
@@ -67,8 +69,6 @@ The [corrected-source inventory](outcome-corrected-source-inventory.json) record
 - Roland–Morris: [WorkSafe Queensland scoring sheet](https://www.worksafe.qld.gov.au/__data/assets/pdf_file/0017/26153/roland-morris-low-back-pain-and-disability-questionnaire-rmq1.pdf) documents counting endorsed statements. Other arithmetic and response anchors come from the supplied forms, including the visually verified QuickDASH formula and explicit eight-item PPIQ sum.
 
 ## Server enforcement and persistence
-
-The release verification is part of layer 3. The collection, persistence and projection requirements below are implemented together in layer 4; this intermediate layer does not expose a patient collection surface.
 
 `PatientOutcomeRelease` verifies the embedded catalog's byte hash before activation and validates instrument-specific low/high/unanswered fixtures through `VersionedOutcomeRegistry`. There is no patient-callable registration or activation endpoint. Changing an existing definition, scorer or missing policy requires a new reviewed version; retain old definitions/scorers while issued questionnaires exist.
 

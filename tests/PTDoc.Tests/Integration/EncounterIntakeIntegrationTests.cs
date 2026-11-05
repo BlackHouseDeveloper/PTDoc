@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -15,6 +16,69 @@ namespace PTDoc.Tests.Integration;
 [Trait("Category", "CoreCi")]
 public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : IClassFixture<PtDocApiFactory>
 {
+    [Fact]
+    public async Task PatientSelectedOutcomes_RejectUnrelatedMeasure_ResumeAndProjectServerScoreThroughOtpLink()
+    {
+        using var staff = factory.CreateClientWithRole(Roles.PT);
+        using var patient = factory.CreateUnauthenticatedClient();
+        var (patientId, noteId, email) = await CreateFixtureAsync(staff, NoteType.ProgressNote);
+        var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var note = (await db.ClinicalNotes.FindAsync(noteId))!;
+            note.ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+                { NoteType = NoteType.ProgressNote, Objective = new() { PrimaryBodyPart = BodyPart.Shoulder } }, json);
+            await db.SaveChangesAsync();
+        }
+        var issued = await IssueAsync(staff, patientId, noteId);
+        var draft = JsonSerializer.Deserialize<IntakeResponseDraft>(issued.ResponseJson, json)!;
+        var choices = draft.PatientOutcomes!;
+        Assert.Equal(2, choices.Choices.Count);
+        Assert.Empty(choices.Responses);
+        var definition = choices.Choices.Single(q => q.Definition.InstrumentId == "quickdash").Definition;
+        using var linkResponse = await staff.PostAsync($"/api/v1/intake/{issued.Id}/delivery/link", null);
+        var link = (await linkResponse.Content.ReadFromJsonAsync<IntakeDeliveryBundleResponse>())!;
+        var invite = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(link.InviteUrl).Query)["invite"].ToString();
+        using var sent = await patient.PostAsJsonAsync("/api/v1/intake/access/send-otp", new SendIntakeOtpRequest
+            { InviteToken = invite, Contact = email, Channel = OtpChannel.Email });
+        Assert.Equal(HttpStatusCode.OK, sent.StatusCode);
+        using var verified = await patient.PostAsJsonAsync("/api/v1/intake/access/verify-otp", new VerifyIntakeOtpRequest
+            { InviteToken = invite, Contact = email, Channel = OtpChannel.Email, OtpCode = factory.LastIntakeOtpCode! });
+        var access = (await verified.Content.ReadFromJsonAsync<IntakeInviteResult>())!;
+        patient.DefaultRequestHeaders.Add(IntakeAccessHeaders.AccessToken, access.AccessToken);
+        draft.VisitQuestionnaire!.CurrentPain = 0;
+        choices.Responses = [new("lefs", definition.Version, [])];
+        var update = Update(issued.LastModifiedUtc);
+        update.ResponseJson = JsonSerializer.Serialize(draft, json);
+        Assert.Equal(HttpStatusCode.Conflict, (await patient.PutAsJsonAsync($"/api/v1/intake/access/{issued.Id}", update)).StatusCode);
+        choices.Responses = [new("quickdash", definition.Version,
+            definition.Items.Take(9).Select(i => new PTDoc.Application.Outcomes.OutcomeAnswer(i.Id,
+                PTDoc.Application.Outcomes.OutcomeAnswerState.Answered, "3")).ToImmutableArray())];
+        update.ResponseJson = JsonSerializer.Serialize(draft, json);
+        using var partialResponse = await patient.PutAsJsonAsync($"/api/v1/intake/access/{issued.Id}", update);
+        Assert.Equal(HttpStatusCode.OK, partialResponse.StatusCode);
+        var partial = (await partialResponse.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        var resumed = JsonSerializer.Deserialize<IntakeResponseDraft>(partial.ResponseJson, json)!;
+        Assert.Equal(PTDoc.Application.Outcomes.OutcomeCompletion.Incomplete, resumed.PatientOutcomes!.Responses.Single().Result!.Calculation.Completion);
+        resumed.PatientOutcomes.Responses = [resumed.PatientOutcomes.Responses.Single() with
+        {
+            Answers = definition.Items.Take(10).Select(i => new PTDoc.Application.Outcomes.OutcomeAnswer(i.Id,
+                PTDoc.Application.Outcomes.OutcomeAnswerState.Answered, "3")).ToImmutableArray()
+        }];
+        update.ExpectedLastModifiedUtc = partial.LastModifiedUtc;
+        update.ResponseJson = JsonSerializer.Serialize(resumed, json);
+        using var savedResponse = await patient.PutAsJsonAsync($"/api/v1/intake/access/{issued.Id}", update);
+        Assert.Equal(HttpStatusCode.OK, savedResponse.StatusCode);
+        var saved = (await savedResponse.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        using var submitted = await patient.PostAsJsonAsync($"/api/v1/intake/access/{issued.Id}/submit",
+            new SubmitIntakeRequest { ExpectedLastModifiedUtc = saved.LastModifiedUtc });
+        Assert.Equal(HttpStatusCode.OK, submitted.StatusCode);
+        var seed = await staff.GetFromJsonAsync<NoteWorkspaceV2EvaluationSeedResponse>($"/api/v2/notes/workspace/{patientId}/{noteId}/intake-seed");
+        Assert.Equal(issued.Id, seed!.Payload.IntakeOutcomes!.IntakeId);
+        Assert.Equal(50m, seed.Payload.IntakeOutcomes.Responses.Single().Result!.Calculation.Scores.Single().Value);
+    }
+
     [Fact]
     public async Task EncounterRead_EnforcesPatientOwnership_AndPreservesStaffAccess()
     {

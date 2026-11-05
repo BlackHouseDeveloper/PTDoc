@@ -53,6 +53,7 @@ public sealed class NoteWriteService(
                 request.DateOfService,
                 request.ContentJson);
             normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(db, null, request.PatientId, noteId, normalizedContentJson, ct);
+            normalizedContentJson = await IntakeOutcomeProjection.PrepareJsonAsync(db, null, request.PatientId, noteId, normalizedContentJson, ct);
         }
         catch (InvalidOperationException ex)
         {
@@ -209,6 +210,7 @@ public sealed class NoteWriteService(
             effectiveDateOfService,
             request.ContentJson ?? note.ContentJson);
         normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(db, note, note.PatientId, note.Id, normalizedContentJson, ct);
+        normalizedContentJson = await IntakeOutcomeProjection.PrepareJsonAsync(db, note, note.PatientId, note.Id, normalizedContentJson, ct);
         var isDryNeedling = IsDryNeedlingContent(
             note.NoteType,
             note.IsReEvaluation,

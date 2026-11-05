@@ -54,6 +54,7 @@ public static class WorkspaceNoteTypeMapper
 
 public sealed class NoteWorkspaceV2Payload
 {
+    public PTDoc.Application.Outcomes.WorkspaceIntakeOutcomeSnapshot? IntakeOutcomes { get; set; }
     public int SchemaVersion { get; set; } = WorkspaceSchemaVersions.EvalReevalProgressV2;
     public NoteType NoteType { get; set; }
     public WorkspaceSeedContextV2 SeedContext { get; set; } = new();

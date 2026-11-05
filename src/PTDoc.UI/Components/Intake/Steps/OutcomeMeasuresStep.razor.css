@@ -1,0 +1,98 @@
+/* Same shell/panel/form treatment as PainDetailsStep and BasicInfoCard. */
+.intake-step-shell {
+    display: grid;
+    gap: var(--spacing-6);
+    min-width: 0;
+}
+
+.intake-step-shell__hero,
+.intake-step-shell__panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    display: grid;
+    gap: var(--spacing-4);
+    padding: var(--spacing-6);
+    min-width: 0;
+}
+
+.intake-step-shell h2 {
+    color: var(--card-foreground);
+    font-size: var(--text-xl);
+    margin: 0 0 var(--spacing-2);
+}
+
+.intake-step-shell h3,
+.intake-step-shell h4 {
+    color: var(--card-foreground);
+    font-size: var(--text-base);
+    margin: 0 0 var(--spacing-2);
+}
+
+.intake-step-shell p,
+.intake-step-shell__helper {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    margin: 0;
+}
+
+.intake-step-shell__group-stack,
+.intake-step-shell__group,
+.intake-card__form-grid {
+    display: grid;
+    gap: var(--spacing-4);
+    min-width: 0;
+}
+
+.intake-step-shell__group {
+    border-top: 1px solid var(--border);
+    padding-top: var(--spacing-4);
+}
+
+.intake-step-shell label {
+    display: grid;
+    gap: var(--spacing-2);
+    color: var(--card-foreground);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    margin: 0;
+    min-width: 0;
+}
+
+.intake-step-shell .intake-card__toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    min-height: var(--touch-target-mobile);
+}
+
+.intake-card__toggle input {
+    flex: 0 0 auto;
+    width: var(--spacing-4);
+    height: var(--spacing-4);
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    accent-color: var(--primary);
+}
+
+.intake-step-shell .form-control,
+.intake-step-shell .form-select {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.intake-step-shell .btn-secondary {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--foreground);
+    justify-self: start;
+}
+
+@media (max-width: 767px) {
+    .intake-step-shell__hero,
+    .intake-step-shell__panel {
+        padding: var(--spacing-4);
+    }
+}

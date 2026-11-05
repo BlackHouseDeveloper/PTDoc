@@ -1,0 +1,122 @@
+/* Match BasicInfoCard/FunctionalLimitationsCard and the shared form primitives. */
+.intake-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    color: var(--card-foreground);
+    display: grid;
+    gap: var(--spacing-4);
+    min-width: 0;
+    padding: var(--spacing-6);
+}
+
+.intake-card h3,
+.intake-card p {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.intake-card h3 {
+    color: var(--card-foreground);
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+}
+
+.intake-card__header {
+    display: grid;
+    gap: var(--spacing-2);
+}
+
+.intake-card__subtext,
+.intake-card__helper,
+.intake-card__answer-count {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    line-height: var(--line-height-normal);
+}
+
+.intake-card__questionnaire {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    min-width: 0;
+    overflow: clip;
+}
+
+.intake-card__toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    min-height: var(--touch-target-mobile);
+    margin: 0;
+    padding: var(--spacing-3) var(--spacing-4);
+    color: var(--card-foreground);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+
+.intake-card__toggle:has(input:disabled) {
+    cursor: default;
+}
+
+.intake-card__toggle input {
+    flex: 0 0 auto;
+    width: var(--spacing-4);
+    height: var(--spacing-4);
+    margin: 0;
+    accent-color: var(--primary);
+}
+
+.intake-card__toggle:focus-within {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+}
+
+.intake-card__questionnaire--selected > .intake-card__toggle {
+    background: color-mix(in srgb, var(--accent) 45%, var(--card));
+}
+
+.intake-card__answers {
+    border-top: 1px solid var(--border);
+    display: grid;
+    gap: var(--spacing-4);
+    min-width: 0;
+    padding: var(--spacing-4);
+}
+
+.intake-card__notes {
+    color: var(--card-foreground);
+    display: grid;
+    gap: var(--spacing-2);
+    font-size: var(--text-sm);
+    font-weight: var(--font-weight-medium);
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.intake-card__notes input,
+.intake-card__notes select {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    font-weight: var(--font-weight-normal);
+}
+
+.intake-card__result {
+    background: var(--info-box-bg);
+    border: 1px solid var(--info-box-border);
+    border-radius: var(--radius-md);
+    color: var(--foreground);
+    display: grid;
+    gap: var(--spacing-2);
+    padding: var(--spacing-3) var(--spacing-4);
+    font-size: var(--text-sm);
+}
+
+@media (max-width: 767px) {
+    .intake-card {
+        padding: var(--spacing-4);
+    }
+}

@@ -5,10 +5,14 @@
     <div class="intake-step-shell__hero">
         <div>
             <h2>Outcome Measures</h2>
-            <p>Your provider may use a functional questionnaire for the body areas you selected.</p>
+            <p>Choose functional questionnaires relevant to your body areas and answer the questions. Scores are calculated when you save.</p>
         </div>
     </div>
 
+    <PatientOutcomeFields Value="@State.PatientOutcomes" ValueChanged="OutcomesChangedAsync" />
+
+    @if (State.PatientOutcomes is null)
+    {
     <section class="intake-step-shell__panel">
         <div class="intake-step-shell__panel-header">
             <div>
@@ -41,6 +45,7 @@
             </div>
         }
     </section>
+    }
 
     <section class="intake-step-shell__panel">
         <div class="intake-step-shell__panel-header">
@@ -129,6 +134,12 @@
     [Parameter] public EventCallback OnBack { get; set; }
     [Parameter] public EventCallback OnContinue { get; set; }
     [Parameter] public EventCallback OnStateChanged { get; set; }
+
+    private Task OutcomesChangedAsync(PTDoc.Application.Outcomes.IntakePatientOutcomes value)
+    {
+        State.PatientOutcomes = value;
+        return NotifyChangedAsync();
+    }
 
     private bool IsSkipped => State.InitialOutcomeMeasureReports.Count == 1
         && State.InitialOutcomeMeasureReports[0].Skipped;
