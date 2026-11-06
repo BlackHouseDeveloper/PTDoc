@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - With explicit operator approval, rehearse the committed SQL Server `20261103030000_AddOrganizationMemberships` migration on a temporary Basic-tier database copy, then apply it during a controlled beta stop/start. Verify hashes of existing clinic, user, patient, note, signature, appointment, schedule-block and session data, membership backfill and database constraints. Both rehearsal and live checks passed, and API/Web readiness recovered. Remove the temporary IP-only SQL firewall rule and, after successful deployment verification, delete the recovery copy.
 - **Deploy Beta run `41775391240`** — Successfully deploy source `5ac1e92b04469f594a0b7aa40f9da1102a4b3167` as release `beta-31-1` to both apps. All 2,717 tests passed in 7 minutes 27 seconds, with no failures or skips. API health, all four seeded-role sign-ins, authenticated source/release parity, Web health, shared CSS and WebSockets negotiation passed. Independent live checks confirmed HTTP 200 for both apps' liveness/readiness and shared CSS, plus advertised WebSockets. The fix was committed/pushed with explicit permission before local build/test confirmation; no local .NET build/test commands were run.
 
+### Added - Versioned patient outcome definitions and scoring
+
+- Integrate Plan 23 / PR 180 versioned contracts, activation validation and provenance, including the reviewed null-item/option validation fix and its regressions.
+- Add the thirteen source-pinned patient instrument definitions and scoring rules, owner-approved corrected HOOS/FAAM forms, instrument-specific missing-answer handling and region-relevance policy. Preserve the client source inventories and approval evidence.
+- Include source-boundary, typical, missing/N/A, optional-rating and independent-subscale tests. This layer makes scoring available to server composition; patient intake collection and note projection remain unavailable until the next layer.
+
 ### Added - Visit-specific Subjective intake
 
 - Enable versioned Daily, Progress and Discharge intake with the corresponding Subjective components, issued activity choices, partial draft saves, explicit current-pain validation, review and fresh consent choices.

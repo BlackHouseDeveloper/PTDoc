@@ -17,6 +17,7 @@
     <EmbeddedResource Include="Data\WorkspaceLookupReferenceData.json" />
     <EmbeddedResource Include="Data\WorkspaceReferenceCatalog.json" />
     <EmbeddedResource Include="Data\OutcomeMeasureReferenceData.json" />
+    <EmbeddedResource Include="Data\PatientOutcomeQuestionnaires.json" />
   </ItemGroup>
 
   <PropertyGroup>

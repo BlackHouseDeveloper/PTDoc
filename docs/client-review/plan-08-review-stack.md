@@ -38,3 +38,11 @@ PRs 176, 187 and 180 remain open until the replacement layer is accepted; their 
 - Release test-project build: PASS, zero warnings/errors.
 - Intake, note-workspace service/page and Progress activity regressions: **581/581 PASS**, zero skipped. Includes API/OTP scoping, short-visit validation, partial saves, consent, matching-note copying and keyboard model stability.
 - No `PatientOutcomes`, outcome persistence/projection or patient measure component is introduced in this layer. Clinical outcome collection remains unavailable.
+
+### Layer 3 — outcome definitions and scoring
+
+- Release test-project build: PASS, zero warnings/errors.
+- Outcome regression suite: **151/151 PASS**, zero skipped; includes versioned activation, malformed definitions, source arithmetic, missing/N/A policies and corrected HOOS/FAAM subscales.
+- All thirteen definitions preserve the combined implementation's exact catalog hash: `af058df5455a52c928847d0d5b53c866859049c9948554f74356e8b5e63266ca`.
+- PR 180's one unique actionable null-item/option finding and its regression are retained. The review-summary bullet duplicates the same finding; the thread remains unchanged.
+- No intake collection or note/PDF projection hook is added in this layer.
