@@ -346,6 +346,7 @@
         var generation = ++_loadGeneration;
         bool IsCurrent() => generation == _loadGeneration && PatientId == patientId && EffectiveNoteId == requestedNoteId;
         _isLoadingDraft = true;
+        _isSavingDraft = false;
         _profileReloadRequired = false;
         IntakeResponseDraft? draft;
         try
@@ -524,22 +525,23 @@
         State.IsDirty = true;
 
         var savingState = State;
+        var generation = _loadGeneration;
         try
         {
             _isSavingDraft = true;
             await PersistDraftAsync();
-            if (ReferenceEquals(State, savingState)) savingState.IsDirty = false;
+            if (IsCurrentIntakeOperation(savingState, generation)) savingState.IsDirty = false;
         }
         catch (HttpRequestException ex)
         {
-            if (!ReferenceEquals(State, savingState)) return;
+            if (!IsCurrentIntakeOperation(savingState, generation)) return;
             var message = ToUserFacingApiError(ex);
             _validationMessage = message;
             ToastService.ShowError(message, "Draft save failed");
         }
         finally
         {
-            _isSavingDraft = false;
+            if (generation == _loadGeneration) _isSavingDraft = false;
         }
     }
 
@@ -654,12 +656,15 @@
             return;
         }
 
+        var submittingState = State;
+        var generation = _loadGeneration;
         State.IsSubmitting = true;
         var submittedDraft = ToPersistenceDraft();
 
         try
         {
             await IntakeService.SubmitAsync(submittedDraft);
+            if (!IsCurrentIntakeOperation(submittingState, generation)) return;
             State.IsDirty = false;
             State.IsSubmitted = true;
             State.IsLocked = true;
@@ -669,54 +674,69 @@
         }
         catch (HttpRequestException ex)
         {
+            if (!IsCurrentIntakeOperation(submittingState, generation)) return;
             var message = ToUserFacingApiError(ex);
             _validationMessage = message;
             ToastService.ShowError(message, "Intake submit failed");
         }
         catch (InvalidOperationException ex)
         {
+            if (!IsCurrentIntakeOperation(submittingState, generation)) return;
             var message = ex.Message;
             _validationMessage = message;
             ToastService.ShowError(message, "Intake submit failed");
         }
         finally
         {
-            State.LastModifiedUtc = submittedDraft.LastModifiedUtc;
-            State.IsSubmitting = false;
+            if (IsCurrentIntakeOperation(submittingState, generation))
+            {
+                State.LastModifiedUtc = submittedDraft.LastModifiedUtc;
+                State.IsSubmitting = false;
+            }
         }
     }
 
     private async Task PersistDraftAsync()
     {
         var savingState = State;
+        var generation = _loadGeneration;
         var draft = ToPersistenceDraft();
         await IntakeService.SaveDraftAsync(draft);
-        if (!ReferenceEquals(State, savingState)) return;
+        if (!IsCurrentIntakeOperation(savingState, generation)) return;
         savingState.IntakeId = draft.IntakeId;
         savingState.LastModifiedUtc = draft.LastModifiedUtc;
     }
 
+    private bool IsCurrentIntakeOperation(IntakeWizardState state, long generation)
+        => ReferenceEquals(State, state) && generation == _loadGeneration &&
+            PatientId == state.PatientId && (state.IsPatientMode || EffectiveNoteId == state.EncounterNoteId);
+
     private async Task RefreshProfileAsync()
     {
         if (!CanEditDraft || IsInteractionLocked || State.PatientId is null) return;
+        var refreshingState = State;
+        var generation = _loadGeneration;
         try
         {
             _isSavingDraft = true;
             var current = EffectiveNoteId is { } noteId
-                ? await IntakeService.GetForNoteAsync(State.PatientId.Value, noteId)
-                : await IntakeService.GetLatestByPatientIdAsync(State.PatientId.Value);
+                ? await IntakeService.GetForNoteAsync(refreshingState.PatientId.Value, noteId)
+                : await IntakeService.GetLatestByPatientIdAsync(refreshingState.PatientId.Value);
+            if (!IsCurrentIntakeOperation(refreshingState, generation)) return;
             State.ProfilePrefill = current?.ProfilePrefill;
         }
         catch (HttpRequestException ex)
         {
-            _validationMessage = ToUserFacingApiError(ex);
+            if (IsCurrentIntakeOperation(refreshingState, generation)) _validationMessage = ToUserFacingApiError(ex);
         }
-        finally { _isSavingDraft = false; }
+        finally { if (generation == _loadGeneration) _isSavingDraft = false; }
     }
 
     private async Task ApplyProfileUpdateAsync(IntakeProfileAction action)
     {
         if (!CanEditDraft || IsInteractionLocked || State.ProfilePrefill is null || State.PatientId is null) return;
+        var updatingState = State;
+        var generation = _loadGeneration;
         try
         {
             _isSavingDraft = true;
@@ -726,32 +746,49 @@
             // reload may reconcile answers with the server-owned accepted provenance.
             _profileReloadRequired = true;
             await IntakeService.SaveDraftAsync(draft);
+            if (!IsCurrentIntakeOperation(updatingState, generation)) return;
             await ReloadSavedProfileCoreAsync();
         }
-        catch (HttpRequestException ex) { _validationMessage = ToUserFacingApiError(ex); }
-        catch (InvalidOperationException ex) { _validationMessage = ex.Message; }
-        finally { _isSavingDraft = false; }
+        catch (HttpRequestException ex)
+        {
+            if (IsCurrentIntakeOperation(updatingState, generation)) _validationMessage = ToUserFacingApiError(ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            if (IsCurrentIntakeOperation(updatingState, generation)) _validationMessage = ex.Message;
+        }
+        finally { if (generation == _loadGeneration) _isSavingDraft = false; }
     }
 
     private async Task ReloadSavedProfileAsync()
     {
         if (!_profileReloadRequired || _isSavingDraft || State.PatientId is null) return;
+        var reloadingState = State;
+        var generation = _loadGeneration;
         _isSavingDraft = true;
         try { await ReloadSavedProfileCoreAsync(); }
-        catch (HttpRequestException ex) { _validationMessage = ToUserFacingApiError(ex); }
-        catch (InvalidOperationException ex) { _validationMessage = ex.Message; }
-        finally { _isSavingDraft = false; }
+        catch (HttpRequestException ex)
+        {
+            if (IsCurrentIntakeOperation(reloadingState, generation)) _validationMessage = ToUserFacingApiError(ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            if (IsCurrentIntakeOperation(reloadingState, generation)) _validationMessage = ex.Message;
+        }
+        finally { if (generation == _loadGeneration) _isSavingDraft = false; }
     }
 
     private async Task ReloadSavedProfileCoreAsync()
     {
-        var patientMode = State.IsPatientMode;
-        var saved = (EffectiveNoteId is { } noteId
-            ? await IntakeService.GetForNoteAsync(State.PatientId!.Value, noteId)
-            : await IntakeService.GetLatestByPatientIdAsync(State.PatientId!.Value))
-            ?? throw new InvalidOperationException("The saved intake could not be reloaded. Reload before continuing.");
+        var reloadingState = State;
+        var generation = _loadGeneration;
+        var saved = EffectiveNoteId is { } noteId
+            ? await IntakeService.GetForNoteAsync(reloadingState.PatientId!.Value, noteId)
+            : await IntakeService.GetLatestByPatientIdAsync(reloadingState.PatientId!.Value);
+        if (!IsCurrentIntakeOperation(reloadingState, generation)) return;
+        if (saved is null) throw new InvalidOperationException("The saved intake could not be reloaded. Reload before continuing.");
         State = FromDraft(saved);
-        State.IsPatientMode = patientMode;
+        State.IsPatientMode = reloadingState.IsPatientMode;
         State.IsDirty = false;
         _profileReloadRequired = false;
         _validationMessage = null;
@@ -835,21 +872,22 @@
         _isSavingDraft = true;
         State.IsDirty = true;
         var savingState = State;
+        var generation = _loadGeneration;
         try
         {
             await PersistDraftAsync();
-            if (ReferenceEquals(State, savingState)) savingState.IsDirty = false;
+            if (IsCurrentIntakeOperation(savingState, generation)) savingState.IsDirty = false;
         }
         catch (HttpRequestException ex)
         {
-            if (!ReferenceEquals(State, savingState)) return;
+            if (!IsCurrentIntakeOperation(savingState, generation)) return;
             var message = ToUserFacingApiError(ex);
             _validationMessage = message;
             ToastService.ShowError(message, "Draft save failed");
         }
         finally
         {
-            _isSavingDraft = false;
+            if (generation == _loadGeneration) _isSavingDraft = false;
         }
     }
 

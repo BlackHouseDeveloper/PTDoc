@@ -1584,6 +1584,42 @@ public sealed class IntakeServiceTests : IDisposable
             Assert.Equal(IntakeEnsureDraftStatus.PatientNotFound, (await _service.EnsureDraftAsync(patient.Id, new() { EncounterNoteId = note.Id })).Status);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EncounterSubmit_AppliesDemographicCorrectionsOnlyToUnchangedChartFields(bool chartChanged)
+    {
+        var patient = CreatePatient("Synthetic", "Demographics");
+        patient.Phone = "555-0100";
+        patient.AddressLine1 = "Original address";
+        _context.Patients.Add(patient);
+        var note = new ClinicalNote { PatientId = patient.Id, ClinicId = _clinicId, NoteType = NoteType.Evaluation };
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+        var created = (await _service.EnsureDraftAsync(patient.Id, new() { EncounterNoteId = note.Id })).Draft!;
+        Assert.NotNull(created.PrefilledDemographics);
+        var draft = (await _service.GetForNoteAsync(patient.Id, note.Id))!;
+        Assert.Equal("555-0100", draft.PrefilledDemographics!.PhoneNumber);
+        draft.PhoneNumber = "555-0101";
+        draft.AddressLine1 = "Corrected address";
+        if (chartChanged)
+        {
+            patient.Phone = "555-0102";
+            await _context.SaveChangesAsync();
+        }
+        await _service.SaveDraftAsync(draft);
+        draft = (await _service.GetForNoteAsync(patient.Id, note.Id))!;
+        await _service.SubmitAsync(draft);
+        _context.ChangeTracker.Clear();
+        var storedPatient = await _context.Patients.SingleAsync(value => value.Id == patient.Id);
+        Assert.Equal(chartChanged ? "555-0102" : "555-0101", storedPatient.Phone);
+        Assert.Equal("Corrected address", storedPatient.AddressLine1);
+        var submitted = (await _service.GetForNoteAsync(patient.Id, note.Id))!;
+        Assert.True(submitted.IsSubmitted);
+        Assert.Equal("555-0101", submitted.PhoneNumber);
+        Assert.Equal("555-0100", submitted.PrefilledDemographics!.PhoneNumber);
+    }
+
     [Fact]
     public async Task EncounterSave_RequiresCurrentVersionAndExplicitId_AndRejectsFinalizedDestination()
     {

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 163 encounter intake review follow-up
+
+- Keep legacy Evaluation/Re-evaluation note creation from locking another encounter's unfinished intake; retain patient-wide legacy draft locking.
+- Discard obsolete intake submit, profile acceptance/reload and refresh completions after encounter navigation, including errors and version/busy-state updates. Preserve patient-link routing and submission.
+- Initialize encounter intake demographic provenance so submitted corrections update unchanged chart fields while preserving intervening chart edits.
+- Add 21 regression cases across API, service and wizard tests, and record the complete nine-finding review classification in `docs/client-review/plan-08.md`. Builds and tests await user execution; no schema changes are needed.
+
 ### Changed - Plan 08 branch synchronization
 
 - Restore a fully linear Plan 08 review stack on current main, replacing the merge-based synchronization that blocked GitHub native stacks. Retain both changelog histories and main's deployment-test scheduling and result-artifact settings; application code, clinical definitions, schema migrations and regression tests are unchanged. Native-stack CI and merge requirements follow the stack base.

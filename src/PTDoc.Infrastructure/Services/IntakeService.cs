@@ -104,6 +104,7 @@ public sealed class IntakeService : IIntakeService
             IntakeFlowVersion = 2
         };
         var profile = await IntakeProfilePrefillReader.ReadAsync(_context, patientId, note.ClinicId, cancellationToken);
+        profile?.InitializeSource(draft);
         profile?.ApplyTo(draft);
         var intake = new IntakeForm
         {

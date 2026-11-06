@@ -162,6 +162,53 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
         Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync($"/api/v1/intake/{issued.Id}", Update(current.LastModifiedUtc))).StatusCode);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task LegacyNoteCreation_LeavesEncounterDraftEditable_AndLocksOnlyPatientWideDraft(bool reevaluation, bool includeLegacyDraft)
+    {
+        using var client = factory.CreateClientWithRole(Roles.PT);
+        var (patientId, noteId, _) = await CreateFixtureAsync(client);
+        Guid? legacyId = null;
+        if (includeLegacyDraft)
+        {
+            using var legacyResponse = await client.PostAsJsonAsync($"/api/v1/intake/drafts/{patientId}", new EnsureIntakeDraftRequest());
+            Assert.Equal(HttpStatusCode.Created, legacyResponse.StatusCode);
+            legacyId = (await legacyResponse.Content.ReadFromJsonAsync<IntakeResponse>())!.Id;
+        }
+        var encounter = await IssueAsync(client, patientId, noteId);
+        // Make the unfinished encounter form unambiguously the latest form.
+        using var initialSave = await client.PutAsJsonAsync($"/api/v1/intake/{encounter.Id}", Update(encounter.LastModifiedUtc));
+        Assert.Equal(HttpStatusCode.OK, initialSave.StatusCode);
+        encounter = (await initialSave.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        using var createNote = await client.PostAsJsonAsync("/api/v1/notes", new CreateNoteRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Evaluation,
+            IsReEvaluation = reevaluation,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = "{}",
+            CptCodesJson = "[]"
+        });
+        Assert.Equal(HttpStatusCode.Created, createNote.StatusCode);
+        var noteB = (await createNote.Content.ReadFromJsonAsync<NoteOperationResponse>())!.Note!;
+        Assert.NotEqual(noteId, noteB.Id);
+        var unchanged = (await client.GetFromJsonAsync<IntakeResponse>($"/api/v1/intake/{encounter.Id}"))!;
+        Assert.False(unchanged.Locked);
+        Assert.Equal(encounter.LastModifiedUtc, unchanged.LastModifiedUtc);
+        Assert.Equal(encounter.ResponseJson, unchanged.ResponseJson);
+        if (legacyId.HasValue)
+            Assert.True((await client.GetFromJsonAsync<IntakeResponse>($"/api/v1/intake/{legacyId}"))!.Locked);
+        using var save = await client.PutAsJsonAsync($"/api/v1/intake/{encounter.Id}", Update(unchanged.LastModifiedUtc));
+        Assert.Equal(HttpStatusCode.OK, save.StatusCode);
+        var saved = (await save.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        using var submit = await client.PostAsJsonAsync($"/api/v1/intake/{encounter.Id}/submit",
+            new SubmitIntakeRequest { ExpectedLastModifiedUtc = saved.LastModifiedUtc });
+        Assert.Equal(HttpStatusCode.OK, submit.StatusCode);
+    }
+
     private static UpdateIntakeRequest Update(DateTime? version) => new()
     {
         ExpectedLastModifiedUtc = version,

@@ -133,7 +133,7 @@ public sealed class NoteWriteService(
         if (request.NoteType == NoteType.Evaluation)
         {
             var draftIntake = await db.IntakeForms
-                .Where(form => form.PatientId == request.PatientId && !form.IsLocked)
+                .Where(form => form.PatientId == request.PatientId && form.EncounterNoteId == null && !form.IsLocked)
                 .OrderByDescending(form => form.LastModifiedUtc)
                 .FirstOrDefaultAsync(ct);
 
