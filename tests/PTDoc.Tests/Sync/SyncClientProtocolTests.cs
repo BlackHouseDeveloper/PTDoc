@@ -73,8 +73,32 @@ public class SyncClientProtocolTests
         Assert.Equal(0, result.AcceptedCount);
         Assert.Equal("{\"saved\":true}", (await context.IntakeForms.AsNoTracking().SingleAsync()).ResponseJson);
         var pulled = await engine.GetClientDeltaAsync(DateTime.MinValue, ["IntakeForm"]);
-        using var json = JsonDocument.Parse(Assert.Single(pulled.Items).DataJson);
-        Assert.Equal(noteId, json.RootElement.GetProperty("EncounterNoteId").GetGuid());
+        Assert.Empty(pulled.Items);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task LegacyDelta_ExcludesEncounterForms_AndPreservesPatientWideForms(bool allTypes, bool incremental)
+    {
+        using var context = CreateInMemoryContext();
+        var watermark = DateTime.UtcNow.AddMinutes(-5);
+        var patientId = Guid.NewGuid();
+        var legacy = new IntakeForm { PatientId = patientId, LastModifiedUtc = watermark.AddMinutes(1) };
+        var draft = new IntakeForm { PatientId = patientId, EncounterNoteId = Guid.NewGuid(), QuestionnaireDefinitionId = "evaluation-full-v1", LastModifiedUtc = watermark.AddMinutes(1) };
+        var submitted = new IntakeForm { PatientId = patientId, EncounterNoteId = Guid.NewGuid(), QuestionnaireDefinitionId = "evaluation-full-v1", IsLocked = true, SubmittedAt = watermark, LastModifiedUtc = watermark.AddMinutes(1) };
+        context.IntakeForms.AddRange(legacy, draft, submitted);
+        await context.SaveChangesAsync();
+        var engine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+
+        var pulled = await engine.GetClientDeltaAsync(incremental ? watermark : null, allTypes ? null : ["IntakeForm"]);
+
+        var item = Assert.Single(pulled.Items.Where(item => item.EntityType == "IntakeForm"));
+        Assert.Equal(legacy.Id, item.ServerId);
+        Assert.DoesNotContain(pulled.Items, item => item.ServerId == draft.Id || item.ServerId == submitted.Id);
+        Assert.Equal(3, await context.IntakeForms.CountAsync());
     }
 
     [Fact]

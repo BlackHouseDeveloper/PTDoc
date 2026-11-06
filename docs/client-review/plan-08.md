@@ -96,7 +96,52 @@ AC1 and the Evaluation/Re-evaluation portions of AC4/AC5 have synthetic service/
 No merges, deployments, production-data changes, external messages or review-thread replies/resolutions are authorized. A planning-only PR may be reviewed as documentation; merging it does not complete the feature. Shared subject matter alone does not create a Git stack dependency.
 
 
-## Current PR 163 review verification — 2026-11-05
+## Current PR 163 previously missed findings verification — 2026-11-05
+
+This refresh supersedes review-status statements below. Local and remote head are `f8815e6aaceec47cef5fc239054f3a17524c83f3` on `codex/plan-08-note-type-intake`; the checkout `/Users/calvinccarter/Projects/PTDoc` was clean before this pass. No other worktree was changed.
+
+### Inventory and unique findings
+
+Refreshed connector thread and review listings, then independently checked GraphQL full review bodies, minimized metadata and all outer/nested pagination: **9 resolved threads, 18 inline comments (9 findings plus 9 closure replies), 12 review submissions, 0 conversation comments; no incomplete pages**. No inline comment is minimized/suppressed. Crucially, [review 5795131954](https://github.com/BlackHouseDeveloper/PTDoc/pull/163#pullrequestreview-5795131954) contains **three Previously missed findings in collapsed summary sections**, despite its “No open issues” heading. These have no individual review-thread IDs and cannot be resolved individually.
+
+**12 unique findings: 3 valid/actionable (fixed locally, verification pending), 9 outdated/already addressed, 0 invalid and 0 ambiguous.** Review-summary links are 18 duplicate references: the original five, the next review's four open plus five resolved, and the latest review's four resolved. Nine closure replies contain no additional defects. The three Previously missed findings are distinct additions, not duplicates or dismissible suppressed output.
+
+| Source | Classification and evidence | Change / regression coverage |
+| --- | --- | --- |
+| Review 5795131954, “Add encounter-intake read route to the RBAC inventory” | **Valid.** `IntakeEndpoints.MapIntakeEndpoints` maps `GET /api/v1/intake/patient/{patientId:guid}/note/{noteId:guid}` with `IntakeRead`, but `AuthorizationCoverageTests.BuildInventory` omitted it despite its explicit maintenance contract. Existing ownership tests enforce behavior but do not replace the inventory. | Add the route/policy entry. `EncounterIntakeInventory_MatchesLiveEndpointPolicies` checks the inventory against the live endpoint metadata, including rejection of anonymous metadata. |
+| Same review, “Add encounter seed route with both policies to the RBAC inventory” | **Valid.** `NoteWorkspaceV2Endpoints` maps `GET /api/v2/notes/workspace/{patientId:guid}/{noteId:guid}/intake-seed` with both `NoteRead` and `IntakeRead`; inventory omitted it and represented only one required policy per entry. | Add the route with an additional required policy, validate registration of both policies, and compare both against live endpoint metadata in the second theory case. Existing seven-role seed integration coverage remains. |
+| Same review, “Preserve encounter-bound forms in the offline sync protocol” | **Valid.** `SyncEngine.GetClientDeltaAsync` exported encounter forms; `LocalIntakeFormDraft` has no encounter/definition/re-evaluation fields, and `LocalSyncOrchestrator.ApplyPulledIntakeFormAsync` only persists legacy fields. `ReceiveClientPushAsync` rejects an existing encounter form or payload with encounter identity, requiring the versioned intake endpoint. Thus legacy downloads invited edits that could not round-trip. | Choose the review's bounded exclusion option: filter encounter forms out of legacy deltas. `LegacyDelta_ExcludesEncounterForms_AndPreservesPatientWideForms` adds four full/incremental × explicit/default-type cases containing draft and submitted encounter forms plus a legacy form. Existing Update/Delete rejection cases now also assert encounter forms are not pulled. Existing legacy write/field/watermark regressions remain. This is server protocol boundary coverage, not a new full MAUI end-to-end run. |
+| [4406603000](https://github.com/BlackHouseDeveloper/PTDoc/pull/163#discussion_r4406603000): patient ownership | **Outdated / addressed.** Current `GetForNote` checks authenticated Patient ownership before querying. | `EncounterRead_EnforcesPatientOwnership_AndPreservesStaffAccess` covers own/cross-patient, unmapped Patient and staff. No new change needed. |
+| [4406603059](https://github.com/BlackHouseDeveloper/PTDoc/pull/163#discussion_r4406603059): seed authorization | **Outdated / addressed.** Current seed route requires both policies. Distinct from the newly found inventory omission above. | `EncounterSeed_RequiresBothNoteAndIntakeRead` covers seven roles and ordinary Billing note access. No endpoint change needed. |
+| [4406603110](https://github.com/BlackHouseDeveloper/PTDoc/pull/163#discussion_r4406603110): stale draft save | **Outdated / addressed.** `PersistDraftAsync` and callers guard state, generation, dirty state and errors. | `PendingSave_EncounterNavigationPreservesNewIdentityVersionAndDirtyState` covers delayed success/failure and B's subsequent identity/version. No new change needed. |
+| [4406603157](https://github.com/BlackHouseDeveloper/PTDoc/pull/163#discussion_r4406603157): PostgreSQL precision | **Outdated / addressed.** Registered `SyncMetadataInterceptor` normalizes encounter timestamps to microseconds; `IntakeEncounterRules` retains exact-version checks and sync-only acknowledgements preserve versions. | `PostgresEncounterSaveSaveSubmit_ReturnedVersionsMatchStorage_AndStaleWritesStillFail` and `EncounterIntakeConcurrencyTests` remain. No new provider execution claimed; the earlier supplied full-suite output skipped PostgreSQL. |
+| [4406603185](https://github.com/BlackHouseDeveloper/PTDoc/pull/163#discussion_r4406603185): invitation target | **Outdated / addressed.** Modal keyed by patient/encounter prevents cached-ID reuse. | `OpenInvite_EncounterNavigationGeneratesLinkForTheDisplayedEncounter` verifies B's invitation. No new change needed. |
+| [4487906929](https://github.com/BlackHouseDeveloper/PTDoc/pull/163#discussion_r4487906929): legacy note locking | **Outdated / addressed in f8815e6a.** `NoteWriteService.CreateAsync` requires `EncounterNoteId == null` when locking a legacy draft. | Four `LegacyNoteCreation_LeavesEncounterDraftEditable_AndLocksOnlyPatientWideDraft` cases preserve A's edit/submit flow and legacy locking. |
+| [4487906976](https://github.com/BlackHouseDeveloper/PTDoc/pull/163#discussion_r4487906976): stale submit | **Outdated / addressed in f8815e6a.** `HandleSubmitAsync` guards success, errors and version/finally updates by originating state/generation. | Six `PendingSubmit_EncounterNavigationDiscardsCompletion` cases plus patient-link submission success coverage. |
+| [4487907005](https://github.com/BlackHouseDeveloper/PTDoc/pull/163#discussion_r4487907005): stale profile reload | **Outdated / addressed in f8815e6a.** Acceptance, reload and refresh guard state/generation and busy cleanup. | Eight `PendingProfileOperation_EncounterNavigationPreservesDisplayedDraft` cases cover errors, answers, versions and continued B saves. |
+| [4487907026](https://github.com/BlackHouseDeveloper/PTDoc/pull/163#discussion_r4487907026): demographic provenance | **Outdated / addressed in f8815e6a.** Encounter creation initializes the source before profile application; `ForPatientWrite` can safely distinguish unchanged chart fields. | Two `EncounterSubmit_AppliesDemographicCorrectionsOnlyToUnchangedChartFields` cases preserve newer chart edits while applying corrections. |
+
+The first five historical fixes remain in `92faf1e1` (original `2a0f8a8`); the later four are in current head `f8815e6a`. Classification follows current source and tests, not GitHub's outdated flag. The prior verification confirmation applies to that committed baseline, not these new edits.
+
+### Scope, limitations and verification
+
+Only `SyncEngine.cs`, `AuthorizationCoverageTests.cs`, `SyncClientProtocolTests.cs`, this report and `docs/CHANGELOG.md` changed. Six new cases and two updated assertions protect the new behavior. Encounter-aware offline editing remains unavailable; online encounter APIs retain their versioned write contract. Already-cached encounter forms or pending edits are not deleted/migrated by this change; legacy server write rejection remains protective. No broader offline protocol or schema redesign was attempted.
+
+No build/test/formatter was run. Run these commands from the PR 163 checkout:
+
+```sh
+cd /Users/calvinccarter/Projects/PTDoc
+dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --configuration Release
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "Category=RBAC|Category=OfflineSync" --verbosity normal -- xUnit.ParallelizeTestCollections=false
+dotnet format src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --verify-no-changes --verbosity diagnostic
+dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity diagnostic
+```
+
+These categories include all new cases and existing authorization/sync regressions. A focused diagnostic filter is `FullyQualifiedName~AuthorizationCoverageTests|FullyQualifiedName~SyncClientProtocolTests`. No UI changed, so a new Web build is not required for this refresh. Both Git whitespace checks pass. All changes remain uncommitted and unstaged.
+
+**Thread eligibility:** none of the three new findings has an individual thread; do not claim to resolve them. After verification and separately authorized publication, their evidence could be reported in a PR-level response only if the user authorizes it. All nine existing threads are already resolved and need no duplicate reply. No ambiguous finding or unimplemented review request remains. This pass made no commit, push, reply, resolution, PR-level response or review request.
+
+## Historical PR 163 review verification — 2026-11-05
 
 This section supersedes earlier review-status statements below. Reviewed remote head and local baseline: `71ed8291c614da323e3d0cc6912bb5f1abbba453`, branch `codex/plan-08-note-type-intake`, checkout `/Users/calvinccarter/Projects/PTDoc`. The Codex worktree at `/Users/calvinccarter/.codex/worktrees/eb23/PTDoc` belongs to PR 203 and is not the remediation checkout. The PR 163 checkout was clean before this pass. Fixes below are local and uncommitted; the remote head was rechecked and remains unchanged.
 

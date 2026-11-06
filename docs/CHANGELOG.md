@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 163 previously missed review findings
+
+- Add the encounter intake read and encounter seed routes to the authoritative RBAC inventory, including both seed policies, and compare their inventory entries against live endpoint authorization metadata.
+- Exclude encounter-bound intakes from legacy offline sync downloads until the local model and write protocol support encounter identity and versioned writes. Preserve patient-wide sync and server-side rejection of legacy encounter writes; do not delete cached local edits.
+- Add six regression cases for endpoint policy metadata and full/incremental sync exclusion, and refresh the complete PR 163 review classification. Verification awaits user execution.
+
 ### Fixed - PR 163 encounter intake review follow-up
 
 - Keep legacy Evaluation/Re-evaluation note creation from locking another encounter's unfinished intake; retain patient-wide legacy draft locking.

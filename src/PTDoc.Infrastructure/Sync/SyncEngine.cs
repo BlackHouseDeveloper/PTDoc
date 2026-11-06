@@ -1335,9 +1335,11 @@ public class SyncEngine : ISyncEngine
 
         if (effectiveTypes.Contains("IntakeForm", StringComparer.OrdinalIgnoreCase))
         {
+            // Legacy offline drafts cannot preserve encounter identity or perform
+            // versioned encounter writes. Keep those forms on the encounter API.
             var intakeForms = await _context.IntakeForms
                 .AsNoTracking()
-                .Where(i => i.LastModifiedUtc > effectiveSince)
+                .Where(i => i.EncounterNoteId == null && i.LastModifiedUtc > effectiveSince)
                 .ToListAsync(cancellationToken);
 
             foreach (var i in intakeForms)
