@@ -50,6 +50,47 @@ public static class DailyQuestionnaireDefinition
     public static DailyQuestionnaireV1? Clone(DailyQuestionnaireV1? value) => value is null ? null
         : JsonSerializer.Deserialize<DailyQuestionnaireV1>(JsonSerializer.Serialize(value));
 
+    /// <summary>Validate writes independently of the requested note type or dry-needling variant.</summary>
+    public static void ValidateJsonWrite(string? previous, string? incoming)
+    {
+        var before = ReadQuestionnaire(previous);
+        var after = ReadQuestionnaire(incoming);
+        var errors = Validate(after).ToList();
+        if (before is not null && after is null)
+            errors.Add("Reload this Daily note in a compatible client to preserve its versioned questionnaire.");
+        if (errors.Count > 0)
+            throw new InvalidOperationException(string.Join(" ", errors));
+    }
+
+    private static DailyQuestionnaireV1? ReadQuestionnaire(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return null;
+            foreach (var section in document.RootElement.EnumerateObject())
+            {
+                if (!section.Name.Equals("dailyTreatment", StringComparison.OrdinalIgnoreCase)
+                    || section.Value.ValueKind != JsonValueKind.Object) continue;
+                foreach (var field in section.Value.EnumerateObject())
+                {
+                    if (!field.Name.Equals("questionnaire", StringComparison.OrdinalIgnoreCase)) continue;
+                    try
+                    {
+                        return field.Value.Deserialize<DailyQuestionnaireV1>(new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                    }
+                    catch (JsonException)
+                    {
+                        throw new InvalidOperationException("Daily questionnaire content is invalid.");
+                    }
+                }
+            }
+        }
+        catch (JsonException) { }
+        return null;
+    }
+
     public static IReadOnlyList<string> Validate(DailyQuestionnaireV1? value)
     {
         if (value is null) return [];

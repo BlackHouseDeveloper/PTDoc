@@ -84,4 +84,35 @@ public sealed class DailyQuestionnaireTests
         Assert.Contains("Improved slightly", text); Assert.Contains("Synthetic current answer", text); Assert.Contains("Historical answer", text);
         Assert.Contains("Current 0/10", text); Assert.Contains("HEP performed: Daily", text); Assert.Contains("Improved: Walking", text);
     }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"dailyTreatment\":null}")]
+    [InlineData("{\"dailyTreatment\":{\"questionnaire\":null}}")]
+    [InlineData("{\"subjective\":\"Legacy SOAP content\"}")]
+    public void JsonWrite_RejectsQuestionnaireOmission(string incoming)
+    {
+        var saved = """{"DailyTreatment":{"Questionnaire":{"Version":1,"HepAdherence":"Daily"}}}""";
+        var error = Assert.Throws<InvalidOperationException>(() => DailyQuestionnaireDefinition.ValidateJsonWrite(saved, incoming));
+        Assert.Contains("compatible client", error.Message);
+    }
+
+    [Theory]
+    [InlineData("{\"version\":99}")]
+    [InlineData("{\"painChange\":\"invented\"}")]
+    [InlineData("\"not an object\"")]
+    public void JsonWrite_RejectsInvalidDefinitionOnCreate(string questionnaire)
+    {
+        var incoming = "{\"dailyTreatment\":{\"questionnaire\":" + questionnaire + "}}";
+        Assert.Throws<InvalidOperationException>(() => DailyQuestionnaireDefinition.ValidateJsonWrite(null, incoming));
+    }
+
+    [Fact]
+    public void JsonWrite_AllowsLegacyWithoutQuestionnaire_AndValidUpdatesWithFutureFields()
+    {
+        DailyQuestionnaireDefinition.ValidateJsonWrite("{}", """{"subjective":"Legacy edit"}""");
+        var incoming = """{"dailyTreatment":{"questionnaire":{"version":1,"hepAdherence":"Daily","futureAnswer":"retain"}}}""";
+        DailyQuestionnaireDefinition.ValidateJsonWrite(null, incoming);
+        DailyQuestionnaireDefinition.ValidateJsonWrite(incoming, incoming);
+    }
 }

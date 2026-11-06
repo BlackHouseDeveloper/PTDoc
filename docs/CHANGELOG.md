@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 200 Daily questionnaire and historical evidence review
+
+- Validate Daily questionnaire writes across workspace, generic note API and offline sync paths, including dry-needling/type changes, unsupported answers and versions, older-client omissions, and normalization that would discard submitted answers. Keep legacy notes without questionnaires compatible.
+- Reject Daily outcome additions, edits and omissions before mutating the note or tracked evidence. Preserve unchanged historical result IDs, recording clinicians, timestamps and duplicate entries, including when the request changes the note type.
+- Display historical positive Daily pain scores without requiring the newer documentation flag; keep undocumented zero blank and explicitly documented zero visible.
+- Add 50 focused regression cases and record all four current PR 200 findings, duplicate summary references and the complete review retrieval in `docs/client-review/plan-08-review-stack.md`. The user confirmed all required builds and tests passed before authorizing publication.
+- Include the user-authorized formatting-only cleanup of five test files; test behavior is unchanged.
+- Correct the missing `PTDoc.Application.Services` import in the new integration tests after the user-reported build identified two unresolved `Roles` references. The subsequent build passed without warnings or errors.
+- Record the subsequent user-reported clean build and Debug suite result (2,965 passed, one autosave discard timeout, one PostgreSQL-specific skip). The user subsequently confirmed all required builds and tests passed; no autosave timeout or production behavior was altered based on the initial failure.
+
 ### Fixed - PR 163 previously missed review findings
 
 - Add the encounter intake read and encounter seed routes to the authoritative RBAC inventory, including both seed policies, and compare their inventory entries against live endpoint authorization metadata.

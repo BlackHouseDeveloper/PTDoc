@@ -22,10 +22,13 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
         var (patientId, _, _) = await CreateFixtureAsync(client);
         using var response = await client.PostAsJsonAsync("/api/v1/notes/", new CreateNoteRequest
         {
-            PatientId = patientId, DateOfService = new DateTime(2026, 11, 4), NoteType = NoteType.ProgressNote,
+            PatientId = patientId,
+            DateOfService = new DateTime(2026, 11, 4),
+            NoteType = NoteType.ProgressNote,
             ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
             {
-                NoteType = NoteType.ProgressNote, ProgressQuestionnaire = new() { PercentImproved = 101 }
+                NoteType = NoteType.ProgressNote,
+                ProgressQuestionnaire = new() { PercentImproved = 101 }
             })
         });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);

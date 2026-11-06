@@ -59,4 +59,21 @@ public sealed class DailySubjectiveSectionTests : TestContext
         Assert.Contains("Future saved answer", cut.Markup);
         Assert.All(cut.FindAll("input,textarea,select"), e => Assert.True(e.HasAttribute("disabled")));
     }
+
+    [Theory]
+    [InlineData(false, 3, false, "3")]
+    [InlineData(true, 3, false, "3")]
+    [InlineData(false, 0, false, "")]
+    [InlineData(true, 0, false, "")]
+    [InlineData(false, 0, true, "0")]
+    [InlineData(true, 0, true, "0")]
+    public void SavedPain_UsesLegacyPositiveFallbackWithoutInventingZero(bool readOnly, int score, bool documented, string expected)
+    {
+        var input = new SubjectiveVm { CurrentPainScore = score, IsPainScoreDocumented = documented };
+        var cut = RenderComponent<SubjectiveSection>(p => p.Add(c => c.Vm, input).Add(c => c.IsReadOnly, readOnly));
+
+        Assert.Equal(expected, cut.Find("#daily-current-pain").GetAttribute("value"));
+        Assert.Equal(readOnly, cut.Find("#daily-current-pain").HasAttribute("disabled"));
+        Assert.Equal(documented, input.IsPainScoreDocumented);
+    }
 }

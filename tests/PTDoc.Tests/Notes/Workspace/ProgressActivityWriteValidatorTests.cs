@@ -52,7 +52,9 @@ public sealed class ProgressActivityWriteValidatorTests
         };
         var source = new ClinicalNote
         {
-            PatientId = patientId, NoteType = NoteType.ProgressNote, NoteStatus = NoteStatus.Draft,
+            PatientId = patientId,
+            NoteType = NoteType.ProgressNote,
+            NoteStatus = NoteStatus.Draft,
             SignedUtc = timestamp ? DateTime.UtcNow : null,
             SignatureHash = timestamp ? null : "synthetic-signature",
             ContentJson = JsonSerializer.Serialize(history)
@@ -61,7 +63,8 @@ public sealed class ProgressActivityWriteValidatorTests
         await db.SaveChangesAsync();
         var payload = new NoteWorkspaceV2Payload
         {
-            NoteType = targetType, SeedContext = new() { SourceNoteId = source.Id },
+            NoteType = targetType,
+            SeedContext = new() { SourceNoteId = source.Id },
             ProgressQuestionnaire = new() { Activities = new() { Baseline = [activity] } }
         };
         var errors = await ProgressActivityWriteValidator.PrepareAsync(db,

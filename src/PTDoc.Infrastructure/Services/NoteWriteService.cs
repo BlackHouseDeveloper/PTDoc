@@ -47,11 +47,13 @@ public sealed class NoteWriteService(
         string normalizedContentJson;
         try
         {
+            DailyQuestionnaireDefinition.ValidateJsonWrite(null, request.ContentJson);
             normalizedContentJson = NormalizeContentJson(
                 request.NoteType,
                 request.IsReEvaluation,
                 request.DateOfService,
                 request.ContentJson);
+            DailyQuestionnaireDefinition.ValidateJsonWrite(request.ContentJson, normalizedContentJson);
             normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(db, null, request.PatientId, noteId, normalizedContentJson, ct);
         }
         catch (InvalidOperationException ex)
@@ -201,6 +203,7 @@ public sealed class NoteWriteService(
             throw new ArgumentException("TotalMinutes must be zero or greater.", nameof(request.TotalMinutes));
         }
 
+        DailyQuestionnaireDefinition.ValidateJsonWrite(note.ContentJson, request.ContentJson ?? note.ContentJson);
         ProgressActivityTracking.ValidateJsonWrite(note.ContentJson, request.ContentJson ?? note.ContentJson);
         var effectiveDateOfService = request.DateOfService ?? note.DateOfService;
         var normalizedContentJson = NormalizeContentJson(
@@ -208,6 +211,7 @@ public sealed class NoteWriteService(
             note.IsReEvaluation,
             effectiveDateOfService,
             request.ContentJson ?? note.ContentJson);
+        DailyQuestionnaireDefinition.ValidateJsonWrite(request.ContentJson ?? note.ContentJson, normalizedContentJson);
         normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(db, note, note.PatientId, note.Id, normalizedContentJson, ct);
         var isDryNeedling = IsDryNeedlingContent(
             note.NoteType,

@@ -2144,6 +2144,221 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
     {
         public Guid? GetCurrentClinicId() => null;
     }
+    [Theory]
+    [InlineData(NoteType.Daily, false, false)]
+    [InlineData(NoteType.Daily, true, false)]
+    [InlineData(NoteType.ProgressNote, false, false)]
+    [InlineData(NoteType.Daily, true, true)]
+    public async Task DailyQuestionnaire_RejectsOmissionAcrossTypesAndVariants_AndInvalidDryNeedlingAnswers(
+        NoteType requestedType, bool dryNeedling, bool invalidVersion)
+    {
+        var patient = new Patient { FirstName = "Synthetic", LastName = "Retention" };
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            DailyTreatment = new() { Questionnaire = new() { HepAdherence = "Daily" } }
+        };
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            ContentJson = JsonSerializer.Serialize(payload),
+            DateOfService = new DateTime(2026, 11, 6),
+            LastModifiedUtc = new DateTime(2026, 11, 6, 12, 0, 0, DateTimeKind.Utc)
+        };
+        _context.AddRange(patient, note);
+        await _context.SaveChangesAsync();
+        var originalJson = note.ContentJson;
+        var originalModified = note.LastModifiedUtc;
+        payload.DailyTreatment.Questionnaire = invalidVersion ? new() { Version = 99 } : null;
+        payload.DryNeedling = dryNeedling ? new() : null;
+
+        var response = await _service.SaveAsync(new()
+        {
+            PatientId = patient.Id,
+            NoteId = note.Id,
+            NoteType = requestedType,
+            DateOfService = note.DateOfService,
+            ExpectedLastModifiedUtc = originalModified,
+            Payload = payload
+        });
+
+        Assert.False(response.IsValid);
+        Assert.Contains(response.Errors, error => error.Contains(invalidVersion ? "version" : "compatible client"));
+        Assert.Equal(originalJson, note.ContentJson);
+        Assert.Equal(originalModified, note.LastModifiedUtc);
+        Assert.Equal(NoteType.Daily, note.NoteType);
+        Assert.False(_context.ChangeTracker.HasChanges());
+        Assert.Equal(originalJson, (await _context.ClinicalNotes.AsNoTracking().SingleAsync()).ContentJson);
+    }
+
+    [Theory]
+    [InlineData("omit", NoteType.Daily)]
+    [InlineData("add", NoteType.Daily)]
+    [InlineData("score", NoteType.Daily)]
+    [InlineData("type", NoteType.Daily)]
+    [InlineData("timestamp", NoteType.Daily)]
+    [InlineData("duplicate", NoteType.Daily)]
+    [InlineData("omit", NoteType.ProgressNote)]
+    public async Task DailyOutcomes_RejectChangesBeforeMutatingTrackedNoteOrEvidence(string change, NoteType requestedType)
+    {
+        var patient = new Patient { FirstName = "Synthetic", LastName = "Outcomes" };
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            ContentJson = "{}",
+            DateOfService = new DateTime(2026, 11, 6),
+            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-1)
+        };
+        var recorded = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        var clinician = Guid.NewGuid();
+        var first = new OutcomeMeasureResult { PatientId = patient.Id, NoteId = note.Id, MeasureType = OutcomeMeasureType.LEFS, Score = 44, DateRecorded = recorded, ClinicianId = clinician };
+        var second = new OutcomeMeasureResult { PatientId = patient.Id, NoteId = note.Id, MeasureType = OutcomeMeasureType.LEFS, Score = 50, DateRecorded = recorded, ClinicianId = clinician };
+        var metric = new ObjectiveMetric { NoteId = note.Id, BodyPart = BodyPart.Knee, MetricType = MetricType.ROM, Value = "90" };
+        _context.AddRange(patient, note, first, second, metric);
+        await _context.SaveChangesAsync();
+        var originalModified = note.LastModifiedUtc;
+        var payload = new NoteWorkspaceV2Payload
+        {
+            Objective = new()
+            {
+                OutcomeMeasures =
+                [
+                    new() { MeasureType = first.MeasureType, Score = first.Score, RecordedAtUtc = recorded },
+                    new() { MeasureType = second.MeasureType, Score = second.Score, RecordedAtUtc = recorded }
+                ]
+            }
+        };
+        var entries = payload.Objective.OutcomeMeasures;
+        switch (change)
+        {
+            case "omit": entries.Clear(); break;
+            case "add": entries.Add(new() { MeasureType = OutcomeMeasureType.LEFS, Score = 55, RecordedAtUtc = recorded }); break;
+            case "score": entries[0].Score++; break;
+            case "type": entries[0].MeasureType = OutcomeMeasureType.QuickDASH; break;
+            case "timestamp": entries[0].RecordedAtUtc = recorded.AddTicks(1); break;
+            case "duplicate": entries[1].Score = first.Score; break;
+        }
+
+        var response = await _service.SaveAsync(new()
+        {
+            PatientId = patient.Id,
+            NoteId = note.Id,
+            NoteType = requestedType,
+            DateOfService = note.DateOfService,
+            ExpectedLastModifiedUtc = originalModified,
+            Payload = payload
+        });
+
+        Assert.False(response.IsValid);
+        Assert.Contains(response.Errors, error => error.Contains("read-only"));
+        Assert.Equal("{}", note.ContentJson);
+        Assert.Equal(NoteType.Daily, note.NoteType);
+        Assert.Equal(originalModified, note.LastModifiedUtc);
+        Assert.False(_context.ChangeTracker.HasChanges());
+        await _context.SaveChangesAsync(); // A later save in the same context must not persist a rejected edit.
+        var outcomes = await _context.OutcomeMeasureResults.AsNoTracking().OrderBy(result => result.Score).ToListAsync();
+        Assert.Equal(new[] { first.Id, second.Id }, outcomes.Select(result => result.Id));
+        Assert.Equal(new[] { 44d, 50d }, outcomes.Select(result => result.Score));
+        Assert.All(outcomes, result => { Assert.Equal(clinician, result.ClinicianId); Assert.Equal(recorded, result.DateRecorded); });
+        Assert.Equal("90", (await _context.ObjectiveMetrics.AsNoTracking().SingleAsync()).Value);
+    }
+
+    [Fact]
+    public async Task DailyOutcomes_RejectNewResultOnCreate()
+    {
+        var patient = new Patient { FirstName = "Synthetic", LastName = "NewDaily" };
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var response = await _service.SaveAsync(new()
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            DateOfService = new DateTime(2026, 11, 6),
+            Payload = new() { Objective = new() { OutcomeMeasures = [new() { MeasureType = OutcomeMeasureType.LEFS, Score = 44, RecordedAtUtc = DateTime.UtcNow }] } }
+        });
+        Assert.False(response.IsValid);
+        Assert.Contains(response.Errors, error => error.Contains("read-only"));
+        Assert.Empty(_context.ClinicalNotes);
+        Assert.Empty(_context.OutcomeMeasureResults);
+        Assert.False(_context.ChangeTracker.HasChanges());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DailyOutcomes_UnchangedReorderedOrDuplicateHistoryRetainsOriginalRows(bool identicalEntries)
+    {
+        var patient = new Patient { FirstName = "Synthetic", LastName = "Historical" };
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.Daily,
+            DateOfService = new DateTime(2026, 11, 6),
+            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-1)
+        };
+        var recorded = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        var first = new OutcomeMeasureResult
+        {
+            PatientId = patient.Id,
+            NoteId = note.Id,
+            MeasureType = OutcomeMeasureType.VAS,
+            Score = 3,
+            DateRecorded = recorded,
+            ClinicianId = Guid.NewGuid()
+        };
+        var second = new OutcomeMeasureResult
+        {
+            PatientId = patient.Id,
+            NoteId = note.Id,
+            MeasureType = identicalEntries ? OutcomeMeasureType.VAS : OutcomeMeasureType.LEFS,
+            Score = identicalEntries ? 3 : 44,
+            DateRecorded = recorded,
+            ClinicianId = Guid.NewGuid()
+        };
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            Objective = new()
+            {
+                OutcomeMeasures =
+                [
+                    new() { MeasureType = first.MeasureType, Score = first.Score, RecordedAtUtc = recorded },
+                    new() { MeasureType = second.MeasureType, Score = second.Score, RecordedAtUtc = recorded }
+                ]
+            }
+        };
+        note.ContentJson = JsonSerializer.Serialize(payload);
+        _context.AddRange(patient, note, first, second);
+        await _context.SaveChangesAsync();
+        payload.Objective.OutcomeMeasures.Reverse();
+        payload.DailyTreatment.SubjectiveUpdate = "Unrelated draft edit";
+
+        var response = await _service.SaveAsync(new()
+        {
+            PatientId = patient.Id,
+            NoteId = note.Id,
+            NoteType = NoteType.Daily,
+            DateOfService = note.DateOfService,
+            ExpectedLastModifiedUtc = note.LastModifiedUtc,
+            Payload = payload
+        });
+
+        Assert.True(response.IsValid, string.Join("; ", response.Errors));
+        var rows = await _context.OutcomeMeasureResults.AsNoTracking().ToDictionaryAsync(result => result.Id);
+        Assert.Equal(2, rows.Count);
+        foreach (var original in new[] { first, second })
+        {
+            var persisted = rows[original.Id];
+            Assert.Equal(original.ClinicianId, persisted.ClinicianId);
+            Assert.Equal(original.Score, persisted.Score);
+            Assert.Equal(original.MeasureType, persisted.MeasureType);
+            Assert.Equal(recorded, persisted.DateRecorded);
+        }
+        Assert.Equal("Unrelated draft edit", response.Workspace!.Payload.DailyTreatment.SubjectiveUpdate);
+    }
+
     [Fact]
     public async Task DailyQuestionnaire_SaveReloadKeepsEveryAnswerAndHistoricalOutcomeProvenance()
     {

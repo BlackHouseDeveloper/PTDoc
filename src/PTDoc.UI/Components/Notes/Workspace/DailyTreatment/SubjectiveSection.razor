@@ -24,7 +24,7 @@
                 <div data-question-id="current-pain" data-reference-number="3" class="daily-question-group">
                     <label class="daily-subjective__label" for="daily-current-pain">@DailyQuestionnaireDefinition.CurrentPain.Label</label>
                     <input id="daily-current-pain" class="daily-question-input" type="number" min="0" max="10" disabled="@ReadOnly"
-                           value="@(_vm.IsPainScoreDocumented ? _vm.CurrentPainScore.ToString() : string.Empty)" @oninput="UpdateCurrentPain" />
+                           value="@((_vm.IsPainScoreDocumented || _vm.CurrentPainScore > 0) ? _vm.CurrentPainScore.ToString() : string.Empty)" @oninput="UpdateCurrentPain" />
                     <div class="daily-question-pain-range">
                         <label>Best<input class="daily-question-input" type="number" min="0" max="10" disabled="@ReadOnly" @bind="_vm.BestPainScore" @bind:after="NotifySubjectiveAsync" /></label>
                         <label>Worst<input class="daily-question-input" type="number" min="0" max="10" disabled="@ReadOnly" @bind="_vm.WorstPainScore" @bind:after="NotifySubjectiveAsync" /></label>

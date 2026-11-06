@@ -245,15 +245,13 @@ public sealed class NoteWorkspaceV2Service(
             return new NoteWorkspaceV2SaveResponse { IsValid = false, Errors = progressErrors };
 
         var interventionErrors = NormalizeAndValidateInterventions(payload);
-        if (request.NoteType == NoteType.Daily && payload.DryNeedling is null)
+        try
         {
-            interventionErrors.AddRange(DailyQuestionnaireDefinition.Validate(payload.DailyTreatment.Questionnaire));
-            if (note is not null && payload.DailyTreatment.Questionnaire is null)
-            {
-                var existingPayload = await DeserializePayloadAsync(note, cancellationToken);
-                if (existingPayload.Payload.DailyTreatment?.Questionnaire is not null)
-                    interventionErrors.Add("Reload this Daily note in a compatible client to preserve its versioned questionnaire.");
-            }
+            DailyQuestionnaireDefinition.ValidateJsonWrite(note?.ContentJson, JsonSerializer.Serialize(payload, SerializerOptions));
+        }
+        catch (InvalidOperationException ex)
+        {
+            interventionErrors.Add(ex.Message);
         }
         if (interventionErrors.Count > 0)
         {
@@ -421,6 +419,10 @@ public sealed class NoteWorkspaceV2Service(
                 .ToListAsync(cancellationToken);
 
         var nonSelectableOutcomeErrors = GetNonSelectableOutcomeMeasureErrors(payload.Objective.OutcomeMeasures, existingOutcomeResults);
+        // Guard the saved type too: changing the requested type must not bypass history retention.
+        var preserveDailyOutcomes = note?.NoteType == NoteType.Daily || request.NoteType == NoteType.Daily;
+        if (preserveDailyOutcomes && !HaveSameOutcomeMeasures(payload.Objective.OutcomeMeasures, existingOutcomeResults))
+            nonSelectableOutcomeErrors.Add("Daily outcome measures are historical and read-only. Reload the saved results before saving.");
         if (nonSelectableOutcomeErrors.Count > 0)
         {
             saveResponse.IsValid = false;
@@ -474,7 +476,8 @@ public sealed class NoteWorkspaceV2Service(
         }
 
         await SyncObjectiveMetricsAsync(note, payload, cancellationToken);
-        await SyncOutcomeMeasuresAsync(note, clinicId, currentUserId, payload, existingOutcomeResults);
+        if (!preserveDailyOutcomes)
+            await SyncOutcomeMeasuresAsync(note, clinicId, currentUserId, payload, existingOutcomeResults);
         await SyncPatientGoalsAsync(note, clinicId, payload, cancellationToken);
 
         if (request.Override is not null)
@@ -1602,21 +1605,6 @@ public sealed class NoteWorkspaceV2Service(
             throw new InvalidOperationException(string.Join(" ", nonSelectableOutcomeErrors));
         }
 
-        // Daily's historical outcomes are displayed read-only. An unrelated draft edit
-        // must not replace their IDs or original recording clinician.
-        if (note.NoteType == NoteType.Daily && existingResults.Count == payload.Objective.OutcomeMeasures.Count)
-        {
-            var remaining = existingResults.ToList();
-            foreach (var entry in payload.Objective.OutcomeMeasures)
-            {
-                var match = remaining.FirstOrDefault(result => result.MeasureType == entry.MeasureType
-                    && result.Score == entry.Score && result.DateRecorded == entry.RecordedAtUtc);
-                if (match is null) break;
-                remaining.Remove(match);
-            }
-            if (remaining.Count == 0) return Task.CompletedTask;
-        }
-
         db.OutcomeMeasureResults.RemoveRange(existingResults);
 
         foreach (var entry in payload.Objective.OutcomeMeasures)
@@ -1634,6 +1622,15 @@ public sealed class NoteWorkspaceV2Service(
         }
 
         return Task.CompletedTask;
+    }
+
+    private static bool HaveSameOutcomeMeasures(
+        IReadOnlyCollection<OutcomeMeasureEntryV2> entries,
+        IReadOnlyCollection<OutcomeMeasureResult> existingResults)
+    {
+        if (entries.Count != existingResults.Count) return false;
+        var remaining = existingResults.ToList();
+        return entries.All(entry => ConsumeMatchingHistoricalResult(remaining, entry));
     }
 
     private List<string> GetNonSelectableOutcomeMeasureErrors(
