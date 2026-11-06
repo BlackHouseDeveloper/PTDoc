@@ -32,3 +32,9 @@ PRs 176, 187 and 180 remain open until the replacement layer is accepted; their 
 - Full CoreCi discovery/run: 2,379 passed out of 2,380; the old Progress catalog test fixture omitted its knee body-region context. Retain the already-corrected fixture from the combined implementation, without changing production behavior.
 - Final affected-suite rerun: **256/256 PASS**, including the previously failing catalog case, Daily/Progress, encounter HTTP validation, workspace, note UI and PDF coverage. No test assertion or timeout was weakened.
 - Original feedback: PR 176 has none; PR 187 has three unique actionable findings. The signature predicate, first-save baseline and HTTP 422 fixes and regressions are included. Review-summary bullets duplicate those findings. Threads remain unchanged.
+
+### Layer 2 — visit-specific intake
+
+- Release test-project build: PASS, zero warnings/errors.
+- Intake, note-workspace service/page and Progress activity regressions: **581/581 PASS**, zero skipped. Includes API/OTP scoping, short-visit validation, partial saves, consent, matching-note copying and keyboard model stability.
+- No `PatientOutcomes`, outcome persistence/projection or patient measure component is introduced in this layer. Clinical outcome collection remains unavailable.

@@ -9,11 +9,15 @@
 .pain-progress__labels {
     display: grid;
     gap: var(--spacing-2);
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.pain-progress__labels--short {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .pain-progress__labels span {
-    color: color-mix(in srgb, var(--muted-foreground) 60%, transparent);
+    color: var(--muted-foreground);
     font-size: var(--text-sm);
     line-height: var(--line-height-normal);
     text-align: center;
@@ -58,4 +62,26 @@
 
 .pain-progress__fill--5 {
     width: 100%;
+}
+
+.pain-progress__fill--half {
+    width: 50%;
+}
+
+@media (max-width: 767px) {
+    .pain-progress__labels:not(.pain-progress__labels--short) {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .pain-progress__labels:not(.pain-progress__labels--short) span:not(.is-active) {
+        display: none;
+    }
+
+    .pain-progress__labels:not(.pain-progress__labels--short) .is-active {
+        text-align: start;
+    }
+
+    .pain-progress__labels:not(.pain-progress__labels--short) .is-active::before {
+        content: attr(data-step-label);
+    }
 }
