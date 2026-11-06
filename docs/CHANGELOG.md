@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 163 previously missed review findings
+
+- Add the encounter intake read and encounter seed routes to the authoritative RBAC inventory, including both seed policies, and compare their inventory entries against live endpoint authorization metadata.
+- Exclude encounter-bound intakes from legacy offline sync downloads until the local model and write protocol support encounter identity and versioned writes. Preserve patient-wide sync and server-side rejection of legacy encounter writes; do not delete cached local edits.
+- Add six regression cases for endpoint policy metadata and full/incremental sync exclusion, and refresh the complete PR 163 review classification. Verification awaits user execution.
+
+### Fixed - PR 163 encounter intake review follow-up
+
+- Keep legacy Evaluation/Re-evaluation note creation from locking another encounter's unfinished intake; retain patient-wide legacy draft locking.
+- Discard obsolete intake submit, profile acceptance/reload and refresh completions after encounter navigation, including errors and version/busy-state updates. Preserve patient-link routing and submission.
+- Initialize encounter intake demographic provenance so submitted corrections update unchanged chart fields while preserving intervening chart edits.
+- Add 21 regression cases across API, service and wizard tests, and record the complete nine-finding review classification in `docs/client-review/plan-08.md`. Builds and tests await user execution; no schema changes are needed.
+
+### Changed - Plan 08 branch synchronization
+
+- Restore a fully linear Plan 08 review stack on current main, replacing the merge-based synchronization that blocked GitHub native stacks. Retain both changelog histories and main's deployment-test scheduling and result-artifact settings; application code, clinical definitions, schema migrations and regression tests are unchanged. Native-stack CI and merge requirements follow the stack base.
+
 ### Fixed - Restore the deployment fix to main after PR 161
 
 - Diagnose Deploy Beta run `42026288423` at `a787e848`: 2,817 tests passed and six unrelated HTTP cases hit the same clustered 100-second timeout. The previously verified deployment fix remained in draft PR 199 and was absent from main; update that PR onto the subscription merge while preserving both changelog histories. The user authorized the complete repair, publication, migration and deployment workflow.
@@ -19,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.github/workflows/deploy-beta.yml`** — Run the complete deployment test suite with xUnit collection parallelism disabled after run `41752480381` failed with clustered 100-second HTTP timeouts in changing test sets (eight failures initially, four on the completed retry). Preserve all tests, assertions, HTTP timeouts and deployment gates; retain the TRX report even when the test step fails.
 - With explicit operator approval, rehearse the committed SQL Server `20261103030000_AddOrganizationMemberships` migration on a temporary Basic-tier database copy, then apply it during a controlled beta stop/start. Verify hashes of existing clinic, user, patient, note, signature, appointment, schedule-block and session data, membership backfill and database constraints. Both rehearsal and live checks passed, and API/Web readiness recovered. Remove the temporary IP-only SQL firewall rule and, after successful deployment verification, delete the recovery copy.
 - **Deploy Beta run `41775391240`** — Successfully deploy source `5ac1e92b04469f594a0b7aa40f9da1102a4b3167` as release `beta-31-1` to both apps. All 2,717 tests passed in 7 minutes 27 seconds, with no failures or skips. API health, all four seeded-role sign-ins, authenticated source/release parity, Web health, shared CSS and WebSockets negotiation passed. Independent live checks confirmed HTTP 200 for both apps' liveness/readiness and shared CSS, plus advertised WebSockets. The fix was committed/pushed with explicit permission before local build/test confirmation; no local .NET build/test commands were run.
+
+### Fixed - PR 163 encounter intake review
+
+- Resolve the 12 conflicts merging the rebased PR head into the local Plan 08 branch, retain the newer Plan 07 provenance/reconciliation safeguards alongside encounter intake, and remove five duplicated intake tests introduced by automatic merging. Integrate the reviewed fixes into the original checkout.
+- Enforce patient ownership when reading encounter intake and require both note-read and intake-read permission for encounter seed responses.
+- Keep delayed wizard saves from replacing another encounter's intake identity/version, clearing its dirty state or displaying the prior encounter's save error. Recreate the invite modal when its patient/encounter changes.
+- Normalize PostgreSQL encounter intake answer versions to stored microsecond precision while retaining exact stale-write checks and sync-only acknowledgement behavior.
+- Add 12 regression cases covering ownership, seven reader roles, delayed save success/failure, invite switching and real PostgreSQL save/save/submit with a deterministic sub-microsecond clock. Record the complete five-finding classification and duplicate review-summary references in `docs/client-review/plan-08.md`; no schema change.
+- Refresh the complete review audit against `2a0f8a8`: all five findings are already addressed, all threads are resolved, and no suppressed or Previously missed findings are exposed by GitHub. Mark the earlier pending statuses as historical, retain exact verification commands, and distinguish reported prior test success from this documentation-only refresh, which did not rerun builds/tests.
 
 ### Fixed - PR 161 CodeQL webhook size-check finding
 
@@ -334,10 +360,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Return an explicit authentication denial for cross-site renewal requests, retaining the no-renewal/no-API-call guard and matching other session denials.
 
 - Repaired the reproduced active Web-session renewal gap with trusted-input renewal, current API session/identity validation, protected idle/absolute expiry, changed-user protection and explicit recovery notices. Added controlled-clock and browser-event regressions; updated the 36-PR tracker with actual branches, stacks, verification and merge checkpoints. Archived source Markdown hard breaks were normalized without changing requirements.
+### Fixed - Plan 08 CI follow-up
+
+- Preserve the existing note-template index when downgrading encounter intake on SQL Server; add provider-operation regressions and correct Infrastructure formatting.
 
 ### Changed - Client review Plan 07
 
 - Prefilled new intakes with clinic-scoped patient contact data and coherent primary/secondary policy values through both creation routes. Older editable drafts now offer explicit blank-field prefill; existing answers, submitted records and unknown response fields are retained. Added synthetic service, component and API coverage; no schema migration.
+### Changed - Client review Plan 08
+
+- Added note-bound Evaluation/Re-evaluation intake with fresh profile-only seeds, immutable definition and optimistic concurrency, exact-record patient links, explicit matching-note subjective copy, and additive three-provider migrations. Prevented sync-only acknowledgements from invalidating answer versions. Daily, Progress and Discharge integration remain draft dependency/content work.
 
 ### Planning - Client review Plan 05
 

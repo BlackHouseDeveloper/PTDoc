@@ -1335,9 +1335,11 @@ public class SyncEngine : ISyncEngine
 
         if (effectiveTypes.Contains("IntakeForm", StringComparer.OrdinalIgnoreCase))
         {
+            // Legacy offline drafts cannot preserve encounter identity or perform
+            // versioned encounter writes. Keep those forms on the encounter API.
             var intakeForms = await _context.IntakeForms
                 .AsNoTracking()
-                .Where(i => i.LastModifiedUtc > effectiveSince)
+                .Where(i => i.EncounterNoteId == null && i.LastModifiedUtc > effectiveSince)
                 .ToListAsync(cancellationToken);
 
             foreach (var i in intakeForms)
@@ -1351,6 +1353,9 @@ public class SyncEngine : ISyncEngine
                     {
                         i.Id,
                         i.PatientId,
+                        i.EncounterNoteId,
+                        i.QuestionnaireDefinitionId,
+                        i.EncounterIsReEvaluation,
                         i.IsLocked,
                         i.ResponseJson,
                         i.StructuredDataJson,
@@ -1737,6 +1742,9 @@ public class SyncEngine : ISyncEngine
                 {
                     intake.Id,
                     intake.PatientId,
+                    intake.EncounterNoteId,
+                    intake.QuestionnaireDefinitionId,
+                    intake.EncounterIsReEvaluation,
                     intake.IsLocked,
                     intake.ResponseJson,
                     intake.StructuredDataJson,
@@ -2409,6 +2417,9 @@ public class SyncEngine : ISyncEngine
             // Only apply draft-safe fields; IsLocked is never set from client push
             var existing = await _context.IntakeForms
                 .FirstOrDefaultAsync(i => i.Id == serverId, cancellationToken);
+
+            if (existing?.EncounterNoteId is not null || TryGetGuid(root, "encounterNoteId").HasValue || TryGetGuid(root, "EncounterNoteId").HasValue)
+                throw new InvalidOperationException("Encounter intake writes require the versioned intake endpoint; legacy sync cannot edit or create them.");
 
             if (existing is null)
             {

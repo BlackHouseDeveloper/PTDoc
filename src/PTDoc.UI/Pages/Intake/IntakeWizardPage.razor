@@ -95,6 +95,20 @@
                                     data-testid="intake-reload-saved" @onclick="ReloadSavedProfileAsync">Reload saved intake</button>
                         </section>
                     }
+                    @if (State.EncounterNoteId.HasValue)
+                    {
+                        <section class="intake-page__notice" role="status">
+                            <p>@(State.EncounterIsReEvaluation ? "Re-evaluation intake" : "Evaluation intake") — answers belong to this visit.</p>
+                            @if (State.QuestionnaireDefinitionId != IntakeQuestionnaireDefinitions.EvaluationFullV1)
+                            {
+                                <p>This questionnaire version is available for review only.</p>
+                            }
+                            @if (!State.IsPatientMode && CanEditDraft)
+                            {
+                                <button type="button" class="btn btn--secondary" @onclick="() => _showEncounterInvite = true">Send intake link</button>
+                            }
+                        </section>
+                    }
                     @if (ShouldShowPageFeedback)
                     {
                         <section class="intake-page__notice" role="alert" data-testid="intake-page-feedback">
@@ -191,8 +205,24 @@
     </div>
 </div>
 
+@if (!State.IsPatientMode && State.EncounterNoteId.HasValue)
+{
+    <SendIntakeModal @key="(State.PatientId, State.EncounterNoteId)" @bind-IsOpen="_showEncounterInvite"
+                     InitialPatientId="@(State.PatientId?.ToString())"
+                     EncounterNoteId="@State.EncounterNoteId"
+                     AvailablePatients="@EncounterPatientOptions" />
+}
+
 @code {
     [Parameter] public Guid? PatientId { get; set; }
+    [SupplyParameterFromQuery(Name = "noteId")] public Guid? NoteId { get; set; }
+    private Guid? _loadedNoteId;
+    private long _loadGeneration;
+    private Guid? EffectiveNoteId => State.IsPatientMode ? null : NoteId;
+    private bool _showEncounterInvite;
+    private List<SendIntakeModal.PatientOption> EncounterPatientOptions => State.PatientId is { } id
+        ? [new() { Id = id.ToString(), Name = State.FullName ?? "Patient", Email = State.EmailAddress, PhoneNumber = State.PhoneNumber }]
+        : [];
     [SupplyParameterFromQuery(Name = "mode")] public string? Mode { get; set; }
 
     private IntakeWizardState State { get; set; } = new();
@@ -218,7 +248,8 @@
     private bool ShowMissingPatientContext => State.IsPatientMode && !PatientId.HasValue && !State.PatientId.HasValue;
     private bool ShouldShowWizard => PatientId.HasValue || State.PatientId.HasValue;
     private bool CanViewOutcomeMeasureRecommendations => !State.IsPatientMode && _canViewOutcomeMeasureRecommendations;
-    private bool CanEditDraft => !_profileReloadRequired && !State.IsLocked && (State.IsPatientMode || _canManageDrafts);
+    private bool CanEditDraft => !_profileReloadRequired && !State.IsLocked && (State.IsPatientMode || _canManageDrafts) &&
+        (!State.EncounterNoteId.HasValue || State.QuestionnaireDefinitionId == IntakeQuestionnaireDefinitions.EvaluationFullV1);
     private bool CanMarkIntakeReviewed =>
         _canMarkIntakeReviewed &&
         !State.IsPatientMode &&
@@ -294,7 +325,9 @@
                 IsPatientMode = State.IsPatientMode
             };
 
+            _loadGeneration++;
             _loadedPatientId = null;
+            _loadedNoteId = null;
             ClearDraftUnavailableState();
             _validationMessage = null;
             _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -303,17 +336,25 @@
 
     private async Task LoadDraftAsync(Guid patientId)
     {
-        if (_loadedPatientId == patientId)
+        if (_loadedPatientId == patientId && _loadedNoteId == EffectiveNoteId)
         {
             return;
         }
 
+        var requestedNoteId = EffectiveNoteId;
+        var requestedPatientMode = State.IsPatientMode;
+        var generation = ++_loadGeneration;
+        bool IsCurrent() => generation == _loadGeneration && PatientId == patientId && EffectiveNoteId == requestedNoteId;
         _isLoadingDraft = true;
+        _isSavingDraft = false;
         _profileReloadRequired = false;
         IntakeResponseDraft? draft;
         try
         {
-            draft = await IntakeService.GetLatestByPatientIdAsync(patientId);
+            draft = requestedNoteId is { } noteId
+                ? await IntakeService.GetForNoteAsync(patientId, noteId)
+                : await IntakeService.GetLatestByPatientIdAsync(patientId);
+            if (!IsCurrent()) return;
 
             if (draft is null)
             {
@@ -327,13 +368,16 @@
                             detail: "Ask a PT, PTA, Admin, or Front Desk user to start the intake workflow.");
                         InitializeBlankState(patientId);
                         _loadedPatientId = patientId;
+                        _loadedNoteId = requestedNoteId;
                         return;
                     }
 
                     var ensureResult = await IntakeService.EnsureDraftAsync(patientId, new IntakeResponseDraft
                     {
-                        PatientId = patientId
+                        PatientId = patientId,
+                        EncounterNoteId = requestedNoteId
                     });
+                    if (!IsCurrent()) return;
 
                     if (ensureResult.Status is IntakeEnsureDraftStatus.Created or IntakeEnsureDraftStatus.Existing)
                     {
@@ -341,7 +385,10 @@
                     }
                     else if (ensureResult.Status == IntakeEnsureDraftStatus.Locked)
                     {
-                        draft = await IntakeService.GetLatestByPatientIdAsync(patientId);
+                        draft = requestedNoteId is { } lockedNoteId
+                            ? await IntakeService.GetForNoteAsync(patientId, lockedNoteId)
+                            : await IntakeService.GetLatestByPatientIdAsync(patientId);
+                        if (!IsCurrent()) return;
                         if (draft is not null && (draft.IsLocked || draft.IsSubmitted))
                         {
                             ClearDraftUnavailableState();
@@ -354,6 +401,7 @@
                                 detail: "This patient already has a locked intake record, but the submitted intake could not be loaded for review.");
                             InitializeBlankState(patientId);
                             _loadedPatientId = patientId;
+                            _loadedNoteId = requestedNoteId;
                             return;
                         }
                     }
@@ -365,6 +413,7 @@
                             detail: "Select a different patient or refresh the patient list and try again.");
                         InitializeBlankState(patientId);
                         _loadedPatientId = patientId;
+                        _loadedNoteId = requestedNoteId;
                         return;
                     }
                 }
@@ -376,6 +425,7 @@
                         detail: "If you received this link by email or text, contact your care provider for a new intake invitation.");
                     InitializeBlankState(patientId);
                     _loadedPatientId = patientId;
+                    _loadedNoteId = requestedNoteId;
                     return;
                 }
             }
@@ -388,14 +438,17 @@
             }
 
             IntakeSupplementalSelectionCanonicalizer.Canonicalize(State, IntakeReferenceData);
-            State.IsPatientMode = string.Equals(Mode, "patient", StringComparison.OrdinalIgnoreCase) || State.IsPatientMode;
+            State.IsPatientMode = requestedPatientMode;
 
             _loadedPatientId = patientId;
+
+            _loadedNoteId = requestedNoteId;
             _validationMessage = null;
             _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
         }
         catch (HttpRequestException ex)
         {
+            if (!IsCurrent()) return;
             var message = ToUserFacingApiError(ex);
             SetDraftUnavailableState(
                 title: "Unable to Load Intake",
@@ -406,9 +459,11 @@
             ToastService.ShowError(message, "Intake load failed");
             InitializeBlankState(patientId);
             _loadedPatientId = patientId;
+            _loadedNoteId = requestedNoteId;
         }
         catch (Exception)
         {
+            if (!IsCurrent()) return;
             const string message = "We could not load this intake right now.";
             SetDraftUnavailableState(
                 title: "Unable to Load Intake",
@@ -419,10 +474,11 @@
             ToastService.ShowError(message, "Intake load failed");
             InitializeBlankState(patientId);
             _loadedPatientId = patientId;
+            _loadedNoteId = requestedNoteId;
         }
         finally
         {
-            _isLoadingDraft = false;
+            if (generation == _loadGeneration) _isLoadingDraft = false;
         }
     }
 
@@ -468,21 +524,24 @@
         State.CurrentStep = IntakeStep.PainAssessment;
         State.IsDirty = true;
 
+        var savingState = State;
+        var generation = _loadGeneration;
         try
         {
             _isSavingDraft = true;
-            await IntakeService.SaveDraftAsync(ToPersistenceDraft());
-            State.IsDirty = false;
+            await PersistDraftAsync();
+            if (IsCurrentIntakeOperation(savingState, generation)) savingState.IsDirty = false;
         }
         catch (HttpRequestException ex)
         {
+            if (!IsCurrentIntakeOperation(savingState, generation)) return;
             var message = ToUserFacingApiError(ex);
             _validationMessage = message;
             ToastService.ShowError(message, "Draft save failed");
         }
         finally
         {
-            _isSavingDraft = false;
+            if (generation == _loadGeneration) _isSavingDraft = false;
         }
     }
 
@@ -597,11 +656,15 @@
             return;
         }
 
+        var submittingState = State;
+        var generation = _loadGeneration;
         State.IsSubmitting = true;
+        var submittedDraft = ToPersistenceDraft();
 
         try
         {
-            await IntakeService.SubmitAsync(ToPersistenceDraft());
+            await IntakeService.SubmitAsync(submittedDraft);
+            if (!IsCurrentIntakeOperation(submittingState, generation)) return;
             State.IsDirty = false;
             State.IsSubmitted = true;
             State.IsLocked = true;
@@ -611,41 +674,69 @@
         }
         catch (HttpRequestException ex)
         {
+            if (!IsCurrentIntakeOperation(submittingState, generation)) return;
             var message = ToUserFacingApiError(ex);
             _validationMessage = message;
             ToastService.ShowError(message, "Intake submit failed");
         }
         catch (InvalidOperationException ex)
         {
+            if (!IsCurrentIntakeOperation(submittingState, generation)) return;
             var message = ex.Message;
             _validationMessage = message;
             ToastService.ShowError(message, "Intake submit failed");
         }
         finally
         {
-            State.IsSubmitting = false;
+            if (IsCurrentIntakeOperation(submittingState, generation))
+            {
+                State.LastModifiedUtc = submittedDraft.LastModifiedUtc;
+                State.IsSubmitting = false;
+            }
         }
     }
+
+    private async Task PersistDraftAsync()
+    {
+        var savingState = State;
+        var generation = _loadGeneration;
+        var draft = ToPersistenceDraft();
+        await IntakeService.SaveDraftAsync(draft);
+        if (!IsCurrentIntakeOperation(savingState, generation)) return;
+        savingState.IntakeId = draft.IntakeId;
+        savingState.LastModifiedUtc = draft.LastModifiedUtc;
+    }
+
+    private bool IsCurrentIntakeOperation(IntakeWizardState state, long generation)
+        => ReferenceEquals(State, state) && generation == _loadGeneration &&
+            PatientId == state.PatientId && (state.IsPatientMode || EffectiveNoteId == state.EncounterNoteId);
 
     private async Task RefreshProfileAsync()
     {
         if (!CanEditDraft || IsInteractionLocked || State.PatientId is null) return;
+        var refreshingState = State;
+        var generation = _loadGeneration;
         try
         {
             _isSavingDraft = true;
-            var current = await IntakeService.GetLatestByPatientIdAsync(State.PatientId.Value);
+            var current = EffectiveNoteId is { } noteId
+                ? await IntakeService.GetForNoteAsync(refreshingState.PatientId.Value, noteId)
+                : await IntakeService.GetLatestByPatientIdAsync(refreshingState.PatientId.Value);
+            if (!IsCurrentIntakeOperation(refreshingState, generation)) return;
             State.ProfilePrefill = current?.ProfilePrefill;
         }
         catch (HttpRequestException ex)
         {
-            _validationMessage = ToUserFacingApiError(ex);
+            if (IsCurrentIntakeOperation(refreshingState, generation)) _validationMessage = ToUserFacingApiError(ex);
         }
-        finally { _isSavingDraft = false; }
+        finally { if (generation == _loadGeneration) _isSavingDraft = false; }
     }
 
     private async Task ApplyProfileUpdateAsync(IntakeProfileAction action)
     {
         if (!CanEditDraft || IsInteractionLocked || State.ProfilePrefill is null || State.PatientId is null) return;
+        var updatingState = State;
+        var generation = _loadGeneration;
         try
         {
             _isSavingDraft = true;
@@ -655,30 +746,49 @@
             // reload may reconcile answers with the server-owned accepted provenance.
             _profileReloadRequired = true;
             await IntakeService.SaveDraftAsync(draft);
+            if (!IsCurrentIntakeOperation(updatingState, generation)) return;
             await ReloadSavedProfileCoreAsync();
         }
-        catch (HttpRequestException ex) { _validationMessage = ToUserFacingApiError(ex); }
-        catch (InvalidOperationException ex) { _validationMessage = ex.Message; }
-        finally { _isSavingDraft = false; }
+        catch (HttpRequestException ex)
+        {
+            if (IsCurrentIntakeOperation(updatingState, generation)) _validationMessage = ToUserFacingApiError(ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            if (IsCurrentIntakeOperation(updatingState, generation)) _validationMessage = ex.Message;
+        }
+        finally { if (generation == _loadGeneration) _isSavingDraft = false; }
     }
 
     private async Task ReloadSavedProfileAsync()
     {
         if (!_profileReloadRequired || _isSavingDraft || State.PatientId is null) return;
+        var reloadingState = State;
+        var generation = _loadGeneration;
         _isSavingDraft = true;
         try { await ReloadSavedProfileCoreAsync(); }
-        catch (HttpRequestException ex) { _validationMessage = ToUserFacingApiError(ex); }
-        catch (InvalidOperationException ex) { _validationMessage = ex.Message; }
-        finally { _isSavingDraft = false; }
+        catch (HttpRequestException ex)
+        {
+            if (IsCurrentIntakeOperation(reloadingState, generation)) _validationMessage = ToUserFacingApiError(ex);
+        }
+        catch (InvalidOperationException ex)
+        {
+            if (IsCurrentIntakeOperation(reloadingState, generation)) _validationMessage = ex.Message;
+        }
+        finally { if (generation == _loadGeneration) _isSavingDraft = false; }
     }
 
     private async Task ReloadSavedProfileCoreAsync()
     {
-        var patientMode = State.IsPatientMode;
-        var saved = await IntakeService.GetLatestByPatientIdAsync(State.PatientId!.Value)
-            ?? throw new InvalidOperationException("The saved intake could not be reloaded. Reload before continuing.");
+        var reloadingState = State;
+        var generation = _loadGeneration;
+        var saved = EffectiveNoteId is { } noteId
+            ? await IntakeService.GetForNoteAsync(reloadingState.PatientId!.Value, noteId)
+            : await IntakeService.GetLatestByPatientIdAsync(reloadingState.PatientId!.Value);
+        if (!IsCurrentIntakeOperation(reloadingState, generation)) return;
+        if (saved is null) throw new InvalidOperationException("The saved intake could not be reloaded. Reload before continuing.");
         State = FromDraft(saved);
-        State.IsPatientMode = patientMode;
+        State.IsPatientMode = reloadingState.IsPatientMode;
         State.IsDirty = false;
         _profileReloadRequired = false;
         _validationMessage = null;
@@ -761,20 +871,23 @@
 
         _isSavingDraft = true;
         State.IsDirty = true;
+        var savingState = State;
+        var generation = _loadGeneration;
         try
         {
-            await IntakeService.SaveDraftAsync(ToPersistenceDraft());
-            State.IsDirty = false;
+            await PersistDraftAsync();
+            if (IsCurrentIntakeOperation(savingState, generation)) savingState.IsDirty = false;
         }
         catch (HttpRequestException ex)
         {
+            if (!IsCurrentIntakeOperation(savingState, generation)) return;
             var message = ToUserFacingApiError(ex);
             _validationMessage = message;
             ToastService.ShowError(message, "Draft save failed");
         }
         finally
         {
-            _isSavingDraft = false;
+            if (generation == _loadGeneration) _isSavingDraft = false;
         }
     }
 
@@ -810,7 +923,9 @@
                 CurrentStep = IntakeStep.Demographics,
                 IsPatientMode = State.IsPatientMode
             };
+            _loadGeneration++;
             _loadedPatientId = null;
+            _loadedNoteId = null;
             ClearDraftUnavailableState();
             _validationMessage = null;
             _demographicsValidationErrors = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -867,6 +982,9 @@
         var draft = new IntakeResponseDraft
         {
             IntakeId = state.IntakeId,
+            EncounterNoteId = state.EncounterNoteId,
+            QuestionnaireDefinitionId = state.QuestionnaireDefinitionId,
+            EncounterIsReEvaluation = state.EncounterIsReEvaluation,
             ProfilePrefill = state.ProfilePrefill,
             PrefilledDemographics = state.PrefilledDemographics,
             OmitPrimaryPolicy = state.OmitPrimaryPolicy,
@@ -1005,6 +1123,9 @@
         return new IntakeWizardState
         {
             IntakeId = hydratedDraft.IntakeId,
+            EncounterNoteId = hydratedDraft.EncounterNoteId,
+            QuestionnaireDefinitionId = hydratedDraft.QuestionnaireDefinitionId,
+            EncounterIsReEvaluation = hydratedDraft.EncounterIsReEvaluation,
             ProfilePrefill = hydratedDraft.ProfilePrefill,
             PrefilledDemographics = hydratedDraft.PrefilledDemographics,
             OmitPrimaryPolicy = hydratedDraft.OmitPrimaryPolicy,

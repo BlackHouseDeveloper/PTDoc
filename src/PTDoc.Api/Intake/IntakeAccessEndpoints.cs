@@ -222,10 +222,20 @@ public static class IntakeAccessEndpoints
         [FromServices] IContactNormalizer contactNormalizer,
         CancellationToken cancellationToken)
     {
+        if (!TryReadAccessScope(httpContext, inviteOptions.Value, out var scope))
+        {
+            return Results.Unauthorized();
+        }
+        if (scope.PatientId.HasValue && scope.PatientId.Value != patientId)
+        {
+            return Results.Forbid();
+        }
+
         var intake = await db.IntakeForms
             .AsNoTracking()
             .Include(form => form.Patient)
-            .Where(form => form.PatientId == patientId && !form.IsLocked)
+            .Where(form => form.PatientId == patientId && !form.IsLocked
+                && (scope.IntakeId.HasValue ? form.Id == scope.IntakeId.Value : form.EncounterNoteId == null))
             .OrderByDescending(form => form.LastModifiedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -251,10 +261,20 @@ public static class IntakeAccessEndpoints
         [FromServices] IContactNormalizer contactNormalizer,
         CancellationToken cancellationToken)
     {
+        if (!TryReadAccessScope(httpContext, inviteOptions.Value, out var scope))
+        {
+            return Results.Unauthorized();
+        }
+        if (scope.PatientId.HasValue && scope.PatientId.Value != patientId)
+        {
+            return Results.Forbid();
+        }
+
         var intake = await db.IntakeForms
             .AsNoTracking()
             .Include(form => form.Patient)
-            .Where(form => form.PatientId == patientId)
+            .Where(form => form.PatientId == patientId
+                && (scope.IntakeId.HasValue ? form.Id == scope.IntakeId.Value : form.EncounterNoteId == null))
             .OrderByDescending(form => form.SubmittedAt ?? form.LastModifiedUtc)
             .ThenByDescending(form => form.LastModifiedUtc)
             .ThenByDescending(form => form.Id)
@@ -305,6 +325,11 @@ public static class IntakeAccessEndpoints
             return Results.Conflict(new { error = "Intake is locked and cannot be modified." });
         }
 
+        if (await IntakeEncounterRules.ValidateWriteAsync(db, intake, request.ExpectedLastModifiedUtc, cancellationToken) is { } encounterProblem)
+            return Results.Conflict(new { error = encounterProblem });
+        if (!IntakeEncounterRules.HasSupportedResponseVersion(intake, request.ResponseJson))
+            return Results.UnprocessableEntity(new { error = "The issued questionnaire version must be preserved." });
+
         if (!IntakeEndpoints.TryResolveStructuredData(
                 request.StructuredData,
                 request.PainMapData,
@@ -342,13 +367,13 @@ public static class IntakeAccessEndpoints
         }
         intake.PainMapData = painMapData;
         intake.Consents = normalizedConsents;
-        intake.ResponseJson = responseJson;
+        intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, responseJson);
         if (request.StructuredData is not null)
         {
             intake.StructuredDataJson = structuredDataJson;
         }
 
-        intake.TemplateVersion = string.IsNullOrWhiteSpace(request.TemplateVersion) ? intake.TemplateVersion : request.TemplateVersion;
+        // The issued template version belongs to this intake; answer updates cannot migrate it.
         intake.LastModifiedUtc = DateTime.UtcNow;
         intake.ModifiedByUserId = Guid.Empty;
         intake.SyncState = SyncState.Pending;
@@ -373,7 +398,8 @@ public static class IntakeAccessEndpoints
         [FromServices] IContactNormalizer contactNormalizer,
         [FromServices] IAuditService auditService,
         [FromServices] ISyncEngine syncEngine,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        [FromBody] SubmitIntakeRequest? request = null)
     {
         var intake = await db.IntakeForms
             .Include(form => form.Patient)
@@ -394,6 +420,9 @@ public static class IntakeAccessEndpoints
         {
             return Results.Conflict(new { error = "Intake is already locked." });
         }
+
+        if (await IntakeEncounterRules.ValidateWriteAsync(db, intake, request?.ExpectedLastModifiedUtc, cancellationToken) is { } encounterProblem)
+            return Results.Conflict(new { error = encounterProblem });
 
         if (!IntakeEndpoints.TryNormalizeConsents(
                 intake.Consents,
@@ -421,6 +450,7 @@ public static class IntakeAccessEndpoints
             intake.PatientId,
             intake.SubmittedAt.Value,
             intake.LastModifiedUtc);
+        intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, intake.ResponseJson);
         IntakeEndpoints.ApplySubmittedIntakePatientFields(intake);
 
         try { await db.SaveChangesAsync(cancellationToken); }
@@ -452,6 +482,11 @@ public static class IntakeAccessEndpoints
         }
 
         if (scope.PatientId.HasValue && scope.PatientId.Value != intake.PatientId)
+        {
+            return Results.Forbid();
+        }
+
+        if (!scope.IntakeId.HasValue && intake.EncounterNoteId.HasValue)
         {
             return Results.Forbid();
         }

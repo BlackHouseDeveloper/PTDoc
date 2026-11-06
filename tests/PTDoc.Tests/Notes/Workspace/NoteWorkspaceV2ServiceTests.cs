@@ -64,6 +64,41 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             catalogs);
     }
 
+
+    [Fact]
+    public async Task EncounterSeed_UsesOnlyMatchingSubmittedVersion_AndNeverSeedsAnUnrelatedNewNote()
+    {
+        var patient = new Patient { FirstName = "Synthetic", LastName = "Scoped" };
+        var note = new ClinicalNote { PatientId = patient.Id, NoteType = NoteType.Evaluation, IsReEvaluation = true };
+        var other = new ClinicalNote { PatientId = patient.Id, NoteType = NoteType.Evaluation };
+        _context.Patients.Add(patient);
+        _context.ClinicalNotes.AddRange(note, other);
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            EncounterNoteId = note.Id,
+            EncounterIsReEvaluation = true,
+            QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.EvaluationFullV1,
+            ResponseJson = """{"intakeFlowVersion":2,"medicalHistoryNotes":"Matching visit history"}""",
+            IsLocked = false
+        };
+        _context.IntakeForms.Add(intake);
+        await _context.SaveChangesAsync();
+        Assert.Null(await _service.GetEncounterEvaluationSeedAsync(patient.Id, note.Id));
+        intake.IsLocked = true;
+        intake.SubmittedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        var seed = await _service.GetEncounterEvaluationSeedAsync(patient.Id, note.Id);
+        Assert.Equal(intake.Id, seed!.SourceIntakeId);
+        Assert.Equal(intake.Id, seed.Payload.SeedContext.SourceIntakeId);
+        Assert.Null(await _service.GetEncounterEvaluationSeedAsync(patient.Id, other.Id));
+        Assert.Null(await _service.GetEncounterEvaluationSeedAsync(Guid.NewGuid(), note.Id));
+        Assert.Null(await _service.GetEvaluationSeedAsync(patient.Id));
+        note.SignedUtc = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        Assert.Null(await _service.GetEncounterEvaluationSeedAsync(patient.Id, note.Id));
+    }
+
     [Fact]
     public async Task SaveAsync_PersistsWorkspaceSnapshotAndLegacyBillingFields()
     {

@@ -4,6 +4,7 @@ namespace PTDoc.Application.Notes.Workspace;
 
 public interface INoteWorkspaceV2Service
 {
+    Task<NoteWorkspaceV2EvaluationSeedResponse?> GetEncounterEvaluationSeedAsync(Guid patientId, Guid noteId, CancellationToken cancellationToken = default);
     Task<NoteWorkspaceV2LoadResponse?> LoadAsync(Guid patientId, Guid noteId, CancellationToken cancellationToken = default);
     Task<NoteWorkspaceV2EvaluationSeedResponse?> GetEvaluationSeedAsync(Guid patientId, CancellationToken cancellationToken = default);
     Task<NoteWorkspaceV2CarryForwardResponse?> GetCarryForwardSeedAsync(Guid patientId, NoteType targetNoteType, CancellationToken cancellationToken = default);

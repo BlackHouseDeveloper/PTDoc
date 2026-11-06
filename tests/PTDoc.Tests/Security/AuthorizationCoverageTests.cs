@@ -8,6 +8,7 @@ using PTDoc.Api.Identity;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
+using PTDoc.Tests.Integration;
 using Xunit;
 
 namespace PTDoc.Tests.Security;
@@ -33,7 +34,7 @@ namespace PTDoc.Tests.Security;
 /// of an entry is immediately visible rather than silently uncovered.
 /// </summary>
 [Trait("Category", "RBAC")]
-public class AuthorizationCoverageTests
+public class AuthorizationCoverageTests(PtDocApiFactory factory) : IClassFixture<PtDocApiFactory>
 {
     /// <summary>
     /// Verifies that every route in the inventory references a policy that is actually
@@ -75,12 +76,33 @@ public class AuthorizationCoverageTests
                 $"Route [{entry.Method}] {entry.Route} is not marked anonymous but has no RequiredPolicy. " +
                 "Add an authorization policy or mark it IsIntentionallyAnonymous.");
 
-            var policy = authOptions.GetPolicy(entry.RequiredPolicy!);
-            Assert.True(policy is not null,
-                $"Route [{entry.Method}] {entry.Route} references policy '{entry.RequiredPolicy}' " +
-                "which is not registered by AddPTDocAuthorizationPolicies(). " +
-                "Correct the policy name or add it to the registration.");
+            foreach (var requiredPolicy in new[] { entry.RequiredPolicy, entry.AdditionalRequiredPolicy }.OfType<string>())
+            {
+                var policy = authOptions.GetPolicy(requiredPolicy);
+                Assert.True(policy is not null,
+                    $"Route [{entry.Method}] {entry.Route} references policy '{requiredPolicy}' " +
+                    "which is not registered by AddPTDocAuthorizationPolicies(). " +
+                    "Correct the policy name or add it to the registration.");
+            }
         }
+    }
+
+    [Theory]
+    [InlineData("/api/v1/intake/patient/{patientId:guid}/note/{noteId:guid}", AuthorizationPolicies.IntakeRead, null)]
+    [InlineData("/api/v2/notes/workspace/{patientId:guid}/{noteId:guid}/intake-seed", AuthorizationPolicies.NoteRead, AuthorizationPolicies.IntakeRead)]
+    public void EncounterIntakeInventory_MatchesLiveEndpointPolicies(string route, string primary, string? additional)
+    {
+        using var client = factory.CreateClient();
+        var entry = Assert.Single(BuildInventory(), item => item.Method == "GET" && item.Route == route);
+        Assert.Equal(primary, entry.RequiredPolicy);
+        Assert.Equal(additional, entry.AdditionalRequiredPolicy);
+        var endpoint = Assert.Single(factory.Services.GetRequiredService<EndpointDataSource>().Endpoints
+            .OfType<RouteEndpoint>(), item => item.RoutePattern.RawText == route &&
+                item.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods.Contains("GET"));
+        Assert.Null(endpoint.Metadata.GetMetadata<IAllowAnonymous>());
+        var actual = endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>()
+            .Select(data => data.Policy).Where(policy => !string.IsNullOrEmpty(policy)).OrderBy(policy => policy);
+        Assert.Equal(new[] { primary, additional }.OfType<string>().OrderBy(policy => policy), actual);
     }
 
     [Fact]
@@ -447,6 +469,8 @@ public class AuthorizationCoverageTests
         new("POST", "/api/v1/intake/{id:guid}/delivery/send",                     AuthorizationPolicies.IntakeWrite),
         new("GET",  "/api/v1/intake/{id:guid}/delivery/status",                   AuthorizationPolicies.IntakeRead),
 
+        new("GET", "/api/v1/intake/patient/{patientId:guid}/note/{noteId:guid}", AuthorizationPolicies.IntakeRead),
+
         // ── Standalone intake access (Intake/IntakeAccessEndpoints.cs) ───────
         // These endpoints are intentionally anonymous because they perform token/header validation in-handler.
         new("POST", "/api/v1/intake/access/validate-invite",                      null, IsIntentionallyAnonymous: true),
@@ -488,6 +512,7 @@ public class AuthorizationCoverageTests
         new("GET",  "/api/v1/notes/carry-forward", AuthorizationPolicies.NoteRead),
 
         // ── Typed note workspace v2 (Notes/NoteWorkspaceV2Endpoints.cs) ──────
+        new("GET", "/api/v2/notes/workspace/{patientId:guid}/{noteId:guid}/intake-seed", AuthorizationPolicies.NoteRead, AdditionalRequiredPolicy: AuthorizationPolicies.IntakeRead),
         new("GET",  "/api/v2/notes/workspace/{patientId:guid}/{noteId:guid}", AuthorizationPolicies.NoteRead),
         new("POST", "/api/v2/notes/workspace/", AuthorizationPolicies.NoteWrite),
         new("GET",  "/api/v2/notes/workspace/catalogs/body-regions/{bodyPart}", AuthorizationPolicies.ClinicalStaff),
@@ -610,5 +635,6 @@ public class AuthorizationCoverageTests
         string? RequiredPolicy,
         bool IsIntentionallyAnonymous = false,
         bool RequiresDefaultAuthentication = false,
-        string? ServiceAuthorization = null);
+        string? ServiceAuthorization = null,
+        string? AdditionalRequiredPolicy = null);
 }

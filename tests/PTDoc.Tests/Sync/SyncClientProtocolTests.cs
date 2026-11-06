@@ -55,6 +55,52 @@ public class SyncClientProtocolTests
 
     // ── GetClientDeltaAsync – entity allowlist tests ──────────────────────────
 
+    [Theory]
+    [InlineData("Update")]
+    [InlineData("Delete")]
+    public async Task LegacySync_CannotChangeEncounterIntake(string operation)
+    {
+        using var context = CreateInMemoryContext();
+        var noteId = Guid.NewGuid();
+        var form = new IntakeForm { PatientId = Guid.NewGuid(), EncounterNoteId = noteId, QuestionnaireDefinitionId = "evaluation-full-v1", ResponseJson = "{\"saved\":true}", LastModifiedUtc = DateTime.UtcNow.AddMinutes(-1) };
+        context.IntakeForms.Add(form);
+        await context.SaveChangesAsync();
+        var engine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var result = await engine.ReceiveClientPushAsync(new ClientSyncPushRequest
+        {
+            Items = [new ClientSyncPushItem { EntityType = "IntakeForm", ServerId = form.Id, LocalId = 1, OperationId = Guid.NewGuid(), Operation = operation, DataJson = "{\"responseJson\":\"{}\"}", LastModifiedUtc = DateTime.UtcNow }]
+        });
+        Assert.Equal(0, result.AcceptedCount);
+        Assert.Equal("{\"saved\":true}", (await context.IntakeForms.AsNoTracking().SingleAsync()).ResponseJson);
+        var pulled = await engine.GetClientDeltaAsync(DateTime.MinValue, ["IntakeForm"]);
+        Assert.Empty(pulled.Items);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task LegacyDelta_ExcludesEncounterForms_AndPreservesPatientWideForms(bool allTypes, bool incremental)
+    {
+        using var context = CreateInMemoryContext();
+        var watermark = DateTime.UtcNow.AddMinutes(-5);
+        var patientId = Guid.NewGuid();
+        var legacy = new IntakeForm { PatientId = patientId, LastModifiedUtc = watermark.AddMinutes(1) };
+        var draft = new IntakeForm { PatientId = patientId, EncounterNoteId = Guid.NewGuid(), QuestionnaireDefinitionId = "evaluation-full-v1", LastModifiedUtc = watermark.AddMinutes(1) };
+        var submitted = new IntakeForm { PatientId = patientId, EncounterNoteId = Guid.NewGuid(), QuestionnaireDefinitionId = "evaluation-full-v1", IsLocked = true, SubmittedAt = watermark, LastModifiedUtc = watermark.AddMinutes(1) };
+        context.IntakeForms.AddRange(legacy, draft, submitted);
+        await context.SaveChangesAsync();
+        var engine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+
+        var pulled = await engine.GetClientDeltaAsync(incremental ? watermark : null, allTypes ? null : ["IntakeForm"]);
+
+        var item = Assert.Single(pulled.Items.Where(item => item.EntityType == "IntakeForm"));
+        Assert.Equal(legacy.Id, item.ServerId);
+        Assert.DoesNotContain(pulled.Items, item => item.ServerId == draft.Id || item.ServerId == submitted.Id);
+        Assert.Equal(3, await context.IntakeForms.CountAsync());
+    }
+
     [Fact]
     public async Task GetClientDeltaAsync_ReturnsIntakeForms_ModifiedAfterWatermark()
     {
