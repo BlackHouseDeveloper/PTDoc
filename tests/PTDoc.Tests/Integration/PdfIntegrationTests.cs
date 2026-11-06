@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -8,10 +9,12 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Notes.Content;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.Outcomes;
 using PTDoc.Application.Pdf;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Pdf;
+using PTDoc.Infrastructure.Outcomes;
 using PTDoc.Infrastructure.ReferenceData;
 using UglyToad.PdfPig;
 using Xunit;
@@ -44,6 +47,40 @@ public class PdfIntegrationTests : IAsyncDisposable
 
         _hierarchyBuilder = new ClinicalDocumentHierarchyBuilder(new IntakeReferenceDataCatalogService());
         _renderer = new QuestPdfRenderer(_hierarchyBuilder);
+    }
+
+    [Fact]
+    public async Task PatientOutcomes_PdfPreservesIndependentPartialScoresAndSourceVersion()
+    {
+        var questionnaire = PatientOutcomeRelease.Catalog.Single(q => q.Definition.InstrumentId == "hoos");
+        var answers = questionnaire.Definition.Items.Where(i => i.Id.StartsWith("pain-", StringComparison.Ordinal)).Take(5)
+            .Select(i => new OutcomeAnswer(i.Id, OutcomeAnswerState.Answered, "1")).ToImmutableArray();
+        var result = PatientOutcomeRelease.Registry.Score("hoos", questionnaire.Definition.Version,
+            OutcomeAdministration.PatientReported, answers).Result!;
+        // Keep the provenance fixture stable. Random IDs can contain "ff", which
+        // the PDF font shapes as a ligature omitted by this text extractor.
+        var intakeId = Guid.Parse("12345678-9012-3456-7890-123456789012");
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.ProgressNote,
+            IntakeOutcomes = new(intakeId,
+            DateTime.UtcNow, [questionnaire], [new("hoos", questionnaire.Definition.Version, result.Answers, result)])
+        };
+        var pdf = await _renderer.ExportNoteToPdfAsync(new NoteExportDto
+        {
+            NoteId = Guid.NewGuid(),
+            NoteType = NoteType.ProgressNote,
+            DateOfService = DateTime.UtcNow,
+            ContentJson = JsonSerializer.Serialize(payload)
+        });
+        var text = ExtractPdfText(pdf.PdfBytes);
+        Assert.Contains("pain: 75 points", text);
+        // PDF text extraction may join words at wrapped table-cell line boundaries.
+        var compactText = Regex.Replace(text, @"\s+", string.Empty);
+        Assert.Contains("remainingsubscalesincomplete", compactText);
+        Assert.Contains(questionnaire.Definition.Version, compactText);
+        Assert.Contains(intakeId.ToString(), compactText);
+        Assert.DoesNotContain("total:", text);
     }
 
     [Fact]

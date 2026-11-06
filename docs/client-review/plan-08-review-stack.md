@@ -2,13 +2,13 @@
 
 The owner approved splitting the combined Plan 08 completion on 2026-11-05. PR 163 stays focused on encounter-bound Evaluation/Re-evaluation intake and its provider migrations. The additional review units build on it in the following order; each PR targets the preceding branch so its diff contains only its own changes.
 
-| Order | Proposed branch | Scope | Prior PR relationship |
+| Order | Branch / published PR | Scope | Prior PR relationship |
 | --- | --- | --- | --- |
 | Base | `codex/plan-08-note-type-intake` | Existing encounter association, scoped access, concurrency and Evaluation flow | PR 163 stays intact |
-| 1 | `codex/plan08-questionnaire-foundations` | Daily questionnaire and Progress activities, including history safeguards and verified review fixes | Incorporates PRs 176 and 187; do not merge duplicate foundations |
-| 2 | `codex/plan08-visit-intake` | Daily/Progress/Discharge Subjective intake, issued choices, review/consent and matching-note answers | Completes the visit-flow portion of Plan 08 |
-| 3 | `codex/plan08-outcome-scoring` | Versioned contracts, clinical definitions, source manifests and scoring | Incorporates PR 180 plus approved patient source/scoring decisions |
-| 4 | `codex/plan08-patient-outcomes` | Patient selection and save/resume, server enforcement, locked note/PDF evidence and styling | Covers patient portions of Plans 24/25; clinician instruments remain separate |
+| 1 | `codex/plan08-questionnaire-foundations` · [PR #200](https://github.com/BlackHouseDeveloper/PTDoc/pull/200) | Daily questionnaire and Progress activities, including history safeguards and verified review fixes | Incorporates PRs 176 and 187; do not merge duplicate foundations |
+| 2 | `codex/plan08-visit-intake` · [PR #201](https://github.com/BlackHouseDeveloper/PTDoc/pull/201) | Daily/Progress/Discharge Subjective intake, issued choices, review/consent and matching-note answers | Completes the visit-flow portion of Plan 08 |
+| 3 | `codex/plan08-outcome-scoring` · [PR #202](https://github.com/BlackHouseDeveloper/PTDoc/pull/202) | Versioned contracts, clinical definitions, source manifests and scoring | Incorporates PR 180 plus approved patient source/scoring decisions |
+| 4 | `codex/plan08-patient-outcomes` · [PR #203](https://github.com/BlackHouseDeveloper/PTDoc/pull/203) | Patient selection and save/resume, server enforcement, locked note/PDF evidence and styling | Covers patient portions of Plans 24/25; clinician instruments remain separate |
 
 Keep each feature's tests with its implementation. The large generated migration metadata remains with PR 163. The clinical questionnaire JSON stays readable and source-pinned in layer 3; it is not minified or hidden to reduce the diff count.
 
@@ -46,3 +46,23 @@ PRs 176, 187 and 180 remain open until the replacement layer is accepted; their 
 - All thirteen definitions preserve the combined implementation's exact catalog hash: `af058df5455a52c928847d0d5b53c866859049c9948554f74356e8b5e63266ca`.
 - PR 180's one unique actionable null-item/option finding and its regression are retained. The review-summary bullet duplicates the same finding; the thread remains unchanged.
 - No intake collection or note/PDF projection hook is added in this layer.
+
+### Layer 4 — complete patient outcome workflow
+
+- Release test-project build with `--no-incremental`: PASS, zero warnings/errors. Restoring backup timestamps initially reused intermediate assemblies; refreshing those timestamps and rebuilding the graph removed that build-artifact issue without source changes.
+- Dedicated Web Release build: PASS, zero warnings/errors.
+- Full CoreCi suite on the final reconstructed source: **2,455/2,455 PASS**, zero skipped, 4m32s.
+- At initial stack publication, all 69 changed application/test files matched the preserved combined implementation byte-for-byte; no unexpected source files were introduced. The later CI formatting follow-up changes whitespace only. The catalog hash and prior styling remain unchanged.
+- `git diff --check` and the tracked appsettings secret-policy scan pass. Prior headed browser and PDF evidence remains applicable to the unchanged UI/source, but was not rerun solely for the Git split.
+
+## Publication status
+
+On 2026-11-05 the owner confirmed the passing build/test results and explicitly approved committing and publishing the four dependent draft PRs, satisfying the `AGENTS.md` commit-confirmation requirement. PRs [#200](https://github.com/BlackHouseDeveloper/PTDoc/pull/200), [#201](https://github.com/BlackHouseDeveloper/PTDoc/pull/201), [#202](https://github.com/BlackHouseDeveloper/PTDoc/pull/202) and [#203](https://github.com/BlackHouseDeveloper/PTDoc/pull/203) are published in that order, each targeting its predecessor. GitHub stack #195 now contains merged PR #162 as historical context, PR #163 and the four new drafts. PR #163 still targets `main` at `cd0810f255346fa266a7e3f96cbe42fd6d0b678f`; its implementation and all older PRs remain unchanged.
+
+Review and merge from the bottom upward, then rebase/retarget dependent layers and run the required checks at their resulting heads. No merge or deployment was performed. Remote formatter/provider/release gates and native acceptance are not claimed by the local checks. The initial publication follow-up changed only review-delivery documentation.
+
+## CI formatting follow-up
+
+Core CI run [42030383895](https://github.com/BlackHouseDeveloper/PTDoc/actions/runs/42030383895) stopped at the Application format check on the initial published top head. The owner then ran `dotnet format` and confirmed a successful build with zero warnings/errors and a Debug `net8.0` run of 2,965 tests: **2,964 passed, zero failed and one skipped**. The skipped case is `DatabaseProviderSmokeTests.PostgresEncounterSaveSaveSubmit_ReturnedVersionsMatchStorage_AndStaleWritesStillFail`; this local result does not establish that PostgreSQL-specific coverage passed.
+
+The ten resulting C# diffs were inspected and preserve every non-whitespace byte; `git diff --check` passes. Publish these formatting changes as a follow-up on PR #203, with no changes to its base or the lower layers. The owner-provided verification satisfies the repository commit-confirmation requirement. The exact formatter invocation/output was not supplied, so the owner-run formatter is not represented as an independently observed CI format-gate pass; the new remote run determines that result.

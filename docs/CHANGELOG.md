@@ -24,6 +24,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - With explicit operator approval, rehearse the committed SQL Server `20261103030000_AddOrganizationMemberships` migration on a temporary Basic-tier database copy, then apply it during a controlled beta stop/start. Verify hashes of existing clinic, user, patient, note, signature, appointment, schedule-block and session data, membership backfill and database constraints. Both rehearsal and live checks passed, and API/Web readiness recovered. Remove the temporary IP-only SQL firewall rule and, after successful deployment verification, delete the recovery copy.
 - **Deploy Beta run `41775391240`** — Successfully deploy source `5ac1e92b04469f594a0b7aa40f9da1102a4b3167` as release `beta-31-1` to both apps. All 2,717 tests passed in 7 minutes 27 seconds, with no failures or skips. API health, all four seeded-role sign-ins, authenticated source/release parity, Web health, shared CSS and WebSockets negotiation passed. Independent live checks confirmed HTTP 200 for both apps' liveness/readiness and shared CSS, plus advertised WebSockets. The fix was committed/pushed with explicit permission before local build/test confirmation; no local .NET build/test commands were run.
 
+### Fixed - Plan 08 CI formatting
+
+- Apply the owner-run `dotnet format` changes to ten intake, workspace and regression-test files, including the two Application files reported by the Core CI formatting gate. The source changes contain only whitespace and line breaks; clinical rules and test assertions are unchanged.
+- Record the owner-confirmed successful build with zero warnings/errors and Debug `net8.0` test run: 2,964 passed, zero failed and one PostgreSQL-specific test skipped. Remote CI must verify the published follow-up independently.
+
+### Changed - Plan 08 review delivery
+
+- Preserve PR 163 as the encounter-intake foundation and publish four dependent draft PRs (#200–#203): Daily/Progress foundations, visit-specific intake, source-pinned outcome scoring, and the complete patient outcome workflow.
+- Keep related tests with each layer, retain the corrected styling, clinical source data and all existing safeguards, and record independent build/test evidence and the existing-PR reconciliation map in `docs/client-review/plan-08-review-stack.md`.
+- Verify the four layers with 256, 581 and 151 passing targeted tests and a final 2,455/2,455 CoreCi pass. Release builds have zero warnings/errors; whitespace and secret-policy checks pass. The owner confirmed these results and approved publication on 2026-11-05; the drafts are linked in existing GitHub stack #195.
+- At initial stack publication, the application and test files matched the preserved combined implementation byte-for-byte. The later CI formatting follow-up changes whitespace only. No feature code or clinical definitions are removed to reduce the line count.
+
 ### Added - Versioned patient outcome definitions and scoring
 
 - Integrate Plan 23 / PR 180 versioned contracts, activation validation and provenance, including the reviewed null-item/option validation fix and its regressions.
@@ -42,6 +54,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Integrate the existing Plan 20 / PR 176 Daily questionnaire and Plan 30 / PR 187 activity tracking, carry-forward, note/PDF and historical-evidence safeguards on the PR 163 encounter foundation.
 - Preserve the reviewed fixes for signature evidence, first-save activity baselines and actionable HTTP 422 validation, with their service and endpoint regressions. Use existing app tokens for the activity editor.
 - This layer does not enable short-visit intake or the patient outcome workflow; those are reviewed in subsequent layers. Split verification is recorded in the review stack manifest.
+
+### Fixed - Plan 08 styling consistency
+
+- Match the existing intake cards' spacing, borders, corner radius, typography and form controls for patient outcomes and previous-score entry. Reuse the app's primary/secondary actions, shared intake footer and progress bar; style copied questionnaire evidence and Progress activity controls with existing tokens.
+- Preserve light/dark theme colors in editable and read-only views. Show the full intake's current step on narrow screens instead of breaking long labels across words; retain the five-step desktop and two-step short-visit headers.
+- Both owner-authorized Release builds pass with zero warnings/errors, and all 113 focused intake/activity/note-workspace UI cases pass after this styling correction. Compare against the existing Basic Information card and inspect 390/768/1440-pixel layouts in headed Chrome. The earlier 2,455-case CoreCi result remains the preceding functional checkpoint; it was not repeated for this styling pass. Changes remain uncommitted.
+
+### Fixed - Plan 08 live verification
+
+- Add partial-draft saves and visible short-visit pain validation, correct the two-step header, and expose required treatment consent. New encounter consent choices start unselected; existing issued answers are preserved.
+- Retain the short-visit form model during local edits so Daily, Progress and Discharge text fields keep keyboard focus and complete multi-character input. Add three focused regressions and verify real typing/save/reload in headed Chrome.
+- Style patient outcome questions with shared tokens and full-width controls; use the existing primary action style. Inspect 390/768/1440-pixel layouts, corrected HOOS/FAAM scoring, partial persistence, explicit matching-note copy, read-only evidence and PDF output on disposable local data.
+- Run the owner-authorized Release builds with zero warnings/errors. Stabilize the PDF provenance fixture against randomized font-ligature extraction; retain its exact-source-ID assertion. The final CoreCi run passes 2,455/2,455 with zero skipped; an earlier existing autosave timeout passed unchanged on rerun. Full evidence and remaining provider/native coverage are recorded in Plan 08. No implementation commit, push, merge or deployment was performed.
+
+### Added - Patient-selected outcome questionnaires and source-corrected scoring
+
+- Verify both owner-supplied outcome ZIP archives against the existing inventory: all 16 PDF member hashes match; record archive hashes and the owner's confirmation that these are client-provided sources.
+- Implement all thirteen client patient-reported instruments with patient selection from relevant visit body regions, partial-save/resume, explicit zero/N/A and source-specific server scoring. Keep Daily and clinician-administered tests outside the new patient workflow. Preserve historical manual scores separately.
+- Use owner-approved corrected HOOS/FAAM versions: loaded-leg wording, the restored low-impact sports item, source-defined completion thresholds and independently scored subscales. Preserve optional FAAM/PPIQ responses without affecting calculated scores; pin source and release hashes.
+- Store issued definitions, responses and computed provenance in intake JSON; copy locked matching-encounter results into read-only note review and PDFs. Enforce source identity and immutable evidence across workspace, generic and sync writes; ignore forged client totals/choices and retain older issued definitions.
+- Add scorer boundary/typical/missing/N/A, region-selection, partial persistence, tampering, optional-zero UI, scoped patient-link and PDF regressions. Whitespace, catalog/source consistency and the secret-policy scan pass; owner-authorized Release builds and focused browser/PDF verification pass. CoreCi passes 2,455/2,455; see Plan 08 for run history and remaining provider/native release checks. No new implementation commit or deployment is claimed.
+
+### Changed - Plan 08 visit questionnaires and PR 163 rebase
+
+- Rebase PR 163 onto main including PR 161, remove duplicated history from its earlier merge, and preserve main's profile/save-recovery and organization/subscription changes. Publish only the rebased head with an exact lease.
+- Extend encounter intake locally to Daily, Progress and Discharge using their corresponding Subjective components, versioned visit answers, review/consent, server-owned activity choices and explicit matching-note copy. Preserve locked history, chart facts, clinician decisions and blank-versus-zero pain; keep new outcome entry out of Daily.
+- Integrate the Plan 20/23/30 foundations and fix four verified dependency review findings: null outcome definition elements, carry-forward signature predicates, first-save activity baselines and generic-note validation HTTP responses. Add questionnaire, UI, API, OTP and dependency regressions.
+- Record the owner's Subjective-source, patient-selection, delegated missing-answer and corrected-source decisions. The patient outcome workflow above completes the remaining local Plan 08 implementation; owner-authorized Release builds and focused Web/PDF verification now pass; CoreCi passes 2,455/2,455, with provider/native limits recorded in Plan 08. New implementation remains uncommitted until owner-confirmed build/test success.
+
 
 ### Fixed - PR 163 encounter intake review
 

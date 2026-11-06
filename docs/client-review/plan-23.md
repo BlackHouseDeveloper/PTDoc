@@ -1,6 +1,8 @@
 # Plan PR 23: Establish versioned outcome definitions and validate supplied source assets
 
-> **2026-11-05 review split:** Layer 3 of the [Plan 08 review stack](plan-08-review-stack.md) adds the versioned registry, thirteen approved patient definitions and scoring. Patient collection and note/PDF projection are activated only by layer 4. The inactive-foundation description and original branch verification below are historical.
+> **2026-11-05 review split:** This work is assigned to layer 3 of the [Plan 08 review stack](plan-08-review-stack.md). Its current verification and delivery status supersede the earlier integration checkpoint below.
+
+> **2026-11-04 integration checkpoint:** This foundation is incorporated into the local, uncommitted Plan 08 completion work. The current local release also enables thirteen patient instruments under the owner decisions in the [source matrix](outcome-approval-matrix.md#owner-decisions-2026-11-04). The inactive-foundation description and verification below are historical and apply to the original branch only. See [Plan 08's current checkpoint](plan-08.md#current-implementation-checkpoint--2026-11-04) for dependency fixes, owner decisions, combined-branch verification results and remaining release checks.
 
 **Implemented** — only the changes and checks listed below are claimed.
 

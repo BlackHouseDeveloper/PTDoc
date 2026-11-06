@@ -113,16 +113,21 @@ public sealed class NoteWorkspaceV2Service(
             if (note.NoteType == NoteType.Discharge) payload.Discharge = answers.Discharge!;
             payload.SeedContext = new WorkspaceSeedContextV2
             {
-                Kind = WorkspaceSeedKind.IntakePrefill, SourceIntakeId = intake.Id,
-                FromLockedSubmittedIntake = true, SourceReferenceDateUtc = intake.SubmittedAt
+                Kind = WorkspaceSeedKind.IntakePrefill,
+                SourceIntakeId = intake.Id,
+                FromLockedSubmittedIntake = true,
+                SourceReferenceDateUtc = intake.SubmittedAt
             };
         }
         payload.SeedContext.SourceIntakeDefinitionId = intake.QuestionnaireDefinitionId;
+        payload.IntakeOutcomes = IntakeOutcomeProjection.From(intake);
         payload.SeedContext.SourceIntakeVersionUtc = intake.LastModifiedUtc;
         return new NoteWorkspaceV2EvaluationSeedResponse
         {
-            PatientId = patientId, SourceIntakeId = intake.Id,
-            FromLockedSubmittedIntake = true, Payload = payload
+            PatientId = patientId,
+            SourceIntakeId = intake.Id,
+            FromLockedSubmittedIntake = true,
+            Payload = payload
         };
     }
 
@@ -278,6 +283,9 @@ public sealed class NoteWorkspaceV2Service(
         payload.DailyTreatment ??= new WorkspaceDailyTreatmentV2();
         DryNeedlingBillingPolicy.Enforce(payload);
         NormalizeCptModifierSources(payload.Plan.SelectedCptCodes);
+
+        try { await IntakeOutcomeProjection.ValidateAsync(db, note, request.PatientId, noteId, payload, cancellationToken); }
+        catch (InvalidOperationException ex) { return new NoteWorkspaceV2SaveResponse { IsValid = false, Errors = [ex.Message] }; }
 
         payload.ProgressQuestionnaire ??= new WorkspaceProgressNoteQuestionnaireV2();
         var progressErrors = await ProgressActivityWriteValidator.PrepareAsync(db, workspaceCatalogs, payload, note, request.PatientId, noteId, cancellationToken);
@@ -1294,6 +1302,7 @@ public sealed class NoteWorkspaceV2Service(
         payload.Plan.ClinicalSummary = null;
         payload.Plan.ComputedPlanOfCare = new ComputedPlanOfCareV2();
         payload.DailyTreatment = new WorkspaceDailyTreatmentV2();
+        payload.IntakeOutcomes = null; // A new encounter must not relabel prior patient answers as current.
         if (targetNoteType == NoteType.Daily)
         {
             // Preserve stable diagnoses and activity context, but never present a prior complaint

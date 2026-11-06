@@ -50,7 +50,8 @@ public sealed class IntakeVisitQuestionnaireTests
         };
         var intake = new IntakeForm
         {
-            EncounterNoteId = Guid.NewGuid(), QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.ProgressV1,
+            EncounterNoteId = Guid.NewGuid(),
+            QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.ProgressV1,
             ResponseJson = JsonSerializer.Serialize(issued)
         };
         issued.VisitQuestionnaire.Progress!.Activities!.Baseline.Clear();
