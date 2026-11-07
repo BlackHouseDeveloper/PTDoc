@@ -74,6 +74,8 @@ public static class ProgressActivityTracking
         var before = Read(previous); var after = Read(incoming);
         if (after is not null && Validate(after) is { Count: > 0 } errors)
             throw new InvalidOperationException(string.Join(" ", errors));
+        if (before?.PercentImproved is not null && after?.PercentImproved is null)
+            throw new InvalidOperationException("Reload this progress note with a compatible client before saving its percentage history.");
         if (before?.Activities is not null && after?.Activities is null)
             throw new InvalidOperationException("Reload this progress note with a compatible client before saving its activity history.");
         if (before?.Activities is { } old && after?.Activities is { } updated

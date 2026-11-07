@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 200 follow-up review: Progress history and read compatibility
+
+- Preserve percentage-only Progress history against older-client omissions in workspace, generic API and sync writes; enforce identical saved or signed-source percentages on non-Progress carry-forward without requiring an activity object.
+- Restore Daily outcome `MinimumDetectableChange` from the authoritative registry before serialization, retaining historical rows and preventing omitted or forged client metadata from reaching exports.
+- Keep Progress write validation in create/update/sync/sign paths rather than shared read normalization. Allow historical unsupported/partial activity payloads to be read; tolerate missing activity collections in PDF rendering while continuing to reject invalid writes and signatures.
+- Add focused API, sync, signing, normalization, carry-forward and PDF regressions; extend Daily outcome provenance coverage and move percentage-bound assertions to the write guard. Record all seven unique review findings and duplicate summaries in `docs/client-review/plan-08-review-stack.md`. Verification for these new changes awaits the user; prior passing verification applies to the earlier commit only.
+
 ### Fixed - PR 200 Daily questionnaire and historical evidence review
 
 - Validate Daily questionnaire writes across workspace, generic note API and offline sync paths, including dry-needling/type changes, unsupported answers and versions, older-client omissions, and normalization that would discard submitted answers. Keep legacy notes without questionnaires compatible.

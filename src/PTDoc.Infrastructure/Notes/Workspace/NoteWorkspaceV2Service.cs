@@ -433,6 +433,13 @@ public sealed class NoteWorkspaceV2Service(
             return saveResponse;
         }
 
+        if (preserveDailyOutcomes)
+        {
+            // UI round trips omit this PDF metadata; always restore the authoritative catalog value.
+            foreach (var entry in payload.Objective.OutcomeMeasures)
+                entry.MinimumDetectableChange = outcomeMeasureRegistry.GetDefinition(entry.MeasureType).MinimumClinicallyImportantDifference;
+        }
+
         var now = DateTime.UtcNow;
         note ??= new ClinicalNote
         {

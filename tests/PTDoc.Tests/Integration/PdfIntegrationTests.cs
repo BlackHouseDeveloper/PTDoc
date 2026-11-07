@@ -46,6 +46,35 @@ public class PdfIntegrationTests : IAsyncDisposable
         _renderer = new QuestPdfRenderer(_hierarchyBuilder);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ProgressHierarchy_ReadsUnsupportedOrPartialHistory(bool partial)
+    {
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.ProgressNote,
+            ProgressQuestionnaire = new()
+            {
+                PercentImproved = 37.5m,
+                Activities = partial
+                    ? new() { Baseline = null!, NewlyDifficult = null!, ImprovedIds = null!, SameIds = null!, WorseIds = null! }
+                    : new() { Version = 99 }
+            }
+        };
+        var json = System.Text.Json.JsonSerializer.Serialize(payload);
+        var normalized = PTDoc.Infrastructure.Services.NoteWriteService.NormalizeContentJson(NoteType.ProgressNote, false, DateTime.UtcNow, json);
+        var hierarchy = _hierarchyBuilder.Build(new NoteExportDto
+        {
+            NoteId = Guid.NewGuid(),
+            NoteType = NoteType.ProgressNote,
+            ContentJson = normalized,
+            DateOfService = DateTime.UtcNow
+        });
+        Assert.Contains("Percent improved: 37.5%", FlattenNodeText(hierarchy.Root));
+        Assert.Throws<InvalidOperationException>(() => ProgressActivityTracking.ValidateJsonWrite(null, normalized));
+    }
+
     [Fact]
     public void ProgressHierarchy_IncludesZeroPercentAndRegionSpecificChangeStates()
     {

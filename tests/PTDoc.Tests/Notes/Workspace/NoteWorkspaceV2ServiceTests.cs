@@ -2286,9 +2286,11 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task DailyOutcomes_UnchangedReorderedOrDuplicateHistoryRetainsOriginalRows(bool identicalEntries)
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task DailyOutcomes_UnchangedReorderedOrDuplicateHistoryRetainsOriginalRows(bool identicalEntries, bool forgedMetadata)
     {
         var patient = new Patient { FirstName = "Synthetic", LastName = "Historical" };
         var note = new ClinicalNote
@@ -2329,9 +2331,13 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
                 ]
             }
         };
+        foreach (var entry in payload.Objective.OutcomeMeasures)
+            entry.MinimumDetectableChange = new OutcomeMeasureRegistry().GetDefinition(entry.MeasureType).MinimumClinicallyImportantDifference;
         note.ContentJson = JsonSerializer.Serialize(payload);
         _context.AddRange(patient, note, first, second);
         await _context.SaveChangesAsync();
+        foreach (var entry in payload.Objective.OutcomeMeasures)
+            entry.MinimumDetectableChange = forgedMetadata ? 999 : null;
         payload.Objective.OutcomeMeasures.Reverse();
         payload.DailyTreatment.SubjectiveUpdate = "Unrelated draft edit";
 
@@ -2356,6 +2362,12 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             Assert.Equal(original.MeasureType, persisted.MeasureType);
             Assert.Equal(recorded, persisted.DateRecorded);
         }
+        var savedNote = await _context.ClinicalNotes.AsNoTracking().SingleAsync(n => n.Id == note.Id);
+        var savedPayload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(savedNote.ContentJson,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        foreach (var entry in savedPayload.Objective.OutcomeMeasures)
+            Assert.Equal(new OutcomeMeasureRegistry().GetDefinition(entry.MeasureType).MinimumClinicallyImportantDifference,
+                entry.MinimumDetectableChange);
         Assert.Equal("Unrelated draft edit", response.Workspace!.Payload.DailyTreatment.SubjectiveUpdate);
     }
 

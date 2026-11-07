@@ -78,11 +78,11 @@ public sealed class ProgressActivityTests : TestContext
     [InlineData(0, true)]
     [InlineData(100, true)]
     [InlineData(101, false)]
-    public void AllNoteNormalizationPaths_ValidatePercentBounds(int percent, bool valid)
+    public void SharedWriteGuard_ValidatesPercentBounds(int percent, bool valid)
     {
         var json = JsonSerializer.Serialize(new NoteWorkspaceV2Payload { ProgressQuestionnaire = new() { PercentImproved = percent } });
-        if (valid) NoteWriteService.NormalizeContentJson(NoteType.ProgressNote, false, DateTime.UtcNow, json);
-        else Assert.Throws<InvalidOperationException>(() => NoteWriteService.NormalizeContentJson(NoteType.ProgressNote, false, DateTime.UtcNow, json));
+        if (valid) ProgressActivityTracking.ValidateJsonWrite(null, json);
+        else Assert.Throws<InvalidOperationException>(() => ProgressActivityTracking.ValidateJsonWrite(null, json));
     }
 
     [Fact]

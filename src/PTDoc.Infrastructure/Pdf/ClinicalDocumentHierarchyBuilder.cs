@@ -1024,12 +1024,12 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         if (questionnaire.PercentImproved is { } percent) values.Add($"Percent improved: {percent}%");
         if (questionnaire.Activities is { } activities)
         {
-            foreach (var activity in activities.Baseline)
+            foreach (var activity in (activities.Baseline ?? []).Where(a => a is not null))
             {
-                var state = activities.ImprovedIds.Contains(activity.Id) ? "Improved" : activities.SameIds.Contains(activity.Id) ? "Same" : activities.WorseIds.Contains(activity.Id) ? "Worse" : null;
+                var state = activities.ImprovedIds?.Contains(activity.Id) == true ? "Improved" : activities.SameIds?.Contains(activity.Id) == true ? "Same" : activities.WorseIds?.Contains(activity.Id) == true ? "Worse" : null;
                 if (state is not null) values.Add($"{state}: {activity.BodyPart} — {activity.Description}");
             }
-            foreach (var activity in activities.NewlyDifficult) values.Add($"Newly difficult: {activity.BodyPart} — {activity.Description}");
+            foreach (var activity in (activities.NewlyDifficult ?? []).Where(a => a is not null)) values.Add($"Newly difficult: {activity.BodyPart} — {activity.Description}");
         }
 
         AddIfPresent(values, questionnaire.OverallCondition, "Overall condition");

@@ -74,6 +74,106 @@ public sealed class ProgressActivityWriteValidatorTests
         Assert.Equal(JsonSerializer.Serialize(history), source.ContentJson);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(37)]
+    public async Task PercentageOnlyHistory_RejectsLegacyOmissionBeforeAndAfterNormalization(int percent)
+    {
+        await using var db = CreateDb();
+        var previous = new ClinicalNote
+        {
+            NoteType = NoteType.ProgressNote,
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            {
+                ProgressQuestionnaire = new() { PercentImproved = percent }
+            })
+        };
+        const string incoming = "{\"subjective\":\"Older client edit\"}";
+        Assert.Throws<InvalidOperationException>(() => ProgressActivityTracking.ValidateJsonWrite(previous.ContentJson, incoming));
+        var normalized = PTDoc.Infrastructure.Services.NoteWriteService.NormalizeContentJson(NoteType.ProgressNote, false, DateTime.UtcNow, incoming);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => ProgressActivityWriteValidator.PrepareJsonAsync(
+            db, previous, previous.PatientId, previous.Id, normalized, default));
+    }
+
+    [Theory]
+    [InlineData(NoteType.Daily, true)]
+    [InlineData(NoteType.Daily, false)]
+    [InlineData(NoteType.Discharge, true)]
+    [InlineData(NoteType.Discharge, false)]
+    public async Task PercentageOnlyHistory_NonProgressMustPreserveSavedOrSignedSource(NoteType targetType, bool existing)
+    {
+        await using var db = CreateDb();
+        var source = new ClinicalNote
+        {
+            PatientId = Guid.NewGuid(),
+            NoteType = existing ? targetType : NoteType.ProgressNote,
+            NoteStatus = existing ? NoteStatus.Draft : NoteStatus.Signed,
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            {
+                ProgressQuestionnaire = new() { PercentImproved = 37.5m }
+            })
+        };
+        db.ClinicalNotes.Add(source);
+        await db.SaveChangesAsync();
+        foreach (decimal? percent in new decimal?[] { 37.5m, 42m, null })
+        {
+            var payload = new NoteWorkspaceV2Payload
+            {
+                NoteType = targetType,
+                SeedContext = new() { SourceNoteId = existing ? null : source.Id },
+                ProgressQuestionnaire = new() { PercentImproved = percent }
+            };
+            if (percent is null)
+            {
+                payload.ProgressQuestionnaire = null!;
+                await Assert.ThrowsAsync<InvalidOperationException>(() => ProgressActivityWriteValidator.PrepareJsonAsync(
+                    db, existing ? source : null, source.PatientId, Guid.NewGuid(), JsonSerializer.Serialize(payload), default));
+                payload.ProgressQuestionnaire = new();
+            }
+            var json = JsonSerializer.Serialize(payload);
+            if (percent == 37.5m)
+            {
+                var prepared = await ProgressActivityWriteValidator.PrepareJsonAsync(db, existing ? source : null,
+                    source.PatientId, Guid.NewGuid(), json, default);
+                Assert.Equal(37.5m, JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(prepared,
+                    new JsonSerializerOptions(JsonSerializerDefaults.Web))!.ProgressQuestionnaire.PercentImproved);
+            }
+            else
+                await Assert.ThrowsAsync<InvalidOperationException>(() => ProgressActivityWriteValidator.PrepareJsonAsync(
+                    db, existing ? source : null, source.PatientId, Guid.NewGuid(), json, default));
+        }
+    }
+
+    [Fact]
+    public async Task PercentageOnlyHistory_ProgressMayUpdatePercentageWithoutActivities()
+    {
+        await using var db = CreateDb();
+        var previous = new ClinicalNote
+        {
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            {
+                ProgressQuestionnaire = new() { PercentImproved = 37.5m }
+            })
+        };
+        var json = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.ProgressNote,
+            ProgressQuestionnaire = new() { PercentImproved = 42m }
+        });
+        var prepared = await ProgressActivityWriteValidator.PrepareJsonAsync(db, previous, previous.PatientId, previous.Id, json, default);
+        Assert.Equal(42m, JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(prepared,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web))!.ProgressQuestionnaire.PercentImproved);
+    }
+
+    [Fact]
+    public async Task PrepareJson_WithoutActivitiesPreservesUnmappedLegacyContent()
+    {
+        await using var db = CreateDb();
+        const string json = "{\"legacyNarrative\":\"Historical content\"}";
+        var prepared = await ProgressActivityWriteValidator.PrepareJsonAsync(db, null, Guid.NewGuid(), Guid.NewGuid(), json, default);
+        Assert.Equal(json, prepared);
+    }
+
     private static ApplicationDbContext CreateDb() => new(new DbContextOptionsBuilder<ApplicationDbContext>()
         .UseInMemoryDatabase($"progress-validation-{Guid.NewGuid()}").Options);
 }

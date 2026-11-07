@@ -56,6 +56,76 @@ public class SyncClientProtocolTests
     [Theory]
     [InlineData(false, "version")]
     [InlineData(true, "version")]
+    [InlineData(false, "partial")]
+    [InlineData(true, "partial")]
+    [InlineData(true, "omit")]
+    [InlineData(true, "legacy")]
+    [InlineData(false, "missing-schema")]
+    [InlineData(true, "missing-schema")]
+    public async Task ProgressHistoryPush_RejectsInvalidOrOmittedEvidenceWithoutPersistingDraftChanges(bool update, string change)
+    {
+        using var context = CreateInMemoryContext();
+        var patient = new Patient { FirstName = "Synthetic", LastName = "DailySync", ClinicId = Guid.NewGuid() };
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.ProgressNote,
+            ProgressQuestionnaire = new() { PercentImproved = 37.5m }
+        };
+        var originalJson = JsonSerializer.Serialize(payload);
+        var originalModified = DateTime.UtcNow.AddMinutes(-5);
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            ClinicId = patient.ClinicId,
+            NoteType = NoteType.ProgressNote,
+            ContentJson = originalJson,
+            LastModifiedUtc = originalModified
+        };
+        context.Patients.Add(patient);
+        if (update) context.ClinicalNotes.Add(note);
+        await context.SaveChangesAsync();
+        if (change == "version") payload.ProgressQuestionnaire.Activities = new() { Version = 99 };
+        if (change == "partial") payload.ProgressQuestionnaire.Activities = new() { Baseline = null! };
+        if (change == "omit") payload.ProgressQuestionnaire.PercentImproved = null;
+        var content = change switch
+        {
+            "legacy" => "{\"subjective\":\"Older client edit\"}",
+            "missing-schema" => "{\"subjective\":\"Legacy content\",\"progressQuestionnaire\":{\"percentImproved\":37.5}}",
+            _ => JsonSerializer.Serialize(payload)
+        };
+        var engine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var request = new ClientSyncPushRequest
+        {
+            Items = [new ClientSyncPushItem
+            {
+                EntityType = "ClinicalNote", ServerId = update ? note.Id : Guid.Empty,
+                LocalId = 1, OperationId = Guid.NewGuid(), Operation = update ? "Update" : "Create",
+                LastModifiedUtc = DateTime.UtcNow,
+                DataJson = JsonSerializer.Serialize(new { patientId = patient.Id, noteType = "ProgressNote", contentJson = content })
+            }]
+        };
+
+        var response = await engine.ReceiveClientPushAsync(request);
+        Assert.Equal(0, response.AcceptedCount);
+        Assert.Equal("Error", Assert.Single(response.Items).Status);
+        await context.SaveChangesAsync(); // Receipt saves and later saves must not leak rejected note changes.
+        var notes = await context.ClinicalNotes.AsNoTracking().ToListAsync();
+        if (update)
+        {
+            var saved = Assert.Single(notes);
+            Assert.Equal(originalJson, saved.ContentJson);
+            Assert.Equal(originalModified, saved.LastModifiedUtc);
+            Assert.Equal(originalJson, note.ContentJson);
+        }
+        else Assert.Empty(notes);
+        var replay = await engine.ReceiveClientPushAsync(request);
+        Assert.Equal(0, replay.AcceptedCount);
+        Assert.Equal("Error", Assert.Single(replay.Items).Status);
+    }
+
+    [Theory]
+    [InlineData(false, "version")]
+    [InlineData(true, "version")]
     [InlineData(false, "answer")]
     [InlineData(true, "answer")]
     [InlineData(true, "omit")]

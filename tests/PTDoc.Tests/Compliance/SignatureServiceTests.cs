@@ -45,6 +45,32 @@ public sealed class SignatureServiceTests : IDisposable
             addendumService);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SignNote_RejectsUnsupportedOrPartialProgressHistoryWithoutMutatingContent(bool partial)
+    {
+        var signer = await CreateUserAsync(Roles.PT);
+        var patient = await CreatePatientAsync();
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.ProgressNote,
+            ProgressQuestionnaire = new()
+            {
+                PercentImproved = 37.5m,
+                Activities = partial ? new() { Baseline = null! } : new() { Version = 99 }
+            }
+        };
+        var json = JsonSerializer.Serialize(payload);
+        var note = await CreateNoteAsync(patient.Id, NoteType.ProgressNote, json, "[]");
+        var result = await _signatureService.SignNoteAsync(note.Id, signer.Id, Roles.PT, true, true);
+        Assert.False(result.Success);
+        Assert.Contains(partial ? "incomplete" : "compatible client", result.ErrorMessage);
+        Assert.Equal(json, note.ContentJson);
+        Assert.Equal(NoteStatus.Draft, note.NoteStatus);
+        Assert.Empty(await _context.Signatures.ToListAsync());
+    }
+
     [Fact]
     public async Task SignNote_ValidPtSignature_PersistsSignatureAndFinalizesNote()
     {

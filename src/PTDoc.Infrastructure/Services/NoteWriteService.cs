@@ -48,12 +48,14 @@ public sealed class NoteWriteService(
         try
         {
             DailyQuestionnaireDefinition.ValidateJsonWrite(null, request.ContentJson);
+            ProgressActivityTracking.ValidateJsonWrite(null, request.ContentJson);
             normalizedContentJson = NormalizeContentJson(
                 request.NoteType,
                 request.IsReEvaluation,
                 request.DateOfService,
                 request.ContentJson);
             DailyQuestionnaireDefinition.ValidateJsonWrite(request.ContentJson, normalizedContentJson);
+            ProgressActivityTracking.ValidateJsonWrite(request.ContentJson, normalizedContentJson);
             normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(db, null, request.PatientId, noteId, normalizedContentJson, ct);
         }
         catch (InvalidOperationException ex)
@@ -344,7 +346,6 @@ public sealed class NoteWriteService(
         DateTime dateOfService,
         string? contentJson)
     {
-        ProgressActivityTracking.ValidateJsonWrite(null, contentJson);
         if (string.IsNullOrWhiteSpace(contentJson))
         {
             return SerializeWorkspacePayload(CreateEmptyWorkspacePayload(noteType, dateOfService));

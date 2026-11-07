@@ -21,10 +21,13 @@ public static class ProgressActivityWriteValidator
         NoteWorkspaceV2Payload? payload;
         try { payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(normalizedJson, SerializerOptions); }
         catch (JsonException) { return normalizedJson; }
-        if (payload?.ProgressQuestionnaire?.Activities is null) return normalizedJson;
+        if (payload is null) return normalizedJson;
+        payload.ProgressQuestionnaire ??= new();
         var errors = await PrepareAsync(db, Catalogs, payload, previous, patientId, noteId, ct);
         if (errors.Count > 0) throw new InvalidOperationException(string.Join(" ", errors));
-        return JsonSerializer.Serialize(payload, SerializerOptions);
+        return payload.ProgressQuestionnaire.Activities is null
+            ? normalizedJson
+            : JsonSerializer.Serialize(payload, SerializerOptions);
     }
 
     public static async Task<List<string>> PrepareAsync(ApplicationDbContext db, IWorkspaceReferenceCatalogService workspaceCatalogs,
@@ -34,7 +37,7 @@ public static class ProgressActivityWriteValidator
         try { ProgressActivityTracking.ValidateJsonWrite(note?.ContentJson, JsonSerializer.Serialize(payload, SerializerOptions)); }
         catch (InvalidOperationException ex) { return [ex.Message]; }
         var errors = ProgressActivityTracking.Validate(payload.ProgressQuestionnaire).ToList();
-        if (errors.Count > 0 || payload.ProgressQuestionnaire.Activities is not { } current) return errors;
+        if (errors.Count > 0) return errors;
         NoteWorkspaceV2Payload? previous = null;
         try { if (note is not null) previous = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(note.ContentJson, SerializerOptions); }
         catch (JsonException) { }
@@ -42,7 +45,8 @@ public static class ProgressActivityWriteValidator
         {
             // Other note types may carry historical progress evidence but cannot author change states.
             var historical = previous?.ProgressQuestionnaire;
-            if (historical?.Activities is null && payload.SeedContext.SourceNoteId is { } historySourceId)
+            if (historical?.Activities is null && historical?.PercentImproved is null
+                && payload.SeedContext.SourceNoteId is { } historySourceId)
             {
                 var sourceNote = await db.ClinicalNotes.AsNoTracking().FirstOrDefaultAsync(n => n.Id == historySourceId
                     && n.PatientId == patientId && (n.NoteStatus == NoteStatus.Signed || n.SignedUtc != null || n.SignatureHash != null), ct);
@@ -50,12 +54,12 @@ public static class ProgressActivityWriteValidator
                     historical = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(NoteWriteService.NormalizeContentJson(
                         sourceNote.NoteType, sourceNote.IsReEvaluation, sourceNote.DateOfService, sourceNote.ContentJson), SerializerOptions)?.ProgressQuestionnaire;
             }
-            if (historical?.Activities is null
-                || JsonSerializer.Serialize(historical.Activities, SerializerOptions) != JsonSerializer.Serialize(current, SerializerOptions)
-                || historical.PercentImproved != payload.ProgressQuestionnaire.PercentImproved)
-                return ["Only Progress notes may author progress activity changes; other note types preserve the signed source history."];
+            if (JsonSerializer.Serialize(historical?.Activities, SerializerOptions) != JsonSerializer.Serialize(payload.ProgressQuestionnaire.Activities, SerializerOptions)
+                || historical?.PercentImproved != payload.ProgressQuestionnaire.PercentImproved)
+                return ["Only Progress notes may author progress questionnaire changes; other note types preserve the signed source history."];
             return errors;
         }
+        if (payload.ProgressQuestionnaire.Activities is not { } current) return errors;
         var baseline = previous?.ProgressQuestionnaire?.Activities?.Baseline;
         if (baseline is null)
         {

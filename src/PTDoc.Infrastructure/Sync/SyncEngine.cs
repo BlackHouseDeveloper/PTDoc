@@ -2523,12 +2523,14 @@ public class SyncEngine : ISyncEngine
                     ?? TryGetString(root, "ContentJson")
                     ?? "{}";
                 DailyQuestionnaireDefinition.ValidateJsonWrite(null, contentJson);
+                ProgressActivityTracking.ValidateJsonWrite(null, contentJson);
                 var normalizedContentJson = NoteWriteService.NormalizeContentJson(
                     noteType,
                     isReEvaluation,
                     dateOfService,
                     contentJson);
                 DailyQuestionnaireDefinition.ValidateJsonWrite(contentJson, normalizedContentJson);
+                ProgressActivityTracking.ValidateJsonWrite(contentJson, normalizedContentJson);
                 normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(_context, null, patientId, serverId, normalizedContentJson, cancellationToken);
                 var isDryNeedling = NoteWriteService.IsDryNeedlingContent(
                     noteType,
