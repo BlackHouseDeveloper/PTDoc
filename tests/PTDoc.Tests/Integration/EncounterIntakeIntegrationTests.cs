@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Intake;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -14,6 +15,26 @@ namespace PTDoc.Tests.Integration;
 [Trait("Category", "CoreCi")]
 public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : IClassFixture<PtDocApiFactory>
 {
+    [Fact]
+    public async Task InvalidProgressCreation_ReturnsValidationInsteadOfServerError()
+    {
+        using var client = factory.CreateClientWithRole(Roles.PT);
+        var (patientId, _, _) = await CreateFixtureAsync(client);
+        using var response = await client.PostAsJsonAsync("/api/v1/notes/", new CreateNoteRequest
+        {
+            PatientId = patientId,
+            DateOfService = new DateTime(2026, 11, 4),
+            NoteType = NoteType.ProgressNote,
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            {
+                NoteType = NoteType.ProgressNote,
+                ProgressQuestionnaire = new() { PercentImproved = 101 }
+            })
+        });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.Contains("Percent improved", await response.Content.ReadAsStringAsync());
+    }
+
     [Fact]
     public async Task EncounterRead_EnforcesPatientOwnership_AndPreservesStaffAccess()
     {

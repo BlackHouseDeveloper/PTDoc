@@ -12,6 +12,23 @@ public sealed class NoteWriteServiceNormalizationTests
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private const string CptSource = "docs/clinicrefdata/Commonly used CPT codes and modifiers.md";
 
+    [Theory]
+    [InlineData("{\"version\":99}")]
+    [InlineData("{\"version\":1,\"baseline\":null}")]
+    public void NormalizeContentJson_HistoricalProgressRemainsReadable_ButWritesRejectIt(string activities)
+    {
+        var json = "{\"schemaVersion\":2,\"progressQuestionnaire\":{\"percentImproved\":37.5,\"activities\":" + activities + "}}";
+        var normalized = NoteWriteService.NormalizeContentJson(NoteType.ProgressNote, false, DateTime.UtcNow, json);
+        using var document = JsonDocument.Parse(normalized);
+        var questionnaire = document.RootElement.GetProperty("progressQuestionnaire");
+        Assert.Equal(37.5m, questionnaire.GetProperty("percentImproved").GetDecimal());
+        using var expected = JsonDocument.Parse(activities);
+        Assert.Equal(expected.RootElement.GetProperty("version").GetInt32(), questionnaire.GetProperty("activities").GetProperty("version").GetInt32());
+        if (expected.RootElement.TryGetProperty("baseline", out _))
+            Assert.Equal(JsonValueKind.Null, questionnaire.GetProperty("activities").GetProperty("baseline").ValueKind);
+        Assert.Throws<InvalidOperationException>(() => ProgressActivityTracking.ValidateJsonWrite(null, normalized));
+    }
+
     [Fact]
     public void NormalizeContentJson_LegacyWorkspaceOutcomeMeasures_UsesSharedTypedParser()
     {
