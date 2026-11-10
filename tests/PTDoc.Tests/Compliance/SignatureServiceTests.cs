@@ -71,6 +71,32 @@ public sealed class SignatureServiceTests : IDisposable
         Assert.Empty(await _context.Signatures.ToListAsync());
     }
 
+    [Theory]
+    [InlineData("version")]
+    [InlineData("answer")]
+    [InlineData("normalization-loss")]
+    public async Task SignNote_RejectsInvalidDailyQuestionnaireWithoutMutation(string change)
+    {
+        var signer = await CreateUserAsync(Roles.PT);
+        var patient = await CreatePatientAsync();
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            DailyTreatment = new() { Questionnaire = new() { HepAdherence = "Daily" } }
+        };
+        if (change == "version") payload.DailyTreatment.Questionnaire.Version = 99;
+        if (change == "answer") payload.DailyTreatment.Questionnaire.HepAdherence = "invented";
+        var json = change == "normalization-loss"
+            ? "{\"subjective\":\"Legacy\",\"dailyTreatment\":{\"questionnaire\":{\"version\":1,\"hepAdherence\":\"Daily\"}}}"
+            : JsonSerializer.Serialize(payload);
+        var note = await CreateNoteAsync(patient.Id, NoteType.Daily, json, "[]");
+        var result = await _signatureService.SignNoteAsync(note.Id, signer.Id, Roles.PT, true, true);
+        Assert.False(result.Success);
+        Assert.Equal(json, note.ContentJson);
+        Assert.Equal(NoteStatus.Draft, note.NoteStatus);
+        Assert.Empty(await _context.Signatures.ToListAsync());
+    }
+
     [Fact]
     public async Task SignNote_ValidPtSignature_PersistsSignatureAndFinalizesNote()
     {

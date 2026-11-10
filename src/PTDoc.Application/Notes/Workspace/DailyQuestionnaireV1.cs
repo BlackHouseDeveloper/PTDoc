@@ -71,8 +71,9 @@ public static class DailyQuestionnaireDefinition
             if (document.RootElement.ValueKind != JsonValueKind.Object) return null;
             foreach (var section in document.RootElement.EnumerateObject())
             {
-                if (!section.Name.Equals("dailyTreatment", StringComparison.OrdinalIgnoreCase)
-                    || section.Value.ValueKind != JsonValueKind.Object) continue;
+                if (!section.Name.Equals("dailyTreatment", StringComparison.OrdinalIgnoreCase)) continue;
+                if (section.Value.ValueKind != JsonValueKind.Object)
+                    throw new InvalidOperationException("Daily treatment content is invalid. Reload with a compatible client before saving.");
                 foreach (var field in section.Value.EnumerateObject())
                 {
                     if (!field.Name.Equals("questionnaire", StringComparison.OrdinalIgnoreCase)) continue;

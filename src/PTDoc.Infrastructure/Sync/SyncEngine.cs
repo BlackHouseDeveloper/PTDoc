@@ -2532,6 +2532,7 @@ public class SyncEngine : ISyncEngine
                 DailyQuestionnaireDefinition.ValidateJsonWrite(contentJson, normalizedContentJson);
                 ProgressActivityTracking.ValidateJsonWrite(contentJson, normalizedContentJson);
                 normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(_context, null, patientId, serverId, normalizedContentJson, cancellationToken);
+                DailyOutcomeWriteValidator.Validate(noteType, null, normalizedContentJson);
                 var isDryNeedling = NoteWriteService.IsDryNeedlingContent(
                     noteType,
                     isReEvaluation,
@@ -2594,6 +2595,7 @@ public class SyncEngine : ISyncEngine
                         updatedContentJson);
                     DailyQuestionnaireDefinition.ValidateJsonWrite(updatedContentJson, normalizedContentJson);
                     normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(_context, existing, existing.PatientId, existing.Id, normalizedContentJson, cancellationToken);
+                    DailyOutcomeWriteValidator.Validate(existing.NoteType, existing, normalizedContentJson);
                     var isDryNeedling = NoteWriteService.IsDryNeedlingContent(
                         existing.NoteType,
                         updatedIsReEvaluation,

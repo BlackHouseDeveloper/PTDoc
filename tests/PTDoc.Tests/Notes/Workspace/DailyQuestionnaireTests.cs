@@ -107,6 +107,24 @@ public sealed class DailyQuestionnaireTests
         Assert.Throws<InvalidOperationException>(() => DailyQuestionnaireDefinition.ValidateJsonWrite(null, incoming));
     }
 
+    [Theory]
+    [InlineData("null")]
+    [InlineData("[]")]
+    [InlineData("42")]
+    [InlineData("\"invalid\"")]
+    public void JsonWrite_RejectsPresentMalformedDailySectionOnCreate(string section)
+    {
+        Assert.Throws<InvalidOperationException>(() => DailyQuestionnaireDefinition.ValidateJsonWrite(null,
+            "{\"dailyTreatment\":" + section + "}"));
+    }
+
+    [Fact]
+    public void JsonWrite_AllowsExplicitNullOptionalQuestionnaireWithoutHistory()
+    {
+        DailyQuestionnaireDefinition.ValidateJsonWrite(null, "{\"dailyTreatment\":{\"questionnaire\":null}}");
+        Assert.Equal(string.Empty, DailyQuestionnaireDefinition.Summarize(null));
+    }
+
     [Fact]
     public void JsonWrite_AllowsLegacyWithoutQuestionnaire_AndValidUpdatesWithFutureFields()
     {

@@ -28,11 +28,19 @@ public sealed class DailyQuestionnaireWriteIntegrationTests(PtDocApiFactory fact
     [InlineData(true, "null-section")]
     [InlineData(false, "missing-schema")]
     [InlineData(true, "missing-schema")]
+    [InlineData(false, "null-section")]
+    [InlineData(false, "outcome")]
+    [InlineData(true, "outcome")]
+    [InlineData(true, "outcome-omit")]
+    [InlineData(true, "outcome-score")]
+    [InlineData(true, "outcome-metadata")]
     public async Task GenericWrites_RejectInvalidOrLostDailyQuestionnaire_WithoutChangingSavedNote(bool update, string change)
     {
         using var client = factory.CreateClientWithRole(Roles.PT);
         var patientId = await CreatePatientAsync(client);
         var original = CreatePayload();
+        if (change.StartsWith("outcome-", StringComparison.Ordinal))
+            original.Objective.OutcomeMeasures = [new() { MeasureType = OutcomeMeasureType.VAS, Score = 3, MinimumDetectableChange = 2 }];
         var originalJson = JsonSerializer.Serialize(original, JsonOptions);
         var modified = new DateTime(2026, 11, 6, 12, 0, 0, DateTimeKind.Utc);
         Guid? noteId = null;
@@ -55,6 +63,14 @@ public sealed class DailyQuestionnaireWriteIntegrationTests(PtDocApiFactory fact
         }
 
         var incoming = CreatePayload();
+        if (change == "outcome") incoming.Objective.OutcomeMeasures = [new() { MeasureType = OutcomeMeasureType.VAS, Score = 3 }];
+        if (change.StartsWith("outcome-", StringComparison.Ordinal))
+        {
+            incoming.Objective.OutcomeMeasures = [new() { MeasureType = OutcomeMeasureType.VAS, Score = 3, MinimumDetectableChange = 2 }];
+            if (change == "outcome-omit") incoming.Objective.OutcomeMeasures.Clear();
+            if (change == "outcome-score") incoming.Objective.OutcomeMeasures[0].Score = 4;
+            if (change == "outcome-metadata") incoming.Objective.OutcomeMeasures[0].MinimumDetectableChange = 999;
+        }
         incoming.DryNeedling = new(); // The variant must not exempt Daily validation.
         if (change == "version") incoming.DailyTreatment.Questionnaire!.Version = 99;
         if (change == "answer") incoming.DailyTreatment.Questionnaire!.HepAdherence = "invented";

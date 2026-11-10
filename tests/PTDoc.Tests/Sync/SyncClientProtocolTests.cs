@@ -58,6 +58,7 @@ public class SyncClientProtocolTests
     [InlineData(true, "version")]
     [InlineData(false, "partial")]
     [InlineData(true, "partial")]
+    [InlineData(true, "prior-partial")]
     [InlineData(true, "omit")]
     [InlineData(true, "legacy")]
     [InlineData(false, "missing-schema")]
@@ -71,6 +72,7 @@ public class SyncClientProtocolTests
             NoteType = NoteType.ProgressNote,
             ProgressQuestionnaire = new() { PercentImproved = 37.5m }
         };
+        if (change == "prior-partial") payload.ProgressQuestionnaire.Activities = new() { Baseline = null! };
         var originalJson = JsonSerializer.Serialize(payload);
         var originalModified = DateTime.UtcNow.AddMinutes(-5);
         var note = new ClinicalNote
@@ -84,6 +86,7 @@ public class SyncClientProtocolTests
         context.Patients.Add(patient);
         if (update) context.ClinicalNotes.Add(note);
         await context.SaveChangesAsync();
+        if (change == "prior-partial") payload.ProgressQuestionnaire.Activities = new();
         if (change == "version") payload.ProgressQuestionnaire.Activities = new() { Version = 99 };
         if (change == "partial") payload.ProgressQuestionnaire.Activities = new() { Baseline = null! };
         if (change == "omit") payload.ProgressQuestionnaire.PercentImproved = null;
@@ -132,6 +135,12 @@ public class SyncClientProtocolTests
     [InlineData(true, "legacy")]
     [InlineData(false, "missing-schema")]
     [InlineData(true, "missing-schema")]
+    [InlineData(false, "null-section")]
+    [InlineData(false, "outcome")]
+    [InlineData(true, "outcome")]
+    [InlineData(true, "outcome-omit")]
+    [InlineData(true, "outcome-score")]
+    [InlineData(true, "outcome-metadata")]
     public async Task DailyQuestionnairePush_RejectsInvalidOrOmittedAnswersWithoutPersistingDraftChanges(bool update, string change)
     {
         using var context = CreateInMemoryContext();
@@ -141,6 +150,8 @@ public class SyncClientProtocolTests
             NoteType = NoteType.Daily,
             DailyTreatment = new() { Questionnaire = new() { HepAdherence = "Daily" } }
         };
+        if (change.StartsWith("outcome-", StringComparison.Ordinal))
+            payload.Objective.OutcomeMeasures = [new() { MeasureType = OutcomeMeasureType.VAS, Score = 3, MinimumDetectableChange = 2 }];
         var originalJson = JsonSerializer.Serialize(payload);
         var originalModified = DateTime.UtcNow.AddMinutes(-5);
         var note = new ClinicalNote
@@ -154,12 +165,17 @@ public class SyncClientProtocolTests
         context.Patients.Add(patient);
         if (update) context.ClinicalNotes.Add(note);
         await context.SaveChangesAsync();
+        if (change == "outcome") payload.Objective.OutcomeMeasures = [new() { MeasureType = OutcomeMeasureType.VAS, Score = 3 }];
+        if (change == "outcome-omit") payload.Objective.OutcomeMeasures.Clear();
+        if (change == "outcome-score") payload.Objective.OutcomeMeasures[0].Score = 4;
+        if (change == "outcome-metadata") payload.Objective.OutcomeMeasures[0].MinimumDetectableChange = 999;
         payload.DryNeedling = new();
         if (change == "version") payload.DailyTreatment.Questionnaire!.Version = 99;
         if (change == "answer") payload.DailyTreatment.Questionnaire!.HepAdherence = "invented";
         if (change == "omit") payload.DailyTreatment.Questionnaire = null;
         var content = change switch
         {
+            "null-section" => "{\"schemaVersion\":2,\"dailyTreatment\":null}",
             "legacy" => """{"subjective":"Older client edit"}""",
             "missing-schema" => """{"subjective":"Legacy content","dailyTreatment":{"questionnaire":{"version":1,"hepAdherence":"Daily"}}}""",
             _ => JsonSerializer.Serialize(payload)

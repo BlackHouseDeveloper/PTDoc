@@ -72,6 +72,8 @@ public static class ProgressActivityTracking
     public static void ValidateJsonWrite(string? previous, string? incoming)
     {
         var before = Read(previous); var after = Read(incoming);
+        if (before is not null && Validate(before).Count > 0)
+            throw new InvalidOperationException("Reload this progress note with a compatible client before changing unsupported or incomplete history.");
         if (after is not null && Validate(after) is { Count: > 0 } errors)
             throw new InvalidOperationException(string.Join(" ", errors));
         if (before?.PercentImproved is not null && after?.PercentImproved is null)

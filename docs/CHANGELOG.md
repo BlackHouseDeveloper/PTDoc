@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 200 November 9 review: legacy safety and remaining write guards
+
+- Reject unsupported/incomplete saved Progress history with compatible-client validation instead of dereferencing a null baseline. Render partial/unsupported activity history read-only without mutating saved data.
+- Reject present null/non-object Daily treatment sections while preserving the intentional nullable legacy questionnaire contract. Validate Daily questionnaires before and after signing normalization.
+- Apply shared Daily outcome read-only validation to generic note and sync creates/updates before persistence, including metadata, timestamps and duplicate multiplicity; preserve unchanged historical payloads.
+- Add focused API, sync, signature, shared-validator and bUnit regressions. Record both new inline findings, all four Previously missed summary findings, the invalid null-questionnaire subclaim and seven already-addressed findings in the review-stack audit. Verification awaits user execution.
+
 ### Fixed - PR 200 follow-up review: Progress history and read compatibility
 
 - Preserve percentage-only Progress history against older-client omissions in workspace, generic API and sync writes; enforce identical saved or signed-source percentages on non-Progress carry-forward without requiring an activity object.

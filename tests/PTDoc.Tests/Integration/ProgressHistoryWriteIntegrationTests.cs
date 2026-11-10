@@ -21,6 +21,7 @@ public sealed class ProgressHistoryWriteIntegrationTests(PtDocApiFactory factory
     [InlineData(true, "version")]
     [InlineData(false, "partial")]
     [InlineData(true, "partial")]
+    [InlineData(true, "prior-partial")]
     [InlineData(true, "omit")]
     [InlineData(true, "legacy")]
     [InlineData(false, "missing-schema")]
@@ -30,6 +31,7 @@ public sealed class ProgressHistoryWriteIntegrationTests(PtDocApiFactory factory
         using var client = factory.CreateClientWithRole(Roles.PT);
         var patientId = await CreatePatientAsync(client);
         var original = CreatePayload();
+        if (change == "prior-partial") original.ProgressQuestionnaire.Activities = new() { Baseline = null! };
         var originalJson = JsonSerializer.Serialize(original, JsonOptions);
         var modified = new DateTime(2026, 11, 6, 12, 0, 0, DateTimeKind.Utc);
         Guid? noteId = null;
@@ -52,6 +54,7 @@ public sealed class ProgressHistoryWriteIntegrationTests(PtDocApiFactory factory
         }
 
         var incoming = CreatePayload();
+        if (change == "prior-partial") incoming.ProgressQuestionnaire.Activities = new();
         if (change == "version") incoming.ProgressQuestionnaire.Activities = new() { Version = 99 };
         if (change == "partial") incoming.ProgressQuestionnaire.Activities = new() { Baseline = null! };
         if (change == "omit") incoming.ProgressQuestionnaire.PercentImproved = null;

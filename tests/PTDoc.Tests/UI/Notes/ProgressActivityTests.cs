@@ -28,6 +28,35 @@ public sealed class ProgressActivityTests : TestContext
         Services.AddSingleton(service.Object);
     }
 
+    [Theory]
+    [InlineData("baseline")]
+    [InlineData("new")]
+    [InlineData("states")]
+    [InlineData("version")]
+    public void PartialOrUnsupportedHistory_RendersReadOnlyWithoutMutation(string shape)
+    {
+        var activity = ProgressActivityTracking.RecordedActivity(BodyPart.Knee, "Saved stairs", "Function");
+        var value = new ProgressActivityTrackingV1 { Baseline = [activity], NewlyDifficult = [activity with { Id = "new", Description = "Saved reach" }] };
+        if (shape == "baseline") value.Baseline = null!;
+        if (shape == "new") value.NewlyDifficult = null!;
+        if (shape == "states") { value.ImprovedIds = null!; value.SameIds = null!; value.WorseIds = null!; }
+        if (shape == "version") value.Version = 99;
+        var original = JsonSerializer.Serialize(value);
+        var changed = false;
+        var cut = RenderComponent<ProgressActivityEditor>(p => p.Add(c => c.Value, value)
+            .Add(c => c.ValueChanged, EventCallback.Factory.Create<ProgressActivityTrackingV1>(this, _ => changed = true)));
+        Assert.True(cut.Find("fieldset").HasAttribute("disabled"));
+        Assert.Contains("compatible client", cut.Find("[role='status']").TextContent);
+        if (shape != "baseline")
+        {
+            Assert.Contains("Saved stairs", cut.Markup);
+            cut.Find("select").Change("worse");
+        }
+        if (shape != "new") cut.Find("input[type='checkbox']").Change(true);
+        Assert.False(changed);
+        Assert.Equal(original, JsonSerializer.Serialize(value));
+    }
+
     [Fact]
     public void ActivityEditor_UsesRecordedBaselineAndFullMultiRegionCatalog_WithExclusiveStates()
     {

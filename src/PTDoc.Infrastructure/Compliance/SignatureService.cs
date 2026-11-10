@@ -583,12 +583,14 @@ public class SignatureService : ISignatureService
 
     private static void NormalizeNoteContentForSigning(ClinicalNote note)
     {
+        DailyQuestionnaireDefinition.ValidateJsonWrite(null, note.ContentJson);
         ProgressActivityTracking.ValidateJsonWrite(null, note.ContentJson);
         var normalized = NoteWriteService.NormalizeContentJson(
             note.NoteType,
             note.IsReEvaluation,
             note.DateOfService,
             note.ContentJson);
+        DailyQuestionnaireDefinition.ValidateJsonWrite(note.ContentJson, normalized);
         ProgressActivityTracking.ValidateJsonWrite(note.ContentJson, normalized);
         note.ContentJson = normalized;
     }
