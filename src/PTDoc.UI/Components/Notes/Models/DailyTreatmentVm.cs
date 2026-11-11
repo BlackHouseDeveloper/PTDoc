@@ -1,7 +1,10 @@
+using PTDoc.Application.Notes.Workspace;
+
 namespace PTDoc.UI.Components.Notes.Models;
 
 public class DailyTreatmentVm
 {
+    public DailyQuestionnaireV1? Questionnaire { get; set; }
     public string ChangesSinceLastVisit { get; set; } = string.Empty;
     public string PainLevelChanges { get; set; } = string.Empty;
     public string SubjectiveUpdate { get; set; } = string.Empty;

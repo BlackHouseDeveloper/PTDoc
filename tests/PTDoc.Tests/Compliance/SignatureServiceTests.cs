@@ -45,6 +45,127 @@ public sealed class SignatureServiceTests : IDisposable
             addendumService);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SignNote_RejectsUnsupportedOrPartialProgressHistoryWithoutMutatingContent(bool partial)
+    {
+        var signer = await CreateUserAsync(Roles.PT);
+        var patient = await CreatePatientAsync();
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.ProgressNote,
+            ProgressQuestionnaire = new()
+            {
+                PercentImproved = 37.5m,
+                Activities = partial ? new() { Baseline = null! } : new() { Version = 99 }
+            }
+        };
+        var json = JsonSerializer.Serialize(payload);
+        var note = await CreateNoteAsync(patient.Id, NoteType.ProgressNote, json, "[]");
+        var result = await _signatureService.SignNoteAsync(note.Id, signer.Id, Roles.PT, true, true);
+        Assert.False(result.Success);
+        Assert.Contains(partial ? "incomplete" : "compatible client", result.ErrorMessage);
+        Assert.Equal(json, note.ContentJson);
+        Assert.Equal(NoteStatus.Draft, note.NoteStatus);
+        Assert.Empty(await _context.Signatures.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("version")]
+    [InlineData("answer")]
+    [InlineData("normalization-loss")]
+    public async Task SignNote_RejectsInvalidDailyQuestionnaireWithoutMutation(string change)
+    {
+        var signer = await CreateUserAsync(Roles.PT);
+        var patient = await CreatePatientAsync();
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            DailyTreatment = new() { Questionnaire = new() { HepAdherence = "Daily" } }
+        };
+        if (change == "version") payload.DailyTreatment.Questionnaire.Version = 99;
+        if (change == "answer") payload.DailyTreatment.Questionnaire.HepAdherence = "invented";
+        var json = change == "normalization-loss"
+            ? "{\"subjective\":\"Legacy\",\"dailyTreatment\":{\"questionnaire\":{\"version\":1,\"hepAdherence\":\"Daily\"}}}"
+            : JsonSerializer.Serialize(payload);
+        var note = await CreateNoteAsync(patient.Id, NoteType.Daily, json, "[]");
+        var result = await _signatureService.SignNoteAsync(note.Id, signer.Id, Roles.PT, true, true);
+        Assert.False(result.Success);
+        Assert.Equal(json, note.ContentJson);
+        Assert.Equal(NoteStatus.Draft, note.NoteStatus);
+        Assert.Empty(await _context.Signatures.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(Roles.PT)]
+    [InlineData(Roles.PTA)]
+    public async Task SignNote_PreservesSavedDailyOutcomeHistoryWithoutResultRows(string role)
+    {
+        var signer = await CreateUserAsync(role);
+        var patient = await CreatePatientAsync();
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(
+            CreateWorkspaceNoteContentWithDiagnosis(noteType: NoteType.Daily), options)!;
+        var recordedAt = new DateTime(2026, 1, 2, 14, 30, 0, DateTimeKind.Utc).AddTicks(1234);
+        payload.Objective.OutcomeMeasures =
+        [
+            new()
+            {
+                MeasureType = OutcomeMeasureType.VAS,
+                Score = 3,
+                RecordedAtUtc = recordedAt,
+                MinimumDetectableChange = 2
+            },
+            new()
+            {
+                MeasureType = OutcomeMeasureType.LEFS,
+                Score = 42,
+                RecordedAtUtc = recordedAt.AddDays(-1),
+                MinimumDetectableChange = null
+            },
+            new()
+            {
+                MeasureType = OutcomeMeasureType.VAS,
+                Score = 3,
+                RecordedAtUtc = recordedAt,
+                MinimumDetectableChange = 2
+            }
+        ];
+        var expectedOutcomes = JsonSerializer.Serialize(payload.Objective.OutcomeMeasures, options);
+        // Legacy evidence may exist only in saved JSON. Signing must neither require
+        // result rows nor deduplicate or recalculate that historical evidence.
+        var note = await CreateNoteAsync(patient.Id, NoteType.Daily, JsonSerializer.Serialize(payload, options));
+        _context.ChangeTracker.Clear();
+        Assert.Empty(await _context.OutcomeMeasureResults.ToListAsync());
+
+        var result = await _signatureService.SignNoteAsync(note.Id, signer.Id, role, true, true);
+
+        Assert.True(result.Success, result.ErrorMessage);
+        await AssertSavedHistoryAsync(role == Roles.PTA ? NoteStatus.PendingCoSign : NoteStatus.Signed);
+        Assert.Equal(role, (await _context.Signatures.SingleAsync(s => s.NoteId == note.Id)).Role);
+
+        if (role == Roles.PTA)
+        {
+            var coSigner = await CreateUserAsync(Roles.PT);
+            _context.ChangeTracker.Clear();
+            var coSign = await _signatureService.CoSignNoteAsync(note.Id, coSigner.Id, true, true);
+
+            Assert.True(coSign.Success, coSign.ErrorMessage);
+            await AssertSavedHistoryAsync(NoteStatus.Signed);
+            Assert.Equal(2, await _context.Signatures.CountAsync(s => s.NoteId == note.Id));
+        }
+
+        async Task AssertSavedHistoryAsync(NoteStatus expectedStatus)
+        {
+            var saved = await _context.ClinicalNotes.AsNoTracking().SingleAsync(n => n.Id == note.Id);
+            Assert.Equal(expectedStatus, saved.NoteStatus);
+            var savedPayload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(saved.ContentJson, options)!;
+            Assert.Equal(expectedOutcomes, JsonSerializer.Serialize(savedPayload.Objective.OutcomeMeasures, options));
+            Assert.Empty(await _context.OutcomeMeasureResults.ToListAsync());
+        }
+    }
+
     [Fact]
     public async Task SignNote_ValidPtSignature_PersistsSignatureAndFinalizesNote()
     {

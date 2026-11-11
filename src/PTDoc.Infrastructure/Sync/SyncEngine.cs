@@ -7,12 +7,14 @@ using PTDoc.Application.Compliance;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
 using PTDoc.Application.NoteTemplates;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Observability;
 using PTDoc.Application.Services;
 using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Services;
+using PTDoc.Infrastructure.Notes.Workspace;
 using System.Security.Cryptography;
 using System.Text.Json;
 
@@ -2520,11 +2522,17 @@ public class SyncEngine : ISyncEngine
                 var contentJson = TryGetString(root, "contentJson")
                     ?? TryGetString(root, "ContentJson")
                     ?? "{}";
+                DailyQuestionnaireDefinition.ValidateJsonWrite(null, contentJson);
+                ProgressActivityTracking.ValidateJsonWrite(null, contentJson);
                 var normalizedContentJson = NoteWriteService.NormalizeContentJson(
                     noteType,
                     isReEvaluation,
                     dateOfService,
                     contentJson);
+                DailyQuestionnaireDefinition.ValidateJsonWrite(contentJson, normalizedContentJson);
+                ProgressActivityTracking.ValidateJsonWrite(contentJson, normalizedContentJson);
+                normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(_context, null, patientId, serverId, normalizedContentJson, cancellationToken);
+                DailyOutcomeWriteValidator.Validate(noteType, null, normalizedContentJson);
                 var isDryNeedling = NoteWriteService.IsDryNeedlingContent(
                     noteType,
                     isReEvaluation,
@@ -2578,11 +2586,16 @@ public class SyncEngine : ISyncEngine
                     var updatedContentJson = TryGetString(root, "contentJson")
                         ?? TryGetString(root, "ContentJson")
                         ?? existing.ContentJson;
+                    DailyQuestionnaireDefinition.ValidateJsonWrite(existing.ContentJson, updatedContentJson);
+                    PTDoc.Application.Notes.Workspace.ProgressActivityTracking.ValidateJsonWrite(existing.ContentJson, updatedContentJson);
                     var normalizedContentJson = NoteWriteService.NormalizeContentJson(
                         existing.NoteType,
                         updatedIsReEvaluation,
                         updatedDateOfService,
                         updatedContentJson);
+                    DailyQuestionnaireDefinition.ValidateJsonWrite(updatedContentJson, normalizedContentJson);
+                    normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(_context, existing, existing.PatientId, existing.Id, normalizedContentJson, cancellationToken);
+                    DailyOutcomeWriteValidator.Validate(existing.NoteType, existing, normalizedContentJson);
                     var isDryNeedling = NoteWriteService.IsDryNeedlingContent(
                         existing.NoteType,
                         updatedIsReEvaluation,

@@ -239,7 +239,20 @@ public sealed class NoteWorkspaceV2Service(
         DryNeedlingBillingPolicy.Enforce(payload);
         NormalizeCptModifierSources(payload.Plan.SelectedCptCodes);
 
+        payload.ProgressQuestionnaire ??= new WorkspaceProgressNoteQuestionnaireV2();
+        var progressErrors = await ProgressActivityWriteValidator.PrepareAsync(db, workspaceCatalogs, payload, note, request.PatientId, noteId, cancellationToken);
+        if (progressErrors.Count > 0)
+            return new NoteWorkspaceV2SaveResponse { IsValid = false, Errors = progressErrors };
+
         var interventionErrors = NormalizeAndValidateInterventions(payload);
+        try
+        {
+            DailyQuestionnaireDefinition.ValidateJsonWrite(note?.ContentJson, JsonSerializer.Serialize(payload, SerializerOptions));
+        }
+        catch (InvalidOperationException ex)
+        {
+            interventionErrors.Add(ex.Message);
+        }
         if (interventionErrors.Count > 0)
         {
             return new NoteWorkspaceV2SaveResponse
@@ -406,6 +419,10 @@ public sealed class NoteWorkspaceV2Service(
                 .ToListAsync(cancellationToken);
 
         var nonSelectableOutcomeErrors = GetNonSelectableOutcomeMeasureErrors(payload.Objective.OutcomeMeasures, existingOutcomeResults);
+        // Guard the saved type too: changing the requested type must not bypass history retention.
+        var preserveDailyOutcomes = note?.NoteType == NoteType.Daily || request.NoteType == NoteType.Daily;
+        if (preserveDailyOutcomes && !HaveSameOutcomeMeasures(payload.Objective.OutcomeMeasures, existingOutcomeResults))
+            nonSelectableOutcomeErrors.Add("Daily outcome measures are historical and read-only. Reload the saved results before saving.");
         if (nonSelectableOutcomeErrors.Count > 0)
         {
             saveResponse.IsValid = false;
@@ -414,6 +431,13 @@ public sealed class NoteWorkspaceV2Service(
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
             return saveResponse;
+        }
+
+        if (preserveDailyOutcomes)
+        {
+            // UI round trips omit this PDF metadata; always restore the authoritative catalog value.
+            foreach (var entry in payload.Objective.OutcomeMeasures)
+                entry.MinimumDetectableChange = outcomeMeasureRegistry.GetDefinition(entry.MeasureType).MinimumClinicallyImportantDifference;
         }
 
         var now = DateTime.UtcNow;
@@ -459,7 +483,8 @@ public sealed class NoteWorkspaceV2Service(
         }
 
         await SyncObjectiveMetricsAsync(note, payload, cancellationToken);
-        await SyncOutcomeMeasuresAsync(note, clinicId, currentUserId, payload, existingOutcomeResults);
+        if (!preserveDailyOutcomes)
+            await SyncOutcomeMeasuresAsync(note, clinicId, currentUserId, payload, existingOutcomeResults);
         await SyncPatientGoalsAsync(note, clinicId, payload, cancellationToken);
 
         if (request.Override is not null)
@@ -1239,6 +1264,23 @@ public sealed class NoteWorkspaceV2Service(
         payload.Plan.ClinicalSummary = null;
         payload.Plan.ComputedPlanOfCare = new ComputedPlanOfCareV2();
         payload.DailyTreatment = new WorkspaceDailyTreatmentV2();
+        if (targetNoteType == NoteType.Daily)
+        {
+            // Preserve stable diagnoses and activity context, but never present a prior complaint
+            // or prior visit's pain ratings as today's Daily patient report.
+            payload.Subjective.Problems = [];
+            payload.Subjective.OtherProblem = null;
+            payload.Subjective.CurrentPainScore = 0;
+            payload.Subjective.BestPainScore = 0;
+            payload.Subjective.WorstPainScore = 0;
+            payload.Subjective.IsPainScoreDocumented = false;
+            payload.Subjective.PainFrequency = string.Empty;
+            payload.Subjective.NarrativeContext ??= new();
+            payload.Subjective.NarrativeContext.ChiefComplaint = null;
+        }
+        if (targetNoteType == NoteType.ProgressNote)
+            payload.ProgressQuestionnaire = new WorkspaceProgressNoteQuestionnaireV2
+            { Activities = ProgressActivityTracking.BaselineFrom(sourcePayload, sourceNoteId) };
 
         return payload;
     }
@@ -1587,6 +1629,15 @@ public sealed class NoteWorkspaceV2Service(
         }
 
         return Task.CompletedTask;
+    }
+
+    private static bool HaveSameOutcomeMeasures(
+        IReadOnlyCollection<OutcomeMeasureEntryV2> entries,
+        IReadOnlyCollection<OutcomeMeasureResult> existingResults)
+    {
+        if (entries.Count != existingResults.Count) return false;
+        var remaining = existingResults.ToList();
+        return entries.All(entry => ConsumeMatchingHistoricalResult(remaining, entry));
     }
 
     private List<string> GetNonSelectableOutcomeMeasureErrors(

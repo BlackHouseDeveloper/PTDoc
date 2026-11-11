@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - PR 200 November 11 review and signing compatibility
+
+- Reverify all current review threads and Previously missed findings against `24513d3a`; record existing fixes, the invalid optional-questionnaire claim and duplicate summaries. Document the confirmed saved-JSON signing baseline and classify the claimed signing authoring bypass as unsupported by the request contract.
+- Add PT signing and PTA/co-signing regression coverage preserving JSON-only Daily outcomes, including precise timestamps, nullable metadata, order and duplicate multiplicity, without requiring or creating result rows. Runtime behavior is unchanged; the user confirmed all required builds, tests and format verification passed.
+
+### Fixed - PR 200 November 9 review: legacy safety and remaining write guards
+
+- Reject unsupported/incomplete saved Progress history with compatible-client validation instead of dereferencing a null baseline. Render partial/unsupported activity history read-only without mutating saved data.
+- Reject present null/non-object Daily treatment sections while preserving the intentional nullable legacy questionnaire contract. Validate Daily questionnaires before and after signing normalization.
+- Apply shared Daily outcome read-only validation to generic note and sync creates/updates before persistence, including metadata, timestamps and duplicate multiplicity; preserve unchanged historical payloads.
+- Add focused API, sync, signature, shared-validator and bUnit regressions. Record both new inline findings, all four Previously missed summary findings, the invalid null-questionnaire subclaim and seven already-addressed findings in the review-stack audit. Verification awaits user execution.
+
+### Fixed - PR 200 follow-up review: Progress history and read compatibility
+
+- Preserve percentage-only Progress history against older-client omissions in workspace, generic API and sync writes; enforce identical saved or signed-source percentages on non-Progress carry-forward without requiring an activity object.
+- Restore Daily outcome `MinimumDetectableChange` from the authoritative registry before serialization, retaining historical rows and preventing omitted or forged client metadata from reaching exports.
+- Keep Progress write validation in create/update/sync/sign paths rather than shared read normalization. Allow historical unsupported/partial activity payloads to be read; tolerate missing activity collections in PDF rendering while continuing to reject invalid writes and signatures.
+- Add focused API, sync, signing, normalization, carry-forward and PDF regressions; extend Daily outcome provenance coverage and move percentage-bound assertions to the write guard. Record all seven unique review findings and duplicate summaries in `docs/client-review/plan-08-review-stack.md`. Verification for these new changes awaits the user; prior passing verification applies to the earlier commit only.
+
+### Fixed - PR 200 Daily questionnaire and historical evidence review
+
+- Validate Daily questionnaire writes across workspace, generic note API and offline sync paths, including dry-needling/type changes, unsupported answers and versions, older-client omissions, and normalization that would discard submitted answers. Keep legacy notes without questionnaires compatible.
+- Reject Daily outcome additions, edits and omissions before mutating the note or tracked evidence. Preserve unchanged historical result IDs, recording clinicians, timestamps and duplicate entries, including when the request changes the note type.
+- Display historical positive Daily pain scores without requiring the newer documentation flag; keep undocumented zero blank and explicitly documented zero visible.
+- Add 50 focused regression cases and record all four current PR 200 findings, duplicate summary references and the complete review retrieval in `docs/client-review/plan-08-review-stack.md`. The user confirmed all required builds and tests passed before authorizing publication.
+- Include the user-authorized formatting-only cleanup of five test files; test behavior is unchanged.
+- Correct the missing `PTDoc.Application.Services` import in the new integration tests after the user-reported build identified two unresolved `Roles` references. The subsequent build passed without warnings or errors.
+- Record the subsequent user-reported clean build and Debug suite result (2,965 passed, one autosave discard timeout, one PostgreSQL-specific skip). The user subsequently confirmed all required builds and tests passed; no autosave timeout or production behavior was altered based on the initial failure.
+
 ### Fixed - PR 163 previously missed review findings
 
 - Add the encounter intake read and encounter seed routes to the authoritative RBAC inventory, including both seed policies, and compare their inventory entries against live endpoint authorization metadata.
@@ -36,6 +65,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.github/workflows/deploy-beta.yml`** — Run the complete deployment test suite with xUnit collection parallelism disabled after run `41752480381` failed with clustered 100-second HTTP timeouts in changing test sets (eight failures initially, four on the completed retry). Preserve all tests, assertions, HTTP timeouts and deployment gates; retain the TRX report even when the test step fails.
 - With explicit operator approval, rehearse the committed SQL Server `20261103030000_AddOrganizationMemberships` migration on a temporary Basic-tier database copy, then apply it during a controlled beta stop/start. Verify hashes of existing clinic, user, patient, note, signature, appointment, schedule-block and session data, membership backfill and database constraints. Both rehearsal and live checks passed, and API/Web readiness recovered. Remove the temporary IP-only SQL firewall rule and, after successful deployment verification, delete the recovery copy.
 - **Deploy Beta run `41775391240`** — Successfully deploy source `5ac1e92b04469f594a0b7aa40f9da1102a4b3167` as release `beta-31-1` to both apps. All 2,717 tests passed in 7 minutes 27 seconds, with no failures or skips. API health, all four seeded-role sign-ins, authenticated source/release parity, Web health, shared CSS and WebSockets negotiation passed. Independent live checks confirmed HTTP 200 for both apps' liveness/readiness and shared CSS, plus advertised WebSockets. The fix was committed/pushed with explicit permission before local build/test confirmation; no local .NET build/test commands were run.
+
+### Added - Daily questionnaire and Progress activity foundations
+
+- Integrate the existing Plan 20 / PR 176 Daily questionnaire and Plan 30 / PR 187 activity tracking, carry-forward, note/PDF and historical-evidence safeguards on the PR 163 encounter foundation.
+- Preserve the reviewed fixes for signature evidence, first-save activity baselines and actionable HTTP 422 validation, with their service and endpoint regressions. Use existing app tokens for the activity editor.
+- This layer does not enable short-visit intake or the patient outcome workflow; those are reviewed in subsequent layers. Split verification is recorded in the review stack manifest.
 
 ### Fixed - PR 163 encounter intake review
 

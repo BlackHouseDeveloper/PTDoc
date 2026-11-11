@@ -826,7 +826,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         }
 
         var values = new List<string>();
-        if (workspace.Subjective.CurrentPainScore > 0)
+        if (workspace.Subjective.IsPainScoreDocumented || workspace.Subjective.CurrentPainScore > 0)
         {
             values.Add($"Current {workspace.Subjective.CurrentPainScore}/10");
         }
@@ -1021,6 +1021,16 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
 
         var questionnaire = workspace.ProgressQuestionnaire;
         var values = new List<string>();
+        if (questionnaire.PercentImproved is { } percent) values.Add($"Percent improved: {percent}%");
+        if (questionnaire.Activities is { } activities)
+        {
+            foreach (var activity in (activities.Baseline ?? []).Where(a => a is not null))
+            {
+                var state = activities.ImprovedIds?.Contains(activity.Id) == true ? "Improved" : activities.SameIds?.Contains(activity.Id) == true ? "Same" : activities.WorseIds?.Contains(activity.Id) == true ? "Worse" : null;
+                if (state is not null) values.Add($"{state}: {activity.BodyPart} — {activity.Description}");
+            }
+            foreach (var activity in (activities.NewlyDifficult ?? []).Where(a => a is not null)) values.Add($"Newly difficult: {activity.BodyPart} — {activity.Description}");
+        }
 
         AddIfPresent(values, questionnaire.OverallCondition, "Overall condition");
         AddIfPresent(values, questionnaire.GoalProgress, "Goal progress");
@@ -1234,6 +1244,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
         }
 
         var values = new List<string>();
+        AddIfPresent(values, DailyQuestionnaireDefinition.Summarize(workspace?.DailyTreatment.Questionnaire), "Daily questionnaire");
         AddIfPresent(values, workspace?.DailyTreatment.SubjectiveUpdate, "Daily update");
         AddIfPresent(values, workspace?.DailyTreatment.ChangesSinceLastVisit, "Changes since last visit");
         AddIfPresent(values, workspace?.DailyTreatment.PainLevelChanges, "Pain changes");

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage;
 using PTDoc.Application.Compliance;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -582,11 +583,16 @@ public class SignatureService : ISignatureService
 
     private static void NormalizeNoteContentForSigning(ClinicalNote note)
     {
-        note.ContentJson = NoteWriteService.NormalizeContentJson(
+        DailyQuestionnaireDefinition.ValidateJsonWrite(null, note.ContentJson);
+        ProgressActivityTracking.ValidateJsonWrite(null, note.ContentJson);
+        var normalized = NoteWriteService.NormalizeContentJson(
             note.NoteType,
             note.IsReEvaluation,
             note.DateOfService,
             note.ContentJson);
+        DailyQuestionnaireDefinition.ValidateJsonWrite(note.ContentJson, normalized);
+        ProgressActivityTracking.ValidateJsonWrite(note.ContentJson, normalized);
+        note.ContentJson = normalized;
     }
 
     private static async Task CommitSignatureTransactionAsync(IDbContextTransaction? transaction, CancellationToken ct)
@@ -599,16 +605,13 @@ public class SignatureService : ISignatureService
 
     private async Task<SignatureResult?> ValidatePreSignatureRequirementsAsync(ClinicalNote note, CancellationToken ct)
     {
+        try { NormalizeNoteContentForSigning(note); }
+        catch (InvalidOperationException ex) { return FailedSignature(ex.Message); }
+
         if (note.IsAddendum)
         {
             return null;
         }
-
-        note.ContentJson = NoteWriteService.NormalizeContentJson(
-            note.NoteType,
-            note.IsReEvaluation,
-            note.DateOfService,
-            note.ContentJson);
 
         var violations = await _clinicalRulesEngine.RunClinicalValidationAsync(note.Id, ct);
         var blockingViolations = violations.Where(v => v.Blocking).ToList();

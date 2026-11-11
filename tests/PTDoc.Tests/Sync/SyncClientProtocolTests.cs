@@ -53,6 +53,205 @@ public class SyncClientProtocolTests
             addendumService);
     }
 
+    [Theory]
+    [InlineData(false, "version")]
+    [InlineData(true, "version")]
+    [InlineData(false, "partial")]
+    [InlineData(true, "partial")]
+    [InlineData(true, "prior-partial")]
+    [InlineData(true, "omit")]
+    [InlineData(true, "legacy")]
+    [InlineData(false, "missing-schema")]
+    [InlineData(true, "missing-schema")]
+    public async Task ProgressHistoryPush_RejectsInvalidOrOmittedEvidenceWithoutPersistingDraftChanges(bool update, string change)
+    {
+        using var context = CreateInMemoryContext();
+        var patient = new Patient { FirstName = "Synthetic", LastName = "DailySync", ClinicId = Guid.NewGuid() };
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.ProgressNote,
+            ProgressQuestionnaire = new() { PercentImproved = 37.5m }
+        };
+        if (change == "prior-partial") payload.ProgressQuestionnaire.Activities = new() { Baseline = null! };
+        var originalJson = JsonSerializer.Serialize(payload);
+        var originalModified = DateTime.UtcNow.AddMinutes(-5);
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            ClinicId = patient.ClinicId,
+            NoteType = NoteType.ProgressNote,
+            ContentJson = originalJson,
+            LastModifiedUtc = originalModified
+        };
+        context.Patients.Add(patient);
+        if (update) context.ClinicalNotes.Add(note);
+        await context.SaveChangesAsync();
+        if (change == "prior-partial") payload.ProgressQuestionnaire.Activities = new();
+        if (change == "version") payload.ProgressQuestionnaire.Activities = new() { Version = 99 };
+        if (change == "partial") payload.ProgressQuestionnaire.Activities = new() { Baseline = null! };
+        if (change == "omit") payload.ProgressQuestionnaire.PercentImproved = null;
+        var content = change switch
+        {
+            "legacy" => "{\"subjective\":\"Older client edit\"}",
+            "missing-schema" => "{\"subjective\":\"Legacy content\",\"progressQuestionnaire\":{\"percentImproved\":37.5}}",
+            _ => JsonSerializer.Serialize(payload)
+        };
+        var engine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var request = new ClientSyncPushRequest
+        {
+            Items = [new ClientSyncPushItem
+            {
+                EntityType = "ClinicalNote", ServerId = update ? note.Id : Guid.Empty,
+                LocalId = 1, OperationId = Guid.NewGuid(), Operation = update ? "Update" : "Create",
+                LastModifiedUtc = DateTime.UtcNow,
+                DataJson = JsonSerializer.Serialize(new { patientId = patient.Id, noteType = "ProgressNote", contentJson = content })
+            }]
+        };
+
+        var response = await engine.ReceiveClientPushAsync(request);
+        Assert.Equal(0, response.AcceptedCount);
+        Assert.Equal("Error", Assert.Single(response.Items).Status);
+        await context.SaveChangesAsync(); // Receipt saves and later saves must not leak rejected note changes.
+        var notes = await context.ClinicalNotes.AsNoTracking().ToListAsync();
+        if (update)
+        {
+            var saved = Assert.Single(notes);
+            Assert.Equal(originalJson, saved.ContentJson);
+            Assert.Equal(originalModified, saved.LastModifiedUtc);
+            Assert.Equal(originalJson, note.ContentJson);
+        }
+        else Assert.Empty(notes);
+        var replay = await engine.ReceiveClientPushAsync(request);
+        Assert.Equal(0, replay.AcceptedCount);
+        Assert.Equal("Error", Assert.Single(replay.Items).Status);
+    }
+
+    [Theory]
+    [InlineData(false, "version")]
+    [InlineData(true, "version")]
+    [InlineData(false, "answer")]
+    [InlineData(true, "answer")]
+    [InlineData(true, "omit")]
+    [InlineData(true, "legacy")]
+    [InlineData(false, "missing-schema")]
+    [InlineData(true, "missing-schema")]
+    [InlineData(false, "null-section")]
+    [InlineData(false, "outcome")]
+    [InlineData(true, "outcome")]
+    [InlineData(true, "outcome-omit")]
+    [InlineData(true, "outcome-score")]
+    [InlineData(true, "outcome-metadata")]
+    public async Task DailyQuestionnairePush_RejectsInvalidOrOmittedAnswersWithoutPersistingDraftChanges(bool update, string change)
+    {
+        using var context = CreateInMemoryContext();
+        var patient = new Patient { FirstName = "Synthetic", LastName = "DailySync", ClinicId = Guid.NewGuid() };
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            DailyTreatment = new() { Questionnaire = new() { HepAdherence = "Daily" } }
+        };
+        if (change.StartsWith("outcome-", StringComparison.Ordinal))
+            payload.Objective.OutcomeMeasures = [new() { MeasureType = OutcomeMeasureType.VAS, Score = 3, MinimumDetectableChange = 2 }];
+        var originalJson = JsonSerializer.Serialize(payload);
+        var originalModified = DateTime.UtcNow.AddMinutes(-5);
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            ClinicId = patient.ClinicId,
+            NoteType = NoteType.Daily,
+            ContentJson = originalJson,
+            LastModifiedUtc = originalModified
+        };
+        context.Patients.Add(patient);
+        if (update) context.ClinicalNotes.Add(note);
+        await context.SaveChangesAsync();
+        if (change == "outcome") payload.Objective.OutcomeMeasures = [new() { MeasureType = OutcomeMeasureType.VAS, Score = 3 }];
+        if (change == "outcome-omit") payload.Objective.OutcomeMeasures.Clear();
+        if (change == "outcome-score") payload.Objective.OutcomeMeasures[0].Score = 4;
+        if (change == "outcome-metadata") payload.Objective.OutcomeMeasures[0].MinimumDetectableChange = 999;
+        payload.DryNeedling = new();
+        if (change == "version") payload.DailyTreatment.Questionnaire!.Version = 99;
+        if (change == "answer") payload.DailyTreatment.Questionnaire!.HepAdherence = "invented";
+        if (change == "omit") payload.DailyTreatment.Questionnaire = null;
+        var content = change switch
+        {
+            "null-section" => "{\"schemaVersion\":2,\"dailyTreatment\":null}",
+            "legacy" => """{"subjective":"Older client edit"}""",
+            "missing-schema" => """{"subjective":"Legacy content","dailyTreatment":{"questionnaire":{"version":1,"hepAdherence":"Daily"}}}""",
+            _ => JsonSerializer.Serialize(payload)
+        };
+        var engine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var request = new ClientSyncPushRequest
+        {
+            Items = [new ClientSyncPushItem
+            {
+                EntityType = "ClinicalNote", ServerId = update ? note.Id : Guid.Empty,
+                LocalId = 1, OperationId = Guid.NewGuid(), Operation = update ? "Update" : "Create",
+                LastModifiedUtc = DateTime.UtcNow,
+                DataJson = JsonSerializer.Serialize(new { patientId = patient.Id, noteType = "Daily", contentJson = content })
+            }]
+        };
+
+        var response = await engine.ReceiveClientPushAsync(request);
+        Assert.Equal(0, response.AcceptedCount);
+        Assert.Equal("Error", Assert.Single(response.Items).Status);
+        await context.SaveChangesAsync(); // Receipt saves and later saves must not leak rejected note changes.
+        var notes = await context.ClinicalNotes.AsNoTracking().ToListAsync();
+        if (update)
+        {
+            var saved = Assert.Single(notes);
+            Assert.Equal(originalJson, saved.ContentJson);
+            Assert.Equal(originalModified, saved.LastModifiedUtc);
+            Assert.Equal(originalJson, note.ContentJson);
+        }
+        else Assert.Empty(notes);
+        var replay = await engine.ReceiveClientPushAsync(request);
+        Assert.Equal(0, replay.AcceptedCount);
+        Assert.Equal("Error", Assert.Single(replay.Items).Status);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DailyQuestionnairePush_AcceptsValidCreateAndUpdate(bool update)
+    {
+        using var context = CreateInMemoryContext();
+        var patient = new Patient { FirstName = "Synthetic", LastName = "DailySync", ClinicId = Guid.NewGuid() };
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Daily,
+            DailyTreatment = new() { Questionnaire = new() { HepAdherence = "Daily" } }
+        };
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            ClinicId = patient.ClinicId,
+            NoteType = NoteType.Daily,
+            ContentJson = JsonSerializer.Serialize(payload),
+            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-5)
+        };
+        context.Patients.Add(patient);
+        if (update) context.ClinicalNotes.Add(note);
+        await context.SaveChangesAsync();
+        payload.DailyTreatment.Questionnaire!.HepAdherence = "Rarely";
+        var engine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var response = await engine.ReceiveClientPushAsync(new ClientSyncPushRequest
+        {
+            Items = [new ClientSyncPushItem
+            {
+                EntityType = "ClinicalNote", ServerId = update ? note.Id : Guid.Empty,
+                LocalId = 1, OperationId = Guid.NewGuid(), Operation = update ? "Update" : "Create",
+                LastModifiedUtc = DateTime.UtcNow,
+                DataJson = JsonSerializer.Serialize(new { patientId = patient.Id, noteType = "Daily", contentJson = JsonSerializer.Serialize(payload) })
+            }]
+        });
+
+        Assert.Equal(1, response.AcceptedCount);
+        var saved = await context.ClinicalNotes.AsNoTracking().SingleAsync();
+        var reloaded = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(saved.ContentJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        Assert.Equal("Rarely", reloaded.DailyTreatment.Questionnaire!.HepAdherence);
+    }
+
     // ── GetClientDeltaAsync – entity allowlist tests ──────────────────────────
 
     [Theory]
