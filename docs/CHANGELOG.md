@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Required PIN changes on retrying database providers
+
+- **`DatabaseSeeder` / `BetaAccessSeederTests`** — Honor the user-requested shared-PIN policy for all `.beta` fixtures during enabled Beta startup: restore the Azure-managed shared PIN, clear pending PIN changes, and retain a non-expiring legacy migration allowance. Additional fixtures retain roles/memberships/activation; other accounts and MFA keep their normal rules. Add five regressions for expired grace, restarted seeding, additional fixtures and unaffected staff; document the policy in the beta runbook.
+- **`AuthService.CompletePinChangeAsync`** — Execute the required PIN change and its audit record inside the provider execution strategy so SQL Server/PostgreSQL retry policies do not reject the explicit transaction. Reload tracked state after a rolled-back attempt and recognize this invocation's exact salted hash after a lost commit acknowledgement, preserving single-use challenges and issuing the session only after the write completes.
+- **`SettingsAdministrationTests`** — Add six relational regressions covering ordinary execution, failure before commit, and failure after commit for Web sessions and native identity-only completion; verify policy rejection, one audit record, challenge replay rejection, and sign-in with the updated PIN. The user authorized local testing and beta deployment; the expanded focused build/test run passed 56 tests with zero failures or skips, and changed-file formatting verification passed. This hotfix is based on the deployed beta revision `e894d2ad` and requires no database migration.
+
 ### Fixed - Restore the deployment fix to main after PR 161
 
 - Diagnose Deploy Beta run `42026288423` at `a787e848`: 2,817 tests passed and six unrelated HTTP cases hit the same clustered 100-second timeout. The previously verified deployment fix remained in draft PR 199 and was absent from main; update that PR onto the subscription merge while preserving both changelog histories. The user authorized the complete repair, publication, migration and deployment workflow.

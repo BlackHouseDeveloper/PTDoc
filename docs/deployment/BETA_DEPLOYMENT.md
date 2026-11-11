@@ -122,6 +122,8 @@ Because Beta uses `Database__AutoMigrate=false`, apply database migrations out-o
 Startup seeding is enabled only through `BetaAccess__AllowStartupSeed=true`, and is approved only while the Beta API App Service remains a controlled single-instance deployment. The seeder waits up to `BetaAccess__SeedLockTimeoutSeconds` for the SQL Server application lock. A `-1`, `-2`, or `-3` lock result is reported as `SkippedLockContention`; it is not a database failure. The single sanitized startup outcome is one of `Completed`, `AlreadyCurrent`, `SkippedLockContention`, `SkippedConfiguration`, `SkippedDatabase`, or `Failed` and includes duration plus the numeric lock result when available.
 The shared Beta seed PIN is not committed; configure it through the API App Service setting `BetaAccess__SeedPin` and rotate it from Azure when needed. The current Beta PIN is managed in Azure settings.
 
+All usernames ending in `.beta` are shared Beta access fixtures. The enabled Beta startup seed restores their configured shared PIN, clears pending PIN-change requirements, and gives the legacy PIN an unlimited migration grace period. They do not need to choose individual PINs after the normal 14-day rollout window. Additional `.beta` accounts keep their existing roles, memberships and active/inactive state. Other accounts retain the normal clinic PIN policy; Production never invokes this seed. MFA enforcement remains unchanged.
+
 Keep Beta on a single App Service instance with autoscale disabled unless a release explicitly documents a different operating model. If scale-out is enabled, disable startup seeding first or verify the SQL lock behavior immediately after deployment.
 
 | Username | Email | Role |

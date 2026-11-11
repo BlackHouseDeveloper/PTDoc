@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Data.Common;
 using System.Security.Cryptography;
 using System.Security.Claims;
 using System.Text;
@@ -9,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -24,6 +26,7 @@ using PTDoc.Application.Services;
 using PTDoc.Application.Settings;
 using PTDoc.Core.Communication;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Identity;
 using PTDoc.Infrastructure.Settings;
@@ -2484,6 +2487,79 @@ public sealed class SettingsAdministrationTests
         Assert.Null(result);
     }
 
+    [Theory]
+    [InlineData("none", AuthSessionMode.Stateful)]
+    [InlineData("before", AuthSessionMode.Stateful)]
+    [InlineData("after", AuthSessionMode.Stateful)]
+    [InlineData("none", AuthSessionMode.IdentityOnly)]
+    [InlineData("before", AuthSessionMode.IdentityOnly)]
+    [InlineData("after", AuthSessionMode.IdentityOnly)]
+    public async Task PinChange_RetryingProvider_PersistsOnceAndAllowsNewPinLogin(
+        string failureStage, AuthSessionMode sessionMode)
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var fault = new PinChangeCommitFault(failureStage);
+        // Exercise EF's actual retry/transaction guard with a disposable relational DB.
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection, provider => provider.ExecutionStrategy(
+                dependencies => new PinChangeRetryingExecutionStrategy(dependencies)))
+            .AddInterceptors(fault)
+            .Options;
+        await using var context = new ApplicationDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        var clinic = new Clinic { Name = "PIN Retry Clinic", Slug = $"pin-retry-{Guid.NewGuid():N}" };
+        var user = new User
+        {
+            Username = "pin-retry-admin",
+            PinHash = AuthService.HashPin("1234"),
+            FirstName = "Pin",
+            LastName = "Retry",
+            Role = Roles.Admin,
+            ClinicId = clinic.Id,
+            IsActive = true,
+            LegacyPinGraceEndsAtUtc = DateTime.UtcNow.AddDays(-1)
+        };
+        context.AddRange(clinic, user);
+        await context.SaveChangesAsync();
+        var audit = new AuditService(context);
+        var mfa = new MfaAuthenticationService(context, new TestSecretProtector(), audit, TimeProvider.System);
+        var auth = new AuthService(context, NullLogger<AuthService>.Instance, audit, mfa);
+        var login = await auth.AuthenticateAsync(user.Username, "1234", sessionMode: sessionMode);
+        Assert.Equal(AuthStatus.RequiresPinChange, login!.Status);
+        var challenge = login.ChallengeToken!;
+        Assert.Empty(await context.Sessions.ToListAsync());
+
+        // Reject a policy violation without consuming the challenge or changing the PIN.
+        var rejected = await auth.CompletePinChangeAsync(challenge, "12345", sessionMode: sessionMode);
+        Assert.Equal(AuthStatus.RequiresPinChange, rejected!.Status);
+        Assert.Equal(user.PinHash, await context.Users.AsNoTracking()
+            .Where(item => item.Id == user.Id).Select(item => item.PinHash).SingleAsync());
+        fault.Enabled = true;
+
+        var completed = await auth.CompletePinChangeAsync(challenge, "75319528", sessionMode: sessionMode);
+
+        Assert.Equal(AuthStatus.Success, completed!.Status);
+        Assert.Equal(failureStage == "none" ? 0 : 1, fault.FailureCount);
+        Assert.Equal(sessionMode == AuthSessionMode.Stateful ? 1 : 0,
+            await context.Sessions.CountAsync());
+        if (sessionMode == AuthSessionMode.Stateful) Assert.False(string.IsNullOrWhiteSpace(completed.Token));
+        else Assert.Null(completed.Token);
+        Assert.Equal(1, await context.AuditLogs.CountAsync(item => item.EventType == "PinChanged"));
+        context.ChangeTracker.Clear();
+        var persisted = await context.Users.SingleAsync(item => item.Id == user.Id);
+        Assert.False(persisted.MustChangePin);
+        Assert.NotNull(persisted.PinChangedAtUtc);
+        Assert.Null(persisted.LegacyPinGraceEndsAtUtc);
+        Assert.True(BCrypt.Net.BCrypt.Verify("75319528", persisted.PinHash));
+
+        Assert.Null(await auth.CompletePinChangeAsync(challenge, "95175382", sessionMode: sessionMode));
+        Assert.Null(await auth.AuthenticateAsync(user.Username, "1234", sessionMode: sessionMode));
+        var relogin = await auth.AuthenticateAsync(user.Username, "75319528", sessionMode: sessionMode);
+        Assert.Equal(AuthStatus.Success, relogin!.Status);
+        Assert.Equal(1, await context.AuditLogs.CountAsync(item => item.EventType == "PinChanged"));
+    }
+
     [Fact]
     public async Task PinChangeChallenge_CannotReplayAfterSuccessfulChange()
     {
@@ -4776,6 +4852,46 @@ public sealed class SettingsAdministrationTests
             }
 
             return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
+
+    private sealed class PinChangeTransientException : Exception
+    {
+    }
+
+    private sealed class PinChangeRetryingExecutionStrategy(ExecutionStrategyDependencies dependencies)
+        : ExecutionStrategy(dependencies, maxRetryCount: 1, maxRetryDelay: TimeSpan.Zero)
+    {
+        protected override bool ShouldRetryOn(Exception exception) => exception is PinChangeTransientException;
+    }
+
+    private sealed class PinChangeCommitFault(string failureStage) : DbTransactionInterceptor
+    {
+        public bool Enabled { get; set; }
+        public int FailureCount { get; private set; }
+
+        public override ValueTask<InterceptionResult> TransactionCommittingAsync(
+            DbTransaction transaction, TransactionEventData eventData, InterceptionResult result,
+            CancellationToken cancellationToken = default)
+        {
+            FailOnce("before");
+            return ValueTask.FromResult(result);
+        }
+
+        public override Task TransactionCommittedAsync(
+            DbTransaction transaction, TransactionEndEventData eventData,
+            CancellationToken cancellationToken = default)
+        {
+            FailOnce("after");
+            return Task.CompletedTask;
+        }
+
+        private void FailOnce(string stage)
+        {
+            if (!Enabled || failureStage != stage) return;
+            Enabled = false;
+            FailureCount++;
+            throw new PinChangeTransientException();
         }
     }
 

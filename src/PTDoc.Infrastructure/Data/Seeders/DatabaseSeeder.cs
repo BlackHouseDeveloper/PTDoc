@@ -292,10 +292,7 @@ public static class DatabaseSeeder
             }
 
             user.Username = normalizedUsername;
-            if (!HasBetaSeedPin(user.PinHash, seedPin))
-            {
-                user.PinHash = AuthService.HashPin(seedPin);
-            }
+            ApplySharedBetaPin(user, seedPin);
 
             user.FirstName = spec.FirstName;
             user.LastName = spec.LastName;
@@ -315,6 +312,17 @@ public static class DatabaseSeeder
             {
                 user.LicenseExpirationDate = now.AddYears(2);
             }
+        }
+
+        // Shared .beta fixtures use the Azure-managed PIN for the lifetime of Beta.
+        // This seeder is invoked only by the explicitly enabled Beta startup path.
+        // Additional fixtures retain their existing roles, memberships and active state.
+        var additionalBetaUsers = await context.Users.IgnoreQueryFilters()
+            .Where(user => user.Username.ToLower().EndsWith(".beta"))
+            .ToListAsync();
+        foreach (var user in additionalBetaUsers)
+        {
+            ApplySharedBetaPin(user, seedPin);
         }
 
         var usersChanged = await context.SaveChangesAsync() > 0;
@@ -987,6 +995,17 @@ public static class DatabaseSeeder
 
         var changed = await context.SaveChangesAsync() > 0;
         return (clinic, changed);
+    }
+
+    private static void ApplySharedBetaPin(User user, string seedPin)
+    {
+        if (!HasBetaSeedPin(user.PinHash, seedPin))
+        {
+            user.PinHash = AuthService.HashPin(seedPin);
+        }
+
+        user.MustChangePin = false;
+        user.LegacyPinGraceEndsAtUtc = DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc);
     }
 
     private static bool HasBetaSeedPin(string? pinHash, string seedPin)
