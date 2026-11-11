@@ -150,3 +150,48 @@ dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Rele
 ```
 
 No commits, pushes, review replies/resolutions, PR-level responses or review requests were made in this pass.
+
+
+### PR 200 review refresh — 2026-11-11
+
+Reviewed local and remote head `24513d3a666bede59df8428a7a9387a8f12558bd`. Retrieved all 10 review threads (19 inline comments including replies), 13 reviews and one conversation comment. GraphQL reports no further pages for threads, their comments, reviews or conversation comments, and no minimized inline/conversation comments. All four Previously missed findings in review 5825851514 were included. No separately exposed suppressed findings were returned; unpublished reviewer-internal findings are not accessible through these APIs. Summary links repeat the inline findings and are **duplicates**, not additional defects.
+
+The following classifications describe the current code, not merely GitHub's outdated flags. Prior fixes are in `a8ba8d33`, `fde79b88` and `24513d3a`.
+
+| Source (discussion comment ID unless noted) | Classification | Current evidence and disposition |
+| --- | --- | --- |
+| 4492690252: questionnaire type/variant bypass | Outdated | `NoteWorkspaceV2Service.SaveAsync` line 250 validates saved/incoming questionnaires without a type/dry-needling exemption. `DailyQuestionnaire_RejectsOmissionAcrossTypesAndVariants_AndInvalidDryNeedlingAnswers` covers both bypasses. |
+| 4492690292: workspace Daily outcomes | Outdated | `NoteWorkspaceV2Service` lines 423–486 checks persisted result rows before mutation and skips replacement for saved/requested Daily types. `DailyOutcomes_*` tests cover edits, omission, additions, duplicate multiplicity, IDs and clinicians. |
+| 4492690319: generic/sync questionnaire omission | Outdated | `NoteWriteService` lines 50–60 and 209–219, plus both ClinicalNote sync branches, retain pre/post normalization guards. `DailyQuestionnaireWriteIntegrationTests` and `DailyQuestionnairePush_*` cover invalid, omitted and normalized-away answers. |
+| 4492690360: legacy positive pain | Outdated | Daily `SubjectiveSection.razor` uses documented-or-positive fallback. Six `SavedPain_UsesLegacyPositiveFallbackWithoutInventingZero` cases preserve legacy positive and explicit zero semantics. |
+| 4498661721: percentage-only history | Outdated | `ProgressActivityTracking.ValidateJsonWrite` rejects percentage omission before activity comparisons. `ProgressActivityWriteValidator` checks non-Progress saved/signed-source percentage history; `PercentageOnlyHistory_*` and API/sync tests cover both. |
+| 4498661772: outcome PDF metadata | Outdated | Workspace lines 436–440 restore registry-derived metadata before serialization. `DailyOutcomes_UnchangedReorderedOrDuplicateHistoryRetainsOriginalRows` checks stored JSON with omitted/forged metadata. |
+| 4498661816: read normalization rejects history | Outdated | Shared `NormalizeContentJson` has no Progress write guard; write/sign callers retain explicit guards. Historical API-read, normalization and PDF regressions cover unsupported/partial history. |
+| 4512720550: null prior baseline | Outdated | `ProgressActivityTracking` lines 74–77 validates prior shape before dereferencing baseline. API/sync `prior-partial` cases assert controlled rejection and unchanged persistence. |
+| 4512720611: partial-history UI crash | Outdated | `ProgressActivityEditor` lines 49–59 uses null-safe projections, read-only unsupported state and skips catalog authoring; callback guards prevent edits. `PartialOrUnsupportedHistory_RendersReadOnlyWithoutMutation` covers four shapes. |
+| Review 5825851514, Previously missed: null Daily sections | Outdated for malformed section; invalid for optional questionnaire subclaim | `DailyQuestionnaireV1.ReadQuestionnaire` rejects present non-object/null Daily treatment. `WorkspaceDailyTreatmentV2.Questionnaire` remains intentionally nullable; Clone/Summarize accept null. Malformed-section and explicit-null legacy tests distinguish these cases; API/sync null-section cases reject writes. |
+| Same review, Previously missed: Daily signing questionnaire | Outdated | `SignatureService.NormalizeNoteContentForSigning` lines 584–595 applies Daily validation before/after normalization. `SignNote_RejectsInvalidDailyQuestionnaireWithoutMutation` covers invalid version, answer and normalization loss. |
+| Same review, Previously missed: generic Daily outcome authoring | Outdated | `NoteWriteService` calls `DailyOutcomeWriteValidator` on create/update before mutation. Validator compares saved/incoming normalized evidence including metadata and duplicate multiplicity; shared tests and HTTP outcome cases cover rejection. |
+| Same review, Previously missed: sync Daily outcome authoring | Outdated; shared policy with preceding item, distinct call sites | Both sync ClinicalNote branches call the shared validator before mutation. Sync outcome cases cover additions/changes/omissions, unchanged storage and replay. |
+| [4536705925](https://github.com/BlackHouseDeveloper/PTDoc/pull/200#discussion_r4536705925): signing outcome validation | Invalid under the confirmed saved-JSON policy | Signing accepts no outcome/content payload: `SignNoteRequest` has only consent/intent (`ComplianceEndpoints.cs:318`), and `ISignatureService.SignNoteAsync` takes identifiers/attestation metadata. `SignatureService` loads the saved note at lines 74–76. Normalization uses that same note JSON. Calling the suggested validator with this note compares its normalized saved content to itself; it cannot detect an already-persisted unauthorized addition. The validator and `DailyUpdate_AllowsReorderingAndPreservesDuplicateMultiplicity` treat saved JSON as history, whereas workspace uses separate outcome-result rows. The user confirmed that saved JSON remains the historical baseline. There is no submitted outcome addition on this route, so the claimed authoring bypass is unsupported under that policy. Added `SignNote_PreservesSavedDailyOutcomeHistoryWithoutResultRows` to protect this contract; no redundant self-comparison or new row-provenance requirement was introduced. |
+
+#### Confirmed decision, regression coverage and thread eligibility
+
+The user explicitly chose to preserve saved JSON as the historical baseline for signing. Separate `OutcomeMeasureResults` rows are not required to corroborate legacy JSON-only evidence. Outcome authoring remains guarded at the workspace, generic API and sync write boundaries. Any future stricter provenance policy needs a separate discrepancy audit and migration design.
+
+`SignNote_PreservesSavedDailyOutcomeHistoryWithoutResultRows` adds two theory cases for direct PT signing and PTA signing followed by PT co-signing. The fixture starts with persisted Daily JSON and no result rows, then clears tracking so signing loads the saved note. After each signing step it reads persisted content without tracking and compares all outcome fields, preserving measure types, scores, precise timestamps, nullable PDF metadata, entry order and duplicate multiplicity. It also checks status transitions, signature records and continued absence of result rows. Production code is unchanged. These are compatibility regressions, not evidence that signing can establish the provenance of previously saved JSON.
+
+The new finding is now classified as invalid under the confirmed policy rather than ambiguous. Thread `PRRT_kwDOQt-faM62IAts` remains open. Once verification passes and the user explicitly authorizes GitHub actions, its request-contract evidence, policy decision and regression coverage can support a clarification reply and disposition; do not claim an authoring bypass was fixed. The other nine threads are already resolved with prior evidence-based replies; no duplicate response is needed. The four summary-only Previously missed findings have no independent resolvable threads. No GitHub writes were made.
+
+This continuation adds tests and updates this audit and the changelog, preserving the unrelated AGENTS.md and CI-command changelog edits. Prior user-reported verification (3,035 passed, one skipped, zero build warnings/errors) predates the new tests and does not verify them. Builds/tests were not run automatically. Both `git diff --check` and `git diff --cached --check` pass. Run the focused signature suite and Compliance gate after building:
+
+```sh
+dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --configuration Release
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~PTDoc.Tests.Compliance.SignatureServiceTests" --verbosity normal -- xUnit.ParallelizeTestCollections=false
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "Category=Compliance" --verbosity normal -- xUnit.ParallelizeTestCollections=false
+dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity diagnostic
+```
+
+#### Publication verification confirmation
+
+The user subsequently confirmed all required builds and tests passed, including the requested Compliance tests and format check, and authorized committing the verified changes, a normal push and evidence-based review-thread disposition. This supersedes the pending verification status above. No code or test changes followed that confirmation; only this verification record and the changelog status were refreshed. Builds/tests were not rerun. Unrelated CI command guidance remains excluded from this commit.

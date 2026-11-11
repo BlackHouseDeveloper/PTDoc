@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - PR 200 November 11 review and signing compatibility
+
+- Reverify all current review threads and Previously missed findings against `24513d3a`; record existing fixes, the invalid optional-questionnaire claim and duplicate summaries. Document the confirmed saved-JSON signing baseline and classify the claimed signing authoring bypass as unsupported by the request contract.
+- Add PT signing and PTA/co-signing regression coverage preserving JSON-only Daily outcomes, including precise timestamps, nullable metadata, order and duplicate multiplicity, without requiring or creating result rows. Runtime behavior is unchanged; the user confirmed all required builds, tests and format verification passed.
+
 ### Fixed - PR 200 November 9 review: legacy safety and remaining write guards
 
 - Reject unsupported/incomplete saved Progress history with compatible-client validation instead of dereferencing a null baseline. Render partial/unsupported activity history read-only without mutating saved data.
