@@ -203,6 +203,10 @@ The JWT bearer middleware now fires an `OnAuthenticationFailed` event that write
   login. Missing policy state fails closed with an already-expired rollout anchor.
 - PINs do not expire periodically. First login, reset, suspected compromise, and an audited
   administrator action can require a change.
+- Shared `.beta` test accounts are an explicit Beta-only exception. Enabled Beta startup
+  restores their Azure-managed shared PIN, clears pending PIN changes, and assigns an unlimited
+  legacy migration allowance. Additional fixtures retain their roles, memberships and active
+  state. This seeder never runs in Production; other accounts and MFA keep their normal policies.
 - TOTP secrets are encrypted at rest. Enrollment must be verified before activation; accepted
   time steps cannot be replayed; enrollment and verification lockouts are enforced; recovery
   codes are BCrypt-hashed, atomically single-use, and replaced as a

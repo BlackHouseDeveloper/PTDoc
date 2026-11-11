@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Required PIN changes on retrying database providers
+
+- **`DatabaseSeeder` / `BetaAccessSeederTests`** — Honor the user-requested shared-PIN policy for all `.beta` fixtures during enabled Beta startup: restore the Azure-managed shared PIN, clear pending PIN changes, and retain a non-expiring legacy migration allowance. Additional fixtures retain roles/memberships/activation; other accounts and MFA keep their normal rules. Add five regressions for expired grace, restarted seeding, additional fixtures and unaffected staff; document the policy in the beta runbook and security guidance.
+- **`AuthService.CompletePinChangeAsync`** — Execute the required PIN change and its audit record inside the provider execution strategy so SQL Server/PostgreSQL retry policies do not reject the explicit transaction. Reload tracked state after a rolled-back attempt and recognize this invocation's exact salted hash after a lost commit acknowledgement, preserving single-use challenges and issuing the session only after the write completes.
+- **`SettingsAdministrationTests`** — Add six relational regressions covering ordinary execution, failure before commit, and failure after commit for Web sessions and native identity-only completion; verify policy rejection, one audit record, challenge replay rejection, and sign-in with the updated PIN. The user authorized local testing and beta deployment; the expanded focused build/test run passed 56 tests with zero failures or skips, and changed-file formatting verification passed. This hotfix is based on the deployed beta revision `e894d2ad` and requires no database migration.
+- **Beta deployment verification (November 11)** — [Deploy Beta run 43053209302](https://github.com/BlackHouseDeveloper/PTDoc/actions/runs/43053209302) passed all 2,834 tests with zero failures/skips and deployed hotfix `c05b5b10` as `beta-34-1`. All four shared beta accounts returned successful API sessions without PIN-change challenges; `january.beta` also completed Web sign-in and opened `/patients` with HTTP 200. API/Web health, WebSockets/static assets, and release identity checks passed; verification sessions were logged out. The equivalent main-based runtime commit `e6034fb3` passed all 15 PR checks.
+
 ### Changed - PR 200 November 11 review and signing compatibility
 
 - Reverify all current review threads and Previously missed findings against `24513d3a`; record existing fixes, the invalid optional-questionnaire claim and duplicate summaries. Document the confirmed saved-JSON signing baseline and classify the claimed signing authoring bypass as unsupported by the request contract.
