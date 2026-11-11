@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed - PR 201 rebase after PR 200 merge
 
 - Rebase visit-specific intake onto `main` at `84846eee`, retaining the merged questionnaire/history fixes, encounter navigation safeguards, review evidence and regression coverage from both branches. Combine draft-save validation clearing with the current-operation guard and retain the duplicated invalid-Progress HTTP test once. The user-run November 11 clean build verifies rebased code at `ed39bb91`: Debug and Release builds passed with zero warnings/errors, the Debug test suite passed 3,055 tests with zero failures and one PostgreSQL-specific skip, and Clean Architecture checks passed.
+- Apply the user-run `dotnet format` output to six intake/workspace implementation and test files. Changes are limited to whitespace and line wrapping; runtime behavior and test assertions are unchanged.
 
 ### Changed - PR 200 November 11 review and signing compatibility
 

@@ -124,9 +124,11 @@ public sealed class IntakeService : IIntakeService
             {
                 Daily = note.NoteType == NoteType.Daily ? new DailyQuestionnaireV1() : null,
                 Progress = note.NoteType == NoteType.ProgressNote ? new WorkspaceProgressNoteQuestionnaireV2
-                { Activities = source.ProgressQuestionnaire.Activities is { } recorded
+                {
+                    Activities = source.ProgressQuestionnaire.Activities is { } recorded
                     ? new ProgressActivityTrackingV1 { Baseline = recorded.Baseline.ToList() }
-                    : ProgressActivityTracking.BaselineFrom(new NoteWorkspaceV2Payload { Subjective = source.Subjective }, note.Id) } : null,
+                    : ProgressActivityTracking.BaselineFrom(new NoteWorkspaceV2Payload { Subjective = source.Subjective }, note.Id)
+                } : null,
                 Discharge = note.NoteType == NoteType.Discharge ? new WorkspaceDischargeV2() : null
             };
             if (draft.VisitQuestionnaire.Progress?.Activities is { } activities)

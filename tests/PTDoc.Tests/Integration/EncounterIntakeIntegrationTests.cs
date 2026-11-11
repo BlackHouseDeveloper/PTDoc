@@ -324,7 +324,8 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
         var draft = JsonSerializer.Deserialize<IntakeResponseDraft>(issued.ResponseJson, options)!;
         var update = new UpdateIntakeRequest
         {
-            ExpectedLastModifiedUtc = issued.LastModifiedUtc, ResponseJson = JsonSerializer.Serialize(draft, options),
+            ExpectedLastModifiedUtc = issued.LastModifiedUtc,
+            ResponseJson = JsonSerializer.Serialize(draft, options),
             Consents = """{"hipaaAcknowledged":true,"treatmentConsentAccepted":true,"termsOfServiceAccepted":true}"""
         };
         using var response = await client.PutAsJsonAsync($"/api/v1/intake/{issued.Id}", update);
