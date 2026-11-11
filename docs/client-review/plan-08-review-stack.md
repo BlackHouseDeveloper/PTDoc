@@ -204,4 +204,14 @@ The user subsequently confirmed all required builds and tests passed, including 
 
 #### PR 201 rebase — 2026-11-11
 
-Rebase the visit-intake layer onto `main` at `84846eee` after PR 200 merged. Preserve the merged PR 163/200 review fixes, navigation-generation guards and all tests from both histories. Combine successful draft-save validation clearing with the current-operation guard; retain the formatted invalid-Progress HTTP regression once. The historical 581-test result above predates this rebase; fresh build and test verification awaits user execution.
+Rebase the visit-intake layer onto `main` at `84846eee` after PR 200 merged. Preserve the merged PR 163/200 review fixes, navigation-generation guards and all tests from both histories. Combine successful draft-save validation clearing with the current-operation guard; retain the formatted invalid-Progress HTTP regression once. The historical 581-test result above predates this rebase; the following clean-build confirmation verifies the rebased code.
+
+#### PR 201 post-rebase verification confirmation
+
+The user ran `./cleanbuild-ptdoc.sh` on November 11 at 07:48:20 and supplied its successful output. The checked-out and published PR head remained `ed39bb91`. Inspection of `build-logs/cleanbuild-20261111-074820.log` confirms:
+
+- .NET SDK `8.0.417`; clean restore and both Debug and Release solution builds passed with zero warnings and errors.
+- The Debug solution test run passed **3,055 tests**, with **zero failures and one skip** out of 3,056. The skipped test is `DatabaseProviderSmokeTests.PostgresEncounterSaveSaveSubmit_ReturnedVersionsMatchStorage_AndStaleWritesStillFail`; this run does not establish live PostgreSQL coverage.
+- Clean Architecture dependency checks passed for Core and Application.
+
+This supersedes the pending post-rebase build/test status. No code or tests changed after verification; this follow-up only records the result. The script does not establish formatter, native runtime, browser or remote CI acceptance. Existing local CI-command guidance remains uncommitted.
