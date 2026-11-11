@@ -85,6 +85,84 @@ public sealed class BetaAccessSeederTests
     }
 
     [Theory]
+    [InlineData("january.beta")]
+    [InlineData("dani.beta")]
+    [InlineData("pta.beta")]
+    [InlineData("patient.beta")]
+    public async Task SeedBetaAccessDataAsync_SharedUsersRemainUsableAfterLegacyGraceExpires(string username)
+    {
+        await using var context = CreateInMemoryContext();
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
+        var user = await context.Users.SingleAsync(item => item.Username == username);
+        user.PinHash = AuthService.HashPin("97531975");
+        user.MustChangePin = true;
+        user.LegacyPinGraceEndsAtUtc = DateTime.UtcNow.AddDays(-1);
+        var policy = await context.ClinicSecurityPolicies.SingleAsync(item => item.ClinicId == user.ClinicId);
+        policy.CreatedAtUtc = DateTime.UtcNow.AddDays(-60);
+        await context.SaveChangesAsync();
+
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
+        var time = new FixedTimeProvider(DateTimeOffset.UtcNow.AddYears(1));
+        var auth = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock(), timeProvider: time);
+        var login = await auth.AuthenticateAsync(username, TestBetaSeedPin);
+
+        Assert.Equal(AuthStatus.Success, login!.Status);
+        Assert.Null(login.ChallengeToken);
+        Assert.False(user.MustChangePin);
+        Assert.NotNull(await auth.ValidateSessionAsync(login.Token!));
+        var hash = user.PinHash;
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
+        Assert.Equal(hash, user.PinHash);
+    }
+
+    [Fact]
+    public async Task SeedBetaAccessDataAsync_AdditionalBetaFixturesSharePinWithoutChangingStaffPolicyOrActivation()
+    {
+        await using var context = CreateInMemoryContext();
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
+        var additional = CreateLegacyUser("extra.BETA", true);
+        var inactive = CreateLegacyUser("inactive.beta", false);
+        var staff = CreateLegacyUser("ordinary.staff", true);
+        var staffHash = staff.PinHash;
+        context.AddRange(additional, inactive, staff);
+        await context.SaveChangesAsync();
+        var auth = new AuthService(context, NullLogger<AuthService>.Instance, CreateAuditServiceMock());
+
+        // A suffix alone never bypasses policy; only the Beta startup seed opts fixtures in.
+        Assert.Equal(AuthStatus.RequiresPinChange,
+            (await auth.AuthenticateAsync(additional.Username, TestBetaSeedPin))!.Status);
+        await DatabaseSeeder.SeedBetaAccessDataAsync(context, NullLogger.Instance, TestBetaSeedPin);
+
+        Assert.Equal(AuthStatus.Success,
+            (await auth.AuthenticateAsync(additional.Username, TestBetaSeedPin))!.Status);
+        Assert.Equal(Roles.Billing, additional.Role);
+        Assert.False(inactive.IsActive);
+        Assert.Equal(staffHash, staff.PinHash);
+        Assert.True(staff.MustChangePin);
+        Assert.Equal(AuthStatus.RequiresPinChange,
+            (await auth.AuthenticateAsync(staff.Username, TestBetaSeedPin))!.Status);
+    }
+
+    private static User CreateLegacyUser(string username, bool active) => new()
+    {
+        Username = username,
+        FirstName = "Synthetic",
+        LastName = "Fixture",
+        PinHash = AuthService.HashPin(TestBetaSeedPin),
+        ClinicId = DatabaseSeeder.BetaClinicId,
+        Role = Roles.Billing,
+        IsActive = active,
+        MustChangePin = true,
+        LegacyPinGraceEndsAtUtc = DateTime.UtcNow.AddDays(-1),
+        CreatedAt = DateTime.UtcNow
+    };
+
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    [Theory]
     [InlineData("")]
     [InlineData("abcd")]
     [InlineData("12345")]

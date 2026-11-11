@@ -209,56 +209,85 @@ public class AuthService : IAuthService
         var newPinHash = HashPin(newPin);
         var currentPinHash = user.PinHash;
         var changedAtUtc = _timeProvider.GetUtcNow().UtcDateTime;
-        await using var transaction = _context.Database.IsRelational()
-            ? await _context.Database.BeginTransactionAsync(cancellationToken)
-            : null;
-
-        if (_context.Database.IsRelational())
+        var attemptNumber = 0;
+        var changed = await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
-            var claimed = await _context.Users
-                .IgnoreQueryFilters()
-                .Where(item => item.Id == principal.UserId
-                    && item.IsActive
-                    && item.MustChangePin
-                    && item.PinHash == currentPinHash)
-                .ExecuteUpdateAsync(
-                    setters => setters
-                        .SetProperty(item => item.PinHash, newPinHash)
-                        .SetProperty(item => item.MustChangePin, false)
-                        .SetProperty(item => item.PinChangedAtUtc, changedAtUtc)
-                        .SetProperty(item => item.LegacyPinGraceEndsAtUtc, (DateTime?)null),
-                    cancellationToken);
-            if (claimed != 1)
+            if (attemptNumber++ > 0)
             {
-                return null;
+                // A rolled-back attempt may have accepted tracked user/audit changes.
+                // Reload persisted state before retrying the complete transaction.
+                _context.ChangeTracker.Clear();
+                var persistedUser = await _context.Users.IgnoreQueryFilters()
+                    .SingleOrDefaultAsync(item => item.Id == principal.UserId && item.IsActive, cancellationToken);
+                if (persistedUser is null) return false;
+                user = persistedUser;
+
+                // A lost commit acknowledgement must not report a saved PIN as rejected.
+                // Only this invocation knows this exact salted hash; a later replay cannot
+                // enter here or treat another credential change as its own success.
+                if (!user.MustChangePin && string.Equals(user.PinHash, newPinHash, StringComparison.Ordinal))
+                {
+                    return true;
+                }
             }
 
-            await _context.Entry(user).ReloadAsync(cancellationToken);
-        }
-        else
-        {
-            user.PinHash = newPinHash;
-            user.MustChangePin = false;
-            user.PinChangedAtUtc = changedAtUtc;
-            user.LegacyPinGraceEndsAtUtc = null;
-        }
+            await using var transaction = _context.Database.IsRelational()
+                ? await _context.Database.BeginTransactionAsync(cancellationToken)
+                : null;
 
-        await _auditService.LogAuthEventAsync(new AuditEvent
-        {
-            EventType = "PinChanged",
-            UserId = user.Id,
-            EntityType = nameof(User),
-            EntityId = user.Id,
-            Metadata = new Dictionary<string, object>
+            if (_context.Database.IsRelational())
             {
-                ["clinicId"] = user.ClinicId?.ToString() ?? "none",
-                ["reasonCode"] = "authentication_required_change"
+                var claimed = await _context.Users
+                    .IgnoreQueryFilters()
+                    .Where(item => item.Id == principal.UserId
+                        && item.IsActive
+                        && item.MustChangePin
+                        && item.PinHash == currentPinHash)
+                    .ExecuteUpdateAsync(
+                        setters => setters
+                            .SetProperty(item => item.PinHash, newPinHash)
+                            .SetProperty(item => item.MustChangePin, false)
+                            .SetProperty(item => item.PinChangedAtUtc, changedAtUtc)
+                            .SetProperty(item => item.LegacyPinGraceEndsAtUtc, (DateTime?)null),
+                        cancellationToken);
+                if (claimed != 1)
+                {
+                    return false;
+                }
+
+                await _context.Entry(user).ReloadAsync(cancellationToken);
             }
-        }, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
-        if (transaction is not null)
+            else
+            {
+                user.PinHash = newPinHash;
+                user.MustChangePin = false;
+                user.PinChangedAtUtc = changedAtUtc;
+                user.LegacyPinGraceEndsAtUtc = null;
+            }
+
+            await _auditService.LogAuthEventAsync(new AuditEvent
+            {
+                EventType = "PinChanged",
+                UserId = user.Id,
+                EntityType = nameof(User),
+                EntityId = user.Id,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["clinicId"] = user.ClinicId?.ToString() ?? "none",
+                    ["reasonCode"] = "authentication_required_change"
+                }
+            }, cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+
+            return true;
+        });
+        if (!changed)
         {
-            await transaction.CommitAsync(cancellationToken);
+            return null;
         }
 
         return await ContinueAfterPinComplianceAsync(
