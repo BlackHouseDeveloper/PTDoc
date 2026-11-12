@@ -47,6 +47,10 @@
         if (ReferenceEquals(Value, _loaded)) return;
         _loaded = Value;
         _payload = Mapper.MapToUiPayload(Value.ToWorkspace(IntakeQuestionnaireDefinitions.NoteTypeFor(DefinitionId)!.Value));
+        // Visit answers explicitly distinguish missing current pain from a recorded zero.
+        // The shared note mapper also supports legacy Progress pain without that flag.
+        _payload.Subjective.IsPainScoreDocumented = Value.CurrentPain.HasValue;
+        _payload.Subjective.CurrentPainScore = Value.CurrentPain ?? 0;
     }
     private Task SubjectiveChanged(SubjectiveVm value) { _payload!.Subjective = value; return NotifyAsync(); }
     private Task DailyChanged(DailyTreatmentVm value) { _payload!.DailyTreatment = value; return NotifyAsync(); }

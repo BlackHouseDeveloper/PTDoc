@@ -61,6 +61,47 @@ public sealed class IntakeVisitQuestionnaireTests
         Assert.Throws<InvalidOperationException>(() => IntakeEncounterRules.PrepareShortResponse(intake, JsonSerializer.Serialize(issued)));
     }
 
+    [Theory]
+    [InlineData(BodyPart.Knee, "Walking", true)]
+    [InlineData(BodyPart.Knee, "WALKING", true)]
+    [InlineData(BodyPart.Shoulder, "Walking", false)]
+    [InlineData(BodyPart.Knee, "Standing", false)]
+    public void VisitWrites_RejectCatalogActivitiesAlreadyRecorded(BodyPart region, string description, bool duplicate)
+    {
+        var baseline = ProgressActivityTracking.RecordedActivity(BodyPart.Knee, "Walking", "Recorded category");
+        var option = new ProgressActivityReference("catalog-choice", region, description, "Different category", "v1");
+        var issued = new IntakeResponseDraft
+        {
+            IntakeFlowVersion = 2,
+            VisitQuestionnaire = new()
+            {
+                ActivityOptions = [option],
+                Progress = new() { Activities = new() { Baseline = [baseline] } }
+            }
+        };
+        var intake = new IntakeForm
+        {
+            EncounterNoteId = Guid.NewGuid(),
+            QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.ProgressV1,
+            ResponseJson = JsonSerializer.Serialize(issued)
+        };
+        var original = intake.ResponseJson;
+        issued.VisitQuestionnaire.Progress!.Activities!.NewlyDifficult = [option];
+        if (duplicate)
+        {
+            var error = Assert.Throws<InvalidOperationException>(() =>
+                IntakeEncounterRules.PrepareShortResponse(intake, JsonSerializer.Serialize(issued)));
+            Assert.Contains("Recorded activities", error.Message);
+        }
+        else
+        {
+            var json = IntakeEncounterRules.PrepareShortResponse(intake, JsonSerializer.Serialize(issued));
+            var saved = JsonSerializer.Deserialize<IntakeResponseDraft>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+            Assert.Equal(option, Assert.Single(saved.VisitQuestionnaire!.Progress!.Activities!.NewlyDifficult));
+        }
+        Assert.Equal(original, intake.ResponseJson);
+    }
+
     [Fact]
     public void VisitWrites_DoNotAcceptClinicianPlanFieldsOrCrossTypeQuestionnaires()
     {

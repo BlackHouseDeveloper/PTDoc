@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 201 visit intake review
+
+- Reject newly difficult activities that duplicate the recorded baseline by body part and case-insensitive description across shared intake write paths. Build Progress intake baselines with the existing null-safe history helper, retaining prior newly difficult activities and Subjective limitations.
+- Preserve explicitly unrecorded current pain when hydrating a partial visit questionnaire, while retaining explicit zero answers and legacy note mapper behavior.
+- Add 11 focused server/service/bUnit regression cases and record all three valid findings, duplicate summaries and complete accessible review retrieval in `docs/client-review/plan-08-review-stack.md`. The user confirmed all required builds and tests passed on November 12 and authorized publication and evidence-based thread replies/resolution. No implementation or test changes followed verification.
+- Record the user-run clean-build result: Debug passed; Release stopped in iOS simulator AOT compilation of SDK assembly `Microsoft.iOS.dll` with exit code 1 before tests ran. The subsequent isolated serialized iOS Release build passed with zero warnings/errors in 26 minutes 25 seconds. The original cause remains unconfirmed; focused regression tests subsequently passed per user confirmation.
+
 ### Changed - PR 201 rebase after PR 209 merge
 
 - Rebase visit-specific intake onto `main` at `2c292348` after the shared beta PIN fix merged. Preserve both changelog histories; application code and tests replay unchanged. Earlier build/test results predate this combined head; fresh verification awaits user execution.

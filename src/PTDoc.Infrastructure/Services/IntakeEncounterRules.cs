@@ -50,8 +50,10 @@ public static class IntakeEncounterRules
             || (issued.Progress?.Activities is { } baseline && (answer.Progress?.Activities is not { } updated
                 || !baseline.Baseline.SequenceEqual(updated.Baseline))))
             throw new InvalidOperationException("The issued activity choices cannot be changed. Reload this intake.");
-        if (answer.Progress?.Activities?.NewlyDifficult.Any(a => !issued.ActivityOptions.Contains(a)) == true)
-            throw new InvalidOperationException("Choose newly difficult activities from the issued catalog.");
+        if (answer.Progress?.Activities is { } activities && activities.NewlyDifficult.Any(a =>
+            !issued.ActivityOptions.Contains(a) || activities.Baseline.Any(b =>
+                b.BodyPart == a.BodyPart && string.Equals(b.Description, a.Description, StringComparison.OrdinalIgnoreCase))))
+            throw new InvalidOperationException("Choose newly difficult activities from the issued catalog. Recorded activities belong in improved, same or worse.");
         // Preserve chart facts, the definition and baseline. A short visit has no chart-edit surface.
         if (answer.Progress is { } progress)
         {

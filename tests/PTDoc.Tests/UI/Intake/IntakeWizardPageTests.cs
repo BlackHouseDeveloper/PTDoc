@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using System.Net;
+using System.Text.Json;
 using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Intake;
@@ -20,6 +21,7 @@ using PTDoc.Infrastructure.Outcomes;
 using PTDoc.Infrastructure.Services;
 using PTDoc.UI.Components;
 using PTDoc.UI.Components.Intake.Models;
+using PTDoc.UI.Components.Intake.Steps;
 using PTDoc.UI.Pages.Intake;
 using PTDoc.UI.Services;
 using Xunit;
@@ -401,6 +403,61 @@ public sealed class IntakeWizardPageTests : TestContext
             _ => saved.VisitQuestionnaire.Discharge!.GoalsMetStatus
         };
         Assert.Equal("I can walk", actual);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0)]
+    [InlineData(5)]
+    public async Task ProgressVisit_ReloadAndUnrelatedEditPreserveExplicitCurrentPain(int? currentPain)
+    {
+        Services.AddSingleton(new Mock<INoteWorkspaceService>(MockBehavior.Strict).Object);
+        var draft = new IntakeResponseDraft
+        {
+            IntakeFlowVersion = 2,
+            VisitQuestionnaire = new()
+            {
+                CurrentPain = currentPain,
+                BestPain = 2,
+                WorstPain = 8,
+                Progress = new() { Activities = new() }
+            }
+        };
+        var intake = new IntakeForm
+        {
+            EncounterNoteId = Guid.NewGuid(),
+            QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.ProgressV1,
+            ResponseJson = JsonSerializer.Serialize(draft)
+        };
+        // Exercise server pain projection and JSON reload, not only the application DTO mapper.
+        var persisted = IntakeEncounterRules.PrepareShortResponse(intake, JsonSerializer.Serialize(draft));
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var answers = JsonSerializer.Deserialize<IntakeResponseDraft>(persisted, options)!.VisitQuestionnaire!;
+        IntakeVisitQuestionnaire? changed = null;
+        var cut = RenderComponent<VisitQuestionnaireFields>(parameters => parameters
+            .Add(p => p.DefinitionId, IntakeQuestionnaireDefinitions.ProgressV1)
+            .Add(p => p.Value, answers)
+            .Add(p => p.ValueChanged, (IntakeVisitQuestionnaire value) => changed = value));
+        Assert.Equal(!currentPain.HasValue, cut.FindAll("#progress-record-no-pain").Count == 1);
+        Assert.Equal(currentPain ?? 0, int.Parse(cut.Find("#progress-current-pain").GetAttribute("value")!));
+        cut.Find("#progress-additional-information").Input("Unrelated visit answer");
+        Assert.NotNull(changed);
+        Assert.Equal(currentPain, changed.CurrentPain);
+        Assert.Equal(2, changed.BestPain);
+        Assert.Equal(8, changed.WorstPain);
+        Assert.Equal("Unrelated visit answer", changed.Progress!.AdditionalInformation);
+        Assert.Equal(currentPain, answers.CurrentPain);
+        Assert.Equal(!currentPain.HasValue, changed.Validate(NoteType.ProgressNote, submitting: true).Count > 0);
+        var reloaded = JsonSerializer.Deserialize<IntakeVisitQuestionnaire>(JsonSerializer.Serialize(changed))!;
+        cut.SetParametersAndRender(parameters => parameters.Add(p => p.Value, reloaded));
+        Assert.Equal(!currentPain.HasValue, cut.FindAll("#progress-record-no-pain").Count == 1);
+        if (!currentPain.HasValue)
+        {
+            await cut.Find("#progress-record-no-pain").ClickAsync(new MouseEventArgs());
+            Assert.Equal(0, changed!.CurrentPain);
+            Assert.Empty(changed.Validate(NoteType.ProgressNote, submitting: true));
+            Assert.Null(reloaded.CurrentPain);
+        }
     }
 
     private static IntakeResponseDraft EncounterDraft(Guid patientId) => new()
