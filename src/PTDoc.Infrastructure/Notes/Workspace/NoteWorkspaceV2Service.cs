@@ -104,7 +104,9 @@ public sealed class NoteWorkspaceV2Service(
             }
             if (note.NoteType == NoteType.ProgressNote)
             {
+                var setbackDetails = payload.ProgressQuestionnaire?.SetbackDetails;
                 payload.ProgressQuestionnaire = answers.Progress!;
+                payload.ProgressQuestionnaire.SetbackDetails = setbackDetails;
                 payload.ProgressQuestionnaire.CurrentPainLevel = answers.CurrentPain ?? 0;
                 payload.ProgressQuestionnaire.BestPainLevel = answers.BestPain ?? 0;
                 payload.ProgressQuestionnaire.WorstPainLevel = answers.WorstPain ?? 0;
@@ -256,6 +258,10 @@ public sealed class NoteWorkspaceV2Service(
 
             throw new InvalidOperationException("Signed notes cannot be modified. Create addendum.");
         }
+
+        if (note is not null)
+            await IntakeEncounterRules.ValidateNoteTypeChangeAsync(db, note, request.NoteType,
+                request.IsReEvaluation, request.Payload?.DryNeedling is not null, cancellationToken);
 
         if (request.AppointmentId.HasValue)
         {
@@ -1473,6 +1479,7 @@ public sealed class NoteWorkspaceV2Service(
             DateOfService = note.DateOfService,
             NoteType = note.NoteType,
             IsReEvaluation = note.IsReEvaluation,
+            HasEncounterIntake = await IntakeEncounterRules.HasEncounterIntakeAsync(db, note, cancellationToken),
             NoteStatus = note.NoteStatus,
             IsSigned = note.SignatureHash is not null,
             TemplateVersion = templateVersion,

@@ -364,7 +364,11 @@ else
                 <NoteTypeContainer NoteType="@_note.NoteType"
                                    NoteTypeChanged="HandleNoteTypeChanged"
                                    NoteTypes="@AvailableNoteTypes"
-                                   Disabled="@(IsWorkspaceReadOnly || AvailableNoteTypes.Count <= 1)" />
+                                   Disabled="@(IsWorkspaceReadOnly || _hasEncounterIntake || AvailableNoteTypes.Count <= 1)" />
+                @if (_hasEncounterIntake)
+                {
+                    <p role="status">Note type is locked because an intake has been issued for this visit.</p>
+                }
             }
 
             <SoapTabNav ActiveSection="@_note.ActiveSection"
@@ -646,6 +650,7 @@ else
     ];
 
     private readonly SemaphoreSlim _persistGate = new(1, 1);
+    private readonly SemaphoreSlim _workspaceLoadGate = new(1, 1);
     private CancellationTokenSource _workspacePersistenceCts = new();
     private readonly string _beforeUnloadGuardKey = $"note-workspace-{Guid.NewGuid():N}";
     private static readonly IReadOnlyList<SoapSection> DefaultSoapSections =
@@ -678,6 +683,8 @@ else
     ];
 
     private SoapNoteVm _note = new();
+    private bool _hasEncounterIntake;
+    private (string PatientId, string? NoteId) _loadedRoute;
     private NoteTemplateVersionDto? _activeTemplateVersion;
     private WorkspaceSubjectiveCatalogNormalizer? _subjectiveCatalogNormalizer;
     private DryNeedlingVm _dryNeedling = new();
@@ -925,7 +932,23 @@ else
         DraftAutosaveService.StateChanged += HandleAutosaveStateChanged;
         DraftAutosaveService.Configure(AutosaveSaveAsync, () => CanPersistDraft);
 
+        _loadedRoute = (PatientId, NoteId);
         await LoadWorkspaceAsync();
+    }
+
+    protected override Task OnParametersSetAsync()
+    {
+        var route = (PatientId, NoteId);
+        if (_loadedRoute == route) return Task.CompletedTask;
+        _loadedRoute = route;
+
+        // Saving a new draft replaces its URL after applying the saved workspace.
+        // Keep any newer local edits when the router supplies that same note ID.
+        if (!_isInitialLoading && Guid.TryParse(PatientId, out var patientId) && patientId == _patientGuid &&
+            ResolveRouteNoteId(NoteId) is { } noteId && noteId == _note.NoteId)
+            return Task.CompletedTask;
+
+        return LoadWorkspaceAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -941,6 +964,18 @@ else
     }
 
     private async Task LoadWorkspaceAsync()
+    {
+        var route = (PatientId, NoteId);
+        await _workspaceLoadGate.WaitAsync();
+        try
+        {
+            if (_disposed || route != (PatientId, NoteId)) return;
+            await LoadWorkspaceCoreAsync(route);
+        }
+        finally { _workspaceLoadGate.Release(); }
+    }
+
+    private async Task LoadWorkspaceCoreAsync((string PatientId, string? NoteId) route)
     {
         _isInitialLoading = true;
         _initialLoadError = null;
@@ -963,9 +998,10 @@ else
                 resource: null,
                 policyName: AuthorizationPolicies.HepRead)).Succeeded;
 
-            var routeNoteId = ResolveRouteNoteId(NoteId);
+            if (_disposed || route != (PatientId, NoteId)) return;
+            var routeNoteId = ResolveRouteNoteId(route.NoteId);
             _currentNoteId = routeNoteId ?? Guid.Empty;
-            _patientGuid = Guid.TryParse(PatientId, out var parsedPatientId) ? parsedPatientId : null;
+            _patientGuid = Guid.TryParse(route.PatientId, out var parsedPatientId) ? parsedPatientId : null;
 
             if (!_patientGuid.HasValue)
             {
@@ -1018,13 +1054,17 @@ else
         }
         finally
         {
-            _isInitialLoading = false;
-            StateHasChanged();
+            if (!_disposed && route == (PatientId, NoteId))
+            {
+                _isInitialLoading = false;
+                StateHasChanged();
+            }
         }
     }
 
     private void InitializeNote(Guid? routeNoteId)
     {
+        _hasEncounterIntake = false;
         _note = new SoapNoteVm
         {
             NoteId = routeNoteId,
@@ -1123,6 +1163,7 @@ else
         }
 
         ApplyWorkspaceState(result.NoteId, result.LastModifiedUtc, result.WorkspaceNoteType, result.DateOfService, result.IsReEvaluation, result.Status, result.Payload, result.TemplateVersion);
+        _hasEncounterIntake = result.HasEncounterIntake;
     }
 
     private void ApplyWorkspaceState(
@@ -1311,7 +1352,7 @@ else
 
     private async Task HandleNoteTypeChanged(string value)
     {
-        if (!CanEditCurrentDraft)
+        if (!CanEditCurrentDraft || _hasEncounterIntake)
         {
             return;
         }
@@ -1331,6 +1372,7 @@ else
 
     private async Task ApplyNoteTypeChangedCoreAsync(string value)
     {
+        if (_hasEncounterIntake) return;
         var shouldTryEvaluationSeed = _note.Mode == NoteMode.New
             && !_note.NoteId.HasValue
             && !_note.IsDirty
@@ -1964,6 +2006,7 @@ else
             }
 
             var hasNewerEdits = _editGeneration != saveGeneration;
+            _hasEncounterIntake = saveResult.HasEncounterIntake;
             if (!hasNewerEdits && saveResult.Payload is not null)
             {
                 ApplyWorkspaceState(

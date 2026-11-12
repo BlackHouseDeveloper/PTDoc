@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 201 previously missed intake review
+
+- Reload reused note-workspace components when patient/note route identity changes, serializing loads and keeping stale route results hidden. Preserve the applied workspace and newer edits when a successful save updates the URL. Extend route-lock and save-navigation regressions after the user-reported single failing bUnit case; the user subsequently confirmed all builds and tests passed.
+- Preserve destination Progress setback details when applying submitted visit answers, including through UI mapping. Add three service/mapper regression cases and extend the HTTP save/submit/seed regression; verified by the user-reported passing builds and tests.
+- Enforce the user-approved note-type lock after encounter intake issuance across workspace, generic update and sync writes, including re-evaluation and Dry Needling transitions. Expose the lock in workspace load/save responses and the selector; advance the note concurrency version atomically at issuance. Add 15 HTTP, sync, bUnit and SQLite regression cases and extend API-client mapping coverage.
+- Reverify all three resolved findings and both summary-only Previously missed findings against `1e9b58c9`. Record the confirmed policy, both local fixes, duplicate summaries, retrieval completeness and thread limitations in `docs/client-review/plan-08-review-stack.md`.
+
 ### Fixed - PR 201 visit intake review
 
 - Reject newly difficult activities that duplicate the recorded baseline by body part and case-insensitive description across shared intake write paths. Build Progress intake baselines with the existing null-safe history helper, retaining prior newly difficult activities and Subjective limitations.

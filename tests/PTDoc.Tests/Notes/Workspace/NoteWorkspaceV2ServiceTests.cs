@@ -99,6 +99,69 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Null(await _service.GetEncounterEvaluationSeedAsync(patient.Id, note.Id));
     }
 
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("Previously recorded setback details", false)]
+    [InlineData(null, true)]
+    public async Task ProgressEncounterSeed_PreservesDestinationSetbackDetails(string? setbackDetails, bool missingQuestionnaire)
+    {
+        var patient = new Patient { FirstName = "Synthetic", LastName = "Setback" };
+        var originalPayload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.ProgressNote,
+            ProgressQuestionnaire = missingQuestionnaire ? null! : new() { SetbackDetails = setbackDetails, AdditionalInformation = "Previous answer" }
+        };
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.ProgressNote,
+            ContentJson = JsonSerializer.Serialize(originalPayload)
+        };
+        var draft = new IntakeResponseDraft
+        {
+            IntakeFlowVersion = 2,
+            VisitQuestionnaire = new()
+            {
+                CurrentPain = 3,
+                Progress = new()
+                {
+                    HasSetbacksOrNewSymptoms = true,
+                    SetbackDetails = "Untrusted visit field",
+                    AdditionalInformation = "Current patient answer"
+                }
+            }
+        };
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            EncounterNoteId = note.Id,
+            QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.ProgressV1,
+            IsLocked = true,
+            SubmittedAt = DateTime.UtcNow,
+            ResponseJson = JsonSerializer.Serialize(draft)
+        };
+        _context.Patients.Add(patient);
+        _context.ClinicalNotes.Add(note);
+        _context.IntakeForms.Add(intake);
+        await _context.SaveChangesAsync();
+        var originalNoteJson = note.ContentJson;
+        var originalIntakeJson = intake.ResponseJson;
+
+        var seed = await _service.GetEncounterEvaluationSeedAsync(patient.Id, note.Id);
+
+        Assert.NotNull(seed);
+        Assert.Equal(setbackDetails, seed.Payload.ProgressQuestionnaire.SetbackDetails);
+        Assert.True(seed.Payload.ProgressQuestionnaire.HasSetbacksOrNewSymptoms);
+        Assert.Equal("Current patient answer", seed.Payload.ProgressQuestionnaire.AdditionalInformation);
+        Assert.Equal(3, seed.Payload.ProgressQuestionnaire.CurrentPainLevel);
+        var mapper = new NoteWorkspacePayloadMapper(new IntakeReferenceDataCatalogService(), new OutcomeMeasureRegistry());
+        var mapped = mapper.MapToUiPayload(seed.Payload);
+        Assert.Equal(setbackDetails, mapped.ProgressSubjective.SetbackDetails);
+        Assert.Equal(setbackDetails, mapper.MapToV2Payload(mapped, NoteType.ProgressNote).ProgressQuestionnaire.SetbackDetails);
+        Assert.Equal(originalNoteJson, (await _context.ClinicalNotes.AsNoTracking().SingleAsync(n => n.Id == note.Id)).ContentJson);
+        Assert.Equal(originalIntakeJson, (await _context.IntakeForms.AsNoTracking().SingleAsync(i => i.Id == intake.Id)).ResponseJson);
+    }
+
     [Fact]
     public async Task SharedProgressWriteValidator_RejectsUnknownCatalogIdsAndReplacesClientSuppliedLabels()
     {

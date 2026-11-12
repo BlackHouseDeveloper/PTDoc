@@ -550,6 +550,7 @@ public sealed class NoteWorkspaceV2LoadResponse
     public DateTime DateOfService { get; set; }
     public NoteType NoteType { get; set; }
     public bool IsReEvaluation { get; set; }
+    public bool HasEncounterIntake { get; set; }
     public NoteStatus NoteStatus { get; set; }
     public bool IsSigned { get; set; }
     public PTDoc.Application.NoteTemplates.NoteTemplateVersionDto? TemplateVersion { get; set; }

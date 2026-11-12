@@ -225,6 +225,7 @@ public sealed class NoteWriteService(
         var effectiveCptCodesJson = isDryNeedling
             ? "[]"
             : request.CptCodesJson ?? note.CptCodesJson;
+        await IntakeEncounterRules.ValidateNoteTypeChangeAsync(db, note, note.NoteType, note.IsReEvaluation, isDryNeedling, ct);
         var effectiveTotalMinutes = isDryNeedling
             ? 0
             : request.TotalMinutes ?? note.TotalTreatmentMinutes;

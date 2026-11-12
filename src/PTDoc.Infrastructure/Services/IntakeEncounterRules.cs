@@ -15,6 +15,20 @@ public static class IntakeEncounterRules
     public const string EvaluationDefinition = IntakeQuestionnaireDefinitions.EvaluationFullV1;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
+    public static Task<bool> HasEncounterIntakeAsync(ApplicationDbContext db, ClinicalNote note, CancellationToken cancellationToken) =>
+        db.IntakeForms.AnyAsync(form => form.EncounterNoteId == note.Id && form.PatientId == note.PatientId &&
+            form.ClinicId == note.ClinicId, cancellationToken);
+
+    public static async Task ValidateNoteTypeChangeAsync(
+        ApplicationDbContext db, ClinicalNote note, NoteType noteType, bool isReEvaluation, bool isDryNeedling,
+        CancellationToken cancellationToken)
+    {
+        if ((note.NoteType != noteType || note.IsReEvaluation != isReEvaluation ||
+            NoteWriteService.IsDryNeedlingContent(note.NoteType, note.IsReEvaluation, note.DateOfService, note.ContentJson) != isDryNeedling)
+            && await HasEncounterIntakeAsync(db, note, cancellationToken))
+            throw new InvalidOperationException("The note type is locked because an intake has been issued for this visit. Reload the workspace to continue editing the original note type.");
+    }
+
     public static async Task<string?> ValidateWriteAsync(
         ApplicationDbContext db, IntakeForm intake, DateTime? expectedLastModifiedUtc,
         CancellationToken cancellationToken)

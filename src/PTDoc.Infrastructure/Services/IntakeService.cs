@@ -89,7 +89,7 @@ public sealed class IntakeService : IIntakeService
 
     private async Task<IntakeEnsureDraftResult> EnsureEncounterDraftAsync(Guid patientId, Guid noteId, CancellationToken cancellationToken)
     {
-        var note = await _context.ClinicalNotes.AsNoTracking()
+        var note = await _context.ClinicalNotes
             .FirstOrDefaultAsync(note => note.Id == noteId && note.PatientId == patientId && note.ClinicId == _tenantContext.GetCurrentClinicId(), cancellationToken);
         if (note is null) return IntakeEnsureDraftResult.NotFound("The associated note was not found.");
         var existing = await _context.IntakeForms.AsNoTracking()
@@ -159,11 +159,18 @@ public sealed class IntakeService : IIntakeService
             SyncState = SyncState.Pending
         };
         _context.IntakeForms.Add(intake);
+        // Atomically advance the note's concurrency token with issuance. A type change
+        // racing this insert must reload instead of leaving an incompatible intake.
+        var issuanceTime = DateTime.UtcNow;
+        note.LastModifiedUtc = issuanceTime > note.LastModifiedUtc ? issuanceTime : note.LastModifiedUtc.AddTicks(1);
         try { await _context.SaveChangesAsync(cancellationToken); }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex)
         {
             _context.Entry(intake).State = EntityState.Detached;
+            await _context.Entry(note).ReloadAsync(cancellationToken);
             var winner = await GetForNoteAsync(patientId, noteId, cancellationToken);
+            if (winner is null && ex is DbUpdateConcurrencyException)
+                return IntakeEnsureDraftResult.Locked("The associated visit changed while its intake was being issued. Reload the visit and try again.");
             if (winner is null) throw;
             return IntakeEnsureDraftResult.Existing(winner);
         }
