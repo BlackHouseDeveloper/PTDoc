@@ -177,6 +177,8 @@ public sealed class WorkspaceSeedContextV2
 {
     public WorkspaceSeedKind Kind { get; set; }
     public Guid? SourceIntakeId { get; set; }
+    public string? SourceIntakeDefinitionId { get; set; }
+    public DateTime? SourceIntakeVersionUtc { get; set; }
     public bool FromLockedSubmittedIntake { get; set; }
     public Guid? SourceNoteId { get; set; }
     public NoteType? SourceNoteType { get; set; }
@@ -548,6 +550,7 @@ public sealed class NoteWorkspaceV2LoadResponse
     public DateTime DateOfService { get; set; }
     public NoteType NoteType { get; set; }
     public bool IsReEvaluation { get; set; }
+    public bool HasEncounterIntake { get; set; }
     public NoteStatus NoteStatus { get; set; }
     public bool IsSigned { get; set; }
     public PTDoc.Application.NoteTemplates.NoteTemplateVersionDto? TemplateVersion { get; set; }

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Services;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Intake;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -14,6 +15,20 @@ public static class IntakeEncounterRules
     public const string EvaluationDefinition = IntakeQuestionnaireDefinitions.EvaluationFullV1;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
+    public static Task<bool> HasEncounterIntakeAsync(ApplicationDbContext db, ClinicalNote note, CancellationToken cancellationToken) =>
+        db.IntakeForms.AnyAsync(form => form.EncounterNoteId == note.Id && form.PatientId == note.PatientId &&
+            form.ClinicId == note.ClinicId, cancellationToken);
+
+    public static async Task ValidateNoteTypeChangeAsync(
+        ApplicationDbContext db, ClinicalNote note, NoteType noteType, bool isReEvaluation, bool isDryNeedling,
+        CancellationToken cancellationToken)
+    {
+        if ((note.NoteType != noteType || note.IsReEvaluation != isReEvaluation ||
+            NoteWriteService.IsDryNeedlingContent(note.NoteType, note.IsReEvaluation, note.DateOfService, note.ContentJson) != isDryNeedling)
+            && await HasEncounterIntakeAsync(db, note, cancellationToken))
+            throw new InvalidOperationException("The note type is locked because an intake has been issued for this visit. Reload the workspace to continue editing the original note type.");
+    }
+
     public static async Task<string?> ValidateWriteAsync(
         ApplicationDbContext db, IntakeForm intake, DateTime? expectedLastModifiedUtc,
         CancellationToken cancellationToken)
@@ -21,14 +36,65 @@ public static class IntakeEncounterRules
         if (!intake.EncounterNoteId.HasValue) return null;
         if (!expectedLastModifiedUtc.HasValue || expectedLastModifiedUtc.Value != intake.LastModifiedUtc)
             return "This intake changed or its version is missing. Reload it before saving.";
-        if (intake.QuestionnaireDefinitionId != EvaluationDefinition)
+        var expectedType = IntakeQuestionnaireDefinitions.NoteTypeFor(intake.QuestionnaireDefinitionId);
+        if (expectedType is null)
             return "This questionnaire version is not supported for editing.";
         var validNote = await db.ClinicalNotes.AsNoTracking().AnyAsync(note =>
             note.Id == intake.EncounterNoteId.Value && note.PatientId == intake.PatientId &&
-            note.ClinicId == intake.ClinicId && note.NoteType == NoteType.Evaluation &&
+            note.ClinicId == intake.ClinicId && note.NoteType == expectedType.Value &&
             note.IsReEvaluation == intake.EncounterIsReEvaluation && note.NoteStatus == NoteStatus.Draft &&
             !note.IsAddendum && note.SignedUtc == null && string.IsNullOrEmpty(note.SignatureHash), cancellationToken);
-        return validNote ? null : "The associated evaluation is no longer available for intake changes.";
+        return validNote ? null : "The associated visit is no longer available for intake changes.";
+    }
+
+    public static bool IsShort(IntakeForm intake) => intake.EncounterNoteId.HasValue &&
+        IntakeQuestionnaireDefinitions.IsShort(intake.QuestionnaireDefinitionId);
+
+    public static string PrepareShortResponse(IntakeForm intake, string? incomingJson)
+    {
+        var incoming = JsonSerializer.Deserialize<IntakeResponseDraft>(incomingJson ?? "", JsonOptions)
+            ?? throw new JsonException("An intake response must be an object.");
+        var saved = JsonSerializer.Deserialize<IntakeResponseDraft>(intake.ResponseJson, JsonOptions)!;
+        var answer = incoming.VisitQuestionnaire;
+        var issued = saved.VisitQuestionnaire;
+        if (answer is null || issued is null) throw new InvalidOperationException("The issued visit questionnaire is required.");
+        var errors = answer.Validate(IntakeQuestionnaireDefinitions.NoteTypeFor(intake.QuestionnaireDefinitionId)!.Value);
+        if (errors.Count > 0) throw new InvalidOperationException(string.Join(" ", errors));
+        if (!answer.ActivityOptions.SequenceEqual(issued.ActivityOptions)
+            || (issued.Progress?.Activities is { } baseline && (answer.Progress?.Activities is not { } updated
+                || !baseline.Baseline.SequenceEqual(updated.Baseline))))
+            throw new InvalidOperationException("The issued activity choices cannot be changed. Reload this intake.");
+        if (answer.Progress?.Activities is { } activities && activities.NewlyDifficult.Any(a =>
+            !issued.ActivityOptions.Contains(a) || activities.Baseline.Any(b =>
+                b.BodyPart == a.BodyPart && string.Equals(b.Description, a.Description, StringComparison.OrdinalIgnoreCase))))
+            throw new InvalidOperationException("Choose newly difficult activities from the issued catalog. Recorded activities belong in improved, same or worse.");
+        // Preserve chart facts, the definition and baseline. A short visit has no chart-edit surface.
+        if (answer.Progress is { } progress)
+        {
+            progress.CurrentPainLevel = answer.CurrentPain ?? 0;
+            progress.BestPainLevel = answer.BestPain ?? 0;
+            progress.WorstPainLevel = answer.WorstPain ?? 0;
+            progress.PainFrequency = answer.PainFrequency;
+        }
+        saved.VisitQuestionnaire = answer;
+        saved.CurrentStep = incoming.CurrentStep == (int)IntakeStep.Review ? (int)IntakeStep.Review : (int)IntakeStep.Demographics;
+        saved.ConsentPacket = IntakeDraftPersistence.BuildCanonicalConsentPacket(incoming);
+        saved.TermsOfServiceAccepted = incoming.TermsOfServiceAccepted;
+        saved.AccuracyConfirmed = incoming.AccuracyConfirmed;
+        return IntakeDraftPersistence.SerializePersistenceJson(saved);
+    }
+
+    public static string? ValidateSubmission(IntakeForm intake)
+    {
+        if (!IsShort(intake)) return null;
+        try
+        {
+            var draft = JsonSerializer.Deserialize<IntakeResponseDraft>(intake.ResponseJson, JsonOptions);
+            if (draft?.VisitQuestionnaire is not { } answers) return "Complete the issued visit questionnaire.";
+            var errors = answers.Validate(IntakeQuestionnaireDefinitions.NoteTypeFor(intake.QuestionnaireDefinitionId)!.Value, submitting: true);
+            return errors.Count == 0 ? null : string.Join(" ", errors);
+        }
+        catch (JsonException) { return "The saved visit questionnaire is invalid."; }
     }
 
     public static string NormalizeResponseIdentity(IntakeForm intake, string responseJson)

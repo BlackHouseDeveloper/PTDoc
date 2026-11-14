@@ -4,6 +4,7 @@ using System.Text.Json;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
+using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -1554,9 +1555,62 @@ public sealed class IntakeServiceTests : IDisposable
     }
 
     [Theory]
-    [InlineData(NoteType.Daily, NoteStatus.Draft, false, false)]
-    [InlineData(NoteType.ProgressNote, NoteStatus.Draft, false, false)]
-    [InlineData(NoteType.Discharge, NoteStatus.Draft, false, false)]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task ProgressEncounterDraft_MergesRecordedHistoryWithoutMutatingSource(bool nullBaseline, bool nullNewlyDifficult)
+    {
+        var patient = CreatePatient("Synthetic", "Progress");
+        _context.Patients.Add(patient);
+        var priorNoteId = Guid.NewGuid();
+        var baseline = ProgressActivityTracking.RecordedActivity(BodyPart.Knee, "Walking", "Function", priorNoteId);
+        var newlyDifficult = ProgressActivityTracking.RecordedActivity(BodyPart.Shoulder, "Reaching", "Function", priorNoteId);
+        var source = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.ProgressNote,
+            ProgressQuestionnaire = new()
+            {
+                Activities = new()
+                {
+                    Baseline = nullBaseline ? null! : [baseline],
+                    NewlyDifficult = nullNewlyDifficult ? null! : [newlyDifficult, newlyDifficult]
+                }
+            },
+            Subjective = new()
+            {
+                FunctionalLimitations = [new() { BodyPart = BodyPart.Knee, Description = "Standing", Category = "Function" }]
+            }
+        };
+        var originalJson = JsonSerializer.Serialize(source);
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            ClinicId = _clinicId,
+            NoteType = NoteType.ProgressNote,
+            ContentJson = originalJson
+        };
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+        var result = await _service.EnsureDraftAsync(patient.Id, new() { EncounterNoteId = note.Id });
+        Assert.Equal(IntakeEnsureDraftStatus.Created, result.Status);
+        var reloaded = (await _service.GetForNoteAsync(patient.Id, note.Id))!;
+        var activities = reloaded.VisitQuestionnaire!.Progress!.Activities!;
+        Assert.Equal(1 + (nullBaseline ? 0 : 1) + (nullNewlyDifficult ? 0 : 1), activities.Baseline.Count);
+        if (!nullBaseline) Assert.Contains(baseline, activities.Baseline);
+        if (!nullNewlyDifficult) Assert.Contains(newlyDifficult, activities.Baseline);
+        var standing = Assert.Single(activities.Baseline.Where(a => a.Description == "Standing"));
+        Assert.Equal(note.Id, standing.SourceNoteId);
+        Assert.Empty(activities.NewlyDifficult);
+        Assert.Empty(activities.ImprovedIds);
+        Assert.Empty(activities.SameIds);
+        Assert.Empty(activities.WorseIds);
+        Assert.Equal(originalJson, (await _context.ClinicalNotes.AsNoTracking().SingleAsync(n => n.Id == note.Id)).ContentJson);
+        Assert.Equal(result.Draft!.IntakeId, (await _service.EnsureDraftAsync(patient.Id, new() { EncounterNoteId = note.Id })).Draft!.IntakeId);
+    }
+
+    [Theory]
+    [InlineData((NoteType)999, NoteStatus.Draft, false, false)]
     [InlineData(NoteType.Evaluation, NoteStatus.Signed, false, false)]
     [InlineData(NoteType.Evaluation, NoteStatus.Draft, true, false)]
     [InlineData(NoteType.Evaluation, NoteStatus.Draft, false, true)]

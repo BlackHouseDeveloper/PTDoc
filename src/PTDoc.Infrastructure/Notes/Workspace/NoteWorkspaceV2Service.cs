@@ -70,19 +70,65 @@ public sealed class NoteWorkspaceV2Service(
     {
         var note = await db.ClinicalNotes.AsNoTracking()
             .FirstOrDefaultAsync(note => note.Id == noteId && note.PatientId == patientId &&
-                note.NoteType == NoteType.Evaluation && note.NoteStatus == NoteStatus.Draft && !note.IsAddendum &&
+                note.NoteStatus == NoteStatus.Draft && !note.IsAddendum &&
                 note.SignedUtc == null && string.IsNullOrEmpty(note.SignatureHash), cancellationToken);
         if (note is null) return null;
+        var definition = IntakeQuestionnaireDefinitions.ForNoteType(note.NoteType);
+        if (definition is null) return null;
         var intake = await db.IntakeForms.AsNoTracking().FirstOrDefaultAsync(form =>
             form.PatientId == patientId && form.ClinicId == note.ClinicId && form.EncounterNoteId == noteId &&
             form.EncounterIsReEvaluation == note.IsReEvaluation && form.IsLocked && form.SubmittedAt.HasValue &&
-            form.QuestionnaireDefinitionId == IntakeQuestionnaireDefinitions.EvaluationFullV1, cancellationToken);
-        return intake is null || !IntakeEncounterRules.HasSupportedResponseVersion(intake, intake.ResponseJson) ? null : new NoteWorkspaceV2EvaluationSeedResponse
+            form.QuestionnaireDefinitionId == definition, cancellationToken);
+        if (intake is null || !IntakeEncounterRules.HasSupportedResponseVersion(intake, intake.ResponseJson)
+            || IntakeEncounterRules.ValidateSubmission(intake) is not null) return null;
+        NoteWorkspaceV2Payload payload;
+        if (!IntakeEncounterRules.IsShort(intake)) payload = BuildEvaluationSeedPayload(intake, true);
+        else
+        {
+            var answers = DeserializeIntakeDraft(intake).VisitQuestionnaire!;
+            payload = (await DeserializePayloadAsync(note, cancellationToken)).Payload;
+            if (payload.DryNeedling is not null) return null;
+            // Start from the destination, preserving chart context and clinician-authored content.
+            payload.Subjective.CurrentPainScore = answers.CurrentPain ?? 0;
+            payload.Subjective.BestPainScore = answers.BestPain ?? 0;
+            payload.Subjective.WorstPainScore = answers.WorstPain ?? 0;
+            payload.Subjective.IsPainScoreDocumented = answers.CurrentPain.HasValue;
+            payload.Subjective.PainFrequency = answers.PainFrequency;
+            if (note.NoteType == NoteType.Daily)
+            {
+                payload.Subjective.Locations = answers.Locations;
+                payload.Subjective.OtherLocation = answers.LocationDetails;
+                payload.Subjective.KnownCause = answers.PainDescription;
+                payload.DailyTreatment.Questionnaire = answers.Daily;
+                payload.DailyTreatment.AssociatedSymptoms = answers.AssociatedSymptoms;
+            }
+            if (note.NoteType == NoteType.ProgressNote)
+            {
+                var setbackDetails = payload.ProgressQuestionnaire?.SetbackDetails;
+                payload.ProgressQuestionnaire = answers.Progress!;
+                payload.ProgressQuestionnaire.SetbackDetails = setbackDetails;
+                payload.ProgressQuestionnaire.CurrentPainLevel = answers.CurrentPain ?? 0;
+                payload.ProgressQuestionnaire.BestPainLevel = answers.BestPain ?? 0;
+                payload.ProgressQuestionnaire.WorstPainLevel = answers.WorstPain ?? 0;
+                payload.ProgressQuestionnaire.PainFrequency = answers.PainFrequency;
+            }
+            if (note.NoteType == NoteType.Discharge) payload.Discharge = answers.Discharge!;
+            payload.SeedContext = new WorkspaceSeedContextV2
+            {
+                Kind = WorkspaceSeedKind.IntakePrefill,
+                SourceIntakeId = intake.Id,
+                FromLockedSubmittedIntake = true,
+                SourceReferenceDateUtc = intake.SubmittedAt
+            };
+        }
+        payload.SeedContext.SourceIntakeDefinitionId = intake.QuestionnaireDefinitionId;
+        payload.SeedContext.SourceIntakeVersionUtc = intake.LastModifiedUtc;
+        return new NoteWorkspaceV2EvaluationSeedResponse
         {
             PatientId = patientId,
             SourceIntakeId = intake.Id,
             FromLockedSubmittedIntake = true,
-            Payload = BuildEvaluationSeedPayload(intake, true)
+            Payload = payload
         };
     }
 
@@ -212,6 +258,10 @@ public sealed class NoteWorkspaceV2Service(
 
             throw new InvalidOperationException("Signed notes cannot be modified. Create addendum.");
         }
+
+        if (note is not null)
+            await IntakeEncounterRules.ValidateNoteTypeChangeAsync(db, note, request.NoteType,
+                request.IsReEvaluation, request.Payload?.DryNeedling is not null, cancellationToken);
 
         if (request.AppointmentId.HasValue)
         {
@@ -1429,6 +1479,7 @@ public sealed class NoteWorkspaceV2Service(
             DateOfService = note.DateOfService,
             NoteType = note.NoteType,
             IsReEvaluation = note.IsReEvaluation,
+            HasEncounterIntake = await IntakeEncounterRules.HasEncounterIntakeAsync(db, note, cancellationToken),
             NoteStatus = note.NoteStatus,
             IsSigned = note.SignatureHash is not null,
             TemplateVersion = templateVersion,

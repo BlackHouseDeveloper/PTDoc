@@ -68,6 +68,7 @@ public sealed class NoteWorkspaceApiService(
             WorkspaceNoteType = WorkspaceNoteTypeMapper.ResolveWorkspaceNoteType(workspace.Payload),
             DateOfService = workspace.DateOfService,
             IsReEvaluation = workspace.IsReEvaluation,
+            HasEncounterIntake = workspace.HasEncounterIntake,
             Status = workspace.NoteStatus,
             TemplateVersion = workspace.TemplateVersion,
             Payload = _payloadMapper.MapToUiPayload(workspace.Payload)
@@ -277,6 +278,7 @@ public sealed class NoteWorkspaceApiService(
             NoteId = saved.Workspace.NoteId,
             LastModifiedUtc = saved.Workspace.LastModifiedUtc,
             IsReEvaluation = saved.Workspace.IsReEvaluation,
+            HasEncounterIntake = saved.Workspace.HasEncounterIntake,
             Status = saved.Workspace.NoteStatus,
             TemplateVersion = saved.Workspace.TemplateVersion,
             Errors = saved.Errors,

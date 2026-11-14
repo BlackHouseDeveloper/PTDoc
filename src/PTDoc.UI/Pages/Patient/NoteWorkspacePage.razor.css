@@ -476,3 +476,25 @@
         justify-content: flex-start;
     }
 }
+
+/* Encounter intake actions use the same cards and secondary controls as the workspace. */
+.note-workspace__intake-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-3);
+    align-items: center;
+}
+
+.note-workspace__intake-actions .note-workspace__alert {
+    flex-basis: 100%;
+}
+
+.note-workspace__intake-secondary {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--foreground);
+}
+
+.note-workspace__intake-secondary:hover:not(:disabled) {
+    background: var(--muted);
+}

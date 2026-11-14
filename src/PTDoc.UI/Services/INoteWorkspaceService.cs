@@ -54,6 +54,7 @@ public sealed class NoteWorkspaceLoadResult
     public string WorkspaceNoteType { get; init; } = "Evaluation Note";
     public DateTime DateOfService { get; init; }
     public bool IsReEvaluation { get; init; }
+    public bool HasEncounterIntake { get; init; }
     public NoteStatus Status { get; init; } = NoteStatus.Draft;
     public NoteTemplateVersionDto? TemplateVersion { get; init; }
     public bool IsSubmitted => Status != NoteStatus.Draft;
@@ -87,6 +88,7 @@ public sealed class NoteWorkspaceSaveResult
     public DateTime LastModifiedUtc { get; init; }
     public int? LocalDraftId { get; init; }
     public bool IsReEvaluation { get; init; }
+    public bool HasEncounterIntake { get; init; }
     public NoteStatus Status { get; init; } = NoteStatus.Draft;
     public NoteTemplateVersionDto? TemplateVersion { get; init; }
     public bool IsSubmitted => Status != NoteStatus.Draft;

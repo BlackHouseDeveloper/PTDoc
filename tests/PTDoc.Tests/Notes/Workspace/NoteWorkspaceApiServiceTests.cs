@@ -47,6 +47,7 @@ public sealed class NoteWorkspaceApiServiceTests
                     DateOfService = new DateTime(2026, 3, 30, 0, 0, 0, DateTimeKind.Utc),
                     NoteType = NoteType.ProgressNote,
                     IsSigned = false,
+                    HasEncounterIntake = true,
                     Payload = new NoteWorkspaceV2Payload
                     {
                         NoteType = NoteType.ProgressNote
@@ -86,6 +87,7 @@ public sealed class NoteWorkspaceApiServiceTests
         });
 
         Assert.True(result.Success);
+        Assert.True(result.HasEncounterIntake);
         Assert.Equal(noteId, result.NoteId);
         Assert.NotNull(requestBody);
 
@@ -734,6 +736,7 @@ public sealed class NoteWorkspaceApiServiceTests
                     DateOfService = new DateTime(2026, 4, 11, 0, 0, 0, DateTimeKind.Utc),
                     NoteType = NoteType.Evaluation,
                     IsReEvaluation = true,
+                    HasEncounterIntake = true,
                     Payload = new NoteWorkspaceV2Payload
                     {
                         NoteType = NoteType.Evaluation
@@ -749,6 +752,7 @@ public sealed class NoteWorkspaceApiServiceTests
 
         Assert.True(loaded.Success);
         Assert.True(loaded.IsReEvaluation);
+        Assert.True(loaded.HasEncounterIntake);
     }
 
     [Fact]

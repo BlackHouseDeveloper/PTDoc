@@ -47,6 +47,70 @@ public sealed class NoteWorkspacePageTests : TestContext
         Services.AddSingleton(integrationClient.Object);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EncounterIntake_LocksTypeSelectorAndResetsForAnotherNote(bool hasIntake)
+    {
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var nextNoteId = Guid.NewGuid();
+        var patient = new Mock<IPatientService>();
+        patient.Setup(value => value.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse { Id = patientId, FirstName = "Synthetic", LastName = "TypeLock" });
+        var service = new Mock<INoteWorkspaceService>();
+        TaskCompletionSource<NoteWorkspaceLoadResult>? delayedNext = null;
+        NoteWorkspaceLoadResult Loaded(Guid id) => new()
+        {
+            Success = true,
+            NoteId = id,
+            LastModifiedUtc = DateTime.UtcNow,
+            WorkspaceNoteType = "Evaluation Note",
+            HasEncounterIntake = id == noteId && hasIntake,
+            Payload = new NoteWorkspacePayload()
+        };
+        service.Setup(value => value.LoadAsync(patientId, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns((Guid _, Guid id, CancellationToken _) => id == nextNoteId && delayedNext is not null
+                ? delayedNext.Task : Task.FromResult(Loaded(id)));
+        Services.AddSingleton(patient.Object);
+        Services.AddSingleton(service.Object);
+        Services.AddSingleton(Mock.Of<IAiClinicalGenerationService>());
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
+        Services.AddSingleton(new DraftAutosaveService());
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString()).Add(component => component.NoteId, noteId.ToString()));
+        cut.WaitForAssertion(() => Assert.Equal(hasIntake, cut.Find("[data-testid='note-type-select']").HasAttribute("disabled")));
+        cut.SetParametersAndRender(parameters => parameters.Add(component => component.NoteId, noteId.ToString()));
+        service.Verify(value => value.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Once);
+        if (hasIntake)
+        {
+            Assert.Contains("Note type is locked because an intake", cut.Markup);
+            await cut.InvokeAsync(() => cut.FindComponent<global::PTDoc.UI.Components.Notes.NoteTypeContainer>()
+                .Instance.NoteTypeChanged.InvokeAsync("Progress Note"));
+            Assert.Equal("Evaluation Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value"));
+            service.Verify(value => value.SaveDraftAsync(It.IsAny<NoteWorkspaceDraft>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+        cut.SetParametersAndRender(parameters => parameters.Add(component => component.NoteId, nextNoteId.ToString()));
+        cut.WaitForAssertion(() => Assert.False(cut.Find("[data-testid='note-type-select']").HasAttribute("disabled")));
+        service.Verify(value => value.LoadAsync(patientId, nextNoteId, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.DoesNotContain("Note type is locked because an intake", cut.Markup);
+        cut.SetParametersAndRender(parameters => parameters.Add(component => component.NoteId, noteId.ToString()));
+        cut.WaitForAssertion(() => Assert.Equal(hasIntake, cut.Find("[data-testid='note-type-select']").HasAttribute("disabled")));
+        service.Verify(value => value.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Exactly(2));
+
+        // A slow response for the previous route must not replace the current note's lock.
+        delayedNext = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        cut.SetParametersAndRender(parameters => parameters.Add(component => component.NoteId, nextNoteId.ToString()));
+        service.Verify(value => value.LoadAsync(patientId, nextNoteId, It.IsAny<CancellationToken>()), Times.Exactly(2));
+        cut.SetParametersAndRender(parameters => parameters.Add(component => component.NoteId, noteId.ToString()));
+        await cut.InvokeAsync(() => delayedNext.SetResult(Loaded(nextNoteId)));
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(hasIntake, cut.Find("[data-testid='note-type-select']").HasAttribute("disabled"));
+            service.Verify(value => value.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()), Times.Exactly(3));
+        });
+    }
+
     [Fact]
     public void ReviewedEncounterIntake_ReplacesSubjectiveOnly_AfterExplicitAcceptance()
     {
@@ -1476,6 +1540,9 @@ public sealed class NoteWorkspacePageTests : TestContext
                 StringComparison.Ordinal);
             Assert.Contains("Saved", cut.Find("[data-testid='footer-state-label']").TextContent, StringComparison.Ordinal);
         });
+        cut.SetParametersAndRender(parameters => parameters.Add(component => component.NoteId, savedNoteId.ToString()));
+        noteWorkspaceService.Verify(service => service.LoadAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Contains("soap-tab-nav__tab--active", cut.Find("[data-testid='soap-tab-objective']").GetAttribute("class") ?? string.Empty);
     }
 
     [Fact]
@@ -1636,6 +1703,8 @@ public sealed class NoteWorkspacePageTests : TestContext
         });
 
         await clickTask;
+        cut.SetParametersAndRender(parameters => parameters.Add(component => component.NoteId, savedNoteId.ToString()));
+        noteWorkspaceService.Verify(service => service.LoadAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.Equal("Newer local edit must win", cut.Find("#additional-functional-limitations").GetAttribute("value"));
         cut.WaitForAssertion(
             () =>

@@ -195,3 +195,140 @@ dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosi
 #### Publication verification confirmation
 
 The user subsequently confirmed all required builds and tests passed, including the requested Compliance tests and format check, and authorized committing the verified changes, a normal push and evidence-based review-thread disposition. This supersedes the pending verification status above. No code or test changes followed that confirmation; only this verification record and the changelog status were refreshed. Builds/tests were not rerun. Unrelated CI command guidance remains excluded from this commit.
+
+### Layer 2 — visit-specific intake
+
+- Release test-project build: PASS, zero warnings/errors.
+- Intake, note-workspace service/page and Progress activity regressions: **581/581 PASS**, zero skipped. Includes API/OTP scoping, short-visit validation, partial saves, consent, matching-note copying and keyboard model stability.
+- No `PatientOutcomes`, outcome persistence/projection or patient measure component is introduced in this layer. Clinical outcome collection remains unavailable.
+
+#### PR 201 rebase — 2026-11-11
+
+Rebase the visit-intake layer onto `main` at `84846eee` after PR 200 merged. Preserve the merged PR 163/200 review fixes, navigation-generation guards and all tests from both histories. Combine successful draft-save validation clearing with the current-operation guard; retain the formatted invalid-Progress HTTP regression once. The historical 581-test result above predates this rebase; the following clean-build confirmation verifies the rebased code.
+
+#### PR 201 post-rebase verification confirmation
+
+The user ran `./cleanbuild-ptdoc.sh` on November 11 at 07:48:20 and supplied its successful output. The checked-out and published PR head remained `ed39bb91`. Inspection of `build-logs/cleanbuild-20261111-074820.log` confirms:
+
+- .NET SDK `8.0.417`; clean restore and both Debug and Release solution builds passed with zero warnings and errors.
+- The Debug solution test run passed **3,055 tests**, with **zero failures and one skip** out of 3,056. The skipped test is `DatabaseProviderSmokeTests.PostgresEncounterSaveSaveSubmit_ReturnedVersionsMatchStorage_AndStaleWritesStillFail`; this run does not establish live PostgreSQL coverage.
+- Clean Architecture dependency checks passed for Core and Application.
+
+This supersedes the pending post-rebase build/test status. No code or tests changed after verification; this follow-up only records the result. The script does not establish formatter, native runtime, browser or remote CI acceptance. Existing local CI-command guidance remains uncommitted.
+
+### PR 201 review audit — 2026-11-11
+
+Reviewed local and remote head `88d355c056ff0a4684d5ce6e24ede61537725926`, based on `main` at `2c292348`. The only initial local changes were the staged `AGENTS.md` CI-command guidance and its unstaged changelog entry; both are preserved. No commits, pushes, review replies, resolutions, PR responses or review requests are authorized for this pass.
+
+#### Retrieval completeness
+
+Retrieved thread-aware feedback, the full review and combined conversation through the GitHub connector. An authenticated GraphQL check confirmed **3 threads / 3 inline comments, 1 review, 0 issue comments**, with `hasNextPage=false` on every connection, including each thread's comments. All three threads are open and not outdated; all comments have `isMinimized=false` and no minimized reason. The live public GitHub conversation exposes the same three findings and their suggestions. Review `5863873027` marks all three as **New**; neither its full body nor the visible conversation exposes a **Previously missed** or suppressed-findings section. No additional such content was returned. This records all accessible feedback, not unpublished reviewer-internal candidates.
+
+#### Unique findings and disposition
+
+| Source | Classification | Current-code evidence and minimal change | Regression coverage / eventual eligibility |
+| --- | --- | --- | --- |
+| [4541982420](https://github.com/BlackHouseDeveloper/PTDoc/pull/201#discussion_r4541982420), thread `PRRT_kwDOQt-faM62UKy5` | **Valid**, fixed locally | `IntakeEncounterRules.PrepareShortResponse` validated catalog membership and immutable baseline but allowed a catalog item with the same body part/description as a recorded item under a different ID/category. `ProgressActivityTracking.Validate` checks IDs and selected states, not this cross-list semantic match. `ProgressActivityWriteValidator.PrepareAsync` and `ProgressActivityEditor.Options` already exclude same-region, case-insensitive description matches. Apply that same rule before returning persistence JSON. `IntakeProfileUpdates.PrepareAsync` routes both staff and patient-link writes here; their endpoint handlers call it before setting response JSON and return HTTP 409 on rejection. `IntakeService.SaveDraftAsync` and `SubmitAsync` use the same preparation contract. | Four `VisitWrites_RejectCatalogActivitiesAlreadyRecorded` cases: exact/case-insensitive duplicate rejection despite different IDs/categories, different-region and different-description acceptance, and no mutation of saved JSON. Existing `VisitWrites_RejectChangedBaselineAndForgedCatalogOptions` remains. Eligible for reply/resolution after verification, publication and explicit authorization. |
+| [4541982468](https://github.com/BlackHouseDeveloper/PTDoc/pull/201#discussion_r4541982468), thread `PRRT_kwDOQt-faM62UKzY` | **Valid**, fixed locally | `IntakeService` issued a Progress questionnaire by copying only `source.ProgressQuestionnaire.Activities.Baseline.ToList()`: newly difficult history and Subjective limitations disappeared; null Baseline threw. `ProgressActivityTracking.BaselineFrom`, already merged in PR 200 (`84846eee`), combines Baseline/NewlyDifficult null-safely, adds Subjective limitations with provenance, deduplicates IDs and starts fresh response selections. Call it with the complete source and destination note ID. Existing intake reuse remains unchanged; source note JSON is not rewritten. | Four `ProgressEncounterDraft_MergesRecordedHistoryWithoutMutatingSource` service cases exercise normal/null Baseline and NewlyDifficult combinations, retained historical references, duplicate collapse, Subjective provenance, empty new selections, persisted reload, idempotent reuse and unchanged source JSON. Eligible after verification, publication and authorization. |
+| [4541982517](https://github.com/BlackHouseDeveloper/PTDoc/pull/201#discussion_r4541982517), thread `PRRT_kwDOQt-faM62UKz4` | **Valid**, fixed locally | `IntakeVisitQuestionnaire.CurrentPain` is nullable and submission requires an explicit answer. Server preparation copies best/worst values into Progress fields. `NoteWorkspacePayloadMapper.MapToUiPayload` uses legacy Progress pain values whenever any pain value/frequency is present and sets `IsPainScoreDocumented`; this policy dates to `526603f3` and remains needed for note compatibility. `VisitQuestionnaireFields` used that mapper without restoring the explicit visit-answer state. Restore only current pain and its documentation flag in the visit component after hydration. `FromWorkspace` then retains null through unrelated edits; `ProgressSubjectiveSection.RecordNoPain` still explicitly records zero. | Three bUnit `ProgressVisit_ReloadAndUnrelatedEditPreserveExplicitCurrentPain` cases use server preparation plus JSON reload, nonzero best/worst values and null/zero/positive current pain. Assert displayed state, unrelated text editing, resaved/reloaded values, submission validation, explicit record-zero action and no parameter mutation. Existing typing/model-stability coverage remains. Eligible after verification, publication and authorization. |
+| Three linked bullets and opening summary in [review 5863873027](https://github.com/BlackHouseDeveloper/PTDoc/pull/201#pullrequestreview-5863873027) | **Duplicate** | Each bullet links to exactly one inline finding above; the opening summary repeats their scopes. The implementation overview and suggested changes introduce no independent finding. | No separate fix or independently resolvable thread. No PR-level response authorized. |
+
+There are **3 valid unique actionable findings**, all addressed locally, and three duplicate summary references. There are no unique outdated, invalid or ambiguous findings in the retrieved review. No product decision is required. The null-baseline crash and omitted history are two consequences of one faulty baseline construction and are covered together. No existing thread has been replied to or resolved.
+
+#### Verification handoff
+
+Added **11 regression cases** across the three existing test files. `git diff --check` and `git diff --cached --check` pass. Builds/tests and formatter verification were not run by the agent under the repository policy. Earlier passing results do not verify these fixes. Run from the repository root:
+
+```sh
+dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --configuration Release
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~IntakeVisitQuestionnaireTests|FullyQualifiedName~IntakeServiceTests|FullyQualifiedName~IntakeWizardPageTests|FullyQualifiedName~EncounterIntakeIntegrationTests|FullyQualifiedName~ProgressActivityWriteValidatorTests|FullyQualifiedName~NoteWorkspaceV2ServiceTests|FullyQualifiedName~NoteWorkspacePayloadMapperTests" --verbosity normal -- xUnit.ParallelizeTestCollections=false
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "Category=CoreCi" --verbosity normal -- xUnit.ParallelizeTestCollections=false
+dotnet format src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --verify-no-changes --verbosity diagnostic
+dotnet format src/PTDoc.UI/PTDoc.UI.csproj --verify-no-changes --verbosity diagnostic
+dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity diagnostic
+```
+
+After successful verification and separately authorized publication, all three inline threads are eligible for evidence-based replies and resolution. Verification alone does not authorize any GitHub writes. No database migration, deployment or native/browser release acceptance is claimed by this pass.
+
+#### User verification attempt — November 11, 21:57
+
+The user ran `./cleanbuild-ptdoc.sh`; `build-logs/cleanbuild-20261111-215727.log` confirms Debug succeeded with zero warnings/errors. Release failed after generating `PTDoc.Tests/bin/Release/net8.0/PTDoc.Tests.dll`, during iOS simulator AOT compilation of the SDK assembly `Microsoft.iOS.dll`: `mono-aot-cross` exited with code 1, reported by `Xamarin.Shared.Sdk.targets:1266`. The summary contains zero warnings and one error. The script stopped before test execution; no tests or full Release success are claimed.
+
+The log does not expose the compiler's underlying failure reason. No application or build-configuration change is justified from that message alone. The installed iOS target passes `AotCompileMaxDegreeOfParallelism` to its AOT task. An isolated serialized iOS Release rerun with diagnostic logging can distinguish a repeatable compiler failure from contention; serialization is a diagnostic choice, not a confirmed fix. Run the existing focused test-project build/test commands above independently of the MAUI target, then capture the native failure with:
+
+```sh
+dotnet build src/PTDoc.Maui/PTDoc.csproj --configuration Release --framework net8.0-ios -p:RuntimeIdentifier=iossimulator-arm64 -m:1 -p:BuildInParallel=false -p:AotCompileMaxDegreeOfParallelism=1 --verbosity diagnostic > build-logs/pr201-ios-release-diagnostic.log 2>&1
+```
+
+No builds/tests were run by the agent. Review fixes and unrelated local edits remain uncommitted; publication and thread actions remain unauthorized.
+
+#### Isolated iOS verification — inspected November 12
+
+`build-logs/pr201-ios-release-diagnostic.log` confirms that the user-run isolated `net8.0-ios` Release build for `iossimulator-arm64` succeeded on November 11 at 22:52, with **zero warnings and zero errors**, in **26 minutes 25.01 seconds**. The invocation used `-m:1`, `BuildInParallel=false` and `AotCompileMaxDegreeOfParallelism=1`; the AOT task completed successfully. The earlier compiler failure did not reproduce in this serialized run, but its original cause is not established. No source or build-configuration fix was made for the native failure.
+
+This log contains build/restore diagnostics, not test-run results. The user subsequently explicitly confirmed on November 12 that all focused PR 201 regression tests passed. This is user-reported verification; the iOS diagnostic log itself contains no test counts. The earlier clean-build run remains a failed full-solution Release attempt; the isolated success does not retroactively mark it passed. No tests were rerun by the agent and no publication or review actions were performed.
+
+#### Focused regression confirmation — November 12
+
+The user answered “Yes, all focused tests passed” for the current PR 201 review fixes. Focused regression verification is therefore confirmed, alongside the logged successful Debug solution build and isolated serialized iOS Release build. No implementation or test changes followed this confirmation; only verification documentation and the changelog were updated. The complete CoreCi run and formatter checks are not separately confirmed by this answer. The original failed full-solution Release run remains recorded accurately. Changes remain uncommitted, and commit/push/reply/resolve/re-review actions still require explicit authorization.
+
+#### Publication verification confirmation — November 12
+
+The user subsequently confirmed that all required builds and tests passed and explicitly authorized one commit of the verified PR 201 changes, a normal push, and evidence-based replies and resolution for fully addressed threads. This supersedes the pending build/test verification and publication authorization above; the historical failed run remains accurately recorded. No implementation or test changes followed verification. Only the verification record and changelog were refreshed, and builds/tests were not rerun. The unrelated staged `AGENTS.md` CI-command guidance and its local changelog entry remain excluded from this commit. No new review request is authorized.
+
+### PR 201 follow-up review audit — November 12
+
+Reviewed local and remote head `1e9b58c97d1d5475ecf0615e387d8db07f0f9ada` on `codex/plan08-visit-intake`, based on `main` at `2c292348`. The initial working tree contained only the unrelated staged `AGENTS.md` CI-command guidance and its four-line unstaged changelog entry; both remain intact. This pass authorizes local verification/fixes only, with no commits, pushes, review replies, resolutions, PR responses or review requests.
+
+#### Complete accessible feedback
+
+The refreshed GitHub thread and review tools, corroborated by authenticated GraphQL pagination, return **3 threads / 6 inline comments, 5 review submissions, 0 issue comments**. Every connection, including each thread's comment connection, has `hasNextPage=false`. All three threads are resolved and have outdated diff locations; every inline comment has `isMinimized=false` and no minimized reason. Three review submissions are empty bodies associated with the prior replies. Original review `5863873027` repeats the three original findings. New review [5874097202](https://github.com/BlackHouseDeveloper/PTDoc/pull/201#pullrequestreview-5874097202) contains **two Previously missed findings** inside collapsed details and repeats the three resolved findings. The phrase “No open issues” in that summary does not dispose of its two summary-only findings.
+
+No separately suppressed/minimized comment or additional suppressed-findings section was exposed. Both Previously missed items were retrieved in full; neither has an independently replyable/resolvable inline thread. Unpublished reviewer-internal content remains inaccessible and is not claimed reviewed or resolved.
+
+#### Deduplicated classification
+
+| Finding / sources | Classification | Current evidence and disposition |
+| --- | --- | --- |
+| [4541982420](https://github.com/BlackHouseDeveloper/PTDoc/pull/201#discussion_r4541982420): newly difficult choices duplicate baseline | **Outdated — fixed by `1e9b58c9`** | `IntakeEncounterRules.PrepareShortResponse` checks catalog membership plus matching body part/case-insensitive description before producing persistence JSON. `IntakeProfileUpdates.PrepareAsync` routes staff/patient-link HTTP and service save/submit writes through it; the endpoints reject preparation failures before updating the stored answer. This agrees with `ProgressActivityWriteValidator` and the editor's option filter. Four `VisitWrites_RejectCatalogActivitiesAlreadyRecorded` cases cover duplicate rejection, allowed distinct choices and unchanged source JSON. No new change or reply needed. |
+| [4541982468](https://github.com/BlackHouseDeveloper/PTDoc/pull/201#discussion_r4541982468): incomplete/null Progress baseline | **Outdated — fixed by `1e9b58c9`** | `IntakeService.EnsureEncounterDraftAsync` calls `ProgressActivityTracking.BaselineFrom(source, note.Id)`. The helper merges both activity lists null-safely, deduplicates IDs, includes Subjective limitations and retains provenance. Four `ProgressEncounterDraft_MergesRecordedHistoryWithoutMutatingSource` cases cover null collections, history, fresh selections, reload/reuse and unchanged source JSON. No new change or reply needed. |
+| [4541982517](https://github.com/BlackHouseDeveloper/PTDoc/pull/201#discussion_r4541982517): missing current pain becomes zero | **Outdated — fixed by `1e9b58c9`** | `VisitQuestionnaireFields.OnParametersSet` restores the documentation flag and numeric value from nullable `Value.CurrentPain` after shared mapping. `IntakeVisitQuestionnaire.FromWorkspace` preserves missing versus explicit zero; the shared mapper's legacy note behavior is unchanged. Three `ProgressVisit_ReloadAndUnrelatedEditPreserveExplicitCurrentPain` cases cover server projection/JSON reload, unrelated edits, null/zero/positive answers and explicit zero recording. No new change or reply needed. |
+| Review `5874097202`, Previously missed: preserve recorded `SetbackDetails` | **Valid — fixed locally** | `GetEncounterEvaluationSeedAsync` replaced the complete destination Progress questionnaire with patient answers. `ProgressSubjectiveSection` collects the setback yes/no response and additional information but has no `SetbackDetails` editor. `WorkspaceProgressNoteQuestionnaireV2` and the UI mapper preserve this separate historical field. The server now saves/restores destination `SetbackDetails` around replacement, retaining patient-owned answers. `ApplyEncounterIntakeAsync` copies that seed's Progress object and mapped view model, so the fix covers clinician review/copy. The two-line production change adds no persistence side effect. |
+| Review `5874097202`, Previously missed: note-type change leaves incompatible intake | **Valid — policy confirmed; fixed locally** | At the reviewed head, `HandleNoteTypeChanged` allowed editable saved drafts to change type, and `NoteWorkspaceV2Service.SaveAsync` assigned `note.NoteType` and `IsReEvaluation` without checking for an issued intake. `GetForNoteAsync` and `EnsureEncounterDraftAsync` reuse the encounter intake regardless of the new type. The wizard consumes that result, while `ValidateWriteAsync` requires the definition's note type and re-evaluation flag to match, causing subsequent writes to fail. The architecture specifies an immutable issued definition. The user explicitly chose to lock note type once an encounter intake exists. `IntakeEncounterRules.ValidateNoteTypeChangeAsync` now rejects type, re-evaluation and Daily-to-Dry-Needling transitions from workspace, generic update and sync entry points before note mutation. Draft and submitted intakes both lock the type; unrelated/legacy patient-level intakes do not. Workspace load/save responses carry `HasEncounterIntake`; the selector and both change handlers honor it, and navigation resets it. Issuance advances the note concurrency token atomically with the intake insert so competing type saves cannot bypass the check. Existing answers, consent, links and definition are retained; no migration/replacement policy is introduced. |
+| Three original summary links, three “resolved since last review” links, and the new review's two-issue opening summary | **Duplicate** | These repeat the five unique findings above, with no additional contract or failure mode. The existing three evidence-based replies are disposition records, not new findings. No independent fix or thread action is needed. |
+
+The three original defects were introduced in the visit-intake layer (`c439d3b8`) and fixed by `1e9b58c9`; the two newly surfaced paths were outside that minimal fix. Classification is based on current behavior and regression evidence, not GitHub's outdated flag.
+
+#### Changes, verification and eligibility
+
+`ProgressEncounterSeed_PreservesDestinationSetbackDetails` adds three service/mapper cases for null/recorded destination details and a missing historical questionnaire against an untrusted incoming value. They verify retained destination details, updated patient answers, mapper hydration/save projection, and unchanged stored note/intake JSON. The existing HTTP `VisitQuestionnaire_SaveSubmitAndMatchingSeed_PreserveChartAndClinicianContent` now verifies retained Progress setback details through issuance, save, submit and matching seed retrieval. Existing Daily/Discharge checks remain. No unrelated refactoring or new files were added.
+
+The note-type lock adds **15 regression cases**: seven HTTP workspace cases cover Evaluation-to-Progress/Daily/Discharge, re-evaluation and Daily-to-Dry-Needling changes with draft/submitted intake, stale-version rejection, unchanged answers/consents and successful same-type edits; one generic-update HTTP case covers the Dry Needling alternative; three sync cases cover re-evaluation/Dry Needling rejection, unchanged persisted state and replay; two bUnit cases cover enabled/locked selectors, callback guarding and navigation reset; two SQLite cases cover both commit orders for issuance versus a competing type save, rollback/retry and idempotent intake reuse. Two existing API-client tests now assert lock metadata survives load/save mapping. Together with the three setback cases, this pass adds 18 cases and extends existing HTTP/client coverage.
+
+The new implementation/tests have not been built or run; the user's prior passing verification applies to `1e9b58c9`, not these changes. Both Git whitespace checks pass. Run from the repository root:
+
+```sh
+dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --configuration Release
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~NoteWorkspace|FullyQualifiedName~EncounterIntake|FullyQualifiedName~IntakeServiceTests|FullyQualifiedName~SyncClientProtocolTests" --verbosity normal -- xUnit.ParallelizeTestCollections=false
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "Category=CoreCi" --verbosity normal -- xUnit.ParallelizeTestCollections=false
+dotnet format src/PTDoc.Application/PTDoc.Application.csproj --verify-no-changes --verbosity diagnostic
+dotnet format src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj --verify-no-changes --verbosity diagnostic
+dotnet format src/PTDoc.UI/PTDoc.UI.csproj --verify-no-changes --verbosity diagnostic
+dotnet format tests/PTDoc.Tests/PTDoc.Tests.csproj --verify-no-changes --verbosity diagnostic
+```
+
+No inline thread becomes newly eligible for reply/resolution: the three original threads already have replies and are resolved, and neither Previously missed item has an inline thread. After verification and publication, both Previously missed items can support a separately authorized review-summary response; neither can be claimed individually resolved. The note-type policy decision is resolved and no ambiguous finding remains. No GitHub writes were performed in this pass.
+
+#### Verification failure and route-loading correction — November 12
+
+The user reported Core CI with 2,544 passes and one failure out of 2,545, then supplied the full-suite result: **3,094 passed, one failed, one skipped out of 3,096**. The failing case is `NoteWorkspacePageTests.EncounterIntake_LocksTypeSelectorAndResetsForAnotherNote(hasIntake: true)`, at the assertion that the next note's selector becomes enabled. These are user-reported results; no current log/TRX artifact was found locally.
+
+Inspection confirmed a lifecycle gap, not evidence of a short timeout: `NoteWorkspacePage` loaded only in `OnInitializedAsync`; parameter changes on the reused route component never loaded the next workspace. Added route-identity handling that invokes the existing load path for another patient/note, serializes workspace loads, skips superseded queued routes and keeps stale results hidden. Repeated parameters do not reload. The canonical URL transition after saving a new note retains the already-applied workspace and any newer local edits.
+
+Extended both existing lock theory cases to verify service load counts, return navigation and a delayed previous-route response. Extended `NewNoteFirstSave_CanonicalRoutePreservesActiveSection` and `EditDuringInFlightSave_IsNotOverwrittenByOlderSaveResponse` to supply the saved note route parameter and assert that it does not trigger another load. No timeout was increased. Unrelated local changes, including the user's formatting, remain intact. Both Git whitespace checks pass; no builds/tests or GitHub writes were run by the agent. Prior results do not verify this correction.
+
+Rebuild Release, run `FullyQualifiedName~NoteWorkspacePageTests`, then repeat the CoreCi gate (with `-- xUnit.ParallelizeTestCollections=false`) and the full suite before publication. The exact build/CoreCi/formatter commands above remain applicable.
+
+#### Publication verification confirmation
+
+The user subsequently confirmed all builds and tests passed for the completed PR 201 changes, including the route-loading correction, and authorized committing only the verified changes, a normal push, and replies/resolution for conclusively addressed findings. This supersedes the pending verification status above. No implementation or test changes followed confirmation; only this record and changelog status were updated. Builds/tests were not rerun. Unrelated staged `AGENTS.md` CI-command guidance and its local changelog entry remain excluded.

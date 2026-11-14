@@ -1,0 +1,69 @@
+@using PTDoc.Application.Intake
+@using PTDoc.Application.Notes.Workspace
+@using PTDoc.Application.Outcomes
+@using PTDoc.Application.ReferenceData
+@using PTDoc.Core.Models
+@using PTDoc.UI.Components.Notes.Models
+@using PTDoc.UI.Services
+@inject IIntakeReferenceDataCatalogService IntakeReferenceData
+@inject IOutcomeMeasureRegistry OutcomeRegistry
+
+@if (_payload is not null)
+{
+    <EditForm Model="@_payload">
+        @switch (IntakeQuestionnaireDefinitions.NoteTypeFor(DefinitionId))
+        {
+            case NoteType.Daily:
+                <PTDoc.UI.Components.Notes.Workspace.DailyTreatment.SubjectiveSection
+                    Vm="@_payload.Subjective" VmChanged="SubjectiveChanged"
+                    DailyTreatment="@_payload.DailyTreatment" DailyTreatmentChanged="DailyChanged" IsReadOnly="@IsReadOnly" />
+                break;
+            case NoteType.ProgressNote:
+                <PTDoc.UI.Components.Notes.Workspace.ProgressNote.ProgressSubjectiveSection
+                    Vm="@_payload.Subjective" VmChanged="SubjectiveChanged"
+                    ProgressSubjective="@_payload.ProgressSubjective" ProgressSubjectiveChanged="ProgressChanged"
+                    IssuedActivityOptions="@Value.ActivityOptions" IsReadOnly="@IsReadOnly" />
+                break;
+            case NoteType.Discharge:
+                <PTDoc.UI.Components.Notes.Workspace.DischargeNote.DischargeSubjectiveSection
+                    Vm="@_payload.Subjective" VmChanged="SubjectiveChanged"
+                    DischargeSubjective="@_payload.DischargeSubjective" DischargeSubjectiveChanged="DischargeChanged"
+                    Plan="@_payload.Plan" PlanChanged="@(_ => Task.CompletedTask)" ShowClinicianFields="false" IsReadOnly="@IsReadOnly" />
+                break;
+        }
+    </EditForm>
+}
+
+@code {
+    [Parameter, EditorRequired] public IntakeVisitQuestionnaire Value { get; set; } = new();
+    [Parameter] public EventCallback<IntakeVisitQuestionnaire> ValueChanged { get; set; }
+    [Parameter, EditorRequired] public string DefinitionId { get; set; } = string.Empty;
+    [Parameter] public bool IsReadOnly { get; set; }
+    private NoteWorkspacePayload? _payload;
+    private IntakeVisitQuestionnaire? _loaded;
+    private NoteWorkspacePayloadMapper Mapper => new(IntakeReferenceData, OutcomeRegistry);
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(Value, _loaded)) return;
+        _loaded = Value;
+        _payload = Mapper.MapToUiPayload(Value.ToWorkspace(IntakeQuestionnaireDefinitions.NoteTypeFor(DefinitionId)!.Value));
+        // Visit answers explicitly distinguish missing current pain from a recorded zero.
+        // The shared note mapper also supports legacy Progress pain without that flag.
+        _payload.Subjective.IsPainScoreDocumented = Value.CurrentPain.HasValue;
+        _payload.Subjective.CurrentPainScore = Value.CurrentPain ?? 0;
+    }
+    private Task SubjectiveChanged(SubjectiveVm value) { _payload!.Subjective = value; return NotifyAsync(); }
+    private Task DailyChanged(DailyTreatmentVm value) { _payload!.DailyTreatment = value; return NotifyAsync(); }
+    private Task ProgressChanged(ProgressSubjectiveVm value) { _payload!.ProgressSubjective = value; return NotifyAsync(); }
+    private Task DischargeChanged(DischargeSubjectiveVm value) { _payload!.DischargeSubjective = value; return NotifyAsync(); }
+    private Task NotifyAsync()
+    {
+        if (IsReadOnly) return Task.CompletedTask;
+        var type = IntakeQuestionnaireDefinitions.NoteTypeFor(DefinitionId)!.Value;
+        var answers = IntakeVisitQuestionnaire.FromWorkspace(Mapper.MapToV2Payload(_payload!, type), Value);
+        // Parent acknowledgement of this edit must retain the current EditForm model.
+        // Replacing it on every keystroke recreates the controls and drops keyboard focus.
+        _loaded = answers;
+        return ValueChanged.InvokeAsync(answers);
+    }
+}

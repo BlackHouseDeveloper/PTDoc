@@ -2602,6 +2602,9 @@ public class SyncEngine : ISyncEngine
                         updatedDateOfService,
                         normalizedContentJson);
 
+                    await IntakeEncounterRules.ValidateNoteTypeChangeAsync(_context, existing, existing.NoteType,
+                        updatedIsReEvaluation, isDryNeedling, cancellationToken);
+
                     existing.CreatedUtc = TryGetDateTime(root, "createdUtc") ?? TryGetDateTime(root, "CreatedUtc") ?? existing.CreatedUtc;
                     existing.ParentNoteId = TryGetGuid(root, "parentNoteId") ?? TryGetGuid(root, "ParentNoteId") ?? existing.ParentNoteId;
                     existing.IsAddendum = TryGetBool(root, "isAddendum") ?? TryGetBool(root, "IsAddendum") ?? existing.IsAddendum;

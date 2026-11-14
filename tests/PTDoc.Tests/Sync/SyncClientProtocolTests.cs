@@ -26,6 +26,67 @@ namespace PTDoc.Tests.Sync;
 [Xunit.Trait("Category", "OfflineSync")]
 public class SyncClientProtocolTests
 {
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task IssuedIntake_RejectsSyncTypeChangesWithoutMutatingNote(bool dryNeedling, bool submitted)
+    {
+        using var context = CreateInMemoryContext();
+        var patient = new Patient { FirstName = "Synthetic", LastName = "TypeLock", ClinicId = Guid.NewGuid() };
+        var payload = new NoteWorkspaceV2Payload { NoteType = dryNeedling ? NoteType.Daily : NoteType.Evaluation };
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            ClinicId = patient.ClinicId,
+            NoteType = payload.NoteType,
+            ContentJson = JsonSerializer.Serialize(payload),
+            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-5)
+        };
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            ClinicId = patient.ClinicId,
+            EncounterNoteId = note.Id,
+            QuestionnaireDefinitionId = PTDoc.Application.Intake.IntakeQuestionnaireDefinitions.ForNoteType(note.NoteType),
+            IsLocked = submitted,
+            SubmittedAt = submitted ? DateTime.UtcNow : null,
+            ResponseJson = "{\"answer\":\"retain\"}",
+            Consents = "{\"treatmentConsentAccepted\":true}"
+        };
+        context.Patients.Add(patient);
+        context.ClinicalNotes.Add(note);
+        context.IntakeForms.Add(intake);
+        await context.SaveChangesAsync();
+        var originalJson = note.ContentJson;
+        var originalVersion = note.LastModifiedUtc;
+        payload.DryNeedling = dryNeedling ? new() : null;
+        var engine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var request = new ClientSyncPushRequest
+        {
+            Items = [new ClientSyncPushItem
+            {
+                EntityType = "ClinicalNote", ServerId = note.Id, LocalId = 1, OperationId = Guid.NewGuid(),
+                Operation = "Update", LastModifiedUtc = DateTime.UtcNow,
+                DataJson = JsonSerializer.Serialize(new { isReEvaluation = !dryNeedling, contentJson = JsonSerializer.Serialize(payload) })
+            }]
+        };
+
+        var result = await engine.ReceiveClientPushAsync(request);
+        Assert.Equal(0, result.AcceptedCount);
+        Assert.Equal("Error", Assert.Single(result.Items).Status);
+        await context.SaveChangesAsync();
+        var saved = await context.ClinicalNotes.AsNoTracking().SingleAsync();
+        Assert.Equal(originalJson, saved.ContentJson);
+        Assert.Equal(originalVersion, saved.LastModifiedUtc);
+        Assert.False(saved.IsReEvaluation);
+        var retained = await context.IntakeForms.AsNoTracking().SingleAsync();
+        Assert.Equal(intake.ResponseJson, retained.ResponseJson);
+        Assert.Equal(intake.Consents, retained.Consents);
+        var replay = await engine.ReceiveClientPushAsync(request);
+        Assert.Equal("Error", Assert.Single(replay.Items).Status);
+    }
+
     private ApplicationDbContext CreateInMemoryContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

@@ -15,6 +15,96 @@ namespace PTDoc.Tests.Integration;
 [Trait("Category", "CoreCi")]
 public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : IClassFixture<PtDocApiFactory>
 {
+    [Theory]
+    [InlineData(NoteType.Evaluation, NoteType.ProgressNote, false, false, false)]
+    [InlineData(NoteType.Evaluation, NoteType.Daily, false, false, false)]
+    [InlineData(NoteType.Evaluation, NoteType.Discharge, false, false, true)]
+    [InlineData(NoteType.Evaluation, NoteType.Evaluation, true, false, false)]
+    [InlineData(NoteType.Evaluation, NoteType.Evaluation, true, false, true)]
+    [InlineData(NoteType.Daily, NoteType.Daily, false, true, false)]
+    [InlineData(NoteType.Daily, NoteType.Daily, false, true, true)]
+    public async Task IssuedIntake_LocksWorkspaceTypeButAllowsSameTypeEdits(
+        NoteType originalType, NoteType requestedType, bool reEvaluation, bool dryNeedling, bool submitted)
+    {
+        using var client = factory.CreateClientWithRole(Roles.PT);
+        var (patientId, noteId, _) = await CreateFixtureAsync(client, originalType);
+        var url = $"/api/v2/notes/workspace/{patientId}/{noteId}";
+        var before = (await client.GetFromJsonAsync<NoteWorkspaceV2LoadResponse>(url))!;
+        Assert.False(before.HasEncounterIntake);
+        var intake = await IssueAsync(client, patientId, noteId);
+        if (submitted)
+        {
+            using var answerSave = await client.PutAsJsonAsync($"/api/v1/intake/{intake.Id}", UpdateFor(intake, intake.LastModifiedUtc));
+            Assert.Equal(HttpStatusCode.OK, answerSave.StatusCode);
+            intake = (await answerSave.Content.ReadFromJsonAsync<IntakeResponse>())!;
+            using var submit = await client.PostAsJsonAsync($"/api/v1/intake/{intake.Id}/submit",
+                new SubmitIntakeRequest { ExpectedLastModifiedUtc = intake.LastModifiedUtc });
+            Assert.Equal(HttpStatusCode.OK, submit.StatusCode);
+            intake = (await client.GetFromJsonAsync<IntakeResponse>($"/api/v1/intake/{intake.Id}"))!;
+        }
+        var current = (await client.GetFromJsonAsync<NoteWorkspaceV2LoadResponse>(url))!;
+        Assert.True(current.HasEncounterIntake);
+        Assert.True(current.LastModifiedUtc > before.LastModifiedUtc);
+        var request = new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patientId,
+            NoteId = noteId,
+            DateOfService = DateTime.UtcNow.Date,
+            ExpectedLastModifiedUtc = before.LastModifiedUtc,
+            NoteType = originalType,
+            Payload = current.Payload
+        };
+        using var stale = await client.PostAsJsonAsync("/api/v2/notes/workspace/", request);
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        request.ExpectedLastModifiedUtc = current.LastModifiedUtc;
+        request.NoteType = requestedType;
+        request.IsReEvaluation = reEvaluation;
+        request.Payload.DryNeedling = dryNeedling ? new() : null;
+        using var rejected = await client.PostAsJsonAsync("/api/v2/notes/workspace/", request);
+        Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+        Assert.Contains("note type is locked", await rejected.Content.ReadAsStringAsync());
+        var unchanged = (await client.GetFromJsonAsync<NoteWorkspaceV2LoadResponse>(url))!;
+        Assert.Equal(originalType, unchanged.NoteType);
+        Assert.False(unchanged.IsReEvaluation);
+        Assert.Null(unchanged.Payload.DryNeedling);
+        Assert.Equal(current.LastModifiedUtc, unchanged.LastModifiedUtc);
+        var retained = (await client.GetFromJsonAsync<IntakeResponse>($"/api/v1/intake/{intake.Id}"))!;
+        Assert.Equal(intake.ResponseJson, retained.ResponseJson);
+        Assert.Equal(intake.Consents, retained.Consents);
+        Assert.Equal(intake.QuestionnaireDefinitionId, retained.QuestionnaireDefinitionId);
+        Assert.Equal(intake.Locked, retained.Locked);
+
+        request.NoteType = originalType;
+        request.IsReEvaluation = false;
+        request.Payload.DryNeedling = null;
+        request.Payload.Subjective.KnownCause = "Ordinary same-type edit";
+        using var accepted = await client.PostAsJsonAsync("/api/v2/notes/workspace/", request);
+        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+        var saved = (await accepted.Content.ReadFromJsonAsync<NoteWorkspaceV2SaveResponse>())!.Workspace!;
+        Assert.True(saved.HasEncounterIntake);
+        Assert.Equal("Ordinary same-type edit", saved.Payload.Subjective.KnownCause);
+    }
+
+    [Fact]
+    public async Task IssuedIntake_GenericNoteUpdateCannotSwitchDailyToDryNeedling()
+    {
+        using var client = factory.CreateClientWithRole(Roles.PT);
+        var (patientId, noteId, _) = await CreateFixtureAsync(client, NoteType.Daily);
+        var intake = await IssueAsync(client, patientId, noteId);
+        using var response = await client.PutAsJsonAsync($"/api/v1/notes/{noteId}", new UpdateNoteRequest
+        {
+            ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload { NoteType = NoteType.Daily, DryNeedling = new() })
+        });
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains("note type is locked", await response.Content.ReadAsStringAsync());
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var unchanged = (await db.ClinicalNotes.FindAsync(noteId))!;
+        Assert.Equal(NoteType.Daily, unchanged.NoteType);
+        Assert.Equal("{}", unchanged.ContentJson);
+        Assert.Equal(intake.ResponseJson, (await db.IntakeForms.FindAsync(intake.Id))!.ResponseJson);
+    }
+
     [Fact]
     public async Task InvalidProgressCreation_ReturnsValidationInsteadOfServerError()
     {
@@ -119,12 +209,16 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
         Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync($"/api/v1/intake/{issued.Id}", Update(locked.LastModifiedUtc))).StatusCode);
     }
 
-    [Fact]
-    public async Task VerifiedPatientLink_RemainsPinnedAcrossLaterVisits_AndCannotWriteSibling()
+    [Theory]
+    [InlineData(NoteType.Evaluation)]
+    [InlineData(NoteType.Daily)]
+    [InlineData(NoteType.ProgressNote)]
+    [InlineData(NoteType.Discharge)]
+    public async Task VerifiedPatientLink_RemainsPinnedAcrossLaterVisits_AndCannotWriteSibling(NoteType type)
     {
         using var staff = factory.CreateClientWithRole(Roles.PT);
         using var patient = factory.CreateUnauthenticatedClient();
-        var (patientId, noteId, email) = await CreateFixtureAsync(staff);
+        var (patientId, noteId, email) = await CreateFixtureAsync(staff, type);
         var first = await IssueAsync(staff, patientId, noteId);
         using var linkResponse = await staff.PostAsync($"/api/v1/intake/{first.Id}/delivery/link", null);
         Assert.Equal(HttpStatusCode.OK, linkResponse.StatusCode);
@@ -152,7 +246,7 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
         Assert.Equal(first.Id, linked.Id);
         Assert.Equal(HttpStatusCode.Forbidden, (await patient.PutAsJsonAsync($"/api/v1/intake/access/{later.Id}", Update(later.LastModifiedUtc))).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await patient.PutAsJsonAsync($"/api/v1/intake/access/{first.Id}", Update(null))).StatusCode);
-        using var update = await patient.PutAsJsonAsync($"/api/v1/intake/access/{first.Id}", Update(first.LastModifiedUtc));
+        using var update = await patient.PutAsJsonAsync($"/api/v1/intake/access/{first.Id}", UpdateFor(first, first.LastModifiedUtc));
         Assert.Equal(HttpStatusCode.OK, update.StatusCode);
         var saved = (await update.Content.ReadFromJsonAsync<IntakeResponse>())!;
         Assert.Equal(HttpStatusCode.Conflict, (await patient.PostAsJsonAsync($"/api/v1/intake/access/{first.Id}/submit", new SubmitIntakeRequest { ExpectedLastModifiedUtc = first.LastModifiedUtc })).StatusCode);
@@ -230,6 +324,127 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
         Assert.Equal(HttpStatusCode.OK, submit.StatusCode);
     }
 
+    [Theory]
+    [InlineData(NoteType.Daily)]
+    [InlineData(NoteType.ProgressNote)]
+    [InlineData(NoteType.Discharge)]
+    public async Task VisitQuestionnaire_SaveSubmitAndMatchingSeed_PreserveChartAndClinicianContent(NoteType type)
+    {
+        using var client = factory.CreateClientWithRole(Roles.PT);
+        var (patientId, noteId, email) = await CreateFixtureAsync(client);
+        string originalNote;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var note = (await db.ClinicalNotes.FindAsync(noteId))!;
+            note.NoteType = type;
+            note.ContentJson = originalNote = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            {
+                NoteType = type,
+                Plan = new() { HomeExerciseProgramNotes = "Keep clinician instructions", PrimaryDischargeReason = "Patient request" },
+                DailyTreatment = new() { ResponseToTreatment = "Clinician observation" },
+                ProgressQuestionnaire = new() { SetbackDetails = "Recorded clinician setback detail" }
+            });
+            await db.SaveChangesAsync();
+        }
+        var issued = await IssueAsync(client, patientId, noteId);
+        Assert.Equal(IntakeQuestionnaireDefinitions.ForNoteType(type), issued.QuestionnaireDefinitionId);
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var draft = JsonSerializer.Deserialize<IntakeResponseDraft>(issued.ResponseJson, options)!;
+        Assert.NotNull(draft.VisitQuestionnaire);
+        Assert.Null(draft.VisitQuestionnaire.CurrentPain);
+        draft.VisitQuestionnaire.CurrentPain = 0;
+        draft.VisitQuestionnaire.BestPain = 0;
+        draft.VisitQuestionnaire.WorstPain = 4;
+        if (type == NoteType.Daily) draft.VisitQuestionnaire.Daily!.AdditionalInformation = "Daily patient answer";
+        if (type == NoteType.ProgressNote) draft.VisitQuestionnaire.Progress!.PercentImproved = 37.5m;
+        if (type == NoteType.Discharge) draft.VisitQuestionnaire.Discharge!.GoalsMetStatus = "Patient report only";
+        draft.FullName = "Untrusted Chart Change";
+        draft.EmailAddress = "untrusted@example.test";
+        var update = new UpdateIntakeRequest
+        {
+            ExpectedLastModifiedUtc = issued.LastModifiedUtc,
+            ResponseJson = JsonSerializer.Serialize(draft, options),
+            Consents = """{"hipaaAcknowledged":true,"treatmentConsentAccepted":true,"termsOfServiceAccepted":true}"""
+        };
+        using var savedResponse = await client.PutAsJsonAsync($"/api/v1/intake/{issued.Id}", update);
+        Assert.Equal(HttpStatusCode.OK, savedResponse.StatusCode);
+        var saved = (await savedResponse.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync($"/api/v1/intake/{issued.Id}", update)).StatusCode);
+        var reloaded = JsonSerializer.Deserialize<IntakeResponseDraft>(saved.ResponseJson, options)!;
+        Assert.Equal(0, reloaded.VisitQuestionnaire!.CurrentPain);
+        Assert.Equal(email, reloaded.EmailAddress);
+        using var submit = await client.PostAsJsonAsync($"/api/v1/intake/{issued.Id}/submit",
+            new SubmitIntakeRequest { ExpectedLastModifiedUtc = saved.LastModifiedUtc });
+        Assert.Equal(HttpStatusCode.OK, submit.StatusCode);
+        var seed = await client.GetFromJsonAsync<NoteWorkspaceV2EvaluationSeedResponse>($"/api/v2/notes/workspace/{patientId}/{noteId}/intake-seed");
+        Assert.NotNull(seed);
+        Assert.Equal(issued.Id, seed.SourceIntakeId);
+        Assert.Equal(issued.QuestionnaireDefinitionId, seed.Payload.SeedContext.SourceIntakeDefinitionId);
+        Assert.True(seed.Payload.Subjective.IsPainScoreDocumented);
+        Assert.Equal(0, seed.Payload.Subjective.CurrentPainScore);
+        Assert.Equal("Keep clinician instructions", seed.Payload.Plan.HomeExerciseProgramNotes);
+        Assert.Equal("Patient request", seed.Payload.Plan.PrimaryDischargeReason);
+        if (type == NoteType.Daily)
+        {
+            Assert.Equal("Daily patient answer", seed.Payload.DailyTreatment.Questionnaire!.AdditionalInformation);
+            Assert.Equal("Clinician observation", seed.Payload.DailyTreatment.ResponseToTreatment);
+        }
+        if (type == NoteType.ProgressNote)
+        {
+            Assert.Equal(37.5m, seed.Payload.ProgressQuestionnaire.PercentImproved);
+            Assert.Equal("Recorded clinician setback detail", seed.Payload.ProgressQuestionnaire.SetbackDetails);
+        }
+        if (type == NoteType.Discharge) Assert.Equal("Patient report only", seed.Payload.Discharge.GoalsMetStatus);
+        await using var checkScope = factory.Services.CreateAsyncScope();
+        var checkDb = checkScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Equal(originalNote, (await checkDb.ClinicalNotes.AsNoTracking().SingleAsync(n => n.Id == noteId)).ContentJson);
+        Assert.Equal(email, (await checkDb.Patients.AsNoTracking().SingleAsync(p => p.Id == patientId)).Email);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/v2/notes/workspace/{patientId}/{Guid.NewGuid()}/intake-seed")).StatusCode);
+    }
+
+    [Fact]
+    public async Task DailyVisit_RejectsMissingPainAndCrossTypeAnswers()
+    {
+        using var client = factory.CreateClientWithRole(Roles.PT);
+        var (patientId, noteId, _) = await CreateFixtureAsync(client);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            (await db.ClinicalNotes.FindAsync(noteId))!.NoteType = NoteType.Daily;
+            await db.SaveChangesAsync();
+        }
+        var issued = await IssueAsync(client, patientId, noteId);
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var draft = JsonSerializer.Deserialize<IntakeResponseDraft>(issued.ResponseJson, options)!;
+        var update = new UpdateIntakeRequest
+        {
+            ExpectedLastModifiedUtc = issued.LastModifiedUtc,
+            ResponseJson = JsonSerializer.Serialize(draft, options),
+            Consents = """{"hipaaAcknowledged":true,"treatmentConsentAccepted":true,"termsOfServiceAccepted":true}"""
+        };
+        using var response = await client.PutAsJsonAsync($"/api/v1/intake/{issued.Id}", update);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var saved = (await response.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await client.PostAsJsonAsync($"/api/v1/intake/{issued.Id}/submit",
+            new SubmitIntakeRequest { ExpectedLastModifiedUtc = saved.LastModifiedUtc })).StatusCode);
+        draft.VisitQuestionnaire!.Progress = new();
+        update.ExpectedLastModifiedUtc = saved.LastModifiedUtc;
+        update.ResponseJson = JsonSerializer.Serialize(draft, options);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync($"/api/v1/intake/{issued.Id}", update)).StatusCode);
+    }
+
+    private static UpdateIntakeRequest UpdateFor(IntakeResponse intake, DateTime? version)
+    {
+        var request = Update(version);
+        if (!IntakeQuestionnaireDefinitions.IsShort(intake.QuestionnaireDefinitionId)) return request;
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var draft = JsonSerializer.Deserialize<IntakeResponseDraft>(intake.ResponseJson, options)!;
+        draft.VisitQuestionnaire!.CurrentPain = 0;
+        request.ResponseJson = JsonSerializer.Serialize(draft, options);
+        return request;
+    }
+
     private static UpdateIntakeRequest Update(DateTime? version) => new()
     {
         ExpectedLastModifiedUtc = version,
@@ -241,10 +456,21 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
     {
         using var response = await client.PostAsJsonAsync($"/api/v1/intake/drafts/{patientId}", new EnsureIntakeDraftRequest { EncounterNoteId = noteId });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        return (await response.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        var intake = (await response.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        var consents = JsonSerializer.Deserialize<IntakeConsentPacket>(intake.Consents)!;
+        Assert.NotEqual(true, consents.TreatmentConsentAccepted);
+        Assert.NotEqual(true, consents.HipaaAcknowledged);
+        Assert.NotEqual(true, consents.CommunicationCallConsent);
+        Assert.NotEqual(true, consents.CommunicationTextConsent);
+        Assert.NotEqual(true, consents.CommunicationEmailConsent);
+        Assert.NotEqual(true, consents.DryNeedlingConsentAccepted);
+        Assert.NotEqual(true, consents.PelvicFloorConsentAccepted);
+        Assert.NotEqual(true, consents.PhiReleaseAuthorized);
+        Assert.NotEqual(true, consents.CreditCardAuthorizationAccepted);
+        return intake;
     }
 
-    private async Task<(Guid Patient, Guid Note, string Email)> CreateFixtureAsync(HttpClient client)
+    private async Task<(Guid Patient, Guid Note, string Email)> CreateFixtureAsync(HttpClient client, NoteType type = NoteType.Evaluation)
     {
         var email = $"synthetic-{Guid.NewGuid():N}@example.test";
         using var response = await client.PostAsJsonAsync("/api/v1/patients", new CreatePatientRequest { FirstName = "Synthetic", LastName = "Encounter", DateOfBirth = new DateTime(1990, 1, 1), Email = email });
@@ -252,7 +478,7 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
         var patient = (await response.Content.ReadFromJsonAsync<PatientResponse>())!;
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        var note = new ClinicalNote { PatientId = patient.Id, NoteType = NoteType.Evaluation, LastModifiedUtc = DateTime.UtcNow };
+        var note = new ClinicalNote { PatientId = patient.Id, NoteType = type, LastModifiedUtc = DateTime.UtcNow };
         db.ClinicalNotes.Add(note);
         await db.SaveChangesAsync();
         return (patient.Id, note.Id, email);

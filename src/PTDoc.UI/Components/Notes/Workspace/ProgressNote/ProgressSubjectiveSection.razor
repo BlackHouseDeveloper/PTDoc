@@ -50,12 +50,17 @@
                        disabled="@IsReadOnly"
                        @bind="_vm.CurrentPainScore"
                        @bind:event="oninput"
-                       @bind:after="NotifyPainChanged" />
+                       @bind:after="NotifyCurrentPainChanged" />
                 <div class="progress-subjective__range-legend">
                     <span>No Pain (0)</span>
-                    <strong>@_vm.CurrentPainScore</strong>
+                    <strong>@(_vm.IsPainScoreDocumented ? _vm.CurrentPainScore.ToString() : "Not recorded")</strong>
                     <span>Severe (10)</span>
                 </div>
+
+                @if (!_vm.IsPainScoreDocumented && !IsReadOnly)
+                {
+                    <button id="progress-record-no-pain" type="button" @onclick="RecordNoPain">Record no pain (0)</button>
+                }
 
                 <div class="progress-subjective__two-col">
                     <label class="progress-subjective__field">
@@ -102,7 +107,7 @@
             </div>
 
             <ProgressActivityEditor Value="@_activities" ValueChanged="HandleActivitiesChanged"
-                                    BodyParts="@ActivityBodyParts" IsReadOnly="@IsReadOnly" />
+                                    BodyParts="@ActivityBodyParts" IssuedOptions="@IssuedActivityOptions" IsReadOnly="@IsReadOnly" />
             @if (_improvedAreas.Count + _sameActivities.Count + _worseActivities.Count + _newDifficultyActivities.Count > 0)
             {
                 <div data-testid="progress-legacy-activities">
@@ -209,6 +214,7 @@
     [Parameter, EditorRequired] public EventCallback<SubjectiveVm> VmChanged { get; set; }
     [Parameter] public ProgressSubjectiveVm ProgressSubjective { get; set; } = new();
     [Parameter] public EventCallback<ProgressSubjectiveVm> ProgressSubjectiveChanged { get; set; }
+    [Parameter] public IReadOnlyList<ProgressActivityReference>? IssuedActivityOptions { get; set; }
     [Parameter] public bool IsReadOnly { get; set; }
 
     private string _overallCondition = string.Empty;
@@ -276,7 +282,9 @@
         _ = NotifyChanged();
     }
 
-    private Task NotifyPainChanged() { _vm.IsPainScoreDocumented = true; return NotifyChanged(); }
+    private Task NotifyCurrentPainChanged() { _vm.IsPainScoreDocumented = true; return NotifyChanged(); }
+    private Task RecordNoPain() { _vm.CurrentPainScore = 0; return NotifyCurrentPainChanged(); }
+    private Task NotifyPainChanged() => NotifyChanged();
 
     private async Task NotifyChanged()
     {

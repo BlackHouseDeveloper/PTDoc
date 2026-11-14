@@ -29,7 +29,7 @@
     <GlobalPageHeader Configuration="@HeaderConfiguration" />
 
     <div class="intake-page__shell">
-        <PainProgressBar CurrentStep="@State.CurrentStep" />
+        <PainProgressBar CurrentStep="@State.CurrentStep" IsShortVisit="@IsShortVisit" />
 
         <main class="intake-page__content" aria-live="polite">
             @if (_showDraftUnavailable)
@@ -91,21 +91,21 @@
                     {
                         <section class="intake-page__notice" role="alert" data-testid="intake-profile-reload">
                             <p>Reload the saved intake before making further changes. The saved insurance may have changed.</p>
-                            <button type="button" class="btn btn--secondary" disabled="@_isSavingDraft"
+                            <button type="button" class="btn intake-page__secondary-action" disabled="@_isSavingDraft"
                                     data-testid="intake-reload-saved" @onclick="ReloadSavedProfileAsync">Reload saved intake</button>
                         </section>
                     }
                     @if (State.EncounterNoteId.HasValue)
                     {
                         <section class="intake-page__notice" role="status">
-                            <p>@(State.EncounterIsReEvaluation ? "Re-evaluation intake" : "Evaluation intake") — answers belong to this visit.</p>
-                            @if (State.QuestionnaireDefinitionId != IntakeQuestionnaireDefinitions.EvaluationFullV1)
+                            <p>@(State.EncounterIsReEvaluation ? "Re-evaluation intake" : IntakeQuestionnaireDefinitions.Label(State.QuestionnaireDefinitionId)) — answers belong to this visit.</p>
+                            @if (IntakeQuestionnaireDefinitions.NoteTypeFor(State.QuestionnaireDefinitionId) is null)
                             {
                                 <p>This questionnaire version is available for review only.</p>
                             }
                             @if (!State.IsPatientMode && CanEditDraft)
                             {
-                                <button type="button" class="btn btn--secondary" @onclick="() => _showEncounterInvite = true">Send intake link</button>
+                                <button type="button" class="btn intake-page__secondary-action" @onclick="() => _showEncounterInvite = true">Send intake link</button>
                             }
                         </section>
                     }
@@ -116,23 +116,23 @@
                         </section>
                     }
 
-                    @if (CanEditDraft && State.ProfilePrefill?.HasValuesForBlankFields(ToDraft(State)) == true)
+                    @if (!IsShortVisit && CanEditDraft && State.ProfilePrefill?.HasValuesForBlankFields(ToDraft(State)) == true)
                     {
                         <section class="intake-page__notice" data-testid="intake-profile-prefill" aria-label="Saved profile information">
                             <p>Saved contact and insurance information is available. Use it for blank fields only if you want those fields filled. Existing answers will remain unchanged.</p>
-                            <button type="button" class="btn btn--secondary" disabled="@IsInteractionLocked"
+                            <button type="button" class="btn intake-page__secondary-action" disabled="@IsInteractionLocked"
                                     data-testid="intake-apply-profile" @onclick="() => ApplyProfileUpdateAsync(IntakeProfileAction.FillBlankFields)">Use saved values for blank fields</button>
-                            <button type="button" class="btn btn--secondary" disabled="@IsInteractionLocked"
+                            <button type="button" class="btn intake-page__secondary-action" disabled="@IsInteractionLocked"
                                     data-testid="intake-dismiss-profile" @onclick="() => State.ProfilePrefill = null">Keep my answers</button>
                         </section>
                     }
 
-                    @if (CanEditDraft)
+                    @if (!IsShortVisit && CanEditDraft)
                     {
                         <details class="intake-page__notice" data-testid="intake-insurance-reconciliation">
                             <summary>Review saved insurance</summary>
                             <p>Refresh to see current insurance. Using a saved policy replaces that policy's intake answers. Switching primary policies clears authorization answers for the previous policy. Omitting a policy keeps it out of this intake and leaves the chart unchanged.</p>
-                            <button type="button" class="btn btn--secondary" disabled="@IsInteractionLocked" data-testid="intake-refresh-profile" @onclick="RefreshProfileAsync">Refresh saved information</button>
+                            <button type="button" class="btn intake-page__secondary-action" disabled="@IsInteractionLocked" data-testid="intake-refresh-profile" @onclick="RefreshProfileAsync">Refresh saved information</button>
                             @if (State.ProfilePrefill is { } profile)
                             {
                                 <p>Primary: @(profile.InsuranceCompanyName ?? profile.PayerType ?? "None") — @(profile.MemberOrPolicyNumber ?? "No member number")</p>
@@ -141,16 +141,16 @@
                                 {
                                     <p>Multiple primary policies are active. Ask the clinic to reconcile them, or omit primary insurance from this intake.</p>
                                 }
-                                <button type="button" class="btn btn--secondary" disabled="@(IsInteractionLocked || profile.PrimaryPolicyAmbiguous)" data-testid="intake-use-primary" @onclick="() => ApplyProfileUpdateAsync(IntakeProfileAction.UsePrimary)">Use current primary</button>
-                                <button type="button" class="btn btn--secondary" disabled="@IsInteractionLocked" data-testid="intake-omit-primary" @onclick="() => ApplyProfileUpdateAsync(IntakeProfileAction.OmitPrimary)">Omit primary from this intake</button>
+                                <button type="button" class="btn intake-page__secondary-action" disabled="@(IsInteractionLocked || profile.PrimaryPolicyAmbiguous)" data-testid="intake-use-primary" @onclick="() => ApplyProfileUpdateAsync(IntakeProfileAction.UsePrimary)">Use current primary</button>
+                                <button type="button" class="btn intake-page__secondary-action" disabled="@IsInteractionLocked" data-testid="intake-omit-primary" @onclick="() => ApplyProfileUpdateAsync(IntakeProfileAction.OmitPrimary)">Omit primary from this intake</button>
                                 <p>Secondary: @(profile.SecondaryInsuranceCompanyName ?? "None") — @(profile.SecondaryMemberOrPolicyNumber ?? "No member number")</p>
                                 <p>Group: @(profile.SecondaryGroupNumber ?? "None").</p>
                                 @if (profile.SecondaryPolicyAmbiguous)
                                 {
                                     <p>Multiple secondary policies are active. Ask the clinic to reconcile them, or omit secondary insurance from this intake.</p>
                                 }
-                                <button type="button" class="btn btn--secondary" disabled="@(IsInteractionLocked || profile.SecondaryPolicyAmbiguous)" data-testid="intake-use-secondary" @onclick="() => ApplyProfileUpdateAsync(IntakeProfileAction.UseSecondary)">Use current secondary</button>
-                                <button type="button" class="btn btn--secondary" disabled="@IsInteractionLocked" data-testid="intake-omit-secondary" @onclick="() => ApplyProfileUpdateAsync(IntakeProfileAction.OmitSecondary)">Omit secondary from this intake</button>
+                                <button type="button" class="btn intake-page__secondary-action" disabled="@(IsInteractionLocked || profile.SecondaryPolicyAmbiguous)" data-testid="intake-use-secondary" @onclick="() => ApplyProfileUpdateAsync(IntakeProfileAction.UseSecondary)">Use current secondary</button>
+                                <button type="button" class="btn intake-page__secondary-action" disabled="@IsInteractionLocked" data-testid="intake-omit-secondary" @onclick="() => ApplyProfileUpdateAsync(IntakeProfileAction.OmitSecondary)">Omit secondary from this intake</button>
                             }
                             @if (State.OmitPrimaryPolicy || State.OmitSecondaryPolicy)
                             {
@@ -160,43 +160,59 @@
                         </details>
                     }
 
+                    @if (CanEditDraft && (IsShortVisit || State.CurrentStep == IntakeStep.OutcomeMeasures))
+                    {
+                        <button type="button" class="btn intake-page__secondary-action intake-page__save-partial" disabled="@IsInteractionLocked"
+                                data-testid="intake-save-partial" @onclick="SavePartialDraftAsync">Save draft</button>
+                    }
                     <fieldset class="intake-page__fieldset" disabled="@IsInteractionLocked">
-                        @switch (State.CurrentStep)
+                        @if (IsShortVisit && State.CurrentStep != IntakeStep.Review && State.VisitQuestionnaire is { } visit)
                         {
-                            case IntakeStep.Demographics:
-                                <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
-                                break;
-                            case IntakeStep.PainAssessment:
-                                <PainAssessmentStep2 State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainAssessmentContinueAsync" OnStateChanged="HandleStateChangedAsync" />
-                                break;
-                            case IntakeStep.PainDetails:
-                                <PainDetailsStep State="@State"
-                                                 OnBack="HandleBackAsync"
-                                                 OnContinue="HandlePainDetailsContinueAsync"
-                                                 OnStateChanged="HandleStateChangedAsync"
-                                                 ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
-                                break;
-                            case IntakeStep.OutcomeMeasures:
-                                <OutcomeMeasuresStep State="@State"
+                            <div class="intake-page__visit">
+                            <VisitQuestionnaireFields Value="@visit" ValueChanged="HandleVisitChangedAsync"
+                                DefinitionId="@(State.QuestionnaireDefinitionId!)" IsReadOnly="@(!CanEditDraft)" />
+                            <IntakeFooterActions PrimaryText="Review answers" PrimaryTestId="intake-review-answers" OnPrimary="HandleVisitContinueAsync" />
+                            </div>
+                        }
+                        else
+                        {
+                            @switch (State.CurrentStep)
+                            {
+                                case IntakeStep.Demographics:
+                                    <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                                    break;
+                                case IntakeStep.PainAssessment:
+                                    <PainAssessmentStep2 State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainAssessmentContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                                    break;
+                                case IntakeStep.PainDetails:
+                                    <PainDetailsStep State="@State"
                                                      OnBack="HandleBackAsync"
-                                                     OnContinue="HandleOutcomeMeasuresContinueAsync"
-                                                     OnStateChanged="HandleStateChangedAsync" />
-                                break;
-                            case IntakeStep.Review:
-                                <ReviewStep State="@State"
-                                            ValidationMessage="@_validationMessage"
-                                            OnBack="HandleBackAsync"
-                                            OnSubmit="HandleSubmitAsync"
-                                            OnEditStep="HandleEditStepAsync"
-                                            OnMarkReviewed="HandleMarkReviewedAsync"
-                                            CanMarkReviewed="@CanMarkIntakeReviewed"
-                                            IsMarkingReviewed="@_isMarkingReviewed"
-                                            ShowReviewedStatus="@ShowClinicianReviewStatus"
-                                            ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
-                                break;
-                            default:
-                                <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
-                                break;
+                                                     OnContinue="HandlePainDetailsContinueAsync"
+                                                     OnStateChanged="HandleStateChangedAsync"
+                                                     ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
+                                    break;
+                                case IntakeStep.OutcomeMeasures:
+                                    <OutcomeMeasuresStep State="@State"
+                                                         OnBack="HandleBackAsync"
+                                                         OnContinue="HandleOutcomeMeasuresContinueAsync"
+                                                         OnStateChanged="HandleStateChangedAsync" />
+                                    break;
+                                case IntakeStep.Review:
+                                    <ReviewStep State="@State"
+                                                ValidationMessage="@_validationMessage"
+                                                OnBack="HandleBackAsync"
+                                                OnSubmit="HandleSubmitAsync"
+                                                OnEditStep="HandleEditStepAsync"
+                                                OnMarkReviewed="HandleMarkReviewedAsync"
+                                                CanMarkReviewed="@CanMarkIntakeReviewed"
+                                                IsMarkingReviewed="@_isMarkingReviewed"
+                                                ShowReviewedStatus="@ShowClinicianReviewStatus"
+                                                ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
+                                    break;
+                                default:
+                                    <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                                    break;
+                            }
                         }
                     </fieldset>
                 }
@@ -248,8 +264,10 @@
     private bool ShowMissingPatientContext => State.IsPatientMode && !PatientId.HasValue && !State.PatientId.HasValue;
     private bool ShouldShowWizard => PatientId.HasValue || State.PatientId.HasValue;
     private bool CanViewOutcomeMeasureRecommendations => !State.IsPatientMode && _canViewOutcomeMeasureRecommendations;
-    private bool CanEditDraft => !_profileReloadRequired && !State.IsLocked && (State.IsPatientMode || _canManageDrafts) &&
-        (!State.EncounterNoteId.HasValue || State.QuestionnaireDefinitionId == IntakeQuestionnaireDefinitions.EvaluationFullV1);
+    private bool IsShortVisit => IntakeQuestionnaireDefinitions.IsShort(State.QuestionnaireDefinitionId);
+    private bool CanEditDraft => !_profileReloadRequired && !State.IsLocked &&
+        (!IsShortVisit || State.VisitQuestionnaire?.Version == 1) && (State.IsPatientMode || _canManageDrafts) &&
+        (!State.EncounterNoteId.HasValue || IntakeQuestionnaireDefinitions.NoteTypeFor(State.QuestionnaireDefinitionId) is not null);
     private bool CanMarkIntakeReviewed =>
         _canMarkIntakeReviewed &&
         !State.IsPatientMode &&
@@ -264,7 +282,7 @@
     private bool IsInteractionLocked => _profileReloadRequired || _isLoadingDraft || _isSavingDraft || State.IsSubmitting || _isMarkingReviewed || (!CanEditDraft && !CanMarkIntakeReviewed);
     private bool ShouldShowPageFeedback =>
         !string.IsNullOrWhiteSpace(_validationMessage) &&
-        State.CurrentStep is not IntakeStep.Demographics and not IntakeStep.Review;
+        State.CurrentStep != IntakeStep.Review && (IsShortVisit || State.CurrentStep != IntakeStep.Demographics);
     private string? ReadOnlyNoticeMessage => State.IsLocked
         ? "This intake has been submitted and locked. Editing is disabled."
         : (!_profileReloadRequired && !CanEditDraft && !State.IsPatientMode && _loadedPatientId.HasValue
@@ -482,6 +500,24 @@
         }
     }
 
+    private Task HandleVisitChangedAsync(IntakeVisitQuestionnaire answers)
+    {
+        if (!CanEditDraft) return Task.CompletedTask;
+        State.VisitQuestionnaire = answers;
+        State.IsDirty = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleVisitContinueAsync()
+    {
+        if (!CanEditDraft || IsInteractionLocked || State.VisitQuestionnaire is null) return;
+        var errors = State.VisitQuestionnaire.Validate(IntakeQuestionnaireDefinitions.NoteTypeFor(State.QuestionnaireDefinitionId)!.Value, submitting: true);
+        if (errors.Count > 0) { _validationMessage = string.Join(" ", errors); return; }
+        State.CurrentStep = IntakeStep.Review;
+        State.IsDirty = true;
+        await SaveDraftIfPossibleAsync();
+    }
+
     private async Task HandleDemographicsContinueAsync()
     {
         if (!CanEditDraft)
@@ -566,7 +602,7 @@
             return;
         }
 
-        if (!State.PainSeverityProvided)
+        if (!IsShortVisit && !State.PainSeverityProvided)
         {
             _validationMessage = "Select a pain severity score before continuing.";
             return;
@@ -594,6 +630,7 @@
     {
         _validationMessage = null;
 
+        if (IsShortVisit) { State.CurrentStep = IntakeStep.Demographics; return Task.CompletedTask; }
         if (State.CurrentStep > IntakeStep.Demographics)
         {
             State.CurrentStep = (IntakeStep)((int)State.CurrentStep - 1);
@@ -650,7 +687,7 @@
             return;
         }
 
-        if (!State.PainSeverityProvided)
+        if (!IsShortVisit && !State.PainSeverityProvided)
         {
             _validationMessage = "Select a pain severity score before submitting.";
             return;
@@ -862,6 +899,14 @@
         }
     }
 
+    private async Task SavePartialDraftAsync()
+    {
+        var savingState = State;
+        await SaveDraftIfPossibleAsync();
+        if (ReferenceEquals(State, savingState) && !savingState.IsDirty)
+            ToastService.ShowSuccess("Your draft answers are saved. You can return to finish later.", "Draft saved");
+    }
+
     private async Task SaveDraftIfPossibleAsync()
     {
         if (!State.PatientId.HasValue || !CanEditDraft || _isSavingDraft)
@@ -876,7 +921,11 @@
         try
         {
             await PersistDraftAsync();
-            if (IsCurrentIntakeOperation(savingState, generation)) savingState.IsDirty = false;
+            if (IsCurrentIntakeOperation(savingState, generation))
+            {
+                savingState.IsDirty = false;
+                _validationMessage = null;
+            }
         }
         catch (HttpRequestException ex)
         {
@@ -984,6 +1033,7 @@
             IntakeId = state.IntakeId,
             EncounterNoteId = state.EncounterNoteId,
             QuestionnaireDefinitionId = state.QuestionnaireDefinitionId,
+            VisitQuestionnaire = state.VisitQuestionnaire,
             EncounterIsReEvaluation = state.EncounterIsReEvaluation,
             ProfilePrefill = state.ProfilePrefill,
             PrefilledDemographics = state.PrefilledDemographics,
@@ -1125,6 +1175,7 @@
             IntakeId = hydratedDraft.IntakeId,
             EncounterNoteId = hydratedDraft.EncounterNoteId,
             QuestionnaireDefinitionId = hydratedDraft.QuestionnaireDefinitionId,
+            VisitQuestionnaire = hydratedDraft.VisitQuestionnaire,
             EncounterIsReEvaluation = hydratedDraft.EncounterIsReEvaluation,
             ProfilePrefill = hydratedDraft.ProfilePrefill,
             PrefilledDemographics = hydratedDraft.PrefilledDemographics,
@@ -1233,7 +1284,9 @@
     {
         Route = "/intake",
         Title = State.CurrentStep == IntakeStep.Review ? "Patient Intake Review" : "Patient Intake",
-        Subtitle = $"Step {GetStepNumber(State.CurrentStep)} of 5 • {GetStepTitle(State.CurrentStep)}",
+        Subtitle = IsShortVisit
+            ? State.CurrentStep == IntakeStep.Review ? "Step 2 of 2 • Review and consent" : "Step 1 of 2 • Visit questionnaire"
+            : $"Step {GetStepNumber(State.CurrentStep)} of 5 • {GetStepTitle(State.CurrentStep)}",
         ShowSyncControls = false,
         ShowStatusBadge = false
     };

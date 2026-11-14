@@ -5,7 +5,7 @@
     <header class="discharge-subjective__header">
         <div>
             <h2 class="discharge-subjective__title">Discharge Subjective</h2>
-            <p class="discharge-subjective__subtitle">Document the patient's end-of-care report, progress, remaining limitations, and discharge reason.</p>
+            <p class="discharge-subjective__subtitle">@(ShowClinicianFields ? "Document the patient’s end-of-care report, progress, remaining limitations, and discharge reason." : "Tell us about your progress, goals, and remaining difficulty.")</p>
         </div>
     </header>
 
@@ -19,7 +19,7 @@
                        type="number"
                        min="0"
                        max="10"
-                       value="@Vm.CurrentPainScore"
+                       value="@(Vm.IsPainScoreDocumented ? Vm.CurrentPainScore.ToString() : string.Empty)"
                        disabled="@IsReadOnly"
                        @oninput="HandleCurrentPainChanged"
                        @onchange="HandleCurrentPainChanged" />
@@ -105,6 +105,8 @@
         </label>
     </article>
 
+    @if (ShowClinicianFields)
+    {
     <article class="discharge-subjective__card">
         <h3 class="discharge-subjective__card-title">Reason for Discharge</h3>
         <label class="discharge-subjective__field" for="discharge-reason">
@@ -139,6 +141,7 @@
             </label>
         }
     </article>
+    }
 </section>
 
 @code {
@@ -148,6 +151,7 @@
     [Parameter, EditorRequired] public EventCallback<DischargeSubjectiveVm> DischargeSubjectiveChanged { get; set; }
     [Parameter, EditorRequired] public PlanVm Plan { get; set; } = new();
     [Parameter, EditorRequired] public EventCallback<PlanVm> PlanChanged { get; set; }
+    [Parameter] public bool ShowClinicianFields { get; set; } = true;
     [Parameter] public bool IsReadOnly { get; set; }
 
     private bool IsOtherReason => string.Equals(Plan.PrimaryDischargeReason, "Other", StringComparison.OrdinalIgnoreCase);
@@ -156,22 +160,21 @@
 
     private Task HandleCurrentPainChanged(ChangeEventArgs args)
     {
-        Vm.CurrentPainScore = ParseBoundedInt(args.Value, 0, 10) ?? 0;
-        Vm.IsPainScoreDocumented = true;
+        var pain = ParseBoundedInt(args.Value, 0, 10);
+        Vm.CurrentPainScore = pain ?? 0;
+        Vm.IsPainScoreDocumented = pain.HasValue;
         return VmChanged.InvokeAsync(Vm);
     }
 
     private Task HandleBestPainChanged(ChangeEventArgs args)
     {
         Vm.BestPainScore = ParseBoundedInt(args.Value, 0, 10) ?? 0;
-        Vm.IsPainScoreDocumented = true;
         return VmChanged.InvokeAsync(Vm);
     }
 
     private Task HandleWorstPainChanged(ChangeEventArgs args)
     {
         Vm.WorstPainScore = ParseBoundedInt(args.Value, 0, 10) ?? 0;
-        Vm.IsPainScoreDocumented = true;
         return VmChanged.InvokeAsync(Vm);
     }
 
