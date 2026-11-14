@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 202 catalog integrity and source instructions
+
+- **`.gitattributes` / `PatientOutcomeRelease`** — Pin the embedded patient outcome catalog to LF checkout line endings and update its byte hash after the source-text corrections, preventing `core.autocrlf` from breaking catalog activation. Record the new digest and verification evidence in `docs/client-review/plan-08-review-stack.md`.
+- **`PatientOutcomeQuestionnaires.json`** — Restore PFDI-20's last-3-months recall instruction and PRWE's pre-wrist-problem definition of usual activities and pain-10 rule for activities prevented by pain, using wording verified against page 1 of each original PDF. Source hashes, scoring rules and completion policies remain unchanged.
+- The user confirmed the Release test-project build, focused outcome suite and CoreCi suite passed, then authorized committing and pushing the verified fixes and evidence. No implementation or test changes followed confirmation, and builds/tests were not rerun by the agent.
+- Record the authorized PR 202 localhost verification: the actual `core.autocrlf=true` checkout preserves the catalog hash; the existing compiled catalog contains both corrected instructions, activates all 13 instruments and passes direct scoring/missing/invalid-answer probes. API/Web liveness/readiness and login-page HTTP checks pass against a disposable database. All owned processes and temporary data were cleaned up. The review-stack evidence distinguishes the direct .NET 9 PowerShell probe from the .NET 8 hosts; patient questionnaire rendering and persistence are outside this PR's exposed surface.
+
 ### Changed - PR 202 rebase after PR 201 merge
 
 - Rebase the outcome definitions/scoring layer onto `main` at `ad5582d6`, retaining the merged intake fixes, all PR 201 review evidence, and the existing layer-3 scoring evidence. Replay only PR 202's own layer; its implementation and tests remain unchanged. PR 203 remains the next dependent layer and is not rebased in this session. Fresh verification of the combined head remains pending.

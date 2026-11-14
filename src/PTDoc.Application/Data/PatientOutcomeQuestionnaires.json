@@ -4070,7 +4070,7 @@
         }
       ]
     },
-    "instructions": "Answer whether you usually experience each symptom. If Yes, indicate how much it bothers you. No is a recorded zero, not an unanswered item. The supplied form labels this the Pelvic Floor Disability Index; its scoring section identifies PFDI-20.",
+    "instructions": "Please answer all of the questions in the following survey. These questions will ask you if you have certain bowel, bladder, or pelvic symptoms and, if you do, how much they bother you. While answering these questions, please consider your symptoms over the last 3 months. No is a recorded zero, not an unanswered item. The supplied form labels this the Pelvic Floor Disability Index; its scoring section identifies PFDI-20.",
     "bodyParts": [
       11
     ]
@@ -6052,7 +6052,7 @@
         }
       ]
     },
-    "instructions": "Rate average wrist pain and difficulty over the past week, 0 to 10. If you did not perform an activity, estimate the difficulty you would expect; if you have never performed it, you may leave it unanswered. Pain and function are equally weighted. Unanswered items keep the automatic score incomplete.",
+    "instructions": "Rate average wrist pain and difficulty over the past week, 0 to 10. If you did not perform an activity, please estimate the pain or difficulty you would expect; if you have never performed the activity, you may leave it blank. Pain: A zero (0) means that you did not have any pain and a ten (10) means that you had the worst pain you have ever experienced or that you could not do the activity because of the pain. By \"usual activities\", we mean the activities you performed before you started having a problem with your wrist. Pain and function are equally weighted. Unanswered items keep the automatic score incomplete.",
     "bodyParts": [
       5
     ]

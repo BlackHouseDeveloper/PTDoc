@@ -1,0 +1,2 @@
+# Keep the byte-pinned embedded outcome catalog identical on every checkout.
+/src/PTDoc.Application/Data/PatientOutcomeQuestionnaires.json text eol=lf

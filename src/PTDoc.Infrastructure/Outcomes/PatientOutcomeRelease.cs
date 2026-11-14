@@ -8,7 +8,7 @@ namespace PTDoc.Infrastructure.Outcomes;
 /// <summary>Client-source release, pinned to the reviewed content and owner's selection/completion decisions.</summary>
 public static class PatientOutcomeRelease
 {
-    private const string AssetHash = "af058df5455a52c928847d0d5b53c866859049c9948554f74356e8b5e63266ca";
+    private const string AssetHash = "2d1a5634799f4c122bfc71b61f401a0377cd1f4f91c6b6db89b0c3d311f36618";
     private static readonly Lazy<(ImmutableArray<PatientOutcomeQuestionnaire> Catalog, VersionedOutcomeRegistry Registry)> Release = new(Load);
     public static IReadOnlyList<PatientOutcomeQuestionnaire> Catalog => Release.Value.Catalog;
     public static IVersionedOutcomeRegistry Registry => Release.Value.Registry;
