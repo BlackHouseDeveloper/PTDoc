@@ -17,15 +17,17 @@ public static class IntakeOutcomeProjection
 
     public static WorkspaceIntakeOutcomeSnapshot? From(IntakeForm intake)
     {
+        if (!intake.IsLocked || intake.SubmittedAt is not { } submittedAt) return null;
         var answers = JsonSerializer.Deserialize<IntakeResponseDraft>(intake.ResponseJson, Options)?.PatientOutcomes;
         if (answers is null || !answers.Responses.Any(r => r.Selected)) return null;
         var selected = answers.Responses.Where(r => r.Selected).ToImmutableArray();
-        return new(intake.Id, intake.LastModifiedUtc, answers.Choices.Where(q => selected.Any(r =>
+        return new(intake.Id, submittedAt, answers.Choices.Where(q => selected.Any(r =>
             r.InstrumentId == q.Definition.InstrumentId && r.DefinitionVersion == q.Definition.Version)).ToImmutableArray(), selected);
     }
 
     public static async Task ValidateAsync(ApplicationDbContext db, ClinicalNote? previous,
-        Guid patientId, Guid noteId, NoteWorkspaceV2Payload incoming, CancellationToken ct)
+        Guid patientId, Guid noteId, NoteWorkspaceV2Payload incoming, CancellationToken ct,
+        Guid? standaloneSeedIntakeId = null)
     {
         var old = ReadSnapshot(previous?.ContentJson);
         if (incoming.IntakeOutcomes is not { } requested)
@@ -34,11 +36,34 @@ public static class IntakeOutcomeProjection
             return;
         }
         var intake = await db.IntakeForms.AsNoTracking().FirstOrDefaultAsync(f => f.Id == requested.IntakeId
-            && f.PatientId == patientId && f.EncounterNoteId == noteId && f.IsLocked && f.SubmittedAt != null, ct);
+            && f.PatientId == patientId && f.IsLocked && f.SubmittedAt != null, ct);
+        // Legacy patient-wide forms predate the encounter definition column and are Evaluation intakes.
+        var definitionId = intake?.QuestionnaireDefinitionId
+            ?? (intake?.EncounterNoteId is null ? IntakeQuestionnaireDefinitions.EvaluationFullV1 : null);
         if (intake is null || (previous is not null && intake.ClinicId != previous.ClinicId)
-            || IntakeQuestionnaireDefinitions.NoteTypeFor(intake.QuestionnaireDefinitionId) != incoming.NoteType
-            || requested.AnswerVersionUtc != intake.LastModifiedUtc)
+            || IntakeQuestionnaireDefinitions.NoteTypeFor(definitionId) != incoming.NoteType
+            || requested.AnswerVersionUtc != intake.SubmittedAt
+            || (old is not null && old.IntakeId != requested.IntakeId))
             throw new InvalidOperationException("The outcome source must be the submitted intake for this visit.");
+        if (intake.EncounterNoteId is { } encounterNoteId)
+        {
+            if (encounterNoteId != noteId)
+                throw new InvalidOperationException("The outcome source must be the submitted intake for this visit.");
+        }
+        else
+        {
+            var seed = incoming.SeedContext;
+            // Only a server-selected new Evaluation seed can establish the standalone association.
+            // Later generic/workspace/sync writes must retain the source already saved in this note.
+            var canBind = previous is null
+                ? standaloneSeedIntakeId == intake.Id
+                : old?.IntakeId == intake.Id && previous.NoteType == NoteType.Evaluation && !previous.IsAddendum;
+            if (!canBind || incoming.NoteType != NoteType.Evaluation || incoming.DryNeedling is not null
+                || seed is null || seed.Kind != WorkspaceSeedKind.IntakePrefill || !seed.FromLockedSubmittedIntake
+                || seed.SourceIntakeId != intake.Id || seed.SourceIntakeDefinitionId != definitionId
+                || seed.SourceIntakeVersionUtc != intake.SubmittedAt || seed.SourceReferenceDateUtc != intake.SubmittedAt)
+                throw new InvalidOperationException("The outcome source must be the submitted intake selected for this Evaluation.");
+        }
         // Replace every submitted answer/total/definition with the immutable server source.
         incoming.IntakeOutcomes = From(intake)
             ?? throw new InvalidOperationException("The submitted intake has no selected outcome questionnaires.");
@@ -63,10 +88,19 @@ public static class IntakeOutcomeProjection
         {
             using var document = JsonDocument.Parse(json);
             if (document.RootElement.ValueKind != JsonValueKind.Object) return null;
+            JsonElement? snapshot = null;
             foreach (var property in document.RootElement.EnumerateObject())
+            {
                 if (property.Name.Equals("intakeOutcomes", StringComparison.OrdinalIgnoreCase))
-                    return property.Value.ValueKind == JsonValueKind.Null ? null : property.Value.Deserialize<WorkspaceIntakeOutcomeSnapshot>(Options);
-            return null;
+                {
+                    if (snapshot.HasValue)
+                        throw new InvalidOperationException("Submitted outcome evidence must not contain duplicate intakeOutcomes properties.");
+                    snapshot = property.Value;
+                }
+            }
+            return snapshot is not { } value || value.ValueKind == JsonValueKind.Null
+                ? null
+                : value.Deserialize<WorkspaceIntakeOutcomeSnapshot>(Options);
         }
         catch (JsonException) { throw new InvalidOperationException("Submitted outcome evidence is not a valid snapshot."); }
     }

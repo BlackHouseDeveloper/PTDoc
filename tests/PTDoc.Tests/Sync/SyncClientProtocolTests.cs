@@ -27,6 +27,57 @@ namespace PTDoc.Tests.Sync;
 public class SyncClientProtocolTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OutcomeSnapshotPush_RejectsDuplicatePropertiesWithoutPersistingChanges(bool update)
+    {
+        using var context = CreateInMemoryContext();
+        var patient = new Patient { FirstName = "Synthetic", LastName = "OutcomeSync", ClinicId = Guid.NewGuid() };
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            ClinicId = patient.ClinicId,
+            NoteType = NoteType.Evaluation,
+            ContentJson = "{}",
+            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-5)
+        };
+        context.Patients.Add(patient);
+        if (update) context.ClinicalNotes.Add(note);
+        await context.SaveChangesAsync();
+        var originalVersion = note.LastModifiedUtc;
+        var snapshot = JsonSerializer.Serialize(new PTDoc.Application.Outcomes.WorkspaceIntakeOutcomeSnapshot(
+            Guid.NewGuid(), DateTime.UtcNow, [], []));
+        var content = $"{{\"intakeOutcomes\":null,\"IntakeOutcomes\":{snapshot}}}";
+        var engine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var request = new ClientSyncPushRequest
+        {
+            Items = [new ClientSyncPushItem
+            {
+                EntityType = "ClinicalNote", ServerId = update ? note.Id : Guid.Empty,
+                LocalId = 1, OperationId = Guid.NewGuid(), Operation = update ? "Update" : "Create",
+                LastModifiedUtc = DateTime.UtcNow,
+                DataJson = JsonSerializer.Serialize(new { patientId = patient.Id, noteType = "Evaluation", contentJson = content })
+            }]
+        };
+
+        var response = await engine.ReceiveClientPushAsync(request);
+        Assert.Equal(0, response.AcceptedCount);
+        Assert.Equal("Error", Assert.Single(response.Items).Status);
+        await context.SaveChangesAsync();
+        var notes = await context.ClinicalNotes.AsNoTracking().ToListAsync();
+        if (update)
+        {
+            var retained = Assert.Single(notes);
+            Assert.Equal("{}", retained.ContentJson);
+            Assert.Equal(originalVersion, retained.LastModifiedUtc);
+        }
+        else Assert.Empty(notes);
+        var replay = await engine.ReceiveClientPushAsync(request);
+        Assert.Equal(0, replay.AcceptedCount);
+        Assert.Equal("Error", Assert.Single(replay.Items).Status);
+    }
+
+    [Theory]
     [InlineData(false, true)]
     [InlineData(true, false)]
     [InlineData(true, true)]

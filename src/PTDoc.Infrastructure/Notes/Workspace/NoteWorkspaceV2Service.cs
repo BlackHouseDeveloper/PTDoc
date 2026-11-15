@@ -123,7 +123,7 @@ public sealed class NoteWorkspaceV2Service(
         }
         payload.SeedContext.SourceIntakeDefinitionId = intake.QuestionnaireDefinitionId;
         payload.IntakeOutcomes = IntakeOutcomeProjection.From(intake);
-        payload.SeedContext.SourceIntakeVersionUtc = intake.LastModifiedUtc;
+        payload.SeedContext.SourceIntakeVersionUtc = intake.SubmittedAt;
         return new NoteWorkspaceV2EvaluationSeedResponse
         {
             PatientId = patientId,
@@ -290,7 +290,13 @@ public sealed class NoteWorkspaceV2Service(
         DryNeedlingBillingPolicy.Enforce(payload);
         NormalizeCptModifierSources(payload.Plan.SelectedCptCodes);
 
-        try { await IntakeOutcomeProjection.ValidateAsync(db, note, request.PatientId, noteId, payload, cancellationToken); }
+        Guid? standaloneSeedIntakeId = null;
+        if (note is null && request.NoteType == NoteType.Evaluation && payload.DryNeedling is null && payload.IntakeOutcomes is not null)
+        {
+            var seed = await GetEvaluationSeedAsync(request.PatientId, cancellationToken);
+            standaloneSeedIntakeId = seed?.Payload.IntakeOutcomes?.IntakeId;
+        }
+        try { await IntakeOutcomeProjection.ValidateAsync(db, note, request.PatientId, noteId, payload, cancellationToken, standaloneSeedIntakeId); }
         catch (InvalidOperationException ex) { return new NoteWorkspaceV2SaveResponse { IsValid = false, Errors = [ex.Message] }; }
 
         payload.ProgressQuestionnaire ??= new WorkspaceProgressNoteQuestionnaireV2();
@@ -657,9 +663,12 @@ public sealed class NoteWorkspaceV2Service(
             {
                 Kind = WorkspaceSeedKind.IntakePrefill,
                 SourceIntakeId = intake.Id,
+                SourceIntakeDefinitionId = intake.QuestionnaireDefinitionId ?? IntakeQuestionnaireDefinitions.EvaluationFullV1,
+                SourceIntakeVersionUtc = intake.SubmittedAt ?? intake.LastModifiedUtc,
                 FromLockedSubmittedIntake = fromLockedSubmittedIntake,
                 SourceReferenceDateUtc = intake.SubmittedAt ?? intake.LastModifiedUtc
             },
+            IntakeOutcomes = fromLockedSubmittedIntake ? IntakeOutcomeProjection.From(intake) : null,
             Subjective = new WorkspaceSubjectiveV2
             {
                 Problems = (draft.PainSeverityProvided && draft.PainSeverityScore.HasValue) || bodyPartLabels.Count > 0 || painDescriptorLabels.Count > 0

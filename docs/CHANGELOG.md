@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - PR 203 outcome evidence review
+
+- Use the immutable submission timestamp for locked outcome snapshots and seed provenance so reviewing an intake does not invalidate subsequent note saves. Keep draft concurrency on `LastModifiedUtc`.
+- Reject duplicate outcome-snapshot JSON properties, including case and escaped-name aliases, before deciding that evidence is absent. Cover generic note writes and sync rejection/replay without persisting rejected content.
+- Include locked standalone intake outcomes in new Evaluation/Re-evaluation seeds. Validate the server-selected source on first workspace save and retain its exact identity/provenance thereafter; keep draft fallback seeds outcome-free and preserve encounter-specific source checks.
+- Add 27 focused regression cases and extend two existing cases for submission/review stability, malformed JSON, standalone seed creation, source mismatches and post-review persistence. Record all three published findings, the unpublished description discrepancy, duplicate sources and review-session visibility in `docs/client-review/plan-08-review-stack.md`. A corrected PR description is prepared locally; no GitHub metadata or review action was performed. Build/test verification awaits user execution.
+
 ### Changed - PR 203 rebase after PR 202 merge
 
 - Rebase only the patient outcome workflow layer onto `main` at `230a8269`, preserving the merged questionnaire, intake and source-catalog corrections. Resolve generic/sync write conflicts by retaining both Daily outcome guards and intake outcome evidence validation, and keep the wizard's route/load-generation guard before applying returned outcomes.
