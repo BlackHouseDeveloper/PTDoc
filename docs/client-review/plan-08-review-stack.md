@@ -332,3 +332,59 @@ Rebuild Release, run `FullyQualifiedName~NoteWorkspacePageTests`, then repeat th
 #### Publication verification confirmation
 
 The user subsequently confirmed all builds and tests passed for the completed PR 201 changes, including the route-loading correction, and authorized committing only the verified changes, a normal push, and replies/resolution for conclusively addressed findings. This supersedes the pending verification status above. No implementation or test changes followed confirmation; only this record and changelog status were updated. Builds/tests were not rerun. Unrelated staged `AGENTS.md` CI-command guidance and its local changelog entry remain excluded.
+
+### Layer 3 — outcome definitions and scoring
+
+- Release test-project build: PASS, zero warnings/errors.
+- Outcome regression suite: **151/151 PASS**, zero skipped; includes versioned activation, malformed definitions, source arithmetic, missing/N/A policies and corrected HOOS/FAAM subscales.
+- All thirteen definitions preserve the combined implementation's exact catalog hash: `af058df5455a52c928847d0d5b53c866859049c9948554f74356e8b5e63266ca`.
+- PR 180's one unique actionable null-item/option finding and its regression are retained. The review-summary bullet duplicates the same finding; the thread remains unchanged.
+- No intake collection or note/PDF projection hook is added in this layer.
+
+#### PR 202 rebase after PR 201 merge — 2026-11-14
+
+Replay only the outcome-scoring layer from `b4e09dd7` (old parent `9558b287`) onto `main` at `ad5582d6`, which includes the merged PR 201 fixes. Retain the complete merged PR 201 review/verification history and the layer-3 scoring evidence above; their append-only documentation conflict requires no behavior or scoring-policy decision. Add this rebase record and a changelog entry without altering the layer's implementation or tests.
+
+The remaining review order is `main` → PR 202 (`codex/plan08-outcome-scoring`) → PR 203 (`codex/plan08-patient-outcomes`). PR 203 retains its base on PR 202 and its existing head `6152d727`; it is outside this rebase request and will need a separate rebase after PR 202 is published. No original lower-layer commits are replayed into PR 202.
+
+The historical 151-test result above predates this rebase and does not establish verification of the combined head. Builds/tests are not run automatically under the repository policy. Before publication/merge acceptance, run:
+
+```sh
+dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --configuration Release
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "FullyQualifiedName~Outcomes" --verbosity normal -- xUnit.ParallelizeTestCollections=false
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter "Category=CoreCi" --verbosity normal -- xUnit.ParallelizeTestCollections=false
+```
+
+#### PR 202 catalog and original-source corrections — 2026-11-14
+
+Address the three private review findings against `e12fa9ea`:
+
+- Pin `src/PTDoc.Application/Data/PatientOutcomeQuestionnaires.json` to `text eol=lf` in `.gitattributes`. The embedded resource retains its exact byte-hash guard without depending on the checkout's `core.autocrlf` setting.
+- Restore PFDI-20's instruction to consider symptoms over the last 3 months, from the opening instructions on page 1 of `pelvic-floor-disability-index - 20.pdf`.
+- Restore PRWE's pain-10 anchor for an activity prevented by pain and its definition of usual activities as those performed before the wrist problem. Preserve the source's instruction to estimate pain or difficulty for activities not performed. These instructions come from page 1 of `Patient-Rated-Wrist-Evaluation.pdf`.
+
+Both original PDFs were read and visually checked from `drive-download-20261026T044444Z-1-001.zip`; their SHA-256 hashes match `outcome-source-inventory.json`. These are pre-collection administration-text corrections: definition/scorer versions, source PDF hashes, items/options, calculations and completion policies are unchanged. The updated catalog SHA-256 is `2d1a5634799f4c122bfc71b61f401a0377cd1f4f91c6b6db89b0c3d311f36618`, also pinned in `PatientOutcomeRelease.AssetHash`; it supersedes the historical catalog digest above.
+
+Current thread-aware retrieval returned no inline review threads. No builds/tests, commits, pushes, GitHub replies or thread resolutions were performed. The historical passing results do not verify these corrections; build/test verification remains pending at the user's request.
+
+#### PR 202 user verification confirmation — 2026-11-14
+
+After receiving the verification commands, the user confirmed that all builds and tests passed: the Release build of `tests/PTDoc.Tests/PTDoc.Tests.csproj`, the `FullyQualifiedName~Outcomes` suite and the `Category=CoreCi` suite, with collection parallelism disabled for both test runs. This is user-reported verification of the current local corrections; no logs or new test counts were supplied. It supersedes the pending build/test status above.
+
+No implementation or test changes followed confirmation; only this evidence record and the changelog were updated. The agent did not rerun builds/tests. Changes remain uncommitted and unpushed. Live patient-questionnaire verification remains pending and requires the dependent collection layer with these fixes carried forward; no live environment or PR 203 was changed.
+
+#### PR 202 localhost verification — 2026-11-14
+
+The user authorized localhost verification limited to behavior available in PR 202. The run used the existing Release API/Web binaries, a disposable SQLite backup, process-local signing configuration and Development null communication senders. No application rebuild, test-suite rerun, patient submission, external delivery, commit, push or PR 203 change occurred.
+
+- **Checkout integrity: PASS.** A disposable Git index and checkout with `core.autocrlf=true` plus the new `.gitattributes` produced zero CRLF line endings and catalog SHA-256 `2d1a5634799f4c122bfc71b61f401a0377cd1f4f91c6b6db89b0c3d311f36618`. No commit was created, including in the disposable repository.
+- **Compiled catalog and registry: PASS.** Loaded the existing Release assemblies from the API output; the embedded resource matches the working catalog byte-for-byte, all 13 definitions activate, and the compiled instructions contain PFDI-20's three-month recall period plus both restored PRWE response anchors. Direct registry calls returned PFDI-20 total 150 for all 2 responses and PRWE total 40 for all 4 responses; a missing PRWE answer withheld its score and option 11 returned `invalid_option`.
+- **Local API/Web startup: PASS.** Started the existing net8.0 binaries at `http://localhost:5170` and `http://localhost:5145`. Both `/health/live` and `/health/ready` returned 200, and `/login` returned 200 with login-form markup. Five pending migrations were applied only to the disposable database. Both logs contained the expected HTTP-only HTTPS-redirection warning and no failure/critical entries.
+
+Scope distinction: the direct assembly probe ran inside PowerShell 7.5.2 / .NET 9.0.6; the API/Web used their .NET 8 runtime configuration. Health requests do not resolve the lazy versioned registry, so they establish host/database startup separately from the direct catalog/scoring evidence. PR 202 has no patient questionnaire page or versioned-scoring HTTP endpoint; no browser rendering, patient save/resume or note/PDF projection result is claimed.
+
+Two sandboxed startup attempts stalled before listening and were cleaned up. The same check outside the sandbox passed; no application change was required. The owned servers were stopped, and the disposable database/index/checkout were removed. Sanitized evidence is retained locally under `output/playwright/branch-live-verification/pr202-localhost-2026-11-14T234842825Z/` (`evidence.json`, `api.log`, `web.log`); this ignored output is not part of the PR.
+
+#### PR 202 publication authorization — 2026-11-14
+
+After the passing user-run build/tests and the scoped localhost verification, the user authorized committing and pushing the three fixes and their evidence on `codex/plan08-outcome-scoring`. No implementation or test changes followed verification. Unrelated local `AGENTS.md` CI-command guidance and its changelog entry remain excluded. This authorization does not include review replies, thread resolution, merging, deployment or changes to PR 203; remote CI results are not claimed here.

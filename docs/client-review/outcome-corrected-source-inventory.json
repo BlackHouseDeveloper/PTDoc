@@ -1,0 +1,47 @@
+[
+  {
+    "evidence": {
+      "instrumentId": "hoos",
+      "originalArchiveMember": "hoos.pdf",
+      "originalSha256": "c48d6fcd1b45376049fa01eff82f926c3229311bea0327419a6690f0b51210a7",
+      "sources": [
+        {
+          "filename": "HOOS-English-LK2.pdf",
+          "url": "https://www.aapeducation.com.au/free-stuff/clinical-resource/outcome-measures/body-areas/lower-limb.html?download=155%3Ahip-dysfunction-and-osteoarthritis-outcome-score-hoos",
+          "sha256": "b2db531849da98fb63b6b680096836b9d1ade9554fe466235a23ae3d91e146f6"
+        },
+        {
+          "filename": "HOOSScoring2013.pdf",
+          "url": "https://www.spoergeskemaer.dk/wp-content/uploads/HOOSScoring2013.pdf",
+          "sha256": "2b7791e29d6aabcbfb923262ddbc5ef065371732326e1de93e61c64b941dbe9d"
+        }
+      ],
+      "corrections": [
+        "SP3 uses English LK 2.0 wording: Twisting/pivoting on loaded leg.",
+        "S1 corrects the transcription typo from you hip to from your hip.",
+        "Use June 2013 independent subscale scoring and minimum answered counts: pain 5, symptoms 3, ADL 9, sport 2, QOL 2."
+      ]
+    },
+    "sourceSha256": "e4d79f33e8e689edc5078e9691c904c036e3546dda492bfa96f2f12cc4216144"
+  },
+  {
+    "evidence": {
+      "instrumentId": "faam",
+      "originalArchiveMember": "FAAM.pdf",
+      "originalSha256": "780fb1fb9f8c5c02f545807125745cf4bc3625a6ebe1fb1e259e8add0e1849cc",
+      "sources": [
+        {
+          "filename": "FAAM-author-paper.pdf",
+          "url": "https://www.patientreportedoutcomes.ca/files/2014/04/FAAM-paper.pdf",
+          "sha256": "5d2edf710784878d74160b610a995ffecb957cf594397c0a01c9146fe7f7fa85"
+        }
+      ],
+      "corrections": [
+        "Restore Sports item 6: Low impact activities, per Martin et al. 2005 Table 6 (page 977).",
+        "Use independent ADL and Sports scores and 19/21, 7/8 answered thresholds (pages 974-975). N/A is excluded from numerator and denominator.",
+        "Preserve the three supplementary ratings as optional, unscored responses."
+      ]
+    },
+    "sourceSha256": "3da1bd7260c07ce0999e5ff1b6bc60e7e7a8cd0aa0fa360e43b9bc5ede12dc7d"
+  }
+]
