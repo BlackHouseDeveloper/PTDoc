@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Atomic standalone outcome consumption
+
+- Prevent competing first Evaluation/Re-evaluation saves from consuming the same submitted standalone intake: capture its existing concurrency token before source selection and advance it atomically with the note insert. A losing save follows the existing workspace conflict response without persisting another note.
+- Keep locked standalone intake metadata versions strictly increasing at microsecond precision, including fixed/backward clocks, while preserving submitted answer versions and source associations. Add two deterministic relational concurrency regressions with production metadata stamping.
+- Make the concurrency regression gates coordinator-controlled instead of timing out while the winner is still saving; propagate early save failures and release/drain both operations on every exit. Keep the exact concurrency-conflict and rollback assertions.
+- Refresh the PR 203 audit, including the Previously missed description discrepancy and previously resolved findings. The metadata replacement remains a local draft; fresh build/test verification is pending.
+
 ### Fixed - PR 203 outcome evidence review
 
 - Use the immutable submission timestamp for locked outcome snapshots and seed provenance so reviewing an intake does not invalidate subsequent note saves. Keep draft concurrency on `LastModifiedUtc`.

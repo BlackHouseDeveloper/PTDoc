@@ -291,10 +291,16 @@ public sealed class NoteWorkspaceV2Service(
         NormalizeCptModifierSources(payload.Plan.SelectedCptCodes);
 
         Guid? standaloneSeedIntakeId = null;
+        IntakeForm? standaloneSource = null;
         if (note is null && request.NoteType == NoteType.Evaluation && payload.DryNeedling is null && payload.IntakeOutcomes is not null)
         {
+            // Capture the concurrency token BEFORE checking whether this source is still available.
+            // Advancing it with the note insert makes competing first saves conflict atomically.
+            standaloneSource = await db.IntakeForms.FirstOrDefaultAsync(form =>
+                form.Id == payload.IntakeOutcomes.IntakeId && form.PatientId == request.PatientId
+                && form.EncounterNoteId == null && form.IsLocked && form.SubmittedAt != null, cancellationToken);
             var seed = await GetEvaluationSeedAsync(request.PatientId, cancellationToken);
-            standaloneSeedIntakeId = seed?.Payload.IntakeOutcomes?.IntakeId;
+            standaloneSeedIntakeId = standaloneSource is not null ? seed?.Payload.IntakeOutcomes?.IntakeId : null;
         }
         try { await IntakeOutcomeProjection.ValidateAsync(db, note, request.PatientId, noteId, payload, cancellationToken, standaloneSeedIntakeId); }
         catch (InvalidOperationException ex) { return new NoteWorkspaceV2SaveResponse { IsValid = false, Errors = [ex.Message] }; }
@@ -501,6 +507,13 @@ public sealed class NoteWorkspaceV2Service(
         }
 
         var now = DateTime.UtcNow;
+        if (standaloneSource is not null)
+        {
+            standaloneSource.LastModifiedUtc = now > standaloneSource.LastModifiedUtc
+                ? now : standaloneSource.LastModifiedUtc.AddTicks(TimeSpan.TicksPerMicrosecond);
+            standaloneSource.ModifiedByUserId = currentUserId;
+            standaloneSource.SyncState = SyncState.Pending;
+        }
         note ??= new ClinicalNote
         {
             Id = noteId,

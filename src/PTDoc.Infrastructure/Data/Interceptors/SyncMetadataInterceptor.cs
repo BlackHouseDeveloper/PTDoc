@@ -65,6 +65,16 @@ public class SyncMetadataInterceptor : SaveChangesInterceptor
                 && context.Database.IsNpgsql()
                     ? new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMicrosecond, DateTimeKind.Utc)
                     : now;
+            if (entry.State == EntityState.Modified
+                && entry.Entity is IntakeForm { EncounterNoteId: null, IsLocked: true, SubmittedAt: not null })
+            {
+                // Standalone outcome consumption uses this token in the note's atomic save.
+                // Keep it strictly increasing even with a fixed/backward clock, at PostgreSQL precision.
+                var original = entry.Property(entity => entity.LastModifiedUtc).OriginalValue;
+                var minimumTicks = original.Ticks - original.Ticks % TimeSpan.TicksPerMicrosecond + TimeSpan.TicksPerMicrosecond;
+                var clockTicks = now.Ticks - now.Ticks % TimeSpan.TicksPerMicrosecond;
+                entry.Entity.LastModifiedUtc = new DateTime(Math.Max(clockTicks, minimumTicks), DateTimeKind.Utc);
+            }
             entry.Entity.ModifiedByUserId = currentUserId;
 
             // For new entities, ensure sync state is Pending
