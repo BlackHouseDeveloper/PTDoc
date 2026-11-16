@@ -327,7 +327,10 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
             ? await client.PutAsJsonAsync($"/api/v1/notes/{noteId}", new UpdateNoteRequest { ContentJson = content })
             : await client.PostAsJsonAsync("/api/v1/notes/", new CreateNoteRequest
             {
-                PatientId = patientId, NoteType = NoteType.Evaluation, DateOfService = DateTime.UtcNow.Date, ContentJson = content
+                PatientId = patientId,
+                NoteType = NoteType.Evaluation,
+                DateOfService = DateTime.UtcNow.Date,
+                ContentJson = content
             });
         Assert.Equal(update ? HttpStatusCode.Conflict : HttpStatusCode.UnprocessableEntity, response.StatusCode);
         Assert.Contains("duplicate intakeOutcomes", await response.Content.ReadAsStringAsync());
