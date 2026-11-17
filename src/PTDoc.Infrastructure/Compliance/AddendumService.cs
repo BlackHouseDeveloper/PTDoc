@@ -3,6 +3,7 @@ using System.Text.Json;
 using PTDoc.Application.Compliance;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Notes.Workspace;
 using PTDoc.Infrastructure.Services;
 
 namespace PTDoc.Infrastructure.Compliance;
@@ -53,6 +54,16 @@ public sealed class AddendumService(
 
         var now = DateTime.UtcNow;
         var serializedContent = SerializeContent(content);
+        try
+        {
+            // Check the raw document before normalization can discard or collapse outcome fields.
+            IntakeOutcomeProjection.ValidateAddendumJson(serializedContent);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new AddendumResult { Success = false, ErrorMessage = ex.Message };
+        }
+
         var addendum = new ClinicalNote
         {
             PatientId = note.PatientId,

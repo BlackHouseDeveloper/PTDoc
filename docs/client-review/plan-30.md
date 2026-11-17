@@ -1,6 +1,8 @@
 # Plan PR 30: Complete progress activity tracking, improvement and plan frequency
 
-> **2026-11-05 review split:** This foundation and its verified fixes are assigned to layer 1 of the [Plan 08 review stack](plan-08-review-stack.md). Verification below is historical unless explicitly listed in that stack's layer evidence.
+> **2026-11-05 review split:** This work is assigned to layer 1 of the [Plan 08 review stack](plan-08-review-stack.md). Its current verification and delivery status supersede the earlier integration checkpoint below.
+
+> **2026-11-04 integration checkpoint:** This foundation is incorporated into the local, uncommitted Plan 08 completion work. Historical verification below applies to its original branch only. See [Plan 08's current checkpoint](plan-08.md#current-implementation-checkpoint--2026-11-04) for dependency fixes, owner decisions, combined-branch verification results and remaining release checks.
 
 **Implemented** — only the changes and checks listed below are claimed.
 

@@ -1,15 +1,19 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using System.Collections.Immutable;
 using System.Text.Json;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Notes.Content;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.Outcomes;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Data.Interceptors;
 using PTDoc.Infrastructure.Notes.Workspace;
 using PTDoc.Infrastructure.Outcomes;
 using PTDoc.Infrastructure.ReferenceData;
@@ -64,6 +68,192 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             catalogs);
     }
 
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StandaloneOutcomeFirstSaves_ConflictAtomically_WhenBothPassedSourceSelection(bool secondWins)
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connection).Options;
+        await using var setup = new ApplicationDbContext(options);
+        await setup.Database.EnsureCreatedAsync();
+        var patient = new Patient { FirstName = "Synthetic", LastName = "OutcomeRace" };
+        var questionnaire = PatientOutcomeRelease.Catalog.Single(q => q.Definition.InstrumentId == "lefs");
+        var answers = questionnaire.Definition.Items.Select(item => new OutcomeAnswer(item.Id, OutcomeAnswerState.Answered, "2")).ToImmutableArray();
+        var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var submitted = DateTime.UtcNow.AddMinutes(-5);
+        var source = new IntakeForm
+        {
+            PatientId = patient.Id,
+            IsLocked = true,
+            SubmittedAt = submitted,
+            LastModifiedUtc = submitted.AddMinutes(1),
+            ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft
+            {
+                PatientOutcomes = new()
+                {
+                    Choices = [questionnaire],
+                    Responses = [new("lefs", questionnaire.Definition.Version, answers,
+                        PatientOutcomeRelease.Registry.Score("lefs", questionnaire.Definition.Version, OutcomeAdministration.PatientReported, answers).Result)]
+                }
+            }, json)
+        };
+        setup.Patients.Add(patient);
+        setup.IntakeForms.Add(source);
+        await setup.SaveChangesAsync();
+        var sourceVersion = source.LastModifiedUtc;
+        var seed = (await CreateService(setup).GetEvaluationSeedAsync(patient.Id))!;
+        NoteWorkspaceV2SaveRequest Request(bool reEvaluation) => new()
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.Evaluation,
+            IsReEvaluation = reEvaluation,
+            DateOfService = DateTime.UtcNow.Date,
+            Payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(JsonSerializer.Serialize(seed.Payload, json), json)!
+        };
+
+        var firstGate = new OutcomeSaveGate();
+        var secondGate = new OutcomeSaveGate();
+        // Exercise the production metadata interceptor with a non-advancing clock as well.
+        var metadata = new SyncMetadataInterceptor(new TestIdentityContextAccessor(), new OutcomeFixedClock(sourceVersion));
+        await using var first = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection).AddInterceptors(metadata, firstGate).Options);
+        await using var second = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection).AddInterceptors(metadata, secondGate).Options);
+        Task<NoteWorkspaceV2SaveResponse>? firstSave = null;
+        Task<NoteWorkspaceV2SaveResponse>? secondSave = null;
+        try
+        {
+            firstSave = CreateService(first).SaveAsync(Request(false));
+            await firstGate.WaitForArrivalAsync(firstSave);
+            secondSave = CreateService(second).SaveAsync(Request(true));
+            await secondGate.WaitForArrivalAsync(secondSave);
+            // Both requests have selected and validated the same source before either commits.
+            var winnerGate = secondWins ? secondGate : firstGate;
+            var loserGate = secondWins ? firstGate : secondGate;
+            var winnerSave = secondWins ? secondSave : firstSave;
+            var loserSave = secondWins ? firstSave : secondSave;
+            winnerGate.Release.TrySetResult();
+            Assert.True((await winnerSave).IsValid);
+            loserGate.Release.TrySetResult();
+            await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => loserSave);
+        }
+        finally
+        {
+            firstGate.Release.TrySetResult();
+            secondGate.Release.TrySetResult();
+            // Observe both operations before disposing their shared connection, including
+            // when a save fails before reaching its gate or an assertion fails above.
+            foreach (var pending in new[] { firstSave, secondSave })
+            {
+                if (pending is null) continue;
+                try { await pending; }
+                catch { /* Preserve the failure from the test body; cleanup only drains saves. */ }
+            }
+        }
+
+        await using var verify = new ApplicationDbContext(options);
+        var saved = Assert.Single(await verify.ClinicalNotes.AsNoTracking().ToListAsync());
+        Assert.Equal(secondWins, saved.IsReEvaluation);
+        var retained = await verify.IntakeForms.AsNoTracking().SingleAsync();
+        Assert.True(retained.LastModifiedUtc > sourceVersion);
+        Assert.Equal(submitted, retained.SubmittedAt);
+        Assert.Equal(source.ResponseJson, retained.ResponseJson);
+        Assert.Null(retained.EncounterNoteId);
+        var snapshot = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(saved.ContentJson, json)!.IntakeOutcomes!;
+        Assert.Equal(source.Id, snapshot.IntakeId);
+        Assert.Equal(submitted, snapshot.AnswerVersionUtc);
+        Assert.False((await CreateService(verify).SaveAsync(Request(false))).IsValid);
+        Assert.Single(await verify.ClinicalNotes.AsNoTracking().ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task TenantlessStandaloneSave_UsesDestinationClinic(bool sameClinic, bool legacyPatient)
+    {
+        Guid? expectedClinic = legacyPatient ? null : Guid.NewGuid();
+        var patient = new Patient { FirstName = "Synthetic", LastName = "ClinicSource", ClinicId = expectedClinic };
+        var questionnaire = PatientOutcomeRelease.Catalog.Single(q => q.Definition.InstrumentId == "lefs");
+        var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var source = new IntakeForm
+        {
+            PatientId = patient.Id,
+            ClinicId = sameClinic ? expectedClinic : Guid.NewGuid(),
+            IsLocked = true,
+            SubmittedAt = DateTime.UtcNow.AddMinutes(-5),
+            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-4),
+            ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft
+            {
+                PatientOutcomes = new()
+                {
+                    Choices = [questionnaire],
+                    Responses = [new("lefs", questionnaire.Definition.Version, [])]
+                }
+            }, json)
+        };
+        _context.Patients.Add(patient);
+        _context.IntakeForms.Add(source);
+        await _context.SaveChangesAsync();
+        var originalVersion = source.LastModifiedUtc;
+        var seed = (await _service.GetEvaluationSeedAsync(patient.Id))!;
+        var result = await _service.SaveAsync(new()
+        {
+            PatientId = patient.Id,
+            NoteType = NoteType.Evaluation,
+            DateOfService = DateTime.UtcNow.Date,
+            Payload = seed.Payload
+        });
+        Assert.Equal(sameClinic, result.IsValid);
+        if (sameClinic)
+        {
+            var saved = Assert.Single(await _context.ClinicalNotes.AsNoTracking().ToListAsync());
+            Assert.Equal(expectedClinic, saved.ClinicId);
+            Assert.Equal(source.Id, result.Workspace!.Payload.IntakeOutcomes!.IntakeId);
+        }
+        else
+        {
+            Assert.Empty(await _context.ClinicalNotes.AsNoTracking().ToListAsync());
+            Assert.Equal(originalVersion, (await _context.IntakeForms.AsNoTracking().SingleAsync()).LastModifiedUtc);
+            Assert.False(_context.ChangeTracker.HasChanges());
+        }
+    }
+
+    private sealed class OutcomeSaveGate : SaveChangesInterceptor
+    {
+        public TaskCompletionSource Arrived { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task WaitForArrivalAsync(Task save)
+        {
+            // Propagate an early save failure instead of waiting for an unreachable gate.
+            var completed = await Task.WhenAny(Arrived.Task, save);
+            await completed;
+            Assert.True(Arrived.Task.IsCompleted, "The save completed without reaching the outcome gate.");
+        }
+
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context!.ChangeTracker.Entries<ClinicalNote>().Any(entry => entry.State == EntityState.Added))
+            {
+                Arrived.TrySetResult();
+                // The coordinator deliberately holds the loser until the winner finishes.
+                // A wall-clock deadline here would test suite load, not database concurrency.
+                await Release.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            return result;
+        }
+    }
+
+    private sealed class OutcomeFixedClock(DateTime now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => new(now, TimeSpan.Zero);
+    }
 
     [Fact]
     public async Task EncounterSeed_UsesOnlyMatchingSubmittedVersion_AndNeverSeedsAnUnrelatedNewNote()

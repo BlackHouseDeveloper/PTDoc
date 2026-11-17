@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -6,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Notes.Workspace;
+using PTDoc.Application.Outcomes;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
@@ -123,6 +125,220 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
         });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         Assert.Contains("Percent improved", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task PatientSelectedOutcomes_RejectUnrelatedMeasure_ResumeAndProjectServerScoreThroughOtpLink()
+    {
+        using var staff = factory.CreateClientWithRole(Roles.PT);
+        using var patient = factory.CreateUnauthenticatedClient();
+        var (patientId, noteId, email) = await CreateFixtureAsync(staff, NoteType.ProgressNote);
+        var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var note = (await db.ClinicalNotes.FindAsync(noteId))!;
+            note.ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+            { NoteType = NoteType.ProgressNote, Objective = new() { PrimaryBodyPart = BodyPart.Shoulder } }, json);
+            await db.SaveChangesAsync();
+        }
+        var issued = await IssueAsync(staff, patientId, noteId);
+        var draft = JsonSerializer.Deserialize<IntakeResponseDraft>(issued.ResponseJson, json)!;
+        var choices = draft.PatientOutcomes!;
+        Assert.Equal(2, choices.Choices.Count);
+        Assert.Empty(choices.Responses);
+        var definition = choices.Choices.Single(q => q.Definition.InstrumentId == "quickdash").Definition;
+        using var linkResponse = await staff.PostAsync($"/api/v1/intake/{issued.Id}/delivery/link", null);
+        var link = (await linkResponse.Content.ReadFromJsonAsync<IntakeDeliveryBundleResponse>())!;
+        var invite = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(link.InviteUrl).Query)["invite"].ToString();
+        using var sent = await patient.PostAsJsonAsync("/api/v1/intake/access/send-otp", new SendIntakeOtpRequest
+        { InviteToken = invite, Contact = email, Channel = OtpChannel.Email });
+        Assert.Equal(HttpStatusCode.OK, sent.StatusCode);
+        using var verified = await patient.PostAsJsonAsync("/api/v1/intake/access/verify-otp", new VerifyIntakeOtpRequest
+        { InviteToken = invite, Contact = email, Channel = OtpChannel.Email, OtpCode = factory.LastIntakeOtpCode! });
+        var access = (await verified.Content.ReadFromJsonAsync<IntakeInviteResult>())!;
+        patient.DefaultRequestHeaders.Add(IntakeAccessHeaders.AccessToken, access.AccessToken);
+        draft.VisitQuestionnaire!.CurrentPain = 0;
+        choices.Responses = [new("lefs", definition.Version, [])];
+        var update = Update(issued.LastModifiedUtc);
+        update.ResponseJson = JsonSerializer.Serialize(draft, json);
+        Assert.Equal(HttpStatusCode.Conflict, (await patient.PutAsJsonAsync($"/api/v1/intake/access/{issued.Id}", update)).StatusCode);
+        choices.Responses = [new("quickdash", definition.Version,
+            definition.Items.Take(9).Select(i => new PTDoc.Application.Outcomes.OutcomeAnswer(i.Id,
+                PTDoc.Application.Outcomes.OutcomeAnswerState.Answered, "3")).ToImmutableArray())];
+        update.ResponseJson = JsonSerializer.Serialize(draft, json);
+        using var partialResponse = await patient.PutAsJsonAsync($"/api/v1/intake/access/{issued.Id}", update);
+        Assert.Equal(HttpStatusCode.OK, partialResponse.StatusCode);
+        var partial = (await partialResponse.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        var resumed = JsonSerializer.Deserialize<IntakeResponseDraft>(partial.ResponseJson, json)!;
+        Assert.Equal(PTDoc.Application.Outcomes.OutcomeCompletion.Incomplete, resumed.PatientOutcomes!.Responses.Single().Result!.Calculation.Completion);
+        resumed.PatientOutcomes.Responses = [resumed.PatientOutcomes.Responses.Single() with
+        {
+            Answers = definition.Items.Take(10).Select(i => new PTDoc.Application.Outcomes.OutcomeAnswer(i.Id,
+                PTDoc.Application.Outcomes.OutcomeAnswerState.Answered, "3")).ToImmutableArray()
+        }];
+        update.ExpectedLastModifiedUtc = partial.LastModifiedUtc;
+        update.ResponseJson = JsonSerializer.Serialize(resumed, json);
+        using var savedResponse = await patient.PutAsJsonAsync($"/api/v1/intake/access/{issued.Id}", update);
+        Assert.Equal(HttpStatusCode.OK, savedResponse.StatusCode);
+        var saved = (await savedResponse.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        using var submitted = await patient.PostAsJsonAsync($"/api/v1/intake/access/{issued.Id}/submit",
+            new SubmitIntakeRequest { ExpectedLastModifiedUtc = saved.LastModifiedUtc });
+        Assert.Equal(HttpStatusCode.OK, submitted.StatusCode);
+        var seed = await staff.GetFromJsonAsync<NoteWorkspaceV2EvaluationSeedResponse>($"/api/v2/notes/workspace/{patientId}/{noteId}/intake-seed");
+        Assert.Equal(issued.Id, seed!.Payload.IntakeOutcomes!.IntakeId);
+        Assert.Equal(50m, seed.Payload.IntakeOutcomes.Responses.Single().Result!.Calculation.Scores.Single().Value);
+
+        var source = (await staff.GetFromJsonAsync<IntakeResponse>($"/api/v1/intake/{issued.Id}"))!;
+        Assert.Equal(source.SubmittedAt, seed.Payload.IntakeOutcomes.AnswerVersionUtc);
+        var current = (await staff.GetFromJsonAsync<NoteWorkspaceV2LoadResponse>($"/api/v2/notes/workspace/{patientId}/{noteId}"))!;
+        var save = new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patientId,
+            NoteId = noteId,
+            NoteType = NoteType.ProgressNote,
+            DateOfService = DateTime.UtcNow.Date,
+            ExpectedLastModifiedUtc = current.LastModifiedUtc,
+            Payload = seed.Payload
+        };
+        using var copied = await staff.PostAsJsonAsync("/api/v2/notes/workspace/", save);
+        Assert.Equal(HttpStatusCode.OK, copied.StatusCode);
+        var workspace = (await copied.Content.ReadFromJsonAsync<NoteWorkspaceV2SaveResponse>())!.Workspace!;
+        using var reviewed = await staff.PostAsync($"/api/v1/intake/{issued.Id}/review", null);
+        Assert.Equal(HttpStatusCode.OK, reviewed.StatusCode);
+        var afterReview = (await reviewed.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        Assert.Equal(source.ResponseJson, afterReview.ResponseJson);
+        Assert.NotEqual(source.LastModifiedUtc, afterReview.LastModifiedUtc);
+        save.ExpectedLastModifiedUtc = workspace.LastModifiedUtc;
+        save.Payload = workspace.Payload;
+        using var savedAfterReview = await staff.PostAsJsonAsync("/api/v2/notes/workspace/", save);
+        Assert.Equal(HttpStatusCode.OK, savedAfterReview.StatusCode);
+        Assert.Equal(source.SubmittedAt, (await savedAfterReview.Content.ReadFromJsonAsync<NoteWorkspaceV2SaveResponse>())!
+            .Workspace!.Payload.IntakeOutcomes!.AnswerVersionUtc);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StandaloneOutcomes_SeedNewEvaluationAndRetainEvidenceAfterReview(bool reEvaluation)
+    {
+        using var client = factory.CreateClientWithRole(Roles.PT);
+        using var patientResponse = await client.PostAsJsonAsync("/api/v1/patients", new CreatePatientRequest
+        {
+            FirstName = "Synthetic",
+            LastName = "OutcomeSeed",
+            DateOfBirth = new DateTime(1990, 1, 1)
+        });
+        Assert.Equal(HttpStatusCode.Created, patientResponse.StatusCode);
+        var patientId = (await patientResponse.Content.ReadFromJsonAsync<PatientResponse>())!.Id;
+        var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var structured = new IntakeStructuredDataDto
+        {
+            BodyPartSelections = [new() { BodyPartId = "shoulder", Lateralities = ["right"] }]
+        };
+        using var created = await client.PostAsJsonAsync("/api/v1/intake/", new CreateIntakeRequest
+        {
+            PatientId = patientId,
+            StructuredData = structured,
+            ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft { PainSeverityScore = 2, PainSeverityProvided = true }, json)
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var intake = (await created.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        Assert.Null(intake.EncounterNoteId);
+        Assert.Null(intake.QuestionnaireDefinitionId);
+        var draft = JsonSerializer.Deserialize<IntakeResponseDraft>(intake.ResponseJson, json)!;
+        var definition = draft.PatientOutcomes!.Choices.Single(q => q.Definition.InstrumentId == "quickdash").Definition;
+        draft.PatientOutcomes.Responses = [new("quickdash", definition.Version,
+            definition.Items.Select(i => new OutcomeAnswer(i.Id, OutcomeAnswerState.Answered, "3")).ToImmutableArray())];
+        var update = Update(intake.LastModifiedUtc);
+        update.StructuredData = structured;
+        update.ResponseJson = JsonSerializer.Serialize(draft, json);
+        using var updated = await client.PutAsJsonAsync($"/api/v1/intake/{intake.Id}", update);
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+        intake = (await updated.Content.ReadFromJsonAsync<IntakeResponse>())!;
+
+        var seedUrl = $"/api/v2/notes/workspace/{patientId}/evaluation-seed";
+        var unlockedSeed = (await client.GetFromJsonAsync<NoteWorkspaceV2EvaluationSeedResponse>(seedUrl))!;
+        Assert.False(unlockedSeed.FromLockedSubmittedIntake);
+        Assert.Null(unlockedSeed.Payload.IntakeOutcomes);
+        using var submitted = await client.PostAsJsonAsync($"/api/v1/intake/{intake.Id}/submit",
+            new SubmitIntakeRequest { ExpectedLastModifiedUtc = intake.LastModifiedUtc });
+        Assert.Equal(HttpStatusCode.OK, submitted.StatusCode);
+        var source = (await submitted.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        var seed = (await client.GetFromJsonAsync<NoteWorkspaceV2EvaluationSeedResponse>(seedUrl))!;
+        Assert.True(seed.FromLockedSubmittedIntake);
+        Assert.Equal(source.Id, seed.Payload.IntakeOutcomes!.IntakeId);
+        Assert.Equal(source.SubmittedAt, seed.Payload.IntakeOutcomes.AnswerVersionUtc);
+        Assert.Equal(source.SubmittedAt, seed.Payload.SeedContext.SourceIntakeVersionUtc);
+        Assert.Equal(IntakeQuestionnaireDefinitions.EvaluationFullV1, seed.Payload.SeedContext.SourceIntakeDefinitionId);
+        Assert.Equal(50m, seed.Payload.IntakeOutcomes.Responses.Single().Result!.Calculation.Scores.Single().Value);
+
+        var save = new NoteWorkspaceV2SaveRequest
+        {
+            PatientId = patientId,
+            NoteType = NoteType.Evaluation,
+            IsReEvaluation = reEvaluation,
+            DateOfService = DateTime.UtcNow.Date,
+            Payload = seed.Payload
+        };
+        using var saved = await client.PostAsJsonAsync("/api/v2/notes/workspace/", save);
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        var workspace = (await saved.Content.ReadFromJsonAsync<NoteWorkspaceV2SaveResponse>())!.Workspace!;
+        var outcomeJson = JsonSerializer.Serialize(seed.Payload.IntakeOutcomes, json);
+        Assert.Equal(outcomeJson, JsonSerializer.Serialize(workspace.Payload.IntakeOutcomes, json));
+        Assert.Equal(reEvaluation, workspace.IsReEvaluation);
+        // The selected standalone source cannot be reused for a second new evaluation.
+        using var reused = await client.PostAsJsonAsync("/api/v2/notes/workspace/", save);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, reused.StatusCode);
+
+        using var reviewed = await client.PostAsync($"/api/v1/intake/{intake.Id}/review", null);
+        Assert.Equal(HttpStatusCode.OK, reviewed.StatusCode);
+        var afterReview = (await reviewed.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        Assert.Equal(source.SubmittedAt, afterReview.SubmittedAt);
+        Assert.Equal(source.ResponseJson, afterReview.ResponseJson);
+        Assert.Null(afterReview.EncounterNoteId);
+        save.NoteId = workspace.NoteId;
+        save.ExpectedLastModifiedUtc = workspace.LastModifiedUtc;
+        save.Payload = workspace.Payload;
+        using var resaved = await client.PostAsJsonAsync("/api/v2/notes/workspace/", save);
+        Assert.Equal(HttpStatusCode.OK, resaved.StatusCode);
+        workspace = (await resaved.Content.ReadFromJsonAsync<NoteWorkspaceV2SaveResponse>())!.Workspace!;
+        using var genericUpdate = await client.PutAsJsonAsync($"/api/v1/notes/{workspace.NoteId}", new UpdateNoteRequest
+        {
+            ContentJson = JsonSerializer.Serialize(workspace.Payload, json)
+        });
+        Assert.Equal(HttpStatusCode.OK, genericUpdate.StatusCode);
+        var reloaded = (await client.GetFromJsonAsync<NoteWorkspaceV2LoadResponse>($"/api/v2/notes/workspace/{patientId}/{workspace.NoteId}"))!;
+        Assert.Equal(outcomeJson, JsonSerializer.Serialize(reloaded.Payload.IntakeOutcomes, json));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GenericNoteWrites_RejectDuplicateOutcomePropertiesWithoutSaving(bool update)
+    {
+        using var client = factory.CreateClientWithRole(Roles.PT);
+        var (patientId, noteId, _) = await CreateFixtureAsync(client);
+        var snapshot = JsonSerializer.Serialize(new WorkspaceIntakeOutcomeSnapshot(Guid.NewGuid(), DateTime.UtcNow, [], []));
+        var content = $"{{\"intakeOutcomes\":null,\"\\u0069ntakeOutcomes\":{snapshot}}}";
+        // This schema-less shape survives the normalizer, so the evidence guard must reject it.
+        Assert.Equal(content, PTDoc.Infrastructure.Services.NoteWriteService.NormalizeContentJson(NoteType.Evaluation, false, DateTime.UtcNow, content));
+        using var response = update
+            ? await client.PutAsJsonAsync($"/api/v1/notes/{noteId}", new UpdateNoteRequest { ContentJson = content })
+            : await client.PostAsJsonAsync("/api/v1/notes/", new CreateNoteRequest
+            {
+                PatientId = patientId,
+                NoteType = NoteType.Evaluation,
+                DateOfService = DateTime.UtcNow.Date,
+                ContentJson = content
+            });
+        Assert.Equal(update ? HttpStatusCode.Conflict : HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.Contains("duplicate intakeOutcomes", await response.Content.ReadAsStringAsync());
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var retained = Assert.Single(await db.ClinicalNotes.AsNoTracking().Where(n => n.PatientId == patientId).ToListAsync());
+        Assert.Equal(noteId, retained.Id);
+        Assert.Equal("{}", retained.ContentJson);
     }
 
     [Fact]

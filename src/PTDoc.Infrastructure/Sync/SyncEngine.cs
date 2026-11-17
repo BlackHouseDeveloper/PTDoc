@@ -2423,6 +2423,10 @@ public class SyncEngine : ISyncEngine
             if (existing?.EncounterNoteId is not null || TryGetGuid(root, "encounterNoteId").HasValue || TryGetGuid(root, "EncounterNoteId").HasValue)
                 throw new InvalidOperationException("Encounter intake writes require the versioned intake endpoint; legacy sync cannot edit or create them.");
 
+            if (IntakeOutcomePersistence.HasOutcomeWorkflow(existing?.ResponseJson)
+                || IntakeOutcomePersistence.HasOutcomeWorkflow(TryGetString(root, "responseJson") ?? TryGetString(root, "ResponseJson")))
+                throw new InvalidOperationException("Patient outcome questionnaires require the versioned intake endpoint; legacy sync cannot supply choices or scores.");
+
             if (existing is null)
             {
                 var patientId = TryGetGuid(root, "patientId") ?? TryGetGuid(root, "PatientId") ?? Guid.Empty;
@@ -2533,6 +2537,7 @@ public class SyncEngine : ISyncEngine
                 ProgressActivityTracking.ValidateJsonWrite(contentJson, normalizedContentJson);
                 normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(_context, null, patientId, serverId, normalizedContentJson, cancellationToken);
                 DailyOutcomeWriteValidator.Validate(noteType, null, normalizedContentJson);
+                normalizedContentJson = await IntakeOutcomeProjection.PrepareJsonAsync(_context, null, patientId, serverId, clinicId, normalizedContentJson, cancellationToken);
                 var isDryNeedling = NoteWriteService.IsDryNeedlingContent(
                     noteType,
                     isReEvaluation,
@@ -2596,6 +2601,7 @@ public class SyncEngine : ISyncEngine
                     DailyQuestionnaireDefinition.ValidateJsonWrite(updatedContentJson, normalizedContentJson);
                     normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(_context, existing, existing.PatientId, existing.Id, normalizedContentJson, cancellationToken);
                     DailyOutcomeWriteValidator.Validate(existing.NoteType, existing, normalizedContentJson);
+                    normalizedContentJson = await IntakeOutcomeProjection.PrepareJsonAsync(_context, existing, existing.PatientId, existing.Id, existing.ClinicId, normalizedContentJson, cancellationToken);
                     var isDryNeedling = NoteWriteService.IsDryNeedlingContent(
                         existing.NoteType,
                         updatedIsReEvaluation,

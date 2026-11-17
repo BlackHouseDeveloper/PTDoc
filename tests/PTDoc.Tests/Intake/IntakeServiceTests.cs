@@ -137,6 +137,41 @@ public sealed class IntakeServiceTests : IDisposable
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EncounterDraft_LegacyEvaluationSoap_IssuesOutcomesWithoutChangingNoteContent(bool reevaluation)
+    {
+        var patient = CreatePatient("Synthetic", "Legacy evaluation");
+        const string legacyJson = """{"subjective":"Shoulder pain","objective":"Limited motion","assessment":"Improving","plan":"Continue treatment"}""";
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            ClinicId = _clinicId,
+            NoteType = NoteType.Evaluation,
+            IsReEvaluation = reevaluation,
+            ContentJson = legacyJson
+        };
+        _context.Patients.Add(patient);
+        _context.ClinicalNotes.Add(note);
+        await _context.SaveChangesAsync();
+
+        var result = await _service.EnsureDraftAsync(patient.Id, new() { EncounterNoteId = note.Id });
+
+        Assert.Equal(IntakeEnsureDraftStatus.Created, result.Status);
+        var reloaded = (await _service.GetForNoteAsync(patient.Id, note.Id))!;
+        Assert.Equal(note.Id, reloaded.EncounterNoteId);
+        Assert.Equal(reevaluation, reloaded.EncounterIsReEvaluation);
+        Assert.Equal(IntakeQuestionnaireDefinitions.EvaluationFullV1, reloaded.QuestionnaireDefinitionId);
+        Assert.NotNull(reloaded.PatientOutcomes);
+        Assert.Empty(reloaded.PatientOutcomes.RecordedRegions);
+        Assert.Empty(reloaded.PatientOutcomes.Choices);
+        Assert.Empty(reloaded.PatientOutcomes.Responses);
+        Assert.Null(reloaded.MedicalHistoryNotes);
+        Assert.Equal(legacyJson, (await _context.ClinicalNotes.AsNoTracking().SingleAsync(n => n.Id == note.Id)).ContentJson);
+        Assert.Equal(result.Draft!.IntakeId, (await _service.EnsureDraftAsync(patient.Id, new() { EncounterNoteId = note.Id })).Draft!.IntakeId);
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]

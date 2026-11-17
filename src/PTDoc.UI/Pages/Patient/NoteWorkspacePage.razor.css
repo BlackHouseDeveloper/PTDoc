@@ -498,3 +498,40 @@
 .note-workspace__intake-secondary:hover:not(:disabled) {
     background: var(--muted);
 }
+
+.note-workspace__intake-outcomes {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    color: var(--card-foreground);
+    min-width: 0;
+}
+
+.note-workspace__intake-outcomes > summary {
+    cursor: pointer;
+    padding: var(--spacing-4);
+    min-height: var(--touch-target-mobile);
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    overflow-wrap: anywhere;
+}
+
+.note-workspace__intake-outcomes > summary:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+}
+
+.note-workspace__intake-outcome-content {
+    border-top: 1px solid var(--border);
+    display: grid;
+    gap: var(--spacing-3);
+    padding: var(--spacing-4);
+    min-width: 0;
+}
+
+.note-workspace__intake-provenance {
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    margin: 0;
+    overflow-wrap: anywhere;
+}

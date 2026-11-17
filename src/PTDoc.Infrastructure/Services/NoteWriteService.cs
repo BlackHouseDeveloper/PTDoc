@@ -37,6 +37,7 @@ public sealed class NoteWriteService(
         ArgumentNullException.ThrowIfNull(request);
 
         var noteId = Guid.NewGuid();
+        var clinicId = tenantContext.GetCurrentClinicId();
         var userId = identityContext.GetCurrentUserId();
 
         if (request.TotalMinutes < 0)
@@ -58,6 +59,7 @@ public sealed class NoteWriteService(
             ProgressActivityTracking.ValidateJsonWrite(request.ContentJson, normalizedContentJson);
             normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(db, null, request.PatientId, noteId, normalizedContentJson, ct);
             DailyOutcomeWriteValidator.Validate(request.NoteType, null, normalizedContentJson);
+            normalizedContentJson = await IntakeOutcomeProjection.PrepareJsonAsync(db, null, request.PatientId, noteId, clinicId, normalizedContentJson, ct);
         }
         catch (InvalidOperationException ex)
         {
@@ -112,7 +114,6 @@ public sealed class NoteWriteService(
             return response;
         }
 
-        var clinicId = tenantContext.GetCurrentClinicId();
         var now = DateTime.UtcNow;
         var templateVariant = request.IsReEvaluation
             ? NoteTemplateVariant.ReEvaluation
@@ -217,6 +218,7 @@ public sealed class NoteWriteService(
         DailyQuestionnaireDefinition.ValidateJsonWrite(request.ContentJson ?? note.ContentJson, normalizedContentJson);
         normalizedContentJson = await ProgressActivityWriteValidator.PrepareJsonAsync(db, note, note.PatientId, note.Id, normalizedContentJson, ct);
         DailyOutcomeWriteValidator.Validate(note.NoteType, note, normalizedContentJson);
+        normalizedContentJson = await IntakeOutcomeProjection.PrepareJsonAsync(db, note, note.PatientId, note.Id, note.ClinicId, normalizedContentJson, ct);
         var isDryNeedling = IsDryNeedlingContent(
             note.NoteType,
             note.IsReEvaluation,

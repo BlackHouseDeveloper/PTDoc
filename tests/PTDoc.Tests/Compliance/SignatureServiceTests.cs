@@ -741,6 +741,31 @@ public sealed class SignatureServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateAddendum_WorkspaceWithoutOutcomeEvidence_CanBeSigned()
+    {
+        var signer = await CreateUserAsync(Roles.PT);
+        var note = await CreateNoteAsync(Guid.NewGuid(), NoteType.Evaluation);
+        note.NoteStatus = NoteStatus.Signed;
+        note.SignatureHash = "original-signature";
+        await _context.SaveChangesAsync();
+        var payload = new NoteWorkspaceV2Payload();
+        payload.Assessment.AssessmentNarrative = "Additional assessment findings";
+        var content = JsonSerializer.SerializeToElement(payload, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var service = new AddendumService(_context, _mockAuditService.Object);
+
+        var result = await service.CreateAddendumAsync(note.Id, content, signer.Id);
+
+        Assert.True(result.Success, result.ErrorMessage);
+        var addendum = await _context.ClinicalNotes.FindAsync(result.AddendumId);
+        var saved = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(addendum!.ContentJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        Assert.Null(saved.IntakeOutcomes);
+        Assert.Equal("Additional assessment findings", saved.Assessment.AssessmentNarrative);
+        var signed = await _signatureService.SignNoteAsync(addendum.Id, signer.Id, Roles.PT, true, true);
+        Assert.True(signed.Success, signed.ErrorMessage);
+        Assert.Equal("original-signature", note.SignatureHash);
+    }
+
+    [Fact]
     public async Task CreateAddendum_PreservesOriginalSignature()
     {
         var signer = await CreateUserAsync(Roles.PT);

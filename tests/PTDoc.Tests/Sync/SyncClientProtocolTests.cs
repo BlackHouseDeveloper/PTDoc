@@ -27,6 +27,116 @@ namespace PTDoc.Tests.Sync;
 public class SyncClientProtocolTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task TenantlessOutcomePush_RequiresDestinationClinic(bool update, bool sameClinic)
+    {
+        using var context = CreateInMemoryContext();
+        var patient = new Patient { FirstName = "Synthetic", LastName = "ClinicOutcome", ClinicId = Guid.NewGuid() };
+        var note = new ClinicalNote { PatientId = patient.Id, ClinicId = patient.ClinicId, NoteType = NoteType.Evaluation, ContentJson = "{}" };
+        var questionnaire = PTDoc.Infrastructure.Outcomes.PatientOutcomeRelease.Catalog.Single(q => q.Definition.InstrumentId == "lefs");
+        var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var source = new IntakeForm
+        {
+            PatientId = patient.Id,
+            EncounterNoteId = note.Id,
+            ClinicId = sameClinic ? patient.ClinicId : Guid.NewGuid(),
+            QuestionnaireDefinitionId = PTDoc.Application.Intake.IntakeQuestionnaireDefinitions.EvaluationFullV1,
+            IsLocked = true,
+            SubmittedAt = DateTime.UtcNow.AddMinutes(-5),
+            ResponseJson = JsonSerializer.Serialize(new PTDoc.Application.Services.IntakeResponseDraft
+            {
+                PatientOutcomes = new()
+                {
+                    Choices = [questionnaire],
+                    Responses = [new("lefs", questionnaire.Definition.Version, [])]
+                }
+            }, json)
+        };
+        context.Patients.Add(patient);
+        context.IntakeForms.Add(source);
+        if (update) context.ClinicalNotes.Add(note);
+        await context.SaveChangesAsync();
+        var payload = new NoteWorkspaceV2Payload { IntakeOutcomes = PTDoc.Infrastructure.Notes.Workspace.IntakeOutcomeProjection.From(source) };
+        var request = new ClientSyncPushRequest
+        {
+            Items = [new ClientSyncPushItem
+            {
+                EntityType = "ClinicalNote", ServerId = note.Id, LocalId = 1, OperationId = Guid.NewGuid(),
+                Operation = update ? "Update" : "Create", LastModifiedUtc = DateTime.UtcNow,
+                DataJson = JsonSerializer.Serialize(new { patientId = patient.Id, noteType = "Evaluation", contentJson = JsonSerializer.Serialize(payload, json) })
+            }]
+        };
+        var engine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var result = await engine.ReceiveClientPushAsync(request);
+        Assert.Equal(sameClinic ? 1 : 0, result.AcceptedCount);
+        if (!sameClinic) Assert.Equal("Error", Assert.Single(result.Items).Status);
+        var notes = await context.ClinicalNotes.AsNoTracking().ToListAsync();
+        if (sameClinic)
+        {
+            var saved = Assert.Single(notes);
+            Assert.Equal(patient.ClinicId, saved.ClinicId);
+            Assert.Equal(source.Id, JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(saved.ContentJson, json)!.IntakeOutcomes!.IntakeId);
+        }
+        else if (update) Assert.Equal("{}", Assert.Single(notes).ContentJson);
+        else Assert.Empty(notes);
+        Assert.Equal(sameClinic ? 1 : 0, (await engine.ReceiveClientPushAsync(request)).AcceptedCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OutcomeSnapshotPush_RejectsDuplicatePropertiesWithoutPersistingChanges(bool update)
+    {
+        using var context = CreateInMemoryContext();
+        var patient = new Patient { FirstName = "Synthetic", LastName = "OutcomeSync", ClinicId = Guid.NewGuid() };
+        var note = new ClinicalNote
+        {
+            PatientId = patient.Id,
+            ClinicId = patient.ClinicId,
+            NoteType = NoteType.Evaluation,
+            ContentJson = "{}",
+            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-5)
+        };
+        context.Patients.Add(patient);
+        if (update) context.ClinicalNotes.Add(note);
+        await context.SaveChangesAsync();
+        var originalVersion = note.LastModifiedUtc;
+        var snapshot = JsonSerializer.Serialize(new PTDoc.Application.Outcomes.WorkspaceIntakeOutcomeSnapshot(
+            Guid.NewGuid(), DateTime.UtcNow, [], []));
+        var content = $"{{\"intakeOutcomes\":null,\"IntakeOutcomes\":{snapshot}}}";
+        var engine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var request = new ClientSyncPushRequest
+        {
+            Items = [new ClientSyncPushItem
+            {
+                EntityType = "ClinicalNote", ServerId = update ? note.Id : Guid.Empty,
+                LocalId = 1, OperationId = Guid.NewGuid(), Operation = update ? "Update" : "Create",
+                LastModifiedUtc = DateTime.UtcNow,
+                DataJson = JsonSerializer.Serialize(new { patientId = patient.Id, noteType = "Evaluation", contentJson = content })
+            }]
+        };
+
+        var response = await engine.ReceiveClientPushAsync(request);
+        Assert.Equal(0, response.AcceptedCount);
+        Assert.Equal("Error", Assert.Single(response.Items).Status);
+        await context.SaveChangesAsync();
+        var notes = await context.ClinicalNotes.AsNoTracking().ToListAsync();
+        if (update)
+        {
+            var retained = Assert.Single(notes);
+            Assert.Equal("{}", retained.ContentJson);
+            Assert.Equal(originalVersion, retained.LastModifiedUtc);
+        }
+        else Assert.Empty(notes);
+        var replay = await engine.ReceiveClientPushAsync(request);
+        Assert.Equal(0, replay.AcceptedCount);
+        Assert.Equal("Error", Assert.Single(replay.Items).Status);
+    }
+
+    [Theory]
     [InlineData(false, true)]
     [InlineData(true, false)]
     [InlineData(true, true)]

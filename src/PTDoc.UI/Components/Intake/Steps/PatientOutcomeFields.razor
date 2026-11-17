@@ -1,0 +1,115 @@
+@using System.Collections.Immutable
+@using PTDoc.Application.Outcomes
+
+<section class="intake-card" data-testid="patient-outcome-choices">
+    <div class="intake-card__header">
+        <h3>Your functional questionnaires</h3>
+        @if (!IsReadOnly)
+        {
+            <p class="intake-card__subtext">Choose the questionnaires you want to complete for the body areas recorded for this visit. You can save and resume partial answers.</p>
+        }
+    </div>
+    @if (Value is null || Value.Choices.Count == 0)
+    {
+        <p class="intake-card__helper">No questionnaires are available for the recorded body areas. Ask your clinic to confirm the visit's body area if needed.</p>
+    }
+    else
+    {
+        @foreach (var choice in Value.Choices.Where(c => !IsReadOnly || Response(c)?.Selected == true))
+        {
+            var definition = choice.Definition;
+            var response = Response(choice);
+            <div class="intake-card__questionnaire @(response?.Selected == true ? "intake-card__questionnaire--selected" : string.Empty)" @key="definition.InstrumentId">
+                <label class="intake-card__toggle">
+                    <input type="checkbox" disabled="@IsReadOnly" checked="@(response?.Selected == true)"
+                           data-instrument="@definition.InstrumentId" @onchange="e => SelectAsync(choice, e.Value is true)" />
+                    <span>@definition.Name</span>
+                </label>
+                @if (response?.Selected == true)
+                {
+                    <div class="intake-card__answers">
+                        <p class="intake-card__subtext">@choice.Instructions</p>
+                        <p class="intake-card__answer-count">@AnsweredCount(response) of @definition.Items.Length questions answered</p>
+                        @foreach (var item in definition.Items)
+                        {
+                            var answer = response.Answers.IsDefault ? null : response.Answers.FirstOrDefault(a => a.ItemId == item.Id);
+                            <label class="intake-card__notes" @key="item.Id">
+                                <span>@item.Label</span>
+                                @if (item.Options.IsEmpty)
+                                {
+                                    <input class="form-control" type="number" min="@item.Minimum" max="@item.Maximum" step="any"
+                                           disabled="@IsReadOnly" data-outcome-item="@($"{definition.InstrumentId}:{item.Id}")"
+                                           value="@AnswerValue(answer)" @onchange="e => AnswerAsync(choice, item, e.Value?.ToString())" />
+                                }
+                                else
+                                {
+                                    <select class="form-select" disabled="@IsReadOnly" data-outcome-item="@($"{definition.InstrumentId}:{item.Id}")"
+                                            value="@AnswerValue(answer)" @onchange="e => AnswerAsync(choice, item, e.Value?.ToString())">
+                                        <option value="">Choose an answer</option>
+                                        @foreach (var option in item.Options)
+                                        { <option value="@option.Id">@option.Label</option> }
+                                        @if (item.AllowedStates.Contains(OutcomeAnswerState.NotApplicable))
+                                        { <option value="not-applicable">Not applicable</option> }
+                                    </select>
+                                }
+                            </label>
+                        }
+                        @if (response.Result?.Calculation is { Completion: OutcomeCompletion.Complete or OutcomeCompletion.Partial } calculation)
+                        {
+                            <div class="intake-card__result" role="status">
+                                <p>Saved score: @string.Join("; ", calculation.Scores.Select(s => $"{s.DomainId}: {s.Value:0.##} {s.Unit}"))</p>
+                                @if (calculation.Completion == OutcomeCompletion.Partial)
+                                { <p class="intake-card__subtext">Some subscales are incomplete. Only subscales with enough answers have a score.</p> }
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="intake-card__helper" role="status">@(response.Result is null ? "Save your answers to calculate the score." : "Saved with incomplete answers. No score has been calculated.")</p>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        @if (IsReadOnly && !Value.Responses.Any(r => r.Selected))
+        { <p class="intake-card__helper">No questionnaires selected.</p> }
+    }
+</section>
+
+@code {
+    [Parameter] public IntakePatientOutcomes? Value { get; set; }
+    [Parameter] public EventCallback<IntakePatientOutcomes> ValueChanged { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
+    private PatientOutcomeResponse? Response(PatientOutcomeQuestionnaire choice) => Value?.Responses.FirstOrDefault(r =>
+        r.InstrumentId == choice.Definition.InstrumentId && r.DefinitionVersion == choice.Definition.Version);
+    private static int AnsweredCount(PatientOutcomeResponse response) => response.Answers.IsDefault ? 0
+        : response.Answers.Count(a => a.State is OutcomeAnswerState.Answered or OutcomeAnswerState.NotApplicable);
+    private static string AnswerValue(OutcomeAnswer? answer) => answer?.State == OutcomeAnswerState.NotApplicable ? "not-applicable"
+        : answer?.OptionId ?? answer?.NumericValue?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+    private Task SelectAsync(PatientOutcomeQuestionnaire choice, bool selected)
+    {
+        var response = Response(choice) ?? new PatientOutcomeResponse(choice.Definition.InstrumentId, choice.Definition.Version, []);
+        return ReplaceAsync(response with { Selected = selected });
+    }
+    private Task AnswerAsync(PatientOutcomeQuestionnaire choice, OutcomeItem item, string? value)
+    {
+        var response = Response(choice)!;
+        var answers = (response.Answers.IsDefault ? [] : response.Answers).Where(a => a.ItemId != item.Id).ToList();
+        OutcomeAnswer answer;
+        if (value == "not-applicable") answer = new(item.Id, OutcomeAnswerState.NotApplicable);
+        else if (string.IsNullOrEmpty(value)) answer = new(item.Id, OutcomeAnswerState.Unanswered);
+        else if (!item.Options.IsEmpty) answer = new(item.Id, OutcomeAnswerState.Answered, value);
+        else if (decimal.TryParse(value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var number))
+            answer = new(item.Id, OutcomeAnswerState.Answered, NumericValue: number);
+        else return Task.CompletedTask;
+        answers.Add(answer);
+        return ReplaceAsync(response with { Answers = answers.ToImmutableArray(), Result = null });
+    }
+    private Task ReplaceAsync(PatientOutcomeResponse response)
+    {
+        if (IsReadOnly || Value is null) return Task.CompletedTask;
+        var copy = new IntakePatientOutcomes { Version = Value.Version, SelectionPolicy = Value.SelectionPolicy,
+            RecordedRegions = Value.RecordedRegions.ToList(), Choices = Value.Choices.ToList(),
+            Responses = Value.Responses.Where(r => r.InstrumentId != response.InstrumentId).Append(response).ToList() };
+        return ValueChanged.InvokeAsync(copy);
+    }
+}

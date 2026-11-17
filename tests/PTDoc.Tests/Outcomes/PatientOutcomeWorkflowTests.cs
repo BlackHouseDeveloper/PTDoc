@@ -1,11 +1,14 @@
 using System.Collections.Immutable;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Moq;
+using PTDoc.Application.Compliance;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Outcomes;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Notes.Workspace;
 using PTDoc.Infrastructure.Outcomes;
@@ -132,4 +135,355 @@ public sealed class PatientOutcomeWorkflowTests
             answers.Add(new("rating-adl", OutcomeAnswerState.Answered, NumericValue: 101))).Result);
     }
 
+    [Fact]
+    public void Save_IgnoresForgedTotalsAndChoices_PreservesPartialAnswersAndDeselection()
+    {
+        var saved = new IntakeResponseDraft
+        {
+            PatientOutcomes = IntakeOutcomePersistence.Issue(new()
+            { Objective = new() { PrimaryBodyPart = BodyPart.Shoulder } }, NoteType.ProgressNote)
+        };
+        var intake = new IntakeForm
+        {
+            EncounterNoteId = Guid.NewGuid(),
+            QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.ProgressV1,
+            ResponseJson = JsonSerializer.Serialize(saved, Json)
+        };
+        var submitted = JsonSerializer.Deserialize<IntakeResponseDraft>(intake.ResponseJson, Json)!;
+        var definition = Questionnaire("quickdash").Definition;
+        var partial = Answers("quickdash", "3").Take(9).ToImmutableArray();
+        submitted.PatientOutcomes!.Choices = [Questionnaire("lefs")];
+        submitted.PatientOutcomes.RecordedRegions = [BodyPart.Knee];
+        submitted.PatientOutcomes.Responses = [new("quickdash", definition.Version, partial, Score("quickdash", Answers("quickdash", "5")))];
+        IntakeOutcomePersistence.Prepare(intake, submitted);
+        var response = Assert.Single(submitted.PatientOutcomes.Responses);
+        Assert.Equal(OutcomeCompletion.Incomplete, response.Result!.Calculation.Completion);
+        Assert.Empty(response.Result.Calculation.Scores);
+        Assert.Equal(9, response.Answers.Count(a => a.State == OutcomeAnswerState.Answered));
+        Assert.DoesNotContain(submitted.PatientOutcomes.Choices, c => c.Definition.InstrumentId == "lefs");
+        intake.ResponseJson = JsonSerializer.Serialize(submitted, Json);
+        submitted.PatientOutcomes.Responses = [response with { Selected = false, Answers = [] }];
+        IntakeOutcomePersistence.Prepare(intake, submitted);
+        Assert.False(submitted.PatientOutcomes.Responses.Single().Selected);
+        Assert.Equal(9, submitted.PatientOutcomes.Responses.Single().Answers.Count(a => a.State == OutcomeAnswerState.Answered));
+        submitted.PatientOutcomes.Responses = [new("lefs", Questionnaire("lefs").Definition.Version, Answers("lefs", "4"))];
+        Assert.Throws<InvalidOperationException>(() => IntakeOutcomePersistence.Prepare(intake, submitted));
+    }
+
+    [Fact]
+    public void NewIntake_DiscardsClientIssuedOptionsAndComputedResults()
+    {
+        var empty = new IntakeResponseDraft();
+        IntakeOutcomePersistence.InitializeEvaluation(empty);
+        Assert.Empty(empty.PatientOutcomes!.Choices);
+        var draft = new IntakeResponseDraft
+        {
+            StructuredData = new() { BodyPartSelections = [new() { BodyPartId = "thigh" }] },
+            PatientOutcomes = new()
+            {
+                RecordedRegions = [BodyPart.Shoulder],
+                Choices = [Questionnaire("spadi")],
+                Responses = [new("spadi", Questionnaire("spadi").Definition.Version, Answers("spadi", "10"), Score("spadi", Answers("spadi", "10")))]
+            }
+        };
+        IntakeOutcomePersistence.InitializeEvaluation(draft);
+        Assert.Empty(draft.PatientOutcomes!.Responses);
+        Assert.Empty(draft.PatientOutcomes.RecordedRegions);
+        Assert.Equal("lefs", Assert.Single(draft.PatientOutcomes.Choices).Definition.InstrumentId);
+        Assert.True(IntakeOutcomePersistence.HasOutcomeWorkflow(JsonSerializer.Serialize(draft, Json)));
+        Assert.False(IntakeOutcomePersistence.HasOutcomeWorkflow("""{"initialOutcomeMeasureReports":[],"patientOutcomes":null}"""));
+    }
+
+    [Fact]
+    public async Task LegacyNoteWithoutOutcomeSnapshot_RemainsCompatible()
+    {
+        await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        const string legacy = """{"subjective":"Legacy patient narrative"}""";
+        var note = new ClinicalNote { ContentJson = legacy };
+        Assert.Equal(legacy, await IntakeOutcomeProjection.PrepareJsonAsync(db, note, Guid.NewGuid(), note.Id, note.ClinicId, legacy, default));
+        var forged = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
+        { IntakeOutcomes = new(Guid.NewGuid(), DateTime.UtcNow, [], []) }, Json)
+            .Replace("\"intakeOutcomes\"", "\"\\u0069ntakeOutcomes\"", StringComparison.Ordinal);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.PrepareJsonAsync(
+            db, note, Guid.NewGuid(), note.Id, note.ClinicId, forged, default));
+    }
+
+    [Theory]
+    [InlineData("forged")]
+    [InlineData("parent-source")]
+    [InlineData("duplicate-before")]
+    [InlineData("duplicate-after")]
+    [InlineData("case")]
+    [InlineData("escaped")]
+    [InlineData("legacy")]
+    [InlineData("malformed")]
+    public async Task AddendumCreation_RejectsOutcomeEvidenceWithoutSideEffects(string contentKind)
+    {
+        await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var note = new ClinicalNote
+        {
+            PatientId = Guid.NewGuid(),
+            ClinicId = Guid.NewGuid(),
+            NoteType = NoteType.Evaluation,
+            NoteStatus = NoteStatus.Signed,
+            SignatureHash = "original-signature",
+            SignedUtc = DateTime.UtcNow
+        };
+        var intake = new IntakeForm
+        {
+            PatientId = note.PatientId,
+            ClinicId = note.ClinicId,
+            EncounterNoteId = note.Id,
+            QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.EvaluationFullV1,
+            IsLocked = true,
+            SubmittedAt = DateTime.UtcNow,
+            ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft
+            {
+                PatientOutcomes = new()
+                {
+                    Choices = [Questionnaire("lefs")],
+                    Responses = [new("lefs", Questionnaire("lefs").Definition.Version, Answers("lefs", "2"), Score("lefs", Answers("lefs", "2")))]
+                }
+            }, Json)
+        };
+        var source = IntakeOutcomeProjection.From(intake)!;
+        note.ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload { IntakeOutcomes = source }, Json);
+        db.ClinicalNotes.Add(note);
+        db.IntakeForms.Add(intake);
+        await db.SaveChangesAsync();
+        var originalJson = note.ContentJson;
+        var originalVersion = note.LastModifiedUtc;
+        var snapshot = JsonSerializer.Serialize(contentKind == "parent-source" ? source : source with { IntakeId = Guid.NewGuid() }, Json);
+        var json = contentKind switch
+        {
+            "duplicate-before" => $"{{\"intakeOutcomes\":null,\"IntakeOutcomes\":{snapshot}}}",
+            "duplicate-after" => $"{{\"intakeOutcomes\":{snapshot},\"intakeOutcomes\":null}}",
+            "case" => $"{{\"IntakeOutcomes\":{snapshot}}}",
+            "escaped" => $"{{\"\\u0069ntakeOutcomes\":{snapshot}}}",
+            "legacy" => $"{{\"subjective\":\"Additional findings\",\"intakeOutcomes\":{snapshot}}}",
+            "malformed" => """{"intakeOutcomes":"invalid"}""",
+            _ => $"{{\"schemaVersion\":2,\"intakeOutcomes\":{snapshot}}}"
+        };
+        using var content = JsonDocument.Parse(json);
+        var audit = new Mock<IAuditService>();
+        var service = new AddendumService(db, audit.Object);
+
+        var result = await service.CreateAddendumAsync(note.Id, content.RootElement, Guid.NewGuid());
+
+        Assert.False(result.Success);
+        Assert.Null(result.AddendumId);
+        Assert.NotEmpty(result.ErrorMessage!);
+        var unchanged = Assert.Single(await db.ClinicalNotes.AsNoTracking().ToListAsync());
+        Assert.Equal(originalJson, unchanged.ContentJson);
+        Assert.Equal(originalVersion, unchanged.LastModifiedUtc);
+        Assert.Equal("original-signature", unchanged.SignatureHash);
+        Assert.Empty(await db.SyncQueueItems.ToListAsync());
+        Assert.DoesNotContain(db.ChangeTracker.Entries<ClinicalNote>(), entry => entry.State == EntityState.Added);
+        audit.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task NoteProjection_UsesLockedMatchingSource_RejectsSiblingAndEvidenceRemoval()
+    {
+        await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var patientId = Guid.NewGuid(); var noteId = Guid.NewGuid();
+        var definition = Questionnaire("lefs").Definition;
+        var outcomes = new IntakePatientOutcomes
+        {
+            Choices = [Questionnaire("lefs")],
+            Responses =
+            [new("lefs", definition.Version, Answers("lefs", "2"), Score("lefs", Answers("lefs", "2")))]
+        };
+        var intake = new IntakeForm
+        {
+            PatientId = patientId,
+            EncounterNoteId = noteId,
+            IsLocked = true,
+            QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.EvaluationFullV1,
+            SubmittedAt = DateTime.UtcNow,
+            ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft { PatientOutcomes = outcomes }, Json)
+        };
+        db.IntakeForms.Add(intake); await db.SaveChangesAsync();
+        var snapshot = IntakeOutcomeProjection.From(intake)!;
+        Assert.Equal(intake.SubmittedAt, snapshot.AnswerVersionUtc);
+        var payload = new NoteWorkspaceV2Payload { IntakeOutcomes = snapshot with { Responses = [] } };
+        await IntakeOutcomeProjection.ValidateAsync(db, null, patientId, noteId, null, payload, default);
+        Assert.Equal(40m, payload.IntakeOutcomes!.Responses.Single().Result!.Calculation.Scores.Single().Value);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.ValidateAsync(db, null, patientId, Guid.NewGuid(), null, payload, default));
+        var note = new ClinicalNote { Id = noteId, PatientId = patientId, ContentJson = JsonSerializer.Serialize(payload, Json) };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.ValidateAsync(db, note, patientId, noteId, note.ClinicId, new(), default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.PrepareJsonAsync(db, note, patientId, noteId, note.ClinicId, "null", default));
+
+        intake.ReviewedAtUtc = intake.SubmittedAt.Value.AddHours(1);
+        intake.LastModifiedUtc = intake.ReviewedAtUtc.Value;
+        await db.SaveChangesAsync();
+        Assert.Equal(snapshot.AnswerVersionUtc, IntakeOutcomeProjection.From(intake)!.AnswerVersionUtc);
+        await IntakeOutcomeProjection.ValidateAsync(db, note, patientId, noteId, null, payload, default);
+        payload.IntakeOutcomes = snapshot with { AnswerVersionUtc = intake.LastModifiedUtc };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.ValidateAsync(db, note, patientId, noteId, null, payload, default));
+    }
+
+    [Theory]
+    [InlineData(false, false, "same")]
+    [InlineData(true, false, "same")]
+    [InlineData(false, true, "same")]
+    [InlineData(true, true, "same")]
+    [InlineData(false, true, "other")]
+    [InlineData(true, true, "other")]
+    [InlineData(false, true, "null")]
+    [InlineData(true, true, "null")]
+    [InlineData(false, false, "other")]
+    [InlineData(true, false, "other")]
+    public async Task TenantlessProjection_RequiresExactDestinationClinic(bool update, bool scopedDestination, string sourceClinic)
+    {
+        await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        Guid? expectedClinic = scopedDestination ? Guid.NewGuid() : null;
+        var note = new ClinicalNote { PatientId = Guid.NewGuid(), ClinicId = expectedClinic };
+        var intake = new IntakeForm
+        {
+            PatientId = note.PatientId,
+            EncounterNoteId = note.Id,
+            ClinicId = sourceClinic == "same" ? expectedClinic : sourceClinic == "other" ? Guid.NewGuid() : null,
+            QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.EvaluationFullV1,
+            IsLocked = true,
+            SubmittedAt = DateTime.UtcNow,
+            ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft
+            {
+                PatientOutcomes = new()
+                {
+                    Choices = [Questionnaire("lefs")],
+                    Responses = [new("lefs", Questionnaire("lefs").Definition.Version, Answers("lefs", "2"))]
+                }
+            }, Json)
+        };
+        db.IntakeForms.Add(intake);
+        await db.SaveChangesAsync();
+        var payload = new NoteWorkspaceV2Payload { IntakeOutcomes = IntakeOutcomeProjection.From(intake) };
+        var content = JsonSerializer.Serialize(payload, Json);
+        var prepare = () => IntakeOutcomeProjection.PrepareJsonAsync(db, update ? note : null,
+            note.PatientId, note.Id, expectedClinic, content, default);
+        if (sourceClinic == "same")
+            Assert.Equal(intake.Id, JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(await prepare(), Json)!.IntakeOutcomes!.IntakeId);
+        else
+            await Assert.ThrowsAsync<InvalidOperationException>(prepare);
+    }
+
+    [Theory]
+    [InlineData("intakeOutcomes", false)]
+    [InlineData("IntakeOutcomes", false)]
+    [InlineData("\\u0069ntakeOutcomes", false)]
+    [InlineData("intakeOutcomes", true)]
+    [InlineData("IntakeOutcomes", true)]
+    [InlineData("\\u0069ntakeOutcomes", true)]
+    public async Task NoteProjection_RejectsDuplicatePropertiesInEitherOrder(string secondName, bool snapshotFirst)
+    {
+        await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var snapshot = JsonSerializer.Serialize(new WorkspaceIntakeOutcomeSnapshot(Guid.NewGuid(), DateTime.UtcNow, [], []), Json);
+        var first = snapshotFirst ? snapshot : "null";
+        var second = snapshotFirst ? "null" : snapshot;
+        var content = $"{{\"intakeOutcomes\":{first},\"{secondName}\":{second}}}";
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.PrepareJsonAsync(
+            db, null, Guid.NewGuid(), Guid.NewGuid(), null, content, default));
+        Assert.Contains("duplicate intakeOutcomes", error.Message);
+        var previous = new ClinicalNote { ContentJson = content };
+        error = await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.PrepareJsonAsync(
+            db, previous, Guid.NewGuid(), previous.Id, previous.ClinicId, "{}", default));
+        Assert.Contains("duplicate intakeOutcomes", error.Message);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void NoteProjection_RequiresBothLockAndSubmission(bool locked, bool submitted)
+    {
+        var intake = new IntakeForm
+        {
+            IsLocked = locked,
+            SubmittedAt = submitted ? DateTime.UtcNow : null,
+            ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft
+            {
+                PatientOutcomes = new()
+                {
+                    Choices = [Questionnaire("lefs")],
+                    Responses = [new("lefs", Questionnaire("lefs").Definition.Version, Answers("lefs", "2"))]
+                }
+            }, Json)
+        };
+        Assert.Null(IntakeOutcomeProjection.From(intake));
+    }
+
+    [Theory]
+    [InlineData("unselected")]
+    [InlineData("existing-unbound")]
+    [InlineData("wrong-patient")]
+    [InlineData("wrong-clinic")]
+    [InlineData("wrong-type")]
+    [InlineData("dry-needling")]
+    [InlineData("source-id")]
+    [InlineData("source-version")]
+    [InlineData("source-definition")]
+    [InlineData("source-reference")]
+    [InlineData("source-submitted")]
+    [InlineData("replace-source")]
+    public async Task StandaloneProjection_RejectsUnboundOrMismatchedSources(string change)
+    {
+        await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var patientId = Guid.NewGuid();
+        var intake = new IntakeForm
+        {
+            PatientId = patientId,
+            IsLocked = true,
+            SubmittedAt = DateTime.UtcNow,
+            ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft
+            {
+                PatientOutcomes = new()
+                {
+                    Choices = [Questionnaire("lefs")],
+                    Responses = [new("lefs", Questionnaire("lefs").Definition.Version, Answers("lefs", "2"))]
+                }
+            }, Json)
+        };
+        db.IntakeForms.Add(intake);
+        await db.SaveChangesAsync();
+        var payload = new NoteWorkspaceV2Payload
+        {
+            IntakeOutcomes = IntakeOutcomeProjection.From(intake),
+            SeedContext = new()
+            {
+                Kind = WorkspaceSeedKind.IntakePrefill,
+                SourceIntakeId = intake.Id,
+                SourceIntakeDefinitionId = IntakeQuestionnaireDefinitions.EvaluationFullV1,
+                SourceIntakeVersionUtc = intake.SubmittedAt,
+                SourceReferenceDateUtc = intake.SubmittedAt,
+                FromLockedSubmittedIntake = true
+            }
+        };
+        ClinicalNote? previous = change == "existing-unbound" ? new() : null;
+        if (change == "wrong-clinic") previous = new() { ClinicId = Guid.NewGuid(), ContentJson = JsonSerializer.Serialize(payload, Json) };
+        if (change == "wrong-patient") patientId = Guid.NewGuid();
+        if (change == "wrong-type") payload.NoteType = NoteType.ProgressNote;
+        if (change == "dry-needling") payload.DryNeedling = new();
+        if (change == "source-id") payload.SeedContext.SourceIntakeId = Guid.NewGuid();
+        if (change == "source-version") payload.SeedContext.SourceIntakeVersionUtc = intake.SubmittedAt.Value.AddSeconds(1);
+        if (change == "source-definition") payload.SeedContext.SourceIntakeDefinitionId = IntakeQuestionnaireDefinitions.ProgressV1;
+        if (change == "source-reference") payload.SeedContext.SourceReferenceDateUtc = intake.SubmittedAt.Value.AddSeconds(1);
+        if (change == "source-submitted") payload.SeedContext.FromLockedSubmittedIntake = false;
+        if (change == "replace-source")
+        {
+            var prior = new NoteWorkspaceV2Payload { IntakeOutcomes = payload.IntakeOutcomes! with { IntakeId = Guid.NewGuid() } };
+            previous = new() { ContentJson = JsonSerializer.Serialize(prior, Json) };
+        }
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.ValidateAsync(
+            db, previous, patientId, previous?.Id ?? Guid.NewGuid(), previous?.ClinicId, payload, default,
+            change == "unselected" ? null : intake.Id));
+    }
 }

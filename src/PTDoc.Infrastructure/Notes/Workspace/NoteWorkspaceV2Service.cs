@@ -122,7 +122,8 @@ public sealed class NoteWorkspaceV2Service(
             };
         }
         payload.SeedContext.SourceIntakeDefinitionId = intake.QuestionnaireDefinitionId;
-        payload.SeedContext.SourceIntakeVersionUtc = intake.LastModifiedUtc;
+        payload.IntakeOutcomes = IntakeOutcomeProjection.From(intake);
+        payload.SeedContext.SourceIntakeVersionUtc = intake.SubmittedAt;
         return new NoteWorkspaceV2EvaluationSeedResponse
         {
             PatientId = patientId,
@@ -288,6 +289,21 @@ public sealed class NoteWorkspaceV2Service(
         payload.DailyTreatment ??= new WorkspaceDailyTreatmentV2();
         DryNeedlingBillingPolicy.Enforce(payload);
         NormalizeCptModifierSources(payload.Plan.SelectedCptCodes);
+
+        Guid? standaloneSeedIntakeId = null;
+        IntakeForm? standaloneSource = null;
+        if (note is null && request.NoteType == NoteType.Evaluation && payload.DryNeedling is null && payload.IntakeOutcomes is not null)
+        {
+            // Capture the concurrency token BEFORE checking whether this source is still available.
+            // Advancing it with the note insert makes competing first saves conflict atomically.
+            standaloneSource = await db.IntakeForms.FirstOrDefaultAsync(form =>
+                form.Id == payload.IntakeOutcomes.IntakeId && form.PatientId == request.PatientId
+                && form.ClinicId == clinicId && form.EncounterNoteId == null && form.IsLocked && form.SubmittedAt != null, cancellationToken);
+            var seed = await GetEvaluationSeedAsync(request.PatientId, cancellationToken);
+            standaloneSeedIntakeId = standaloneSource is not null ? seed?.Payload.IntakeOutcomes?.IntakeId : null;
+        }
+        try { await IntakeOutcomeProjection.ValidateAsync(db, note, request.PatientId, noteId, clinicId, payload, cancellationToken, standaloneSeedIntakeId); }
+        catch (InvalidOperationException ex) { return new NoteWorkspaceV2SaveResponse { IsValid = false, Errors = [ex.Message] }; }
 
         payload.ProgressQuestionnaire ??= new WorkspaceProgressNoteQuestionnaireV2();
         var progressErrors = await ProgressActivityWriteValidator.PrepareAsync(db, workspaceCatalogs, payload, note, request.PatientId, noteId, cancellationToken);
@@ -491,6 +507,13 @@ public sealed class NoteWorkspaceV2Service(
         }
 
         var now = DateTime.UtcNow;
+        if (standaloneSource is not null)
+        {
+            standaloneSource.LastModifiedUtc = now > standaloneSource.LastModifiedUtc
+                ? now : standaloneSource.LastModifiedUtc.AddTicks(TimeSpan.TicksPerMicrosecond);
+            standaloneSource.ModifiedByUserId = currentUserId;
+            standaloneSource.SyncState = SyncState.Pending;
+        }
         note ??= new ClinicalNote
         {
             Id = noteId,
@@ -653,9 +676,12 @@ public sealed class NoteWorkspaceV2Service(
             {
                 Kind = WorkspaceSeedKind.IntakePrefill,
                 SourceIntakeId = intake.Id,
+                SourceIntakeDefinitionId = intake.QuestionnaireDefinitionId ?? IntakeQuestionnaireDefinitions.EvaluationFullV1,
+                SourceIntakeVersionUtc = intake.SubmittedAt ?? intake.LastModifiedUtc,
                 FromLockedSubmittedIntake = fromLockedSubmittedIntake,
                 SourceReferenceDateUtc = intake.SubmittedAt ?? intake.LastModifiedUtc
             },
+            IntakeOutcomes = fromLockedSubmittedIntake ? IntakeOutcomeProjection.From(intake) : null,
             Subjective = new WorkspaceSubjectiveV2
             {
                 Problems = (draft.PainSeverityProvided && draft.PainSeverityScore.HasValue) || bodyPartLabels.Count > 0 || painDescriptorLabels.Count > 0
@@ -1314,6 +1340,7 @@ public sealed class NoteWorkspaceV2Service(
         payload.Plan.ClinicalSummary = null;
         payload.Plan.ComputedPlanOfCare = new ComputedPlanOfCareV2();
         payload.DailyTreatment = new WorkspaceDailyTreatmentV2();
+        payload.IntakeOutcomes = null; // A new encounter must not relabel prior patient answers as current.
         if (targetNoteType == NoteType.Daily)
         {
             // Preserve stable diagnoses and activity context, but never present a prior complaint

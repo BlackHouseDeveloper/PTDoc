@@ -24,6 +24,7 @@ public sealed class IntakeWizardState
     public Guid? EncounterNoteId { get; set; }
     public string? QuestionnaireDefinitionId { get; set; }
     public IntakeVisitQuestionnaire? VisitQuestionnaire { get; set; }
+    public PTDoc.Application.Outcomes.IntakePatientOutcomes? PatientOutcomes { get; set; }
     public bool EncounterIsReEvaluation { get; set; }
 
     public IntakeStep CurrentStep { get; set; } = IntakeStep.Demographics;

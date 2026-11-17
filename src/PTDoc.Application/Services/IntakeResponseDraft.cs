@@ -10,6 +10,7 @@ public sealed class IntakeResponseDraft
     public Guid? EncounterNoteId { get; set; }
     public string? QuestionnaireDefinitionId { get; set; }
     public IntakeVisitQuestionnaire? VisitQuestionnaire { get; set; }
+    public PTDoc.Application.Outcomes.IntakePatientOutcomes? PatientOutcomes { get; set; }
     public bool EncounterIsReEvaluation { get; set; }
 
     public IntakeProfilePrefill? ProfilePrefill { get; set; }
