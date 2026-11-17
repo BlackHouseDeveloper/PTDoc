@@ -22,9 +22,9 @@ The owner subsequently supplied the two client outcome-measure ZIP archives. All
 
 PR 163 was rebased onto `a787e848219abff50b63462681b3bf603d27f93b` (`main`, including merged PR 161). Its former history contained duplicated Plan 08 commits and the already-merged Plan 07 foundation. Replayed the unique Plan 08 changes plus the review-fix delta, preserving main's profile provenance/reconciliation, failed-save recovery, organization/subscription models and all five earlier review fixes. Provider snapshots retain main's definitions plus the encounter association. The rebased head `cd0810f255346fa266a7e3f96cbe42fd6d0b678f` was pushed to `codex/plan-08-note-type-intake` with an exact lease against `ec33089e9a49465ee561b26cb529dc5e9ef2ec7c`.
 
-New implementation is **uncommitted** in `/Users/calvinccarter/.codex/worktrees/eb23/PTDoc`, branch `codex/pr-163-completion`. The original checkout remains untouched. The remote PR currently contains the rebase only; the new work requires owner-confirmed build/test results before committing under `AGENTS.md`.
+The implementation was published in the dependent Plan 08 layers after owner-confirmed verification. PRs 163/200/201/202 are merged; PR 203 targets `main` and its published head is `48cab23c`, including the outcome workflow and verified follow-up fixes. Current layer boundaries, historical verification and pending local remediation are recorded in [the review stack](plan-08-review-stack.md).
 
-### Implemented locally
+### Published implementation
 
 - Consume the existing Daily questionnaire (Plan 20 / PR 176), Progress activity foundation (Plan 30 / PR 187), and versioned outcome contracts (Plan 23 / PR 180), including their regressions. These are integrated changes in this worktree; no other PR is merged, rebased, closed or published.
 - Issue immutable `daily-subjective-v1`, `progress-subjective-v1`, and `discharge-subjective-v1` encounter questionnaires alongside unchanged `evaluation-full-v1`. The saved destination controls the type. Repeat visits get separate answers and fresh consent; historical submissions and links remain pinned to their own records.

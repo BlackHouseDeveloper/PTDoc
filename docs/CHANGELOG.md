@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Outcome source clinic validation
+
+- Require the destination clinic explicitly when validating submitted outcome sources through workspace, generic and sync writes, including tenantless/background creation. Match null clinic IDs exactly for legacy notes; retain patient, visit, submission and provenance checks.
+- Add 18 tenantless regression cases covering new/existing projections, standalone workspace creation, sync create/update/replay, mismatched or missing source clinics, same-clinic acceptance and legacy null-clinic compatibility.
+- Correct the unpublished-review findings in Plan 08 and the outcome approval matrix that still described the published implementation as uncommitted. Refresh the complete PR 203 review audit and local description draft; verification of this new change remains pending.
+
 ### Fixed - Atomic standalone outcome consumption
 
 - Prevent competing first Evaluation/Re-evaluation saves from consuming the same submitted standalone intake: capture its existing concurrency token before source selection and advance it atomically with the note insert. A losing save follows the existing workspace conflict response without persisting another note.

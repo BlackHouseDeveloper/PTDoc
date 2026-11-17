@@ -26,7 +26,7 @@ public static class IntakeOutcomeProjection
     }
 
     public static async Task ValidateAsync(ApplicationDbContext db, ClinicalNote? previous,
-        Guid patientId, Guid noteId, NoteWorkspaceV2Payload incoming, CancellationToken ct,
+        Guid patientId, Guid noteId, Guid? expectedClinicId, NoteWorkspaceV2Payload incoming, CancellationToken ct,
         Guid? standaloneSeedIntakeId = null)
     {
         var old = ReadSnapshot(previous?.ContentJson);
@@ -35,8 +35,9 @@ public static class IntakeOutcomeProjection
             if (old is not null) throw new InvalidOperationException("Reload this note to preserve its submitted outcome evidence.");
             return;
         }
+        // Background contexts may have no tenant filter. Null is a legacy clinic value, not a wildcard.
         var intake = await db.IntakeForms.AsNoTracking().FirstOrDefaultAsync(f => f.Id == requested.IntakeId
-            && f.PatientId == patientId && f.IsLocked && f.SubmittedAt != null, ct);
+            && f.PatientId == patientId && f.ClinicId == expectedClinicId && f.IsLocked && f.SubmittedAt != null, ct);
         // Legacy patient-wide forms predate the encounter definition column and are Evaluation intakes.
         var definitionId = intake?.QuestionnaireDefinitionId
             ?? (intake?.EncounterNoteId is null ? IntakeQuestionnaireDefinitions.EvaluationFullV1 : null);
@@ -70,14 +71,14 @@ public static class IntakeOutcomeProjection
     }
 
     public static async Task<string> PrepareJsonAsync(ApplicationDbContext db, ClinicalNote? previous,
-        Guid patientId, Guid noteId, string json, CancellationToken ct)
+        Guid patientId, Guid noteId, Guid? expectedClinicId, string json, CancellationToken ct)
     {
         if (ReadSnapshot(json) is null && ReadSnapshot(previous?.ContentJson) is null) return json;
         NoteWorkspaceV2Payload? payload;
         try { payload = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(json, Options); }
         catch (JsonException) { throw new InvalidOperationException("Submitted outcome evidence must be a valid workspace document."); }
         if (payload is null) throw new InvalidOperationException("Reload this note to preserve its submitted outcome evidence.");
-        await ValidateAsync(db, previous, patientId, noteId, payload, ct);
+        await ValidateAsync(db, previous, patientId, noteId, expectedClinicId, payload, ct);
         return payload.IntakeOutcomes is null ? json : JsonSerializer.Serialize(payload, Options);
     }
 

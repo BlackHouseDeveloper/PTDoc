@@ -298,11 +298,11 @@ public sealed class NoteWorkspaceV2Service(
             // Advancing it with the note insert makes competing first saves conflict atomically.
             standaloneSource = await db.IntakeForms.FirstOrDefaultAsync(form =>
                 form.Id == payload.IntakeOutcomes.IntakeId && form.PatientId == request.PatientId
-                && form.EncounterNoteId == null && form.IsLocked && form.SubmittedAt != null, cancellationToken);
+                && form.ClinicId == clinicId && form.EncounterNoteId == null && form.IsLocked && form.SubmittedAt != null, cancellationToken);
             var seed = await GetEvaluationSeedAsync(request.PatientId, cancellationToken);
             standaloneSeedIntakeId = standaloneSource is not null ? seed?.Payload.IntakeOutcomes?.IntakeId : null;
         }
-        try { await IntakeOutcomeProjection.ValidateAsync(db, note, request.PatientId, noteId, payload, cancellationToken, standaloneSeedIntakeId); }
+        try { await IntakeOutcomeProjection.ValidateAsync(db, note, request.PatientId, noteId, clinicId, payload, cancellationToken, standaloneSeedIntakeId); }
         catch (InvalidOperationException ex) { return new NoteWorkspaceV2SaveResponse { IsValid = false, Errors = [ex.Message] }; }
 
         payload.ProgressQuestionnaire ??= new WorkspaceProgressNoteQuestionnaireV2();

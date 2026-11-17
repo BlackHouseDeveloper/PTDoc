@@ -169,6 +169,57 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Single(await verify.ClinicalNotes.AsNoTracking().ToListAsync());
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task TenantlessStandaloneSave_UsesDestinationClinic(bool sameClinic, bool legacyPatient)
+    {
+        Guid? expectedClinic = legacyPatient ? null : Guid.NewGuid();
+        var patient = new Patient { FirstName = "Synthetic", LastName = "ClinicSource", ClinicId = expectedClinic };
+        var questionnaire = PatientOutcomeRelease.Catalog.Single(q => q.Definition.InstrumentId == "lefs");
+        var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var source = new IntakeForm
+        {
+            PatientId = patient.Id,
+            ClinicId = sameClinic ? expectedClinic : Guid.NewGuid(),
+            IsLocked = true,
+            SubmittedAt = DateTime.UtcNow.AddMinutes(-5),
+            LastModifiedUtc = DateTime.UtcNow.AddMinutes(-4),
+            ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft
+            {
+                PatientOutcomes = new()
+                {
+                    Choices = [questionnaire],
+                    Responses = [new("lefs", questionnaire.Definition.Version, [])]
+                }
+            }, json)
+        };
+        _context.Patients.Add(patient);
+        _context.IntakeForms.Add(source);
+        await _context.SaveChangesAsync();
+        var originalVersion = source.LastModifiedUtc;
+        var seed = (await _service.GetEvaluationSeedAsync(patient.Id))!;
+        var result = await _service.SaveAsync(new()
+        {
+            PatientId = patient.Id, NoteType = NoteType.Evaluation, DateOfService = DateTime.UtcNow.Date, Payload = seed.Payload
+        });
+        Assert.Equal(sameClinic, result.IsValid);
+        if (sameClinic)
+        {
+            var saved = Assert.Single(await _context.ClinicalNotes.AsNoTracking().ToListAsync());
+            Assert.Equal(expectedClinic, saved.ClinicId);
+            Assert.Equal(source.Id, result.Workspace!.Payload.IntakeOutcomes!.IntakeId);
+        }
+        else
+        {
+            Assert.Empty(await _context.ClinicalNotes.AsNoTracking().ToListAsync());
+            Assert.Equal(originalVersion, (await _context.IntakeForms.AsNoTracking().SingleAsync()).LastModifiedUtc);
+            Assert.False(_context.ChangeTracker.HasChanges());
+        }
+    }
+
     private sealed class OutcomeSaveGate : SaveChangesInterceptor
     {
         public TaskCompletionSource Arrived { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

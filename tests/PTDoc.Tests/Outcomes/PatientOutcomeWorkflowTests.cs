@@ -198,12 +198,12 @@ public sealed class PatientOutcomeWorkflowTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         const string legacy = """{"subjective":"Legacy patient narrative"}""";
         var note = new ClinicalNote { ContentJson = legacy };
-        Assert.Equal(legacy, await IntakeOutcomeProjection.PrepareJsonAsync(db, note, Guid.NewGuid(), note.Id, legacy, default));
+        Assert.Equal(legacy, await IntakeOutcomeProjection.PrepareJsonAsync(db, note, Guid.NewGuid(), note.Id, note.ClinicId, legacy, default));
         var forged = JsonSerializer.Serialize(new NoteWorkspaceV2Payload
         { IntakeOutcomes = new(Guid.NewGuid(), DateTime.UtcNow, [], []) }, Json)
             .Replace("\"intakeOutcomes\"", "\"\\u0069ntakeOutcomes\"", StringComparison.Ordinal);
         await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.PrepareJsonAsync(
-            db, note, Guid.NewGuid(), note.Id, forged, default));
+            db, note, Guid.NewGuid(), note.Id, note.ClinicId, forged, default));
     }
 
     [Fact]
@@ -232,20 +232,66 @@ public sealed class PatientOutcomeWorkflowTests
         var snapshot = IntakeOutcomeProjection.From(intake)!;
         Assert.Equal(intake.SubmittedAt, snapshot.AnswerVersionUtc);
         var payload = new NoteWorkspaceV2Payload { IntakeOutcomes = snapshot with { Responses = [] } };
-        await IntakeOutcomeProjection.ValidateAsync(db, null, patientId, noteId, payload, default);
+        await IntakeOutcomeProjection.ValidateAsync(db, null, patientId, noteId, null, payload, default);
         Assert.Equal(40m, payload.IntakeOutcomes!.Responses.Single().Result!.Calculation.Scores.Single().Value);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.ValidateAsync(db, null, patientId, Guid.NewGuid(), payload, default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.ValidateAsync(db, null, patientId, Guid.NewGuid(), null, payload, default));
         var note = new ClinicalNote { Id = noteId, PatientId = patientId, ContentJson = JsonSerializer.Serialize(payload, Json) };
-        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.ValidateAsync(db, note, patientId, noteId, new(), default));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.PrepareJsonAsync(db, note, patientId, noteId, "null", default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.ValidateAsync(db, note, patientId, noteId, note.ClinicId, new(), default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.PrepareJsonAsync(db, note, patientId, noteId, note.ClinicId, "null", default));
 
         intake.ReviewedAtUtc = intake.SubmittedAt.Value.AddHours(1);
         intake.LastModifiedUtc = intake.ReviewedAtUtc.Value;
         await db.SaveChangesAsync();
         Assert.Equal(snapshot.AnswerVersionUtc, IntakeOutcomeProjection.From(intake)!.AnswerVersionUtc);
-        await IntakeOutcomeProjection.ValidateAsync(db, note, patientId, noteId, payload, default);
+        await IntakeOutcomeProjection.ValidateAsync(db, note, patientId, noteId, null, payload, default);
         payload.IntakeOutcomes = snapshot with { AnswerVersionUtc = intake.LastModifiedUtc };
-        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.ValidateAsync(db, note, patientId, noteId, payload, default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.ValidateAsync(db, note, patientId, noteId, null, payload, default));
+    }
+
+    [Theory]
+    [InlineData(false, false, "same")]
+    [InlineData(true, false, "same")]
+    [InlineData(false, true, "same")]
+    [InlineData(true, true, "same")]
+    [InlineData(false, true, "other")]
+    [InlineData(true, true, "other")]
+    [InlineData(false, true, "null")]
+    [InlineData(true, true, "null")]
+    [InlineData(false, false, "other")]
+    [InlineData(true, false, "other")]
+    public async Task TenantlessProjection_RequiresExactDestinationClinic(bool update, bool scopedDestination, string sourceClinic)
+    {
+        await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        Guid? expectedClinic = scopedDestination ? Guid.NewGuid() : null;
+        var note = new ClinicalNote { PatientId = Guid.NewGuid(), ClinicId = expectedClinic };
+        var intake = new IntakeForm
+        {
+            PatientId = note.PatientId,
+            EncounterNoteId = note.Id,
+            ClinicId = sourceClinic == "same" ? expectedClinic : sourceClinic == "other" ? Guid.NewGuid() : null,
+            QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.EvaluationFullV1,
+            IsLocked = true,
+            SubmittedAt = DateTime.UtcNow,
+            ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft
+            {
+                PatientOutcomes = new()
+                {
+                    Choices = [Questionnaire("lefs")],
+                    Responses = [new("lefs", Questionnaire("lefs").Definition.Version, Answers("lefs", "2"))]
+                }
+            }, Json)
+        };
+        db.IntakeForms.Add(intake);
+        await db.SaveChangesAsync();
+        var payload = new NoteWorkspaceV2Payload { IntakeOutcomes = IntakeOutcomeProjection.From(intake) };
+        var content = JsonSerializer.Serialize(payload, Json);
+        var prepare = () => IntakeOutcomeProjection.PrepareJsonAsync(db, update ? note : null,
+            note.PatientId, note.Id, expectedClinic, content, default);
+        if (sourceClinic == "same")
+            Assert.Equal(intake.Id, JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(await prepare(), Json)!.IntakeOutcomes!.IntakeId);
+        else
+            await Assert.ThrowsAsync<InvalidOperationException>(prepare);
     }
 
     [Theory]
@@ -265,11 +311,11 @@ public sealed class PatientOutcomeWorkflowTests
         var content = $"{{\"intakeOutcomes\":{first},\"{secondName}\":{second}}}";
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.PrepareJsonAsync(
-            db, null, Guid.NewGuid(), Guid.NewGuid(), content, default));
+            db, null, Guid.NewGuid(), Guid.NewGuid(), null, content, default));
         Assert.Contains("duplicate intakeOutcomes", error.Message);
         var previous = new ClinicalNote { ContentJson = content };
         error = await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.PrepareJsonAsync(
-            db, previous, Guid.NewGuid(), previous.Id, "{}", default));
+            db, previous, Guid.NewGuid(), previous.Id, previous.ClinicId, "{}", default));
         Assert.Contains("duplicate intakeOutcomes", error.Message);
     }
 
@@ -359,7 +405,7 @@ public sealed class PatientOutcomeWorkflowTests
         }
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.ValidateAsync(
-            db, previous, patientId, previous?.Id ?? Guid.NewGuid(), payload, default,
+            db, previous, patientId, previous?.Id ?? Guid.NewGuid(), previous?.ClinicId, payload, default,
             change == "unselected" ? null : intake.Id));
     }
 }
