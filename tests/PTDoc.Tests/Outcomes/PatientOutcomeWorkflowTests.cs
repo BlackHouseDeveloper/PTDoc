@@ -1,11 +1,14 @@
 using System.Collections.Immutable;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Moq;
+using PTDoc.Application.Compliance;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Outcomes;
 using PTDoc.Application.Services;
 using PTDoc.Core.Models;
+using PTDoc.Infrastructure.Compliance;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Notes.Workspace;
 using PTDoc.Infrastructure.Outcomes;
@@ -204,6 +207,81 @@ public sealed class PatientOutcomeWorkflowTests
             .Replace("\"intakeOutcomes\"", "\"\\u0069ntakeOutcomes\"", StringComparison.Ordinal);
         await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeOutcomeProjection.PrepareJsonAsync(
             db, note, Guid.NewGuid(), note.Id, note.ClinicId, forged, default));
+    }
+
+    [Theory]
+    [InlineData("forged")]
+    [InlineData("parent-source")]
+    [InlineData("duplicate-before")]
+    [InlineData("duplicate-after")]
+    [InlineData("case")]
+    [InlineData("escaped")]
+    [InlineData("legacy")]
+    [InlineData("malformed")]
+    public async Task AddendumCreation_RejectsOutcomeEvidenceWithoutSideEffects(string contentKind)
+    {
+        await using var db = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        var note = new ClinicalNote
+        {
+            PatientId = Guid.NewGuid(),
+            ClinicId = Guid.NewGuid(),
+            NoteType = NoteType.Evaluation,
+            NoteStatus = NoteStatus.Signed,
+            SignatureHash = "original-signature",
+            SignedUtc = DateTime.UtcNow
+        };
+        var intake = new IntakeForm
+        {
+            PatientId = note.PatientId,
+            ClinicId = note.ClinicId,
+            EncounterNoteId = note.Id,
+            QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.EvaluationFullV1,
+            IsLocked = true,
+            SubmittedAt = DateTime.UtcNow,
+            ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft
+            {
+                PatientOutcomes = new()
+                {
+                    Choices = [Questionnaire("lefs")],
+                    Responses = [new("lefs", Questionnaire("lefs").Definition.Version, Answers("lefs", "2"), Score("lefs", Answers("lefs", "2")))]
+                }
+            }, Json)
+        };
+        var source = IntakeOutcomeProjection.From(intake)!;
+        note.ContentJson = JsonSerializer.Serialize(new NoteWorkspaceV2Payload { IntakeOutcomes = source }, Json);
+        db.ClinicalNotes.Add(note);
+        db.IntakeForms.Add(intake);
+        await db.SaveChangesAsync();
+        var originalJson = note.ContentJson;
+        var originalVersion = note.LastModifiedUtc;
+        var snapshot = JsonSerializer.Serialize(contentKind == "parent-source" ? source : source with { IntakeId = Guid.NewGuid() }, Json);
+        var json = contentKind switch
+        {
+            "duplicate-before" => $"{{\"intakeOutcomes\":null,\"IntakeOutcomes\":{snapshot}}}",
+            "duplicate-after" => $"{{\"intakeOutcomes\":{snapshot},\"intakeOutcomes\":null}}",
+            "case" => $"{{\"IntakeOutcomes\":{snapshot}}}",
+            "escaped" => $"{{\"\\u0069ntakeOutcomes\":{snapshot}}}",
+            "legacy" => $"{{\"subjective\":\"Additional findings\",\"intakeOutcomes\":{snapshot}}}",
+            "malformed" => """{"intakeOutcomes":"invalid"}""",
+            _ => $"{{\"schemaVersion\":2,\"intakeOutcomes\":{snapshot}}}"
+        };
+        using var content = JsonDocument.Parse(json);
+        var audit = new Mock<IAuditService>();
+        var service = new AddendumService(db, audit.Object);
+
+        var result = await service.CreateAddendumAsync(note.Id, content.RootElement, Guid.NewGuid());
+
+        Assert.False(result.Success);
+        Assert.Null(result.AddendumId);
+        Assert.NotEmpty(result.ErrorMessage!);
+        var unchanged = Assert.Single(await db.ClinicalNotes.AsNoTracking().ToListAsync());
+        Assert.Equal(originalJson, unchanged.ContentJson);
+        Assert.Equal(originalVersion, unchanged.LastModifiedUtc);
+        Assert.Equal("original-signature", unchanged.SignatureHash);
+        Assert.Empty(await db.SyncQueueItems.ToListAsync());
+        Assert.DoesNotContain(db.ChangeTracker.Entries<ClinicalNote>(), entry => entry.State == EntityState.Added);
+        audit.VerifyNoOtherCalls();
     }
 
     [Fact]

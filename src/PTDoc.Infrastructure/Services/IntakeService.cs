@@ -114,13 +114,12 @@ public sealed class IntakeService : IIntakeService
             PhiReleaseAuthorized = false,
             BillingConsentAuthorized = false
         };
-        var outcomeSource = string.IsNullOrWhiteSpace(note.ContentJson) ? new NoteWorkspaceV2Payload()
-            : JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(note.ContentJson, SerializerOptions) ?? new();
-        draft.PatientOutcomes = IntakeOutcomePersistence.Issue(outcomeSource, note.NoteType);
+        var normalizedContent = NoteWriteService.NormalizeContentJson(
+            note.NoteType, note.IsReEvaluation, note.DateOfService, note.ContentJson);
+        var source = JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(normalizedContent, SerializerOptions) ?? new();
+        draft.PatientOutcomes = IntakeOutcomePersistence.Issue(source, note.NoteType);
         if (IntakeQuestionnaireDefinitions.IsShort(draft.QuestionnaireDefinitionId))
         {
-            var source = string.IsNullOrWhiteSpace(note.ContentJson) ? new NoteWorkspaceV2Payload()
-                : JsonSerializer.Deserialize<NoteWorkspaceV2Payload>(note.ContentJson, SerializerOptions) ?? new();
             if (source.DryNeedling is not null)
                 return IntakeEnsureDraftResult.Locked("Dry needling uses its separate clinical workflow.");
             draft.VisitQuestionnaire = new IntakeVisitQuestionnaire

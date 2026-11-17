@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Addendum outcome evidence and legacy intake issuance
+
+- Reject submitted outcome snapshots on addendum creation before normalization, including malformed snapshots and duplicate, case-varied or escaped property names. Outcome evidence remains on the original signed note; rejected requests create no addendum, sync work or audit event.
+- Normalize supported legacy Evaluation/Re-evaluation SOAP content before deriving encounter intake outcome choices, and reuse that normalized document for short-visit initialization without rewriting the source note.
+- Add 11 regression cases covering rejected addendum evidence, ordinary workspace addendum creation/signing, and legacy Evaluation/Re-evaluation intake issuance. All 322 focused outcome, intake, workspace, normalization, concurrency and signature tests pass in Release with no skips.
+
 ### Fixed - Outcome source clinic validation
 
 - Require the destination clinic explicitly when validating submitted outcome sources through workspace, generic and sync writes, including tenantless/background creation. Match null clinic IDs exactly for legacy notes; retain patient, visit, submission and provenance checks.

@@ -82,6 +82,13 @@ public static class IntakeOutcomeProjection
         return payload.IntakeOutcomes is null ? json : JsonSerializer.Serialize(payload, Options);
     }
 
+    public static void ValidateAddendumJson(string json)
+    {
+        // Addenda do not issue intakes; submitted outcome evidence belongs to the original note.
+        if (ReadSnapshot(json) is not null)
+            throw new InvalidOperationException("Addendums cannot include submitted outcome evidence. Refer to the original note.");
+    }
+
     private static WorkspaceIntakeOutcomeSnapshot? ReadSnapshot(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
