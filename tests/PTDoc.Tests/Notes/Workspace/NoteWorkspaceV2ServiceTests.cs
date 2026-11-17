@@ -203,7 +203,10 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         var seed = (await _service.GetEvaluationSeedAsync(patient.Id))!;
         var result = await _service.SaveAsync(new()
         {
-            PatientId = patient.Id, NoteType = NoteType.Evaluation, DateOfService = DateTime.UtcNow.Date, Payload = seed.Payload
+            PatientId = patient.Id,
+            NoteType = NoteType.Evaluation,
+            DateOfService = DateTime.UtcNow.Date,
+            Payload = seed.Payload
         });
         Assert.Equal(sameClinic, result.IsValid);
         if (sameClinic)

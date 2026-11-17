@@ -40,10 +40,12 @@ public class SyncClientProtocolTests
         var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var source = new IntakeForm
         {
-            PatientId = patient.Id, EncounterNoteId = note.Id,
+            PatientId = patient.Id,
+            EncounterNoteId = note.Id,
             ClinicId = sameClinic ? patient.ClinicId : Guid.NewGuid(),
             QuestionnaireDefinitionId = PTDoc.Application.Intake.IntakeQuestionnaireDefinitions.EvaluationFullV1,
-            IsLocked = true, SubmittedAt = DateTime.UtcNow.AddMinutes(-5),
+            IsLocked = true,
+            SubmittedAt = DateTime.UtcNow.AddMinutes(-5),
             ResponseJson = JsonSerializer.Serialize(new PTDoc.Application.Services.IntakeResponseDraft
             {
                 PatientOutcomes = new()
