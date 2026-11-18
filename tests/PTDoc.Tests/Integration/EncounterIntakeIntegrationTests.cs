@@ -470,17 +470,7 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
         using var patient = factory.CreateUnauthenticatedClient();
         var (patientId, noteId, email) = await CreateFixtureAsync(staff, type);
         var first = await IssueAsync(staff, patientId, noteId);
-        using var linkResponse = await staff.PostAsync($"/api/v1/intake/{first.Id}/delivery/link", null);
-        Assert.Equal(HttpStatusCode.OK, linkResponse.StatusCode);
-        var link = (await linkResponse.Content.ReadFromJsonAsync<IntakeDeliveryBundleResponse>())!;
-        var inviteToken = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(link.InviteUrl).Query)["invite"].ToString();
-        using var sent = await patient.PostAsJsonAsync("/api/v1/intake/access/send-otp", new SendIntakeOtpRequest { InviteToken = inviteToken, Contact = email, Channel = OtpChannel.Email });
-        Assert.Equal(HttpStatusCode.OK, sent.StatusCode);
-        using var verified = await patient.PostAsJsonAsync("/api/v1/intake/access/verify-otp", new VerifyIntakeOtpRequest { InviteToken = inviteToken, Contact = email, Channel = OtpChannel.Email, OtpCode = factory.LastIntakeOtpCode! });
-        Assert.Equal(HttpStatusCode.OK, verified.StatusCode);
-        var access = (await verified.Content.ReadFromJsonAsync<IntakeInviteResult>())!;
-        Assert.True(access.IsValid);
-        patient.DefaultRequestHeaders.Add(IntakeAccessHeaders.AccessToken, access.AccessToken);
+        await VerifyPatientLinkAsync(staff, patient, first.Id, email);
         Guid laterNoteId;
         await using (var scope = factory.Services.CreateAsyncScope())
         {
@@ -725,6 +715,57 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
         Assert.Equal("contact-1", Assert.Single(locked.ConsentPacket.AuthorizedContacts).Id);
         Assert.Empty(locked.ConsentPacket.PhiAuthorizedContactIds);
         Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync(path, update)).StatusCode);
+    }
+
+    [Theory]
+    [InlineData(NoteType.Evaluation)]
+    [InlineData(NoteType.Daily)]
+    public async Task RevokedFinalAttestation_RejectsStaffAndPatientLinkSubmissions(NoteType type)
+    {
+        using var staff = factory.CreateClientWithRole(Roles.PT);
+        using var patient = factory.CreateUnauthenticatedClient();
+        var (patientId, noteId, email) = await CreateFixtureAsync(staff, type);
+        var issued = await IssueAsync(staff, patientId, noteId);
+        var path = $"/api/v1/intake/{issued.Id}";
+        await VerifyPatientLinkAsync(staff, patient, issued.Id, email);
+        var current = (await staff.GetFromJsonAsync<IntakeResponse>(path))!;
+        var update = UpdateFor(current, current.LastModifiedUtc);
+        update.ConsentPacket = new() { HipaaAcknowledged = true, TreatmentConsentAccepted = true, FinalAttestationAccepted = true };
+        using var saved = await staff.PutAsJsonAsync(path, update);
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        using var revoked = await staff.PostAsJsonAsync(path + "/consents/revoke", new { consentKeys = new[] { "finalAttestationAccepted" }, writtenRevocationReceived = true });
+        Assert.Equal(HttpStatusCode.OK, revoked.StatusCode);
+        var recorded = (await revoked.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        var request = new SubmitIntakeRequest { ExpectedLastModifiedUtc = recorded.LastModifiedUtc };
+        using var staffSubmit = await staff.PostAsJsonAsync(path + "/submit", request);
+        using var patientSubmit = await patient.PostAsJsonAsync($"/api/v1/intake/access/{issued.Id}/submit", request);
+        foreach (var response in new[] { staffSubmit, patientSubmit })
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.True(problem.GetProperty("errors").TryGetProperty("finalAttestationAccepted", out _));
+        }
+        var draft = (await staff.GetFromJsonAsync<IntakeResponse>(path))!;
+        Assert.False(draft.Locked);
+        Assert.Null(draft.SubmittedAt);
+        Assert.Equal(recorded.LastModifiedUtc, draft.LastModifiedUtc);
+        Assert.Equal(recorded.Consents, draft.Consents);
+        Assert.Equal(recorded.ResponseJson, draft.ResponseJson);
+    }
+
+    private async Task VerifyPatientLinkAsync(HttpClient staff, HttpClient patient, Guid intakeId, string email)
+    {
+        using var linkResponse = await staff.PostAsync($"/api/v1/intake/{intakeId}/delivery/link", null);
+        Assert.Equal(HttpStatusCode.OK, linkResponse.StatusCode);
+        var link = (await linkResponse.Content.ReadFromJsonAsync<IntakeDeliveryBundleResponse>())!;
+        var inviteToken = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(link.InviteUrl).Query)["invite"].ToString();
+        using var sent = await patient.PostAsJsonAsync("/api/v1/intake/access/send-otp", new SendIntakeOtpRequest { InviteToken = inviteToken, Contact = email, Channel = OtpChannel.Email });
+        Assert.Equal(HttpStatusCode.OK, sent.StatusCode);
+        using var verified = await patient.PostAsJsonAsync("/api/v1/intake/access/verify-otp", new VerifyIntakeOtpRequest { InviteToken = inviteToken, Contact = email, Channel = OtpChannel.Email, OtpCode = factory.LastIntakeOtpCode! });
+        Assert.Equal(HttpStatusCode.OK, verified.StatusCode);
+        var access = (await verified.Content.ReadFromJsonAsync<IntakeInviteResult>())!;
+        Assert.True(access.IsValid);
+        patient.DefaultRequestHeaders.Add(IntakeAccessHeaders.AccessToken, access.AccessToken);
     }
 
     private static UpdateIntakeRequest UpdateFor(IntakeResponse intake, DateTime? version)

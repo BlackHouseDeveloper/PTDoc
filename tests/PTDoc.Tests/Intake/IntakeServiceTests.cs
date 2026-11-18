@@ -66,6 +66,30 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.False(IntakeConsentJson.IsPhiReleaseConsentActive(saved));
     }
 
+    [Fact]
+    public async Task RevokedFinalAttestation_CanSaveDraftButCannotSubmit()
+    {
+        var patient = CreatePatient("Synthetic", "Attestation");
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        draft.ConsentPacket = new() { TreatmentConsentAccepted = true, HipaaAcknowledged = true, FinalAttestationAccepted = true };
+        var timestamp = new DateTime(2026, 8, 21, 18, 30, 0, DateTimeKind.Utc);
+        Assert.True(IntakeConsentJson.ApplyWrittenRevocation(draft.ConsentPacket, ["finalAttestationAccepted"], timestamp).IsValid);
+        await _service.SaveDraftAsync(draft);
+
+        var resumed = (await _service.GetDraftByPatientIdAsync(patient.Id))!;
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SubmitAsync(resumed));
+        Assert.Contains("revoked", error.Message, StringComparison.OrdinalIgnoreCase);
+        var saved = await _context.IntakeForms.AsNoTracking().SingleAsync();
+        Assert.False(saved.IsLocked);
+        Assert.Null(saved.SubmittedAt);
+        Assert.True(IntakeConsentJson.TryParse(saved.Consents, out var packet, out _));
+        Assert.True(packet.FinalAttestationAccepted);
+        Assert.Equal(timestamp, packet.LastRevocationAtUtc);
+        Assert.True(IntakeConsentJson.IsRevoked(packet, "finalAttestationAccepted"));
+    }
+
     public IntakeServiceTests()
     {
         _tenantContext.Setup(x => x.GetCurrentClinicId()).Returns(_clinicId);

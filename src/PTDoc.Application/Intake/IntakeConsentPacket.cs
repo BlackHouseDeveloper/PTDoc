@@ -256,6 +256,11 @@ public static class IntakeConsentJson
             {
                 result.AddError("treatmentConsentAccepted", "Treatment consent has been revoked and must be re-authorized before submission.");
             }
+
+            if (IsRevoked(packet, "finalAttestationAccepted"))
+            {
+                result.AddError("finalAttestationAccepted", "Final attestation has been revoked. This intake cannot be submitted.");
+            }
         }
 
         return result;

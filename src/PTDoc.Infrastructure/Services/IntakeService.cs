@@ -486,7 +486,9 @@ public sealed class IntakeService : IIntakeService
         var agreements = IntakeDraftPersistence.BuildCanonicalConsentPacket(canonicalState);
         if (!IntakeConsentJson.RetainsRecordedRevocations(intake.Consents, IntakeConsentJson.Serialize(agreements)))
             throw new InvalidOperationException(IntakeConsentJson.StaleRevocationMessage);
-        if (IntakeConsentJson.IsRevoked(agreements, "hipaaAcknowledged") || IntakeConsentJson.IsRevoked(agreements, "treatmentConsentAccepted"))
+        if (IntakeConsentJson.IsRevoked(agreements, "hipaaAcknowledged")
+            || IntakeConsentJson.IsRevoked(agreements, "treatmentConsentAccepted")
+            || IntakeConsentJson.IsRevoked(agreements, "finalAttestationAccepted"))
             throw new InvalidOperationException("A required consent has been revoked. This intake cannot be submitted.");
 
         canonicalState = JsonSerializer.Deserialize<IntakeResponseDraft>(await IntakeProfileUpdates.PrepareAsync(

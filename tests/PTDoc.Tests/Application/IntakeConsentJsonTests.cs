@@ -26,6 +26,27 @@ public sealed class IntakeConsentJsonTests
         Assert.Equal("synthetic-reference", saved.AdditionalData!["evidenceRef"].GetString());
     }
 
+    [Theory]
+    [InlineData(true, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, null, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, null, false)]
+    [InlineData(null, true, false)]
+    [InlineData(null, false, false)]
+    [InlineData(null, null, true)]
+    public void RetainsRecordedRevocations_RequiresSameHistoricalAcceptance(bool? recorded, bool? incoming, bool retained)
+    {
+        var packet = new IntakeConsentPacket { PhiReleaseAuthorized = recorded };
+        var timestamp = new DateTime(2026, 8, 21, 18, 30, 0, DateTimeKind.Utc);
+        Assert.True(IntakeConsentJson.ApplyWrittenRevocation(packet, ["phiReleaseAuthorized"], timestamp).IsValid);
+        var stored = IntakeConsentJson.Serialize(packet);
+        packet.PhiReleaseAuthorized = incoming;
+
+        Assert.Equal(retained, IntakeConsentJson.RetainsRecordedRevocations(stored, IntakeConsentJson.Serialize(packet)));
+    }
+
     [Fact]
     public void TryParse_LegacyHipaaPayload_ReadsHipaaAcknowledgement()
     {

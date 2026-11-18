@@ -90,7 +90,7 @@ The following checks predate the rebase and are retained for traceability.
 | dotnet format whitespace (Application and Tests, --no-restore --verify-no-changes --include affected C# files) | PASS. |
 | python3 workflow.py check 11; git diff --check | PASS: requirements, specification, local links and whitespace. |
 
-## Verification against November 18 main
+## Verification of the rebased head `8eabc212` against November 18 main
 
 Combined-source checks use .NET SDK 8.0.417, the repository workflow’s Release test project and serial xUnit collection setting. GitHub’s PR checks identify the published head.
 
@@ -120,6 +120,24 @@ git diff --check origin/main
 ```
 
 The browser matrix uses a disposable Development SQLite database, local API/Web hosts and synthetic notes. For each visit type, use Space to select release and a named recipient, save, reload and compare the contact and selection IDs. In the full intake, activate Edit medical history with Enter, verify the focused heading, then check the saved medications and both Other fields. For the historical case, apply a written PHI revocation to a packet with no selected recipients. Add a contact in the resumed draft, submit, reload and check the stored flag, key and timestamp alongside the disabled controls. The browser assertions also check the group’s bounds and document width.
+
+## Lite re-review of `8eabc212`
+
+Copilot reported two new findings and marked the earlier recipient-validation finding resolved. [Lite review](https://github.com/BlackHouseDeveloper/PTDoc/pull/166#pullrequestreview-5966642429)
+
+| Finding | Verification and disposition |
+| --- | --- |
+| Stale saves could flip the recorded acceptance of a revoked consent | Invalid. All supported revocable acceptance fields are nullable booleans. The existing comparison distinguishes JSON `True`, `False` and an absent property (`Undefined`). Nine tests on the reviewed code confirmed that the three identical pairs pass and all six changes are rejected. [Finding](https://github.com/BlackHouseDeveloper/PTDoc/pull/166#discussion_r4622096970) |
+| A revoked final attestation could still be submitted | Valid. The original HTTP tests returned 200 for full Evaluation and shortened Daily intakes, and the direct service also submitted the draft. The fix checks the canonical revocation before submission. Staff and verified patient-link requests now receive 400 with a field error. The direct service rejects submission and still allows draft saves. The tests check that the draft stays unlocked and its evidence survives. [Finding](https://github.com/BlackHouseDeveloper/PTDoc/pull/166#discussion_r4622097031) |
+
+On the corrected source, the Release build and the Debug iOS, Android and Mac Catalyst builds succeeded with zero warnings and errors. All 624 intake tests and all 2,733 CoreCi tests passed with zero skips, including the 12 new cases. Format verification passed for Core, Application, Infrastructure, API, UI and Tests.
+
+Synthetic Chromium verification passed 30 of 30 scenarios on the corrected source. At each of 390, 768 and 1440 px, all five visit types passed the existing PHI release scenario and a separate final-attestation revocation scenario. After reload, the accuracy checkbox and Submit were disabled. Directly submitting the same synthetic draft returned a field-specific 400 and preserved the unlocked draft and consent record. The per-scenario results are under ignored `output/playwright/pr166-lite-review/matrix.txt`.
+
+```sh
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter 'FullyQualifiedName~Intake' --verbosity quiet --logger 'trx;LogFileName=pr166-lite-intake.trx' -- xUnit.ParallelizeTestCollections=false
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter 'Category=CoreCi' --verbosity normal --logger 'trx;LogFileName=pr166-lite-core.trx' -- xUnit.ParallelizeTestCollections=false
+```
 
 ## Remaining acceptance work
 
