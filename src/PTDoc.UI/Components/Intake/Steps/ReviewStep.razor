@@ -565,13 +565,13 @@
             {
                 <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
                     <input type="checkbox" class="form-check-input" data-testid="intake-treatment-consent"
-                           checked="@(ConsentPacket.TreatmentConsentAccepted == true)" @onchange="OnTreatmentChanged" disabled="@IsReadOnlyReview" />
+                           checked="@TreatmentConsentComplete" @onchange="OnTreatmentChanged" disabled="@(IsReadOnlyReview || IsConsentRevoked("treatmentConsentAccepted"))" />
                     <span>I consent to receive physical therapy treatment.</span>
                 </label>
             }
 
             <label class="review-step__check-row @(IsReadOnlyReview ? "review-step__check-row--disabled" : string.Empty)">
-                <input type="checkbox" class="form-check-input" checked="@FinalAttestationAccepted" @onchange="OnAccuracyChanged" disabled="@IsReadOnlyReview" />
+                <input type="checkbox" class="form-check-input" checked="@FinalAttestationAccepted" @onchange="OnAccuracyChanged" disabled="@(IsReadOnlyReview || IsConsentRevoked("finalAttestationAccepted"))" />
                 <span>I have reviewed my answers and confirm they are accurate.</span>
             </label>
         </div>
@@ -838,7 +838,7 @@
             <StatusBadge Text="@(HipaaConsentComplete ? "HIPAA Acknowledged" : "HIPAA Not Acknowledged")" Variant="@(HipaaConsentComplete ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
             <StatusBadge Text="@(TreatmentConsentComplete ? "Treatment Consent Accepted" : "Treatment Consent Inactive")" Variant="@(TreatmentConsentComplete ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
             <StatusBadge Text="Terms Accepted" Variant="@(State.TermsOfServiceAccepted ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
-            <StatusBadge Text="Answers Confirmed" Variant="@(FinalAttestationAccepted ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
+            <StatusBadge Text="@(FinalAttestationAccepted ? "Answers Confirmed" : "Answers Unconfirmed")" Variant="@(FinalAttestationAccepted ? BadgeVariant.Success : BadgeVariant.Warning)" ShowDot="true" />
         </div>
 
         <div class="@(CompletionReady ? "review-step__success-box" : "review-step__warning-box")">
@@ -963,17 +963,14 @@
         && !string.IsNullOrWhiteSpace(ValidationMessage)
         && ValidationMessage.StartsWith("Intake submitted successfully", StringComparison.Ordinal);
     private bool CompletionReady => IsReadOnlyReview || SubmitReady;
-    private bool HasRecordedRevocation => ConsentPacket.WrittenRevocationReceived == true || ConsentPacket.RevokedConsentKeys.Count > 0;
+    private bool HasRecordedRevocation => ConsentPacket.HasRevocationHistory;
     private bool MediaConsentAllowed => ConsentPacket.MediaConsentAccepted == true && !IsConsentRevoked("mediaConsentAccepted");
     private string PhiReleaseStatusText => IsConsentRevoked("phiReleaseAuthorized") ? "Revoked" : PhiReleaseAllowed ? "Authorized" : "Not Authorized";
     private bool PhiReleaseAllowed => IntakeConsentJson.IsPhiReleaseConsentActive(ConsentPacket);
     private IReadOnlyList<AuthorizedContact> PopulatedAuthorizedContacts => ConsentPacket.AuthorizedContacts
         .Where(contact => !contact.IsEmpty)
         .ToList();
-    private bool PhiRecipientsComplete => ConsentPacket.PhiReleaseAuthorized != true
-        || PopulatedAuthorizedContacts.Count == 0
-        || ConsentPacket.PhiAuthorizedContactIds.Any(id => PopulatedAuthorizedContacts.Any(contact =>
-            string.Equals(contact.Id, id, StringComparison.OrdinalIgnoreCase)));
+    private bool PhiRecipientsComplete => IntakeConsentJson.HasRequiredPhiRecipient(ConsentPacket);
     private string PhiRecipientSummary
     {
         get
@@ -995,7 +992,7 @@
     private bool DryNeedlingAllowed => IntakeConsentJson.IsDryNeedlingConsentActive(ConsentPacket);
     private bool PelvicFloorAllowed => IntakeConsentJson.IsPelvicFloorConsentActive(ConsentPacket);
     private bool BillingConsentAuthorized => IntakeConsentJson.IsCreditCardAuthorizationConsentActive(ConsentPacket);
-    private bool FinalAttestationAccepted => ConsentPacket.FinalAttestationAccepted ?? State.AccuracyConfirmed;
+    private bool FinalAttestationAccepted => (ConsentPacket.FinalAttestationAccepted ?? State.AccuracyConfirmed) && !IsConsentRevoked("finalAttestationAccepted");
     private int? PainLevel => State.PainSeverityProvided ? State.PainSeverityScore : null;
     private int PainLevelPercent => PainLevel.HasValue ? PainLevel.Value * 10 : 0;
     private string PainDuration => GetPainDuration(State.PainDetailDrafts);
@@ -1216,10 +1213,7 @@
         return Task.CompletedTask;
     }
 
-    private bool IsConsentRevoked(string key)
-    {
-        return ConsentPacket.RevokedConsentKeys.Any(existing => string.Equals(existing, key, StringComparison.OrdinalIgnoreCase));
-    }
+    private bool IsConsentRevoked(string key) => IntakeConsentJson.IsRevoked(ConsentPacket, key);
 
     private static string ConsentLabel(string key) => key.ToLowerInvariant() switch
     {
@@ -1233,6 +1227,7 @@
         "pelvicfloorconsentaccepted" => "Pelvic Floor Therapy",
         "creditcardauthorizationaccepted" => "Billing Authorization",
         "mediaconsentaccepted" => "Media Consent",
+        "finalattestationaccepted" => "Final Attestation",
         _ => "Other consent"
     };
 

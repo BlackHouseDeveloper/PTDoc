@@ -684,6 +684,49 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
         Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync($"/api/v1/intake/{issued.Id}", update)).StatusCode);
     }
 
+    [Theory]
+    [InlineData(NoteType.Evaluation)]
+    [InlineData(NoteType.Daily)]
+    public async Task RecordedPhiRevocation_AllowsNewContactWithoutSelectingRecipient(NoteType type)
+    {
+        using var client = factory.CreateClientWithRole(Roles.PT);
+        var (patientId, noteId, _) = await CreateFixtureAsync(client, type);
+        var issued = await IssueAsync(client, patientId, noteId);
+        var path = $"/api/v1/intake/{issued.Id}";
+        var initial = UpdateFor(issued, issued.LastModifiedUtc);
+        initial.ConsentPacket = new() { HipaaAcknowledged = true, TreatmentConsentAccepted = true, FinalAttestationAccepted = true, PhiReleaseAuthorized = true };
+        using var saved = await client.PutAsJsonAsync(path, initial);
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        using var revoked = await client.PostAsJsonAsync(path + "/consents/revoke", new { consentKeys = new[] { "phiReleaseAuthorized" }, writtenRevocationReceived = true });
+        Assert.Equal(HttpStatusCode.OK, revoked.StatusCode);
+        var current = (await revoked.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        var update = UpdateFor(current, current.LastModifiedUtc);
+        using var stale = await client.PutAsJsonAsync(path, update);
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+
+        var packet = current.ConsentPacket!;
+        var timestamp = packet.LastRevocationAtUtc;
+        Assert.NotNull(timestamp);
+        packet.AuthorizedContacts.Add(new() { Id = "contact-1", Name = "Synthetic", PhoneNumber = "555-0101", Relationship = "Friend" });
+        update.ConsentPacket = packet;
+        using var resumed = await client.PutAsJsonAsync(path, update);
+        Assert.Equal(HttpStatusCode.OK, resumed.StatusCode);
+        var ready = (await resumed.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        using var submitted = await client.PostAsJsonAsync(path + "/submit", new SubmitIntakeRequest { ExpectedLastModifiedUtc = ready.LastModifiedUtc });
+        Assert.Equal(HttpStatusCode.OK, submitted.StatusCode);
+        var locked = (await client.GetFromJsonAsync<IntakeResponse>(path))!;
+        Assert.True(locked.Locked);
+        Assert.True(locked.ConsentPacket!.PhiReleaseAuthorized);
+        Assert.False(IntakeConsentJson.IsPhiReleaseConsentActive(locked.ConsentPacket));
+        Assert.Equal(timestamp, locked.ConsentPacket.LastRevocationAtUtc);
+        var snapshot = JsonSerializer.Deserialize<IntakeResponseDraft>(locked.ResponseJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))!.ConsentPacket!;
+        Assert.Equal(timestamp, snapshot.LastRevocationAtUtc);
+        Assert.False(IntakeConsentJson.IsPhiReleaseConsentActive(snapshot));
+        Assert.Equal("contact-1", Assert.Single(locked.ConsentPacket.AuthorizedContacts).Id);
+        Assert.Empty(locked.ConsentPacket.PhiAuthorizedContactIds);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync(path, update)).StatusCode);
+    }
+
     private static UpdateIntakeRequest UpdateFor(IntakeResponse intake, DateTime? version)
     {
         var request = Update(version);

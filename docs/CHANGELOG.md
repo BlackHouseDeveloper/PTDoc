@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed - Client review Plan 11
 
-- Grouped PHI release choice with authorized contacts and removed intake revocation inputs. Historical revocations remain read-only and inactive consents are not shown as affirmative.
+- Grouped PHI release authorization, status, contacts and recipients on the intake Review step. Previously recorded revocations appear as read-only history in full and shortened intakes.
+- Fixed submission for a revoked PHI release with a contact and no selected recipient. Draft saves, sync and submission preserve recorded consent flags, revocation timestamps and historical recipient IDs.
 
 ### Fixed - Confirmed intake wording in AI requests
 
@@ -573,7 +574,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed - Client review Plan 10
 
 - Clarified patient intake medical-history and medication selection, added section-bound Other text, and opened functional limitation groups by default while preserving stored selections and instrument wording.
-
 
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 

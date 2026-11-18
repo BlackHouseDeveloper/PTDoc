@@ -3,17 +3,23 @@
     <p>Your protected health information is secure and will only be used for treatment, payment, and healthcare operations as permitted by law.</p>
 
     <label class="hipaa-card__checkbox">
-        <input type="checkbox" class="form-check-input" checked="@HipaaAcknowledged" @onchange="OnAcknowledgedChanged" data-testid="hipaa-ack-checkbox" />
+        <input type="checkbox" class="form-check-input" checked="@(HipaaAcknowledged && !HipaaRevoked)" disabled="@HipaaRevoked" @onchange="OnAcknowledgedChanged" data-testid="hipaa-ack-checkbox" />
         <span>I acknowledge this HIPAA Privacy Notice.</span>
     </label>
 
     <label class="hipaa-card__checkbox">
-        <input type="checkbox" class="form-check-input" checked="@ConsentToTreatAcknowledged" @onchange="OnConsentToTreatChanged" data-testid="consent-to-treat-checkbox" />
+        <input type="checkbox" class="form-check-input" checked="@(ConsentToTreatAcknowledged && !TreatmentRevoked)" disabled="@TreatmentRevoked" @onchange="OnConsentToTreatChanged" data-testid="consent-to-treat-checkbox" />
         <span>I consent to receive physical therapy treatment.</span>
     </label>
+    @if (HipaaRevoked || TreatmentRevoked)
+    {
+        <p>Previously recorded consent revocations remain in effect. See Review for details.</p>
+    }
 </section>
 
 @code {
+    [Parameter] public bool HipaaRevoked { get; set; }
+    [Parameter] public bool TreatmentRevoked { get; set; }
     [Parameter] public bool HipaaAcknowledged { get; set; }
     [Parameter] public EventCallback<bool> HipaaAcknowledgedChanged { get; set; }
 

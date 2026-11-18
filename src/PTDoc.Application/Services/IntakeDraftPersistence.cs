@@ -72,9 +72,15 @@ public static class IntakeDraftPersistence
         Guid intakeId,
         Guid patientId,
         DateTime submittedAtUtc,
-        DateTime lastModifiedUtc)
+        DateTime lastModifiedUtc,
+        IntakeConsentPacket? recordedConsents = null)
     {
         var draft = DeserializeDraft(responseJson);
+        if (recordedConsents?.HasRevocationHistory == true)
+        {
+            draft.ConsentPacket = recordedConsents;
+            HydrateConsentConvenienceFields(draft);
+        }
         return SerializeSubmittedPersistenceJson(draft, intakeId, patientId, submittedAtUtc, lastModifiedUtc);
     }
 
@@ -117,16 +123,16 @@ public static class IntakeDraftPersistence
         ArgumentNullException.ThrowIfNull(draft);
 
         var packet = CloneConsentPacket(draft.ConsentPacket) ?? new IntakeConsentPacket();
-        packet.HipaaAcknowledged ??= draft.HipaaAcknowledged;
-        packet.TreatmentConsentAccepted ??= draft.ConsentToTreatAcknowledged;
-        packet.PhiReleaseAuthorized ??= draft.PhiReleaseAuthorized;
-        packet.CommunicationCallConsent ??= draft.AllowPhoneCalls;
-        packet.CommunicationTextConsent ??= draft.AllowTextMessages;
-        packet.CommunicationEmailConsent ??= draft.AllowEmailMessages;
-        packet.DryNeedlingConsentAccepted ??= draft.DryNeedlingEligible;
-        packet.PelvicFloorConsentAccepted ??= draft.PelvicFloorTherapyEligible;
-        packet.CreditCardAuthorizationAccepted ??= draft.BillingConsentAuthorized;
-        packet.FinalAttestationAccepted ??= draft.AccuracyConfirmed;
+        packet.HipaaAcknowledged ??= LegacyAcceptance("hipaaAcknowledged", draft.HipaaAcknowledged);
+        packet.TreatmentConsentAccepted ??= LegacyAcceptance("treatmentConsentAccepted", draft.ConsentToTreatAcknowledged);
+        packet.PhiReleaseAuthorized ??= LegacyAcceptance("phiReleaseAuthorized", draft.PhiReleaseAuthorized);
+        packet.CommunicationCallConsent ??= LegacyAcceptance("communicationCallConsent", draft.AllowPhoneCalls);
+        packet.CommunicationTextConsent ??= LegacyAcceptance("communicationTextConsent", draft.AllowTextMessages);
+        packet.CommunicationEmailConsent ??= LegacyAcceptance("communicationEmailConsent", draft.AllowEmailMessages);
+        packet.DryNeedlingConsentAccepted ??= LegacyAcceptance("dryNeedlingConsentAccepted", draft.DryNeedlingEligible);
+        packet.PelvicFloorConsentAccepted ??= LegacyAcceptance("pelvicFloorConsentAccepted", draft.PelvicFloorTherapyEligible);
+        packet.CreditCardAuthorizationAccepted ??= LegacyAcceptance("creditCardAuthorizationAccepted", draft.BillingConsentAuthorized);
+        packet.FinalAttestationAccepted ??= LegacyAcceptance("finalAttestationAccepted", draft.AccuracyConfirmed);
 
         if (!string.IsNullOrWhiteSpace(draft.PhoneNumber))
         {
@@ -146,6 +152,9 @@ public static class IntakeDraftPersistence
         MergeLegacyRevocation(packet, "communicationEmailConsent", draft.RevokeMarketingCommunications);
 
         return packet;
+
+        // When the recorded acceptance was absent, a legacy default must not invent one.
+        bool? LegacyAcceptance(string key, bool value) => IntakeConsentJson.IsRevoked(packet, key) ? null : value;
     }
 
     public static void HydrateConsentConvenienceFields(IntakeResponseDraft draft)
@@ -312,16 +321,8 @@ public static class IntakeDraftPersistence
 
     private static void MergeLegacyRevocation(IntakeConsentPacket packet, string key, bool revoked)
     {
-        if (revoked)
-        {
-            if (!packet.RevokedConsentKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
-            {
-                packet.RevokedConsentKeys.Add(key);
-            }
-
-            return;
-        }
-
-        // Absent legacy inputs cannot cancel a revocation recorded in the canonical packet.
+        // Only an affirmative legacy input adds evidence. An absent input cannot cancel it.
+        if (revoked && !IntakeConsentJson.IsRevoked(packet, key))
+            packet.RevokedConsentKeys.Add(key);
     }
 }

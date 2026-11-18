@@ -72,6 +72,8 @@
         AdjusterFaxChanged="OnAdjusterFaxChanged" />
 
     <HipaaPrivacyNoticeCard
+        HipaaRevoked="@IntakeConsentJson.IsRevoked(ConsentPacket, "hipaaAcknowledged")"
+        TreatmentRevoked="@IntakeConsentJson.IsRevoked(ConsentPacket, "treatmentConsentAccepted")"
         HipaaAcknowledged="@HipaaAcknowledged"
         HipaaAcknowledgedChanged="OnHipaaAcknowledgedChanged"
         ConsentToTreatAcknowledged="@TreatmentConsentAccepted"

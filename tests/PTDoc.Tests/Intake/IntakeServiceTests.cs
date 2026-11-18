@@ -24,6 +24,48 @@ public sealed class IntakeServiceTests : IDisposable
     private readonly Guid _clinicId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
 
+    [Fact]
+    public async Task WrittenRevocation_StaleDraftCannotOverwriteEvidence_ReloadCanSaveAndSubmit()
+    {
+        var patient = CreatePatient("Synthetic", "Revocation");
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var stale = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        var intake = await _context.IntakeForms.SingleAsync();
+        var packet = new IntakeConsentPacket
+        {
+            TreatmentConsentAccepted = true,
+            HipaaAcknowledged = true,
+            PhiReleaseAuthorized = true,
+            AuthorizedContacts = [new() { Id = "recipient-1", Name = "Synthetic contact", PhoneNumber = "555-0101", Relationship = "Friend" }],
+            PhiAuthorizedContactIds = ["recipient-1"]
+        };
+        var timestamp = new DateTime(2026, 8, 21, 18, 30, 0, DateTimeKind.Utc);
+        Assert.True(IntakeConsentJson.ApplyWrittenRevocation(packet, ["phiReleaseAuthorized"], timestamp).IsValid);
+        intake.Consents = IntakeConsentJson.Serialize(packet);
+        await _context.SaveChangesAsync();
+
+        Assert.Equal(IntakeConsentJson.StaleRevocationMessage,
+            (await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SaveDraftAsync(stale))).Message);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SubmitAsync(stale));
+        var resumed = (await _service.GetDraftByPatientIdAsync(patient.Id))!;
+        resumed.RevokePhiRelease = false;
+        await _service.SaveDraftAsync(resumed);
+        await _service.SubmitAsync(resumed);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SaveDraftAsync(resumed));
+
+        var locked = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
+        Assert.True(locked.IsLocked);
+        var saved = locked.ConsentPacket!;
+        Assert.True(saved.WrittenRevocationReceived);
+        Assert.Equal(timestamp, saved.LastRevocationAtUtc);
+        Assert.Equal("phiReleaseAuthorized", Assert.Single(saved.RevokedConsentKeys));
+        Assert.True(saved.PhiReleaseAuthorized);
+        Assert.Equal("recipient-1", Assert.Single(saved.PhiAuthorizedContactIds));
+        Assert.Equal("recipient-1", Assert.Single(saved.AuthorizedContacts).Id);
+        Assert.False(IntakeConsentJson.IsPhiReleaseConsentActive(saved));
+    }
+
     public IntakeServiceTests()
     {
         _tenantContext.Setup(x => x.GetCurrentClinicId()).Returns(_clinicId);

@@ -290,6 +290,35 @@ public sealed class StructuredIntakeComponentsTests : TestContext
         Assert.True(IntakeConsentJson.IsPhiReleaseConsentActive(reloaded));
     }
 
+    [Theory]
+    [InlineData(IntakeQuestionnaireDefinitions.EvaluationFullV1)]
+    [InlineData(IntakeQuestionnaireDefinitions.DailyV1)]
+    public void ReviewStep_OnlyPhiRevoked_AllowsSubmissionWithoutARecipient(string definition)
+    {
+        var packet = new IntakeConsentPacket
+        {
+            TreatmentConsentAccepted = true,
+            HipaaAcknowledged = true,
+            FinalAttestationAccepted = true,
+            PhiReleaseAuthorized = true,
+            RevokedConsentKeys = ["phiReleaseAuthorized"],
+            AuthorizedContacts = [new AuthorizedContact { Id = "contact-1", Name = "Synthetic", PhoneNumber = "555-0101", Relationship = "Friend" }]
+        };
+        var state = new IntakeWizardState
+        {
+            TermsOfServiceAccepted = true,
+            QuestionnaireDefinitionId = definition,
+            VisitQuestionnaire = definition == IntakeQuestionnaireDefinitions.DailyV1 ? new() { Daily = new() } : null,
+            ConsentPacket = packet
+        };
+        var cut = RenderComponent<ReviewStep>(p => p.Add(c => c.State, state));
+        Assert.True(cut.Find(".review-step__recipient-fieldset input").HasAttribute("disabled"));
+        Assert.False(cut.Find("[data-testid='submit-button']").HasAttribute("disabled"));
+        Assert.True(IntakeConsentJson.Validate(packet, requireHipaaAcknowledgement: true).IsValid);
+        Assert.True(packet.PhiReleaseAuthorized);
+        Assert.Empty(packet.PhiAuthorizedContactIds);
+    }
+
     [Fact]
     public void ReviewStep_NewIntakeGroupsReleaseWithContactsAndHasNoRevocationInputs()
     {

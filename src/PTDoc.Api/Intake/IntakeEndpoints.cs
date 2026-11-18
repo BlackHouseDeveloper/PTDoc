@@ -457,7 +457,7 @@ public static class IntakeEndpoints
                 requireHipaaAcknowledgement: false,
                 out var normalizedConsents,
                 out _,
-                out var updateValidationProblem))
+                out var updateValidationProblem, intake.Consents))
             return updateValidationProblem!;
 
         string responseJson;
@@ -561,7 +561,8 @@ public static class IntakeEndpoints
             intake.Id,
             intake.PatientId,
             intake.SubmittedAt.Value,
-            intake.LastModifiedUtc);
+            intake.LastModifiedUtc,
+            consentPacket);
         intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, intake.ResponseJson);
         try
         {
@@ -1218,7 +1219,8 @@ public static class IntakeEndpoints
         bool requireHipaaAcknowledgement,
         out string normalizedConsents,
         out IntakeConsentPacket consentPacket,
-        out IResult? validationProblem)
+        out IResult? validationProblem,
+        string? recordedConsents = null)
     {
         if (!IntakeConsentJson.TryParse(consentsJson, out consentPacket, out var parseError))
         {
@@ -1227,6 +1229,13 @@ public static class IntakeEndpoints
             {
                 { nameof(IntakeForm.Consents), [parseError ?? "Consents data is not valid JSON."] }
             });
+            return false;
+        }
+
+        if (recordedConsents is not null && !IntakeConsentJson.RetainsRecordedRevocations(recordedConsents, consentsJson))
+        {
+            normalizedConsents = recordedConsents;
+            validationProblem = Results.Conflict(new { error = IntakeConsentJson.StaleRevocationMessage });
             return false;
         }
 
