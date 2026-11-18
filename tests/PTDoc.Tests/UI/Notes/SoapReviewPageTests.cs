@@ -9,6 +9,27 @@ namespace PTDoc.Tests.UI.Notes;
 [Trait("Category", "CoreCi")]
 public sealed class SoapReviewPageTests : TestContext
 {
+    [Theory]
+    [InlineData(null, "Unable to rise from chair")]
+    [InlineData("difficulty-v1", "Difficulty with: rise from chair")]
+    public void Review_UsesConfirmedWordingOnceWithoutChangingCanonicalValue(string? version, string display)
+    {
+        const string canonical = "Unable to rise from chair";
+        var note = new SoapNoteVm
+        {
+            Subjective = new()
+            {
+                FunctionalLimitations = [canonical],
+                StructuredFunctionalLimitations =
+            [new() { Id = "stable-chair", Description = canonical, WordingVersion = version }]
+            }
+        };
+        var cut = RenderComponent<SoapReviewPage>(p => p.Add(c => c.Note, note));
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(cut.Markup, System.Text.RegularExpressions.Regex.Escape(display)));
+        if (version is not null) Assert.DoesNotContain(canonical, cut.Markup);
+        Assert.Equal(canonical, Assert.Single(note.Subjective.StructuredFunctionalLimitations).Description);
+    }
+
     [Fact]
     public void SoapReviewPage_RendersStructuredObjectiveAndPlanFields()
     {

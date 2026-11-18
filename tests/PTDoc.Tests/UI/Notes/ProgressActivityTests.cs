@@ -57,6 +57,26 @@ public sealed class ProgressActivityTests : TestContext
         Assert.Equal(original, JsonSerializer.Serialize(value));
     }
 
+    [Theory]
+    [InlineData(null, "Unable to rise from chair")]
+    [InlineData("difficulty-v1", "Difficulty with: rise from chair")]
+    public void ActivityEditor_ConfirmedWordingPreservesCanonicalBaselineAndChangeIdentity(string? version, string display)
+    {
+        const string canonical = "Unable to rise from chair";
+        var baseline = ProgressActivityTracking.RecordedActivity(BodyPart.Knee, canonical, "Mobility", wordingVersion: version);
+        var value = new ProgressActivityTrackingV1 { Baseline = [baseline] };
+        ProgressActivityTrackingV1? changed = null;
+        var cut = RenderComponent<ProgressActivityEditor>(p => p.Add(c => c.Value, value)
+            .Add(c => c.IssuedOptions, new[] { new ProgressActivityReference("catalog-id", BodyPart.Knee, canonical, "Mobility", "catalog") })
+            .Add(c => c.ValueChanged, EventCallback.Factory.Create<ProgressActivityTrackingV1>(this, v => changed = v)));
+        Assert.Contains(display, cut.Markup);
+        Assert.Empty(cut.FindAll("input[type='checkbox']"));
+        cut.Find("select").Change("same");
+        Assert.NotNull(changed);
+        Assert.Equal(baseline, Assert.Single(changed.Baseline));
+        Assert.Contains(baseline.Id, changed.SameIds);
+    }
+
     [Fact]
     public void ActivityEditor_UsesRecordedBaselineAndFullMultiRegionCatalog_WithExclusiveStates()
     {

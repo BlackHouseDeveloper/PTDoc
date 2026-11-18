@@ -1,4 +1,5 @@
 using System.Text;
+using PTDoc.Application.Intake;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Core.Models;
 
@@ -109,7 +110,7 @@ public sealed class AssessmentCompositionService : IAssessmentCompositionService
         return string.Join(", ",
             limitations
                 .Where(item => !string.IsNullOrWhiteSpace(item.Description))
-                .Select(item => item.Description)
+                .Select(item => FunctionalLimitationDisplayText.Format(item.Description, item.WordingVersion))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(6));
     }

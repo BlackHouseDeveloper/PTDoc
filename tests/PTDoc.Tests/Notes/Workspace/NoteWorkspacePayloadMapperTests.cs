@@ -15,6 +15,40 @@ public sealed class NoteWorkspacePayloadMapperTests
     private readonly NoteWorkspacePayloadMapper _mapper =
         new(new IntakeReferenceDataCatalogService(), new OutcomeMeasureRegistry());
 
+    [Theory]
+    [InlineData(null, "Unable to rise from chair without pushing off with hands")]
+    [InlineData("difficulty-v1", "Difficulty with: rise from chair without pushing off with hands")]
+    public void ConfirmedWording_RoundTripsWithoutChangingCanonicalDescription(string? version, string display)
+    {
+        const string canonical = "Unable to rise from chair without pushing off with hands";
+        var payload = new NoteWorkspaceV2Payload
+        {
+            Subjective = new()
+            {
+                FunctionalLimitations = [new() { Id = "stable-chair", BodyPart = BodyPart.Knee,
+                Category = "Mobility & Transfers", Description = canonical, WordingVersion = version }]
+            }
+        };
+        var ui = _mapper.MapToUiPayload(payload);
+        var entry = Assert.Single(ui.Subjective.StructuredFunctionalLimitations);
+        Assert.Equal(canonical, entry.Description);
+        Assert.Equal(display, entry.DisplayDescription);
+        Assert.Equal(display, ui.Assessment.FunctionalLimitations);
+        foreach (var structured in new[] { true, false })
+        {
+            if (!structured) ui.Subjective.StructuredFunctionalLimitations.Clear();
+            var saved = _mapper.MapToV2Payload(ui, NoteType.Evaluation);
+            var restored = Assert.Single(saved.Subjective.FunctionalLimitations);
+            Assert.Equal("stable-chair", restored.Id);
+            Assert.Equal(canonical, restored.Description);
+            Assert.Equal(version, restored.WordingVersion);
+            var baseline = Assert.Single(ProgressActivityTracking.BaselineFrom(saved, null).Baseline);
+            Assert.Equal(ProgressActivityTracking.RecordedActivity(BodyPart.Knee, canonical, "Mobility & Transfers").Id, baseline.Id);
+            Assert.Equal(canonical, baseline.Description);
+            Assert.Equal(version, baseline.WordingVersion);
+        }
+    }
+
     [Fact]
     public void MapToUiPayload_SplitsCatalogSelectionsFromLegacySubjectiveValues()
     {

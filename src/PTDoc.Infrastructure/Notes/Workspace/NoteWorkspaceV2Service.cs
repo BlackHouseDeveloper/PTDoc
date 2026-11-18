@@ -673,7 +673,8 @@ public sealed class NoteWorkspaceV2Service(
                     : entry.Selection.Id.Trim(),
                 BodyPart = entry.BodyPart,
                 Category = entry.Selection.Category.Trim(),
-                Description = FunctionalLimitationDisplayText.Format(entry.Selection.Activity.Trim(), entry.Selection.WordingVersion),
+                Description = entry.Selection.Activity.Trim(),
+                WordingVersion = entry.Selection.WordingVersion,
                 IsSourceBacked = true
             })
             .ToList();

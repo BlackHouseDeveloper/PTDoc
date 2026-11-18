@@ -288,7 +288,7 @@
                                        checked="@isSelected"
                                        disabled="@IsReadOnly"
                                        @onchange="e => ToggleStructuredFunctionalLimitation(category.Name, item, (bool)e.Value!)" />
-                                @item
+                                @DisplayFunctionalLimitation(category.Name, item)
                             </label>
                         }
                     </div>
@@ -302,7 +302,7 @@
                 @foreach (var limitation in VisibleStructuredFunctionalLimitations)
                 {
                     <div class="subjective-tab__selected-item">
-                        <span>@limitation.Category: @limitation.Description</span>
+                        <span>@limitation.Category: @limitation.DisplayDescription</span>
                         @if (!IsReadOnly)
                         {
                             <button type="button"
@@ -859,6 +859,12 @@
         await EnsureCatalogAsync();
         await VmChanged.InvokeAsync(_vm);
     }
+
+    private string DisplayFunctionalLimitation(string category, string description) =>
+        _vm.StructuredFunctionalLimitations.FirstOrDefault(entry =>
+            string.Equals(entry.BodyPart, _vm.SelectedBodyPart, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(entry.Category, category, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(entry.Description, description, StringComparison.OrdinalIgnoreCase))?.DisplayDescription ?? description;
 
     private bool HasStructuredFunctionalLimitation(string category, string description) =>
         _vm.StructuredFunctionalLimitations.Any(entry =>

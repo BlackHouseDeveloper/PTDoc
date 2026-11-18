@@ -24,6 +24,34 @@ public sealed class StructuredWorkspaceEditorsTests : TestContext
         Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
     }
 
+    [Theory]
+    [InlineData(null, "Unable to rise from chair")]
+    [InlineData("difficulty-v1", "Difficulty with: rise from chair")]
+    public void SubjectiveTab_ConfirmedWordingKeepsCatalogSelection(string? version, string display)
+    {
+        const string canonical = "Unable to rise from chair";
+        var service = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        service.Setup(s => s.GetBodyRegionCatalogAsync(BodyPart.Knee, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BodyRegionCatalog
+            {
+                BodyPart = BodyPart.Knee,
+                FunctionalLimitationCategories = [new() { Name = "Mobility", Items = [canonical] }]
+            });
+        Services.AddLogging(); Services.AddSingleton(service.Object);
+        var vm = new SubjectiveVm
+        {
+            SelectedBodyPart = "Knee",
+            StructuredFunctionalLimitations =
+            [new() { Id = "stable-chair", BodyPart = "Knee", Category = "Mobility", Description = canonical, WordingVersion = version }]
+        };
+        var cut = RenderComponent<SubjectiveTab>(p => p.Add(c => c.Vm, vm));
+        cut.WaitForAssertion(() => Assert.True(cut.Find("input[name='functional-limitations']").HasAttribute("checked")));
+        Assert.Contains(display, cut.Find("input[name='functional-limitations']").ParentElement!.TextContent);
+        Assert.Contains(display, cut.Find("[data-testid='subjective-structured-limitations']").TextContent);
+        Assert.Equal(canonical, Assert.Single(vm.StructuredFunctionalLimitations).Description);
+        Assert.Equal(version, vm.StructuredFunctionalLimitations[0].WordingVersion);
+    }
+
     [Fact]
     public void SubjectiveTab_LoadsCatalogBackedFunctionalLimitations()
     {

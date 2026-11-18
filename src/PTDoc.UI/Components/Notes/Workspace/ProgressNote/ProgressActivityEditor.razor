@@ -1,3 +1,4 @@
+@using PTDoc.Application.Intake
 @namespace PTDoc.UI.Components.Notes.Workspace.ProgressNote
 @using PTDoc.Application.Notes.Workspace
 @using PTDoc.Core.Models
@@ -16,8 +17,8 @@
     @foreach (var activity in Baseline)
     {
         <label @key="activity.Id" class="progress-activities__row">
-            <span>@activity.BodyPart — @activity.Description</span>
-            <select class="form-select" aria-label="@($"Change in {activity.BodyPart}: {activity.Description}")" value="@State(activity.Id)"
+            <span>@activity.BodyPart — @FunctionalLimitationDisplayText.Format(activity.Description, activity.WordingVersion)</span>
+            <select class="form-select" aria-label="@($"Change in {activity.BodyPart}: {FunctionalLimitationDisplayText.Format(activity.Description, activity.WordingVersion)}")" value="@State(activity.Id)"
                     @onchange="e => SetState(activity.Id, e.Value?.ToString())" data-testid="progress-activity-state">
                 <option value="">Not recorded</option>
                 <option value="improved">Improved</option><option value="same">Same</option><option value="worse">Worse</option>
@@ -32,7 +33,7 @@
         <label @key="activity.Id" class="progress-activities__row progress-subjective__choice">
             <input type="checkbox" checked="@NewlyDifficult.Any(a => a.Id == activity.Id)"
                    @onchange="e => ToggleNew(activity, e.Value is true)" data-testid="progress-new-activity" />
-            <span>@activity.BodyPart — @activity.Description</span>
+            <span>@activity.BodyPart — @FunctionalLimitationDisplayText.Format(activity.Description, activity.WordingVersion)</span>
         </label>
     }
 </fieldset>

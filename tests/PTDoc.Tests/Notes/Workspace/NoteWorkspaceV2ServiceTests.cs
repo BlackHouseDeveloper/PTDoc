@@ -329,7 +329,9 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Equal("Existing surgery details", seed.Payload.Subjective.NarrativeContext.PatientHistorySummary);
         var limitation = Assert.Single(seed.Payload.Subjective.FunctionalLimitations);
         Assert.Equal("stable-chair-id", limitation.Id);
-        Assert.Equal(expected, limitation.Description);
+        Assert.Equal("Unable to rise from chair without pushing off with hands", limitation.Description);
+        Assert.Equal(version, limitation.WordingVersion);
+        Assert.Equal(expected, FunctionalLimitationDisplayText.Format(limitation.Description, limitation.WordingVersion));
         Assert.Equal(originalJson, (await _context.IntakeForms.AsNoTracking().SingleAsync()).StructuredDataJson);
         Assert.Equal("{}", (await _context.ClinicalNotes.AsNoTracking().SingleAsync()).ContentJson);
     }
@@ -1698,7 +1700,9 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         var seededLimitation = Assert.Single(seed.Payload.Subjective.FunctionalLimitations);
         Assert.Equal(BodyPart.Knee, seededLimitation.BodyPart);
         Assert.Equal("Mobility & Transfers", seededLimitation.Category);
-        Assert.Equal(expectedDescription, seededLimitation.Description);
+        Assert.Equal("Unable to rise from chair without pushing off with hands", seededLimitation.Description);
+        Assert.Equal(wordingVersion, seededLimitation.WordingVersion);
+        Assert.Equal(expectedDescription, FunctionalLimitationDisplayText.Format(seededLimitation.Description, seededLimitation.WordingVersion));
         Assert.Equal("knee-mobility-chair-rise", seededLimitation.Id);
         Assert.Contains("Independent", seed.Payload.Subjective.PriorFunctionalLevel);
         Assert.Equal(new DateTime(2026, 3, 15), seed.Payload.Subjective.OnsetDate);

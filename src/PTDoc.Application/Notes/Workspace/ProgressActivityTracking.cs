@@ -6,7 +6,7 @@ using PTDoc.Core.Models;
 namespace PTDoc.Application.Notes.Workspace;
 
 public sealed record ProgressActivityReference(string Id, BodyPart BodyPart, string Description,
-    string Category, string SourceVersion, Guid? SourceNoteId = null, Guid? SourceIntakeId = null);
+    string Category, string SourceVersion, Guid? SourceNoteId = null, Guid? SourceIntakeId = null, string? WordingVersion = null);
 
 public sealed class ProgressActivityTrackingV1
 {
@@ -32,8 +32,8 @@ public static class ProgressActivityTracking
     }
 
     public static ProgressActivityReference RecordedActivity(BodyPart region, string description, string category,
-        Guid? sourceNoteId = null, Guid? sourceIntakeId = null) => new("recorded-" + Key(region, category, description),
-            region, description, category, "recorded-limitation", sourceNoteId, sourceIntakeId);
+        Guid? sourceNoteId = null, Guid? sourceIntakeId = null, string? wordingVersion = null) => new("recorded-" + Key(region, category, description),
+            region, description, category, "recorded-limitation", sourceNoteId, sourceIntakeId, wordingVersion);
 
     private static string Key(BodyPart region, string category, string text) => "activity-v1-" +
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{region}\n{category.Trim()}\n{text.Trim()}"))).ToLowerInvariant();
@@ -43,7 +43,7 @@ public static class ProgressActivityTracking
         var history = source.ProgressQuestionnaire?.Activities;
         var baseline = (history?.Baseline ?? []).Concat(history?.NewlyDifficult ?? []).ToList();
         baseline.AddRange(source.Subjective.FunctionalLimitations.Where(f => !string.IsNullOrWhiteSpace(f.Description))
-            .Select(f => RecordedActivity(f.BodyPart, f.Description, f.Category, sourceNoteId, source.SeedContext.SourceIntakeId)));
+            .Select(f => RecordedActivity(f.BodyPart, f.Description, f.Category, sourceNoteId, source.SeedContext.SourceIntakeId, f.WordingVersion)));
         return new() { Baseline = baseline.DistinctBy(a => a.Id).ToList() };
     }
 
