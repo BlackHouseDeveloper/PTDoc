@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Confirmed intake wording in AI requests
+
+- **`NoteWorkspacePage.razor`** — Apply confirmed functional-limitation wording to both flat and detailed Subjective AI inputs used by assessment and prognosis generation, and to the shared functional-limitations summary fallback. Preserve canonical descriptions for matching, historical and flat-only wording, and measurement details so `difficulty-v1` intake answers do not reach the AI as inability.
+- **`NoteWorkspacePageTests.cs`** — Add four request-level regression cases for Evaluation/Re-evaluation notes with confirmed and unversioned wording, checking both AI consumers and unchanged canonical values. The initial full suite reported 3,264 passed, one skipped and four failures in the test's navigation setup. After the test was updated to continue through the incomplete-documentation dialog, the user confirmed that all four cases passed in the focused rerun.
+
 ### Fixed - Plan 10 review preparation against current main
 
 - Reconcile intake choice labels, separate Other medication/history details and expanded multi-region activity groups with the merged visit-specific intake and Plan 09 navigation/accessibility work.
