@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - iOS simulator startup Keychain entitlement
+
+- Add an app-scoped Keychain entitlement for iOS simulator builds so `SecureStorageDbKeyProvider` can persist the encrypted local database key instead of throwing `MissingEntitlement` during app construction. Preserve fail-closed key storage and physical-device/publish signing configuration.
+- Verify the .NET 8 clean simulator rebuild (zero warnings/errors), embedded native entitlement, startup survival and relaunch with the existing database, plus eight MSBuild configuration checks. Record the exact commands and remaining native UI/device acceptance limits in `docs/client-review/plan-09.md`. No commit, push or GitHub review-state change occurred during verification.
+
 ### Fixed - Plan 09 review preparation against current main
 
 - Reconciled intake Review Edit with full Evaluation/Re-evaluation and shortened Daily/Progress/Discharge flows. Focus available visit/outcome sections, retain answers and questionnaire selections, and reject unavailable destinations while preserving encounter loading, consent, scoring and outcome evidence.

@@ -60,6 +60,31 @@ Browser verification used headed local Chrome, reduced motion, fresh Development
 
 Build/test/format logs: `/private/tmp/pr164-build.log`, `/private/tmp/pr164-intake-tests.log`, `/private/tmp/pr164-coreci.log`, `/private/tmp/pr164-format-ui.log`, `/private/tmp/pr164-format-tests.log`. Native MAUI builds/publishes, full screen-reader acceptance, hosted-beta testing and deployment were not run.
 
+## iOS simulator startup follow-up — 2026-11-18
+
+These results were obtained for the startup fix as local changes atop published head `38e82c22154bcd90441426f0ac89c625a12e47c7`. They supplement, rather than replace, the combined-head web evidence above. No GitHub review state was changed during this follow-up.
+
+**Captured failure:** temporary `Runtime.MarshalManagedException` instrumentation recorded `InvalidOperationException: Cannot retrieve database encryption key`, caused by `Error adding record: MissingEntitlement` in `SecureStorageDbKeyProvider.GetKeyAsync` line 32. The exception propagates through the SQLite DI factory in `MauiProgram` before `App` construction completes. The capture is retained locally at `/private/tmp/pr164-ios-managed-exception.txt`; the instrumentation was removed byte-for-byte before final verification. No encryption key or database records were logged.
+
+**Minimal fix:** `Platforms/iOS/Entitlements.Simulator.plist` supplies only `keychain-access-groups = $(CFBundleIdentifier)`. The project selects it for explicit simulator RIDs or the SDK's default non-publish, single-RID simulator build, without requiring a provisioning profile. Physical-device/publish builds keep their existing signing configuration. SecureStorage, key generation and encrypted SQLite fail-closed behavior are unchanged. No manual signing step or ad-hoc-signing override is part of the fix.
+
+**Verification:** Apple Silicon Mac, .NET 8.0.417 / iOS SDK pack 18.0.8324, iPad Air 11-inch (M4) simulator running iOS 26.5. The initial incremental build retained stale native linker output; the full rebuild below embeds `__TEXT,__entitlements` correctly. A manual signing experiment was rejected by macOS and discarded; the final SDK-built app uses embedded simulator entitlements.
+
+| Check | Result |
+| --- | --- |
+| `dotnet build src/PTDoc.Maui/PTDoc.csproj -f net8.0-ios -t:Rebuild --no-restore -m:1 -nr:false` | PASS; 0 warnings/errors. Log: `/private/tmp/pr164-ios-rebuild.log`. |
+| `dotnet build src/PTDoc.Maui/PTDoc.csproj -f net8.0-ios --no-restore -m:1 -nr:false` after final publish-condition guard | PASS; 0 warnings/errors. Log: `/private/tmp/pr164-ios-final-build.log`. |
+| `plutil -lint src/PTDoc.Maui/Platforms/iOS/Entitlements.Simulator.plist` | PASS. |
+| `otool -s __TEXT __entitlements src/PTDoc.Maui/bin/Debug/net8.0-ios/iossimulator-arm64/PTDoc.app/PTDoc` | PASS; embedded group expands to `com.blackhousedevelopers.ptdocsplus`. |
+| MSBuild evaluated-property matrix | PASS, 8 cases: default iOS, explicit arm64/x64 simulator enable the entitlement and no-profile setting; physical `ios-arm64`, inferred publish, multi-RID device, Android and Mac Catalyst do not. Use `dotnet msbuild src/PTDoc.Maui/PTDoc.csproj -p:TargetFramework=net8.0-ios -getProperty:CodesignEntitlements,CodesignRequireProvisioningProfile`, adding the appropriate `RuntimeIdentifier`, `RuntimeIdentifiers`, or `_IsPublishing=true` property, or changing TargetFramework for each case. |
+| Install/launch on existing simulator; no uninstall or data reset | PASS; first corrected process remained alive for over 45 minutes, compared with the original approximately four-second startup crash. |
+| Terminate, install final build, relaunch with existing app data | PASS; process remains alive past the original crash interval and local database exists (139,264 bytes, no plaintext SQLite header). This checks startup/key reuse, not clinical records or full UI behavior. |
+| `git diff --check` | PASS. |
+
+Runtime reproduction (after rebuilding) uses `xcrun simctl install <booted-device-udid> src/PTDoc.Maui/bin/Debug/net8.0-ios/iossimulator-arm64/PTDoc.app`, then `xcrun simctl launch --console <booted-device-udid> com.blackhousedevelopers.ptdocsplus`. Relaunch without uninstalling to preserve and exercise the stored key. The simulator remains available for manual acceptance.
+
+Existing nonfatal console messages about the absent IDE debugger and background-fetch declaration remain outside this fix. Computer-use inspection of the Simulator did not complete; no visual login, intake flow, VoiceOver, physical-device, Release/publish or full native acceptance pass is claimed. No C# behavior changed, so the earlier web/CoreCi results remain historical and were not rerun for this platform configuration fix. Regression evidence here is the actual native rebuild/startup/relaunch and evaluated build matrix, not an additional source-text unit test.
+
 ## Dependencies, blockers and owners
 
 No unresolved implementation prerequisite for the bounded changes; remaining acceptance work is listed below.
