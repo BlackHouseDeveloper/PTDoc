@@ -79,7 +79,24 @@ The final browser matrix verifies multiple medications/history selections, indep
 
 Fresh synthetic browser evidence uses task-owned local API/Web ports 17650/17651, a new SQLite database and disposable Evaluation, Re-evaluation, Daily, Progress and Discharge records. No existing or hosted database is copied. Harnesses/fixtures: `/private/tmp/pr165-*`; ignored browser evidence: `output/playwright/plan10-review/`. Logs: `/private/tmp/pr165-canonical-build.log`, `/private/tmp/pr165-canonical-affected.log`, `/private/tmp/pr165-canonical-coreci.log`, `/private/tmp/pr165-canonical-verify-*.log`. All six remote workflows passed for intermediate head `21e7f876`; that result does not verify the subsequent canonical-value correction. Final exact-head CI is reported in the PR description and handoff.
 
-Not run for this branch: native MAUI build/publish/install, VoiceOver, hosted-beta QA, Roslynator, SQL Server/PostgreSQL locally, or deployment. Historical native startup evidence belongs to #164. Local tests have no skips. Remote CI status is reported for the exact published head in the PR description and handoff.
+Not run for this branch: native MAUI publish/install, VoiceOver, hosted-beta QA, Roslynator, SQL Server/PostgreSQL locally, or deployment. Current native build results are recorded below; historical native startup evidence belongs to #164. Local tests have no skips. Remote CI status is reported for the exact published head in the PR description and handoff.
+
+### Native build follow-up — 2026-11-18
+
+Verified source head: `5b1539003f09397b32dcdf0bb1309372f5548f18`, aligned with the local branch, its upstream and GitHub. Base remains `f9f33e392ae591af95f227fabe09b8eb2276a751`. Environment: Apple Silicon macOS, .NET SDK 8.0.417 and Xcode 26.6 (17F113). The MAUI project, platform configuration and SDK pin are unchanged from main. Commands follow `docs/BUILD.md` and `docs/CI.md`; Release builds additionally use the repository's serial-build flags and disable MSBuild node reuse.
+
+| Command | Result |
+| --- | --- |
+| `dotnet build src/PTDoc.Maui/PTDoc.csproj -f net8.0-ios -c Debug` | PASS; 0 warnings/errors; 22.91s; `iossimulator-arm64` app. |
+| `dotnet build src/PTDoc.Maui/PTDoc.csproj -f net8.0-android -c Debug` | PASS; 0 warnings/errors; 44.98s; APK artifacts produced. |
+| `dotnet build src/PTDoc.Maui/PTDoc.csproj -f net8.0-maccatalyst -c Debug` | PASS; 0 warnings/errors; 9.56s; `maccatalyst-arm64` app. |
+| `dotnet build src/PTDoc.Maui/PTDoc.csproj -f net8.0-ios -c Release -m:1 -p:BuildInParallel=false -nr:false` | PASS; 0 warnings/errors; 13m17.39s; `iossimulator-arm64` app. |
+| `dotnet build src/PTDoc.Maui/PTDoc.csproj -f net8.0-android -c Release -m:1 -p:BuildInParallel=false -nr:false` | PASS; 0 warnings/errors; 2m55.40s; APK/AAB produced; APK contains arm64-v8a, armeabi-v7a, x86 and x86_64 libraries. |
+| `dotnet build src/PTDoc.Maui/PTDoc.csproj -f net8.0-maccatalyst -c Release -m:1 -p:BuildInParallel=false -nr:false` | PASS; 0 warnings/errors; 1m36.32s; universal x64/arm64 app. |
+
+The first iOS Release attempt lost its process session and temporary log during an environment interruption; no result is claimed for that attempt. The three Debug completions above were observed before the interruption. The iOS Release rerun completed successfully without changing source or build settings. Release logs and a manifest including the observed Debug results are retained under ignored `output/native-builds/pr165/`. Build success does not establish simulator/device installation, native intake interaction, VoiceOver, App Store signing or client acceptance.
+
+No native build failures or warnings were found, and no application, test or build-configuration fix was needed. The follow-up commit changes only this evidence record and the changelog; its runtime source is identical to the tested head. The earlier passing 963 affected tests, 2,707 CoreCi tests and browser evidence remain applicable to that unchanged source. Feedback was refreshed: the same fixed wording finding, duplicate summary and open acceptance note remain; no review thread was changed. Native builds close the platform-build gap in `docs/CI.md`. Technical squash-merge readiness is supported once exact-head CI passes; final copy acceptance and native runtime/screen-reader acceptance remain unverified.
 
 ## Dependencies, blockers and owners
 

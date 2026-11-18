@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reconcile intake choice labels, separate Other medication/history details and expanded multi-region activity groups with the merged visit-specific intake and Plan 09 navigation/accessibility work.
 - Preserve confirmed Difficulty with wording through submission, locked review and Evaluation/Re-evaluation prefill using optional selection wording metadata; retain canonical intake/workspace activity strings, catalog matching, progress baseline identities/duplicate checks, historical IDs and unversioned record wording. Keep current approved catalogs/scoring unchanged.
 - Add normalization, API validation, save/submit/reload, historical compatibility, prefill, note round-trip, progress matching, document rendering and short-visit regressions. Record current verification separately from October evidence in `docs/client-review/plan-10.md`.
+- Verify PR #165's current source on iOS, Android and Mac Catalyst in Debug and Release: all six builds pass with zero warnings/errors. Record exact commands, artifacts and the successful rerun after an interrupted iOS Release attempt. No application or build-setting fix was needed; native installation, runtime/screen-reader checks and client acceptance remain separate.
 
 ### Fixed - iOS simulator startup Keychain entitlement
 
