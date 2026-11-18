@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Plan 09 review preparation against current main
+
+- Reconciled intake Review Edit with full Evaluation/Re-evaluation and shortened Daily/Progress/Discharge flows. Focus available visit/outcome sections, retain answers and questionnaire selections, and reject unavailable destinations while preserving encounter loading, consent, scoring and outcome evidence.
+- Preserve single-row keyboard-scrollable progress, front/back pressed states and markings, and isolated heading styles. Added navigation/retention regressions and separated combined-head verification from historical Plan 09 evidence.
+
+
 ### Fixed - Addendum outcome evidence and legacy intake issuance
 
 - Reject submitted outcome snapshots on addendum creation before normalization, including malformed snapshots and duplicate, case-varied or escaped property names. Outcome evidence remains on the original signed note; rejected requests create no addendum, sync work or audit event.

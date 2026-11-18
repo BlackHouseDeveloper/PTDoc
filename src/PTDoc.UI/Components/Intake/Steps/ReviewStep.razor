@@ -11,6 +11,8 @@
     @if (State.PatientOutcomes is not null && State.QuestionnaireDefinitionId != IntakeQuestionnaireDefinitions.DailyV1)
     {
         <PatientOutcomeFields Value="@State.PatientOutcomes" IsReadOnly="true" />
+        <button type="button" class="btn review-step__secondary-action" aria-label="Edit outcome measures" disabled="@IsReadOnlyReview"
+                @onclick="() => OnEditRequestedAsync(IntakeReviewTarget.OutcomeMeasures)">Edit outcome measures</button>
     }
     <section class="review-step__banner @(IsAgeVerified ? "review-step__banner--success" : "review-step__banner--warning")" aria-live="polite">
         <div class="review-step__banner-icon" aria-hidden="true">@GetAgeBannerIcon()</div>
@@ -78,7 +80,7 @@
         <VisitQuestionnaireFields Value="@visit" DefinitionId="@(State.QuestionnaireDefinitionId!)" IsReadOnly="true" />
         @if (!IsReadOnlyReview)
         {
-            <button type="button" class="btn review-step__secondary-action" @onclick="() => OnEditRequestedAsync(IntakeStep.Demographics)">Edit visit answers</button>
+            <button type="button" class="btn review-step__secondary-action" @onclick="() => OnEditRequestedAsync(IntakeReviewTarget.VisitAnswers)">Edit visit answers</button>
         }
     }
     else

@@ -1,4 +1,5 @@
 using Bunit;
+using System.Collections.Immutable;
 using Bunit.TestDoubles;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -1014,6 +1015,7 @@ public sealed class IntakeWizardPageTests : TestContext
     [InlineData("Edit insurance", IntakeReviewTarget.Insurance, IntakeStep.Demographics)]
     [InlineData("Edit medical history", IntakeReviewTarget.MedicalHistory, IntakeStep.PainAssessment)]
     [InlineData("Edit pain areas", IntakeReviewTarget.PainAreas, IntakeStep.PainAssessment)]
+    [InlineData("Edit outcome measures", IntakeReviewTarget.OutcomeMeasures, IntakeStep.OutcomeMeasures)]
     public void ReviewEdit_FocusesRequestedSectionAndRetainsAnswersWithoutSaving(
         string label, IntakeReviewTarget target, IntakeStep step)
     {
@@ -1024,6 +1026,8 @@ public sealed class IntakeWizardPageTests : TestContext
         Services.AddSingleton(new Mock<PTDoc.Application.Providers.IProviderDirectoryService>().Object);
         JSInterop.Mode = JSRuntimeMode.Loose;
         var draft = CreateSubmittableReviewDraft(patientId);
+        draft.QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.EvaluationFullV1;
+        draft.PatientOutcomes = NavigationOutcomes();
         draft.InsuranceCompanyName = "Synthetic Insurance";
         draft.SelectedBodyRegion = nameof(BodyRegion.NeckFront);
         var service = CreateIntakeServiceMock(draft);
@@ -1040,9 +1044,92 @@ public sealed class IntakeWizardPageTests : TestContext
             Assert.Equal(draft.FullName, GetWizardState(cut).FullName);
             Assert.Equal(draft.InsuranceCompanyName, GetWizardState(cut).InsuranceCompanyName);
             Assert.Contains(BodyRegion.NeckFront, GetWizardState(cut).SelectedBodyRegions);
+            Assert.Equal("0", GetWizardState(cut).PatientOutcomes!.Responses.Single().Answers.Single().OptionId);
         });
         service.Verify(s => s.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()), Times.Never);
         service.Verify(s => s.SubmitAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(NoteType.Daily, IntakeReviewTarget.VisitAnswers)]
+    [InlineData(NoteType.ProgressNote, IntakeReviewTarget.VisitAnswers)]
+    [InlineData(NoteType.Discharge, IntakeReviewTarget.VisitAnswers)]
+    [InlineData(NoteType.ProgressNote, IntakeReviewTarget.OutcomeMeasures)]
+    [InlineData(NoteType.Discharge, IntakeReviewTarget.OutcomeMeasures)]
+    public async Task ShortVisit_ReviewEditFocusesAvailableSectionAndRetainsQuestionnaires(
+        NoteType type, IntakeReviewTarget target)
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        Services.AddSingleton(new Mock<INoteWorkspaceService>(MockBehavior.Strict).Object);
+        var patientId = Guid.NewGuid();
+        var draft = EncounterDraft(patientId);
+        draft.QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.ForNoteType(type);
+        draft.CurrentStep = (int)IntakeStep.Review;
+        draft.VisitQuestionnaire = new()
+        {
+            CurrentPain = 0,
+            Daily = type == NoteType.Daily ? new() { AdditionalInformation = "Synthetic daily answer" } : null,
+            Progress = type == NoteType.ProgressNote ? new() { AdditionalInformation = "Synthetic progress answer" } : null,
+            Discharge = type == NoteType.Discharge ? new() { GoalsMetStatus = "Synthetic discharge answer" } : null
+        };
+        draft.PatientOutcomes = type == NoteType.Daily ? null : NavigationOutcomes();
+        var service = ConfigureEncounterDrafts(draft);
+        service.Setup(value => value.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}?noteId={draft.EncounterNoteId}");
+        var cut = RenderPage(patientId);
+        var originalVisit = JsonSerializer.Serialize(GetWizardState(cut).VisitQuestionnaire);
+        var originalOutcomes = JsonSerializer.Serialize(GetWizardState(cut).PatientOutcomes);
+        var text = target == IntakeReviewTarget.VisitAnswers ? "Edit visit answers" : "Edit outcome measures";
+        for (var round = 0; round < 2; round++)
+        {
+            await cut.FindAll("button").Single(b => b.TextContent == text).ClickAsync(new());
+            cut.WaitForAssertion(() =>
+            {
+                Assert.Equal(IntakeStep.Demographics, GetWizardState(cut).CurrentStep);
+                Assert.Equal("-1", cut.Find($"#intake-section-{target}").GetAttribute("tabindex"));
+                Assert.Equal(round + 1, JSInterop.Invocations["Blazor._internal.domWrapper.focus"].Count);
+                Assert.Equal(originalVisit, JsonSerializer.Serialize(GetWizardState(cut).VisitQuestionnaire));
+                Assert.Equal(originalOutcomes, JsonSerializer.Serialize(GetWizardState(cut).PatientOutcomes));
+                Assert.Empty(cut.FindAll("#intake-full-name, #intake-section-MedicalHistory"));
+            });
+            service.Verify(s => s.SubmitAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()), Times.Never);
+            if (round == 0)
+                service.Verify(s => s.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), It.IsAny<CancellationToken>()), Times.Never);
+            await cut.Find("[data-testid='intake-review-answers']").ClickAsync(new());
+        }
+    }
+
+    [Theory]
+    [InlineData(IntakeQuestionnaireDefinitions.DailyV1, IntakeReviewTarget.OutcomeMeasures)]
+    [InlineData(IntakeQuestionnaireDefinitions.ProgressV1, IntakeReviewTarget.MedicalHistory)]
+    [InlineData(IntakeQuestionnaireDefinitions.EvaluationFullV1, IntakeReviewTarget.VisitAnswers)]
+    public async Task ReviewEdit_RejectsUnavailableDestinations(string definition, IntakeReviewTarget target)
+    {
+        Services.AddSingleton(new Mock<INoteWorkspaceService>(MockBehavior.Strict).Object);
+        var patientId = Guid.NewGuid();
+        var draft = EncounterDraft(patientId);
+        draft.QuestionnaireDefinitionId = definition;
+        draft.CurrentStep = (int)IntakeStep.Review;
+        draft.VisitQuestionnaire = new() { CurrentPain = 0, Daily = new(), Progress = new() };
+        ConfigureEncounterDrafts(draft);
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}?noteId={draft.EncounterNoteId}");
+        var cut = RenderPage(patientId);
+        await cut.FindComponent<ReviewStep>().InvokeAsync(() =>
+            cut.FindComponent<ReviewStep>().Instance.OnEditStep.InvokeAsync(target));
+        Assert.Equal(IntakeStep.Review, GetWizardState(cut).CurrentStep);
+        Assert.Empty(JSInterop.Invocations["Blazor._internal.domWrapper.focus"]);
+    }
+
+    private static IntakePatientOutcomes NavigationOutcomes()
+    {
+        var questionnaire = PatientOutcomeRelease.Catalog.Single(q => q.Definition.InstrumentId == "spadi");
+        return new()
+        {
+            Choices = [questionnaire],
+            Responses = [new("spadi", questionnaire.Definition.Version,
+                ImmutableArray.Create(new OutcomeAnswer("pain-1", OutcomeAnswerState.Answered, "0")))]
+        };
     }
 
     private static IntakeResponseDraft CreateSubmittableReviewDraft(Guid patientId)

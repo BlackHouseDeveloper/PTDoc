@@ -7,5 +7,7 @@ public enum IntakeReviewTarget
     CareTeam,
     Insurance,
     MedicalHistory,
-    PainAreas
+    PainAreas,
+    VisitAnswers,
+    OutcomeMeasures
 }

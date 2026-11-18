@@ -4,7 +4,7 @@
 <section class="intake-step-shell" data-testid="outcome-measures-step">
     <div class="intake-step-shell__hero">
         <div>
-            <h2>Outcome Measures</h2>
+            <IntakeSectionHeading Section="IntakeReviewTarget.OutcomeMeasures" FocusRequested="@FocusRequested">Outcome Measures</IntakeSectionHeading>
             <p>Choose functional questionnaires relevant to your body areas and answer the questions. Scores are calculated when you save.</p>
         </div>
     </div>
@@ -130,6 +130,7 @@
 </section>
 
 @code {
+    [Parameter] public bool FocusRequested { get; set; }
     [Parameter, EditorRequired] public IntakeWizardState State { get; set; } = new();
     [Parameter] public EventCallback OnBack { get; set; }
     [Parameter] public EventCallback OnContinue { get; set; }

@@ -169,10 +169,12 @@
                         @if (IsShortVisit && State.CurrentStep != IntakeStep.Review && State.VisitQuestionnaire is { } visit)
                         {
                             <div class="intake-page__visit">
+                            <IntakeSectionHeading Section="IntakeReviewTarget.VisitAnswers" FocusRequested="@(_reviewFocusTarget == IntakeReviewTarget.VisitAnswers)">Visit questionnaire</IntakeSectionHeading>
                             <VisitQuestionnaireFields Value="@visit" ValueChanged="HandleVisitChangedAsync"
                                 DefinitionId="@(State.QuestionnaireDefinitionId!)" IsReadOnly="@(!CanEditDraft)" />
                             @if (State.QuestionnaireDefinitionId != IntakeQuestionnaireDefinitions.DailyV1)
                             {
+                                <IntakeSectionHeading Section="IntakeReviewTarget.OutcomeMeasures" FocusRequested="@(_reviewFocusTarget == IntakeReviewTarget.OutcomeMeasures)">Outcome Measures</IntakeSectionHeading>
                                 <PatientOutcomeFields Value="@State.PatientOutcomes" ValueChanged="HandleOutcomesChangedAsync" IsReadOnly="@(!CanEditDraft)" />
                             }
                             <IntakeFooterActions PrimaryText="Review answers" PrimaryTestId="intake-review-answers" OnPrimary="HandleVisitContinueAsync" />
@@ -196,7 +198,7 @@
                                                      ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
                                     break;
                                 case IntakeStep.OutcomeMeasures:
-                                    <OutcomeMeasuresStep State="@State"
+                                    <OutcomeMeasuresStep FocusRequested="@(_reviewFocusTarget == IntakeReviewTarget.OutcomeMeasures)" State="@State"
                                                          OnBack="HandleBackAsync"
                                                          OnContinue="HandleOutcomeMeasuresContinueAsync"
                                                          OnStateChanged="HandleStateChangedAsync" />
@@ -525,6 +527,7 @@
         if (!CanEditDraft || IsInteractionLocked || State.VisitQuestionnaire is null) return;
         var errors = State.VisitQuestionnaire.Validate(IntakeQuestionnaireDefinitions.NoteTypeFor(State.QuestionnaireDefinitionId)!.Value, submitting: true);
         if (errors.Count > 0) { _validationMessage = string.Join(" ", errors); return; }
+        _reviewFocusTarget = null;
         State.CurrentStep = IntakeStep.Review;
         State.IsDirty = true;
         await SaveDraftIfPossibleAsync();
@@ -863,12 +866,15 @@
 
     private Task HandleEditStepAsync(IntakeReviewTarget target)
     {
-        if (CanEditDraft)
+        if (CanEditDraft && !IsInteractionLocked)
         {
             var step = target switch
             {
-                IntakeReviewTarget.PersonalInformation or IntakeReviewTarget.CareTeam or IntakeReviewTarget.Insurance => IntakeStep.Demographics,
-                IntakeReviewTarget.MedicalHistory or IntakeReviewTarget.PainAreas => IntakeStep.PainAssessment,
+                IntakeReviewTarget.PersonalInformation or IntakeReviewTarget.CareTeam or IntakeReviewTarget.Insurance when !IsShortVisit => IntakeStep.Demographics,
+                IntakeReviewTarget.MedicalHistory or IntakeReviewTarget.PainAreas when !IsShortVisit => IntakeStep.PainAssessment,
+                IntakeReviewTarget.VisitAnswers when IsShortVisit && State.VisitQuestionnaire is not null => IntakeStep.Demographics,
+                IntakeReviewTarget.OutcomeMeasures when !IsShortVisit => IntakeStep.OutcomeMeasures,
+                IntakeReviewTarget.OutcomeMeasures when State.QuestionnaireDefinitionId != IntakeQuestionnaireDefinitions.DailyV1 && State.VisitQuestionnaire is not null && State.PatientOutcomes is not null => IntakeStep.Demographics,
                 _ => (IntakeStep?)null
             };
             if (step is null)
