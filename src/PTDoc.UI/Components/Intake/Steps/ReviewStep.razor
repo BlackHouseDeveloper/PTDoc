@@ -384,7 +384,7 @@
                 <div class="review-step__chip-list">
                     @foreach (var limitation in State.StructuredData.FunctionalLimitations)
                     {
-                        <span class="review-step__pill">@limitation.Category: @(State.IsLocked ? limitation.Activity : FunctionalLimitationDisplayText.Format(limitation.Activity))</span>
+                        <span class="review-step__pill">@limitation.Category: @FunctionalLimitationDisplayText.Format(limitation.Activity, limitation.WordingVersion)</span>
                     }
                 </div>
             </div>

@@ -86,6 +86,10 @@ public sealed class IntakeFunctionalLimitationSelectionDto
 
     [JsonPropertyName("activity")]
     public string Activity { get; set; } = string.Empty;
+
+    // Missing on historical selections: retain their original wording.
+    [JsonPropertyName("wordingVersion")]
+    public string? WordingVersion { get; set; }
 }
 
 public sealed class IntakeSubjectiveDataDto

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Plan 10 review preparation against current main
+
+- Reconcile intake choice labels, separate Other medication/history details and expanded multi-region activity groups with the merged visit-specific intake and Plan 09 navigation/accessibility work.
+- Preserve confirmed Difficulty with wording through submission, locked review and Evaluation/Re-evaluation prefill using optional selection wording metadata; retain canonical activity strings, historical IDs and unversioned record wording. Keep current approved catalogs/scoring unchanged.
+- Add normalization, API validation, save/submit/reload, historical compatibility, prefill and short-visit regressions. Record current verification separately from October evidence in `docs/client-review/plan-10.md`.
+
 ### Fixed - iOS simulator startup Keychain entitlement
 
 - Add an app-scoped Keychain entitlement for iOS simulator builds so `SecureStorageDbKeyProvider` can persist the encrypted local database key instead of throwing `MissingEntitlement` during app construction. Preserve fail-closed key storage and physical-device/publish signing configuration.
@@ -553,6 +559,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Retained each card’s existing heading styles across the focusable heading component boundary.
 
 - Added section-specific Review Edit navigation with focus after render, single-row scrollable intake progress, visible front/back selection and concise body-map instructions. Existing answers are retained and no clinical schema changes are required.
+
 ### Changed - Client review Plan 10
 
 - Clarified patient intake medical-history and medication selection, added section-bound Other text, and opened functional limitation groups by default while preserving stored selections and instrument wording.

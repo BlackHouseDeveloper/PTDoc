@@ -82,6 +82,49 @@ public sealed class StructuredIntakeComponentsTests : TestContext
         card.FindAll(".intake-card__choice--activity input").Last().Change(true);
         Assert.Equal(2, state.StructuredData!.FunctionalLimitations.Select(x => x.BodyPart).Distinct().Count());
         Assert.All(state.StructuredData.FunctionalLimitations, item => Assert.StartsWith("Unable to", item.Activity));
+        Assert.All(state.StructuredData.FunctionalLimitations, item => Assert.Equal(FunctionalLimitationDisplayText.DifficultyV1, item.WordingVersion));
+    }
+
+    [Theory]
+    [InlineData(false, null, "Unable to rise from chair without pushing off with hands")]
+    [InlineData(true, null, "Unable to rise from chair without pushing off with hands")]
+    [InlineData(false, FunctionalLimitationDisplayText.DifficultyV1, "Difficulty with: rise from chair without pushing off with hands")]
+    [InlineData(true, FunctionalLimitationDisplayText.DifficultyV1, "Difficulty with: rise from chair without pushing off with hands")]
+    public void FunctionalLimitationReview_PreservesSelectedWordingAfterReload(bool locked, string? version, string expected)
+    {
+        const string activity = "Unable to rise from chair without pushing off with hands";
+        var structured = new IntakeStructuredDataDto
+        {
+            FunctionalLimitations = [new() { Id = "historical-id", BodyPart = "Knee", Category = "Mobility & Transfers", Activity = activity, WordingVersion = version }]
+        };
+        Assert.True(IntakeStructuredDataJson.TryParse(IntakeStructuredDataJson.Serialize(structured), out var reloaded, out _));
+        var state = new IntakeWizardState { StructuredData = reloaded, IsLocked = locked, SelectedBodyRegions = [BodyRegion.KneeLeftFront] };
+        var review = RenderComponent<ReviewStep>(p => p.Add(c => c.State, state));
+        Assert.Contains($"Mobility & Transfers: {expected}", review.Find("[data-testid='review-step']").TextContent);
+        var card = RenderComponent<FunctionalLimitationsCard>(p => p.Add(c => c.State, state));
+        Assert.Equal(expected, card.FindAll(".intake-card__choice--activity").Single(label => label.QuerySelector("input")!.HasAttribute("checked")).TextContent.Trim());
+        Assert.Equal(activity, Assert.Single(reloaded.FunctionalLimitations).Activity);
+        Assert.Equal(version, reloaded.FunctionalLimitations[0].WordingVersion);
+        Assert.False(state.IsDirty);
+    }
+
+    [Theory]
+    [InlineData(IntakeQuestionnaireDefinitions.DailyV1)]
+    [InlineData(IntakeQuestionnaireDefinitions.ProgressV1)]
+    [InlineData(IntakeQuestionnaireDefinitions.DischargeV1)]
+    public void ShortReview_DoesNotRestoreFullHistoryEvenWhenOtherDetailsExist(string questionnaire)
+    {
+        Services.AddSingleton(new Mock<PTDoc.UI.Services.INoteWorkspaceService>(MockBehavior.Strict).Object);
+        var state = new IntakeWizardState
+        {
+            QuestionnaireDefinitionId = questionnaire,
+            VisitQuestionnaire = new(),
+            StructuredData = new() { OtherMedications = "Hidden medication", OtherMedicalHistory = "Hidden history" }
+        };
+        var review = RenderComponent<ReviewStep>(p => p.Add(c => c.State, state));
+        Assert.Empty(review.FindAll("[data-testid='review-other-medications'], [data-testid='review-other-medical-history']"));
+        Assert.DoesNotContain("Hidden medication", review.Markup);
+        Assert.DoesNotContain("Hidden history", review.Markup);
     }
 
     [Fact]

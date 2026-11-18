@@ -69,7 +69,7 @@
                                     <input type="checkbox"
                                            checked="@IsFunctionalLimitationSelected(bodyPart, category.Name, activity)"
                                            @onchange="args => ToggleFunctionalLimitationAsync(bodyPart, category.Name, activity, ToBool(args))" />
-                                    <span>@FunctionalLimitationDisplayText.Format(activity)</span>
+                                    <span>@DisplayActivity(bodyPart, category.Name, activity)</span>
                                 </label>
                             }
                         </div>
@@ -188,6 +188,16 @@
     private int SelectedCount(BodyPart bodyPart, CatalogCategory category) =>
         category.Items.Count(activity => IsFunctionalLimitationSelected(bodyPart, category.Name, activity));
 
+    private string DisplayActivity(BodyPart bodyPart, string category, string activity)
+    {
+        var existing = StructuredData.FunctionalLimitations.FirstOrDefault(selection =>
+            string.Equals(selection.BodyPart, bodyPart.ToString(), StringComparison.OrdinalIgnoreCase)
+            && string.Equals(selection.Category, category, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(selection.Activity, activity, StringComparison.OrdinalIgnoreCase));
+        return FunctionalLimitationDisplayText.Format(activity,
+            existing is null ? FunctionalLimitationDisplayText.DifficultyV1 : existing.WordingVersion);
+    }
+
     private async Task ToggleFunctionalLimitationAsync(BodyPart bodyPart, string category, string activity, bool selected)
     {
         StructuredData.FunctionalLimitations.RemoveAll(selection =>
@@ -202,7 +212,8 @@
                 Id = BuildSelectionId(bodyPart, category, activity),
                 BodyPart = bodyPart.ToString(),
                 Category = category,
-                Activity = activity
+                Activity = activity,
+                WordingVersion = FunctionalLimitationDisplayText.DifficultyV1
             });
         }
 

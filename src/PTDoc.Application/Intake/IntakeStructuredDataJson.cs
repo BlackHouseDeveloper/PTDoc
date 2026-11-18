@@ -502,6 +502,13 @@ public static class IntakeStructuredDataJson
                 continue;
             }
 
+            if (selection.WordingVersion is not null
+                && selection.WordingVersion != FunctionalLimitationDisplayText.DifficultyV1)
+            {
+                validationResult.AddError($"{path}.wordingVersion", "Unsupported functional-limitation wording version.");
+                continue;
+            }
+
             validSelections.Add(selection);
         }
 
@@ -517,7 +524,8 @@ public static class IntakeStructuredDataJson
                     : selection.Id.Trim(),
                 BodyPart = selection.BodyPart.Trim(),
                 Category = selection.Category.Trim(),
-                Activity = selection.Activity.Trim()
+                Activity = selection.Activity.Trim(),
+                WordingVersion = selection.WordingVersion
             })
             .OrderBy(selection => selection.BodyPart, StringComparer.OrdinalIgnoreCase)
             .ThenBy(selection => selection.Category, StringComparer.OrdinalIgnoreCase)

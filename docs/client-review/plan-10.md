@@ -6,13 +6,78 @@
 - Original plan status: Ready for Development
 - Branch: `codex/plan-10-intake-language`
 - Base: `main`
-- Expected GitHub number: #164; actual: assigned by GitHub at publication
-- [Authoritative plan brief](https://github.com/BlackHouseDeveloper/PTDoc/blob/codex/plan-01-session-verification/docs/client-review/source/implementation-plan.md#pr-10)
-- Inspected main: `6276027251609df64ffbbfa883f66e2d83dd57e4` (2026-10-26); this supersedes the source plan’s earlier repository snapshot.
+- GitHub PR: [#165](https://github.com/BlackHouseDeveloper/PTDoc/pull/165)
+- [Authoritative plan brief](source/implementation-plan.md#pr-10)
+- Current main: `f9f33e392ae591af95f227fabe09b8eb2276a751` (2026-11-18). Original October baseline: `6276027251609df64ffbbfa883f66e2d83dd57e4`.
 
 ## Current evidence and changes
 
-Existing intake exposed a Comorbidities label, no section-bound Other medication/history fields, and collapsed groups for only the first selected region. Added independent nullable JSON fields, review binding and evaluation seed projection. Existing stored activity values remain untouched because their text participates in selection identity and canonical validation. Both runtime catalog assets are byte-identical to main, and historical locked review retains original activity text. No EF model change or migration.
+Existing intake exposed a Comorbidities label, no section-bound Other medication/history fields, and collapsed groups for only the first selected region. Added independent nullable JSON fields, review binding and evaluation seed projection. Existing stored activity values remain untouched because their text participates in selection identity and canonical validation. All four runtime reference/catalog assets are byte-identical to current main, and historical locked review retains original activity text. No EF model change or migration.
+
+## Current review preparation — 2026-11-18
+
+Base: `f9f33e392ae591af95f227fabe09b8eb2276a751` (`origin/main`, squash merge of #164). GitHub confirmed Plans 01–09 and #200–#203 merged; #165 remains open against `main`. Historical October results below do not verify this combined branch.
+
+### Branch reconciliation
+
+The initial checkout was the correct branch with an unfinished merge and local/remote divergence. During read-only inspection, another process finished merge `d28a1cb83ba4a61543262e3a0e73c280a7e86b56`; the user confirmed that process was finished and requested inspection. Its tree was byte-identical to published head `2d67e83c9664c82bb1ed905babc3d38594680c3f`. Local feature commit `d3c61b14` carried the same Plan 10 patch (only changelog whitespace differed). No unique local implementation was discarded.
+
+Recovery refs: `recovery/pr165-local-before-rebase-20261118` → `d28a1cb8`; `recovery/pr165-remote-before-rebase-20261118` → `2d67e83c`. After fetching, `git rebase --onto origin/main 2d67e83c9664c82bb1ed905babc3d38594680c3f codex/plan-10-intake-language` replayed the single local Plan 10 commit, avoiding the duplicate remote feature and already-integrated squash history. Upstream remains `origin/codex/plan-10-intake-language`.
+
+Three conflicts were resolved: retain both changelog histories; combine Plan 09's `IntakeSectionHeading` with Plan 10 instructions; retain body-orientation coverage and both Plan 10 component tests. Other merged behavior remains in the base: encounter scoping, section navigation/focus, isolated heading styles, body-map accessibility, short-visit questionnaires, consent, approved scoring, immutable outcome evidence and source ownership. No workflow, instrument, catalog, EF model or migration change.
+
+### Review findings
+
+Refreshed thread-aware connector data and authenticated GraphQL pagination: one thread with one comment, one review, zero conversation comments; every `hasNextPage` was false. The visible GitHub review contains no Previously missed section. Its private [review session](https://github.com/BlackHouseDeveloper/PTDoc/sessions/502c5ddd-be72-4b82-8997-a106bcd64d14) returned 404 in the available signed-out browser; unpublished/suppressed session-only findings remain inaccessible and are not claimed absent.
+
+| Source | Classification | Evidence and disposition |
+| --- | --- | --- |
+| [4375919520](https://github.com/BlackHouseDeveloper/PTDoc/pull/165#discussion_r4375919520): submitted review/prefill changes difficulty to inability | Valid, fixed | The original `State.IsLocked` branch used canonical `Activity`, and evaluation seeds used the same original string. Persist an optional per-selection `wordingVersion`; format draft/locked review and newly generated Evaluation/Re-evaluation seed descriptions from that version. Tests cover normalization, save/submit/reload, locked/unlocked review, historical selections and both encounter evaluation types. |
+| [5650139957](https://github.com/BlackHouseDeveloper/PTDoc/pull/165#pullrequestreview-5650139957): same wording defect | Duplicate | Same underlying defect and source thread; handled once. |
+| Same review: client-copy/native accessibility acceptance remains | Valid acceptance note | Automated keyboard/responsive checks do not establish client sign-off, VoiceOver or native-device acceptance. Retained as remaining acceptance work; no speculative clinical-policy change. |
+
+The thread remains unresolved, with no reply or new review request. No invalid/outdated code findings were inferred from resolution flags.
+
+### Implementation and compatibility
+
+New selections carry `difficulty-v1`; their canonical `Activity` and stable `Id` remain untouched. The shared Application helper is usable by UI and Infrastructure without crossing architecture boundaries. Missing versions preserve original wording, including when historical selected entries are viewed in the selection card. Unsupported versions are rejected by structured-data validation. Evaluation prefill creates the confirmed display description in the new note seed, retaining the selection ID; it does not rewrite the intake, catalogs or existing notes.
+
+Independent `otherMedications` and `otherMedicalHistory` JSON values retain the 2,000-character and None-consistency checks. HTTP regressions verify rejection before create/update persistence; service tests verify save, submit and fresh database reload with multiple IDs, both Other values, surgery text and activity identity. Full-history Other fields remain inside the existing full-flow review branch; all three short visit types retain their shortened questionnaires.
+
+### Current verification
+
+All commands run from the repository root unless specified. Runtime code was unchanged after the final Release build. Exact command results:
+
+| Command/check | Result |
+| --- | --- |
+| `dotnet restore tests/PTDoc.Tests/PTDoc.Tests.csproj` | PASS. The first sandboxed attempt stalled and was terminated; the permitted retry completed. |
+| `dotnet build tests/PTDoc.Tests/PTDoc.Tests.csproj --no-restore --configuration Release` | PASS; 0 warnings/errors; API, UI, Web and test dependency graph. |
+| Affected regression command below | PASS; 888 passed, 0 failed/skipped. |
+| Current CoreCi workflow command below | PASS; 2,695 passed, 0 failed/skipped; 7m39s. |
+| Owning-project/Core CI formatting loop below | PASS; all six projects; 0 files formatted. |
+| `dotnet build src/PTDoc.Web/PTDoc.Web.csproj --no-restore --configuration Debug` | PASS; 0 warnings/errors. Refreshes Development's Debug-first static-asset fallback after diagnosing old Debug CSS being served beside fresh Release binaries. No source-style change was required. |
+| `python3 /private/tmp/pr165-browser-run.py` | PASS; 15/15 scenarios, 0 failed/skipped: five visit types at 390, 768 and 1440 px. |
+| Compare four runtime JSON assets byte-for-byte with `git show origin/main:<path>` | PASS; workspace catalog, outcome reference data, intake supplemental data and patient outcome questionnaires are identical to current main. Source catalog/scoring directories are also unchanged. |
+| `python3 .github/scripts/scan_secret_policy.py` | PASS; 9 tracked configuration files. |
+| `git diff --check`; incremental diff against `origin/main` | PASS; reviewed incremental diff and staged whitespace before publication. |
+
+```bash
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter 'FullyQualifiedName~Intake|FullyQualifiedName~Outcomes|FullyQualifiedName~NoteWorkspaceV2ServiceTests|FullyQualifiedName~NoteWorkspacePayloadMapperTests' --verbosity normal --logger 'trx;LogFileName=pr165-affected.trx' -- xUnit.ParallelizeTestCollections=false
+
+dotnet test tests/PTDoc.Tests/PTDoc.Tests.csproj --no-build --configuration Release --filter 'Category=CoreCi' --verbosity normal --logger 'trx;LogFileName=test-results.trx' -- xUnit.ParallelizeTestCollections=false
+
+for project in src/PTDoc.Core/PTDoc.Core.csproj src/PTDoc.Application/PTDoc.Application.csproj src/PTDoc.Infrastructure/PTDoc.Infrastructure.csproj src/PTDoc.Api/PTDoc.Api.csproj src/PTDoc.UI/PTDoc.UI.csproj tests/PTDoc.Tests/PTDoc.Tests.csproj; do
+  dotnet format "$project" --no-restore --verify-no-changes --verbosity diagnostic
+done
+```
+
+The first affected run had seven failures in new test setup: four validation assertions targeted the lower-level persistence service rather than the existing API guard; three short-review fixtures omitted the issued visit questionnaire. The next run identified the Progress editor's required service registration. Tests were corrected to exercise the actual HTTP validation boundary and complete short-visit component fixtures. The final 888-case run passes; no production behavior was weakened to satisfy those assertions.
+
+The final browser matrix verifies multiple medications/history selections, independent Other fields, surgery text, two-region activities, 11 initially open groups, keyboard Enter/Space selection and disclosure toggles, body-map front/back state, Review Edit focus, 16px/zero-margin headings, single-row progress and no horizontal overflow. Both full visit types retain exact values after save/reload; all three short flows save/reload without full-history sections. Screenshots at all three widths were visually inspected. A read-only check of the disposable SQLite database confirms canonical `Unable to` activity values, IDs and `difficulty-v1` survive alongside the Other details and surgery notes. Early harness failures were corrected for duplicate selected-option chips and asynchronous Blazor updates; the final matrix has no failures.
+
+Fresh synthetic browser evidence uses task-owned local API/Web ports 17650/17651, a new SQLite database and disposable Evaluation, Re-evaluation, Daily, Progress and Discharge records. No existing or hosted database is copied. Harnesses/fixtures: `/private/tmp/pr165-*`; ignored browser evidence: `output/playwright/plan10-review/`. Logs: `/private/tmp/pr165-build-final.log`, `/private/tmp/pr165-affected-final.log`, `/private/tmp/pr165-coreci.log`, `/private/tmp/pr165-format-*.log`.
+
+Not run for this branch: native MAUI build/publish/install, VoiceOver, hosted-beta QA, Roslynator, SQL Server/PostgreSQL locally, or deployment. Historical native startup evidence belongs to #164. Local tests have no skips. Remote CI status is reported for the exact published head in the PR description and handoff.
 
 ## Dependencies, blockers and owners
 
@@ -58,16 +123,16 @@ Preserve existing selected IDs and historical free text. Map renamed labels with
 
 ### Acceptance Criteria
 
-- [ ] **AC1:** Given medical history or medications with multiple applicable entries, when several are selected and saved, then all survive reload.
-- [ ] **AC2:** Given an unlisted item, when Other text is entered, then it appears under the correct section in review and the clinician view.
-- [ ] **AC3:** Given a new intake limitation step, when loaded, then relevant groups are expanded initially and app-authored choices use Difficulty with.
-- [ ] **AC4:** Given a standardized questionnaire, when these labels change, then its approved item wording is unchanged.
+- [x] **AC1:** Given medical history or medications with multiple applicable entries, when several are selected and saved, then all survive reload.
+- [x] **AC2:** Given an unlisted item, when Other text is entered, then it appears under the correct section in review and the clinician view.
+- [x] **AC3:** Given a new intake limitation step, when loaded, then relevant groups are expanded initially and app-authored choices use Difficulty with.
+- [x] **AC4:** Given a standardized questionnaire, when these labels change, then its approved item wording is unchanged.
 
 ### Rollout and Regression Risks
 
 Changing labels must not orphan historical IDs or alter instrument validity.
 
-## Verification performed
+## Historical verification — original October implementation
 
 | Command/check | Result |
 | --- | --- |
@@ -82,8 +147,8 @@ Changing labels must not orphan historical IDs or alter instrument validity.
 
 ## Remaining acceptance work
 
-January’s acceptance of final plain-language copy and native-device/screen-reader validation remain. Recheck the new optional JSON fields when future note-type routing is integrated. No instrument item/scoring change is included.
+January’s acceptance of final plain-language copy and native-device/screen-reader validation remain. Current visit-specific routing is covered by this branch’s tests and browser matrix. No instrument item/scoring change is included.
 
 ## Publication and merge boundary
 
-No merges, deployments, production-data changes, external messages or review-thread replies/resolutions are authorized. A planning-only PR may be reviewed as documentation; merging it does not complete the feature. Shared subject matter alone does not create a Git stack dependency.
+This review preparation authorizes commit/push and a template-based PR description update after verification. No merge, deployment, production-data change, external message, review reply/resolution or new review request is authorized. This is implemented feature work; remaining client/native acceptance is not claimed.

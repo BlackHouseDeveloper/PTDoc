@@ -18,6 +18,40 @@ namespace PTDoc.Tests.Integration;
 public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : IClassFixture<PtDocApiFactory>
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task OtherDetails_InvalidLengthOrNoneConsistencyCannotCreateOrUpdate(bool update, bool none)
+    {
+        using var client = factory.CreateClientWithRole(Roles.PT);
+        var (patientId, noteId, _) = await CreateFixtureAsync(client);
+        var issued = await IssueAsync(client, patientId, noteId);
+        var structured = new IntakeStructuredDataDto
+        {
+            NoMedications = none,
+            NoComorbidities = none,
+            OtherMedications = new string('m', none ? 1 : 2001),
+            OtherMedicalHistory = new string('h', none ? 1 : 2001)
+        };
+        var request = Update(issued.LastModifiedUtc);
+        request.StructuredData = structured;
+        using var response = update
+            ? await client.PutAsJsonAsync($"/api/v1/intake/{issued.Id}", request)
+            : await client.PostAsJsonAsync("/api/v1/intake/", new CreateIntakeRequest { PatientId = patientId, StructuredData = structured });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadAsStringAsync();
+        Assert.Contains("structuredData.otherMedications", problem);
+        Assert.Contains("structuredData.otherMedicalHistory", problem);
+        var unchanged = (await client.GetFromJsonAsync<IntakeResponse>($"/api/v1/intake/{issued.Id}"))!;
+        Assert.Equal(issued.ResponseJson, unchanged.ResponseJson);
+        Assert.False(unchanged.Locked);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Single(await db.IntakeForms.Where(form => form.PatientId == patientId).ToListAsync());
+    }
+
+    [Theory]
     [InlineData(NoteType.Evaluation, NoteType.ProgressNote, false, false, false)]
     [InlineData(NoteType.Evaluation, NoteType.Daily, false, false, false)]
     [InlineData(NoteType.Evaluation, NoteType.Discharge, false, false, true)]

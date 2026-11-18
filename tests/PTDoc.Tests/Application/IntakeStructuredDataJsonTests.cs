@@ -11,6 +11,33 @@ public sealed class IntakeStructuredDataJsonTests
     private readonly IIntakeReferenceDataCatalogService _catalog = new IntakeReferenceDataCatalogService();
 
     [Theory]
+    [InlineData(null, true)]
+    [InlineData(FunctionalLimitationDisplayText.DifficultyV1, true)]
+    [InlineData("future-version", false)]
+    public void FunctionalLimitationWording_NormalizesWithoutChangingCanonicalActivity(string? version, bool valid)
+    {
+        const string activity = "Unable to rise from chair without pushing off with hands";
+        var payload = new IntakeStructuredDataDto
+        {
+            FunctionalLimitations = [new() { Id = "historical-id", BodyPart = "Knee", Category = "Mobility & Transfers", Activity = activity, WordingVersion = version }]
+        };
+
+        Assert.Equal(valid, IntakeStructuredDataJson.TryNormalize(payload, _catalog, out var result, out var validation));
+        if (valid)
+        {
+            Assert.True(IntakeStructuredDataJson.TryParse(result.StructuredDataJson, out var reloaded, out _));
+            var selection = Assert.Single(reloaded.FunctionalLimitations);
+            Assert.Equal("historical-id", selection.Id);
+            Assert.Equal(activity, selection.Activity);
+            Assert.Equal(version, selection.WordingVersion);
+        }
+        else
+        {
+            Assert.Contains("structuredData.functionalLimitations[0].wordingVersion", validation.Errors.Keys);
+        }
+    }
+
+    [Theory]
     [InlineData(false, 2000, true)]
     [InlineData(false, 2001, false)]
     [InlineData(true, 1, false)]
