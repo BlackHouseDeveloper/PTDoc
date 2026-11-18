@@ -47,8 +47,8 @@ public static class IntakeSupplementalSelectionCanonicalizer
             structuredData.MedicationIds.Clear();
         }
 
-        state.HasCurrentMedications = !structuredData.NoMedications && structuredData.MedicationIds.Count > 0;
-        state.HasOtherMedicalConditions = !structuredData.NoComorbidities && (structuredData.ComorbidityIds.Count > 0 || state.SelectedComorbidities.Count > 0);
+        state.HasCurrentMedications = !structuredData.NoMedications && (structuredData.MedicationIds.Count > 0 || !string.IsNullOrWhiteSpace(structuredData.OtherMedications));
+        state.HasOtherMedicalConditions = !structuredData.NoComorbidities && (structuredData.ComorbidityIds.Count > 0 || state.SelectedComorbidities.Count > 0 || !string.IsNullOrWhiteSpace(structuredData.OtherMedicalHistory));
         state.UsesAssistiveDevices = !structuredData.NoAssistiveDevices && (structuredData.AssistiveDeviceIds.Count > 0 || state.SelectedAssistiveDevices.Count > 0);
     }
 

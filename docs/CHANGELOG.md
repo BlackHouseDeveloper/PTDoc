@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - Confirmed intake wording in AI requests
+
+- **`NoteWorkspacePage.razor`** — Apply confirmed functional-limitation wording to both flat and detailed Subjective AI inputs used by assessment and prognosis generation, and to the shared functional-limitations summary fallback. Preserve canonical descriptions for matching, historical and flat-only wording, and measurement details so `difficulty-v1` intake answers do not reach the AI as inability.
+- **`NoteWorkspacePageTests.cs`** — Add four request-level regression cases for Evaluation/Re-evaluation notes with confirmed and unversioned wording, checking both AI consumers and unchanged canonical values. The initial full suite reported 3,264 passed, one skipped and four failures in the test's navigation setup. After the test was updated to continue through the incomplete-documentation dialog, the user confirmed that all four cases passed in the focused rerun.
+
+### Fixed - Plan 10 review preparation against current main
+
+- Reconcile intake choice labels, separate Other medication/history details and expanded multi-region activity groups with the merged visit-specific intake and Plan 09 navigation/accessibility work.
+- Preserve confirmed Difficulty with wording through submission, locked review and Evaluation/Re-evaluation prefill using optional selection wording metadata; retain canonical intake/workspace activity strings, catalog matching, progress baseline identities/duplicate checks, historical IDs and unversioned record wording. Keep current approved catalogs/scoring unchanged.
+- Add normalization, API validation, save/submit/reload, historical compatibility, prefill, note round-trip, progress matching, document rendering and short-visit regressions. Record current verification separately from October evidence in `docs/client-review/plan-10.md`.
+- Verify PR #165's current source on iOS, Android and Mac Catalyst in Debug and Release: all six builds pass with zero warnings/errors. Record exact commands, artifacts and the successful rerun after an interrupted iOS Release attempt. No application or build-setting fix was needed; native installation, runtime/screen-reader checks and client acceptance remain separate.
+
 ### Fixed - iOS simulator startup Keychain entitlement
 
 - Add an app-scoped Keychain entitlement for iOS simulator builds so `SecureStorageDbKeyProvider` can persist the encrypted local database key instead of throwing `MissingEntitlement` during app construction. Preserve fail-closed key storage and physical-device/publish signing configuration.
@@ -553,6 +565,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Retained each card’s existing heading styles across the focusable heading component boundary.
 
 - Added section-specific Review Edit navigation with focus after render, single-row scrollable intake progress, visible front/back selection and concise body-map instructions. Existing answers are retained and no clinical schema changes are required.
+
+### Changed - Client review Plan 10
+
+- Clarified patient intake medical-history and medication selection, added section-bound Other text, and opened functional limitation groups by default while preserving stored selections and instrument wording.
 
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 

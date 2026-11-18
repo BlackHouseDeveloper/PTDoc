@@ -1,3 +1,5 @@
+using PTDoc.Application.Intake;
+
 namespace PTDoc.UI.Components.Notes.Models;
 
 /// <summary>
@@ -86,6 +88,9 @@ public class SubjectiveVm
 
 public sealed class FunctionalLimitationEditorEntry
 {
+    public string? WordingVersion { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DisplayDescription => FunctionalLimitationDisplayText.Format(Description, WordingVersion);
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string? BodyPart { get; set; }
     public string Category { get; set; } = string.Empty;

@@ -225,6 +225,8 @@ public sealed class WorkspaceSubjectiveV2
 
 public sealed class FunctionalLimitationEntryV2
 {
+    // Display metadata never replaces the canonical description used for activity matching.
+    public string? WordingVersion { get; set; }
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public BodyPart BodyPart { get; set; } = BodyPart.Other;
     public string Category { get; set; } = string.Empty;

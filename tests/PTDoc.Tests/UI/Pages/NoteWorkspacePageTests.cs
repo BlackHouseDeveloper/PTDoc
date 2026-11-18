@@ -2113,6 +2113,137 @@ public sealed class NoteWorkspacePageTests : TestContext
         aiService.Verify(service => service.GenerateAssessmentAsync(It.IsAny<AssessmentGenerationRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Theory]
+    [InlineData(false, null, "Unable to rise from chair without pushing off with hands")]
+    [InlineData(true, null, "Unable to rise from chair without pushing off with hands")]
+    [InlineData(false, "difficulty-v1", "Difficulty with: rise from chair without pushing off with hands")]
+    [InlineData(true, "difficulty-v1", "Difficulty with: rise from chair without pushing off with hands")]
+    public void AiRequests_UseConfirmedFunctionalLimitationWording(bool isReEvaluation, string? wordingVersion, string expectedDescription)
+    {
+        const string canonical = "Unable to rise from chair without pushing off with hands";
+        const string historical = "Unable to sleep comfortably";
+        const string flatOnly = "Unable to kneel on the floor";
+        var patientId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var mapper = new NoteWorkspacePayloadMapper(new IntakeReferenceDataCatalogService(), new OutcomeMeasureRegistry());
+        var payload = mapper.MapToUiPayload(new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.Evaluation,
+            Subjective = new WorkspaceSubjectiveV2
+            {
+                Problems = ["Pain"],
+                FunctionalLimitations =
+                [
+                    new FunctionalLimitationEntryV2
+                    {
+                        Id = "stable-chair",
+                        BodyPart = BodyPart.Knee,
+                        Category = "Mobility & Transfers",
+                        Description = canonical,
+                        WordingVersion = wordingVersion,
+                        MeasurePrompt = "Number of repetitions",
+                        QuantifiedValue = 3,
+                        QuantifiedUnit = "repetitions",
+                        Notes = "Needs hand support"
+                    },
+                    new FunctionalLimitationEntryV2
+                    {
+                        Id = "historical-sleep",
+                        BodyPart = BodyPart.Knee,
+                        Category = "Sleep",
+                        Description = historical
+                    }
+                ]
+            },
+            Objective = new WorkspaceObjectiveV2 { PrimaryBodyPart = BodyPart.Knee }
+        });
+        // Legacy flat-only entries have no wording metadata and must retain their original text.
+        payload.Subjective.FunctionalLimitations.Add(flatOnly);
+
+        var patientService = new Mock<IPatientService>(MockBehavior.Strict);
+        patientService.Setup(service => service.GetByIdAsync(patientId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse { Id = patientId, FirstName = "Synthetic", LastName = "Wording" });
+        var noteWorkspaceService = new Mock<INoteWorkspaceService>(MockBehavior.Strict);
+        noteWorkspaceService.Setup(service => service.LoadAsync(patientId, noteId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new NoteWorkspaceLoadResult
+            {
+                Success = true,
+                NoteId = noteId,
+                WorkspaceNoteType = "Evaluation Note",
+                IsReEvaluation = isReEvaluation,
+                Status = NoteStatus.Draft,
+                Payload = payload
+            });
+
+        AssessmentGenerationRequest? assessmentRequest = null;
+        PrognosisGenerationRequest? prognosisRequest = null;
+        var aiService = new Mock<IAiClinicalGenerationService>(MockBehavior.Strict);
+        aiService.Setup(service => service.GenerateAssessmentAsync(It.IsAny<AssessmentGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<AssessmentGenerationRequest, CancellationToken>((request, _) => assessmentRequest = request)
+            .ReturnsAsync((AssessmentGenerationRequest request, CancellationToken _) => new AssessmentGenerationResult
+            {
+                GeneratedText = "Assessment draft",
+                Confidence = 0.85,
+                SourceInputs = request,
+                Success = true
+            });
+        aiService.Setup(service => service.GeneratePrognosisAsync(It.IsAny<PrognosisGenerationRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<PrognosisGenerationRequest, CancellationToken>((request, _) => prognosisRequest = request)
+            .ReturnsAsync((PrognosisGenerationRequest request, CancellationToken _) => new PrognosisGenerationResult
+            {
+                GeneratedText = "Prognosis draft",
+                Confidence = 0.85,
+                SourceInputs = request,
+                Success = true
+            });
+
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton(noteWorkspaceService.Object);
+        Services.AddSingleton(aiService.Object);
+        Services.AddSingleton<IOutcomeMeasureRegistry>(new OutcomeMeasureRegistry());
+        Services.AddSingleton(new DraftAutosaveService());
+
+        var cut = RenderComponent<global::PTDoc.UI.Pages.Patient.NoteWorkspacePage>(parameters => parameters
+            .Add(component => component.PatientId, patientId.ToString())
+            .Add(component => component.NoteId, noteId.ToString()));
+        cut.WaitForAssertion(() => Assert.Equal("Evaluation Note", cut.Find("[data-testid='note-type-select']").GetAttribute("value")));
+        cut.Find("[data-testid='soap-tab-assessment']").Click();
+        cut.WaitForAssertion(() => cut.Find("[data-testid='incomplete-note-modal']"));
+        cut.Find("[data-testid='incomplete-note-continue']").Click();
+        cut.WaitForAssertion(() => Assert.False(cut.Find("[data-testid='assessment-generate-btn']").HasAttribute("disabled")));
+        cut.Find("[data-testid='assessment-generate-btn']").Click();
+        cut.WaitForAssertion(() => Assert.NotNull(assessmentRequest));
+        cut.Find("[data-testid='ai-suggest-prognosis-btn']").Click();
+        cut.WaitForAssertion(() => Assert.NotNull(prognosisRequest));
+
+        var assessment = Assert.IsType<AssessmentGenerationRequest>(assessmentRequest);
+        var prognosis = Assert.IsType<PrognosisGenerationRequest>(prognosisRequest);
+        foreach (var inputs in new[] { assessment.SubjectiveInputs, prognosis.StructuredInputs })
+        {
+            var flatInput = inputs.First(input => input.Label == "Functional limitations");
+            Assert.Equal(
+                new[] { expectedDescription, historical, flatOnly }.OrderBy(value => value, StringComparer.Ordinal),
+                flatInput.Value.Split(", ").OrderBy(value => value, StringComparer.Ordinal));
+            Assert.Contains(inputs, input => input.Label == "Functional limitation - Mobility & Transfers"
+                && input.Value == $"{expectedDescription}; Number of repetitions; 3 repetitions; Needs hand support"
+                && input.BodyPart == "Knee");
+            Assert.Contains(inputs, input => input.Label == "Functional limitation - Sleep" && input.Value == historical);
+            if (wordingVersion is not null)
+            {
+                Assert.All(inputs, input => Assert.DoesNotContain(canonical, input.Value, StringComparison.Ordinal));
+            }
+        }
+
+        Assert.Equal($"{expectedDescription}, {historical}", assessment.FunctionalLimitations);
+        Assert.Equal($"{expectedDescription}, {historical}", prognosis.FunctionalLimitations);
+        Assert.Contains(canonical, payload.Subjective.FunctionalLimitations);
+        var entry = Assert.Single(payload.Subjective.StructuredFunctionalLimitations, limitation => limitation.Id == "stable-chair");
+        Assert.Equal(canonical, entry.Description);
+        Assert.Equal(wordingVersion, entry.WordingVersion);
+        aiService.Verify(service => service.GenerateAssessmentAsync(It.IsAny<AssessmentGenerationRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+        aiService.Verify(service => service.GeneratePrognosisAsync(It.IsAny<PrognosisGenerationRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     [Fact]
     public void ReviewPage_RegeneratedSummaryRequiresExplicitAcceptance()
     {

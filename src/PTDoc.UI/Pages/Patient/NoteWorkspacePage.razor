@@ -3069,7 +3069,7 @@ else
         AddAiInput(inputs, "Known cause", _note.Subjective.KnownCause, selectedBodyPart);
         AddAiInput(inputs, "Prior functional level", JoinValues(_note.Subjective.PriorFunctionalLevel), selectedBodyPart);
         AddAiInput(inputs, "Current level of function", _note.Subjective.CurrentLevelOfFunction, selectedBodyPart);
-        AddAiInput(inputs, "Functional limitations", JoinValues(_note.Subjective.FunctionalLimitations), selectedBodyPart);
+        AddAiInput(inputs, "Functional limitations", JoinValues(GetFunctionalLimitationDisplayDescriptions()), selectedBodyPart);
         AddAiInput(inputs, "Additional functional limitations", _note.Subjective.AdditionalFunctionalLimitations, selectedBodyPart);
 
         foreach (var limitation in _note.Subjective.StructuredFunctionalLimitations)
@@ -3193,7 +3193,7 @@ else
     private static string FormatStructuredFunctionalLimitation(FunctionalLimitationEditorEntry limitation)
     {
         var parts = new List<string>();
-        AddPart(parts, limitation.Description);
+        AddPart(parts, limitation.DisplayDescription);
         AddPart(parts, limitation.MeasurePrompt);
         if (limitation.QuantifiedValue.HasValue)
         {
@@ -3536,6 +3536,14 @@ else
             ? string.Empty
             : _note.Plan.FollowUpInstructions!;
 
+    private IEnumerable<string> GetFunctionalLimitationDisplayDescriptions() =>
+        _note.Subjective.FunctionalLimitations
+            .SelectMany(description => _note.Subjective.StructuredFunctionalLimitations
+                .Where(limitation => string.Equals(limitation.Description, description, StringComparison.OrdinalIgnoreCase))
+                .Select(limitation => limitation.DisplayDescription)
+                .DefaultIfEmpty(description))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
     private string GetFunctionalLimitationsSummary()
     {
         if (!string.IsNullOrWhiteSpace(_note.Assessment.FunctionalLimitations))
@@ -3545,7 +3553,7 @@ else
 
         if (_note.Subjective.FunctionalLimitations.Count > 0)
         {
-            return string.Join(", ", _note.Subjective.FunctionalLimitations.OrderBy(value => value));
+            return string.Join(", ", GetFunctionalLimitationDisplayDescriptions().OrderBy(value => value));
         }
 
         return GetChiefComplaintText();

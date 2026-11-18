@@ -16,6 +16,14 @@ public static class IntakeLateralityValues
 
 public sealed class IntakeStructuredDataDto
 {
+    public const int MaxOtherTextLength = 2000;
+
+    [JsonPropertyName("otherMedications")]
+    public string? OtherMedications { get; set; }
+
+    [JsonPropertyName("otherMedicalHistory")]
+    public string? OtherMedicalHistory { get; set; }
+
     [JsonPropertyName("schemaVersion")]
     public string SchemaVersion { get; set; } = string.Empty;
 
@@ -78,6 +86,10 @@ public sealed class IntakeFunctionalLimitationSelectionDto
 
     [JsonPropertyName("activity")]
     public string Activity { get; set; } = string.Empty;
+
+    // Missing on historical selections: retain their original wording.
+    [JsonPropertyName("wordingVersion")]
+    public string? WordingVersion { get; set; }
 }
 
 public sealed class IntakeSubjectiveDataDto

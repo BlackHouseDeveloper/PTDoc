@@ -11,6 +11,33 @@ namespace PTDoc.Tests.Notes.Workspace;
 [Trait("Category", "CoreCi")]
 public sealed class ProgressActivityWriteValidatorTests
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData("difficulty-v1")]
+    public async Task ConfirmedWording_CannotMakeRecordedActivityNewlyDifficult(string? version)
+    {
+        await using var db = CreateDb();
+        var catalogs = new WorkspaceReferenceCatalogService(new OutcomeMeasureRegistry());
+        var choice = ProgressActivityTracking.CatalogOptions(catalogs.GetBodyRegionCatalog(BodyPart.Knee))
+            .First(item => item.Description.StartsWith("Unable to ", StringComparison.Ordinal));
+        var payload = new NoteWorkspaceV2Payload
+        {
+            NoteType = NoteType.ProgressNote,
+            Subjective = new()
+            {
+                FunctionalLimitations = [new() { Id = "stable-source-id", BodyPart = choice.BodyPart,
+                Category = choice.Category, Description = choice.Description, WordingVersion = version }]
+            },
+            ProgressQuestionnaire = new() { Activities = new() { NewlyDifficult = [choice] } }
+        };
+        var errors = await ProgressActivityWriteValidator.PrepareAsync(db, catalogs, payload, null, Guid.NewGuid(), Guid.NewGuid(), default);
+        Assert.Contains(errors, error => error.Contains("already recorded activity", StringComparison.Ordinal));
+        var baseline = Assert.Single(payload.ProgressQuestionnaire.Activities!.Baseline);
+        Assert.Equal(choice.Description, baseline.Description);
+        Assert.Equal(version, baseline.WordingVersion);
+        Assert.Empty(payload.ProgressQuestionnaire.Activities.NewlyDifficult);
+    }
+
     [Fact]
     public async Task FirstProgressSave_KeepsNewCatalogSelectionOutOfRecordedBaseline()
     {

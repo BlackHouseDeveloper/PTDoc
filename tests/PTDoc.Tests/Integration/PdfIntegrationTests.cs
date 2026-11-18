@@ -78,6 +78,36 @@ public class PdfIntegrationTests : IAsyncDisposable
         Assert.Throws<InvalidOperationException>(() => ProgressActivityTracking.ValidateJsonWrite(null, normalized));
     }
 
+    [Theory]
+    [InlineData(null, "Unable to rise from chair")]
+    [InlineData("difficulty-v1", "Difficulty with: rise from chair")]
+    public void ConfirmedWording_ProjectsIntoDocumentAndAssessmentWithoutChangingActivity(string? version, string display)
+    {
+        const string canonical = "Unable to rise from chair";
+        var payload = new NoteWorkspaceV2Payload
+        {
+            Subjective = new()
+            {
+                FunctionalLimitations =
+            [new() { Id = "stable-chair", BodyPart = BodyPart.Knee, Category = "Mobility", Description = canonical, WordingVersion = version }]
+            }
+        };
+        var before = JsonSerializer.Serialize(payload);
+        var hierarchy = _hierarchyBuilder.Build(new NoteExportDto
+        {
+            NoteType = NoteType.Evaluation,
+            ContentJson = before,
+            PatientFirstName = "Synthetic",
+            PatientLastName = "Wording",
+            DateOfService = new DateTime(2026, 11, 18)
+        });
+        Assert.Contains(display, JsonSerializer.Serialize(hierarchy));
+        var assessment = new PTDoc.Infrastructure.Notes.Workspace.AssessmentCompositionService().Compose(payload,
+            new Patient { DateOfBirth = new DateTime(1988, 1, 1) });
+        Assert.Contains(display, JsonSerializer.Serialize(assessment));
+        Assert.Equal(before, JsonSerializer.Serialize(payload));
+    }
+
     [Fact]
     public async Task PatientOutcomes_PdfPreservesIndependentPartialScoresAndSourceVersion()
     {

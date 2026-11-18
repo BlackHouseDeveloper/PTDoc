@@ -290,6 +290,53 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
     }
 
     [Theory]
+    [InlineData(false, null, "Unable to rise from chair without pushing off with hands")]
+    [InlineData(true, null, "Unable to rise from chair without pushing off with hands")]
+    [InlineData(false, FunctionalLimitationDisplayText.DifficultyV1, "Difficulty with: rise from chair without pushing off with hands")]
+    [InlineData(true, FunctionalLimitationDisplayText.DifficultyV1, "Difficulty with: rise from chair without pushing off with hands")]
+    public async Task EncounterEvaluationSeed_PreservesOtherDetailsAndConfirmedWording(bool reEvaluation, string? version, string expected)
+    {
+        var patient = new Patient { FirstName = "Synthetic", LastName = "Wording" };
+        var note = new ClinicalNote { PatientId = patient.Id, NoteType = NoteType.Evaluation, IsReEvaluation = reEvaluation };
+        var structured = new IntakeStructuredDataDto
+        {
+            OtherMedications = "Synthetic medication",
+            OtherMedicalHistory = "Synthetic history",
+            FunctionalLimitations = [new() { Id = "stable-chair-id", BodyPart = "Knee", Category = "Mobility & Transfers", Activity = "Unable to rise from chair without pushing off with hands", WordingVersion = version }]
+        };
+        var intake = new IntakeForm
+        {
+            PatientId = patient.Id,
+            EncounterNoteId = note.Id,
+            EncounterIsReEvaluation = reEvaluation,
+            QuestionnaireDefinitionId = IntakeQuestionnaireDefinitions.EvaluationFullV1,
+            IsLocked = true,
+            SubmittedAt = DateTime.UtcNow,
+            StructuredDataJson = IntakeStructuredDataJson.Serialize(structured),
+            ResponseJson = JsonSerializer.Serialize(new IntakeResponseDraft { IntakeFlowVersion = 2, StructuredData = structured, MedicalHistoryNotes = "Existing surgery details" }, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+        };
+        var originalJson = intake.StructuredDataJson;
+        _context.Patients.Add(patient);
+        _context.ClinicalNotes.Add(note);
+        _context.IntakeForms.Add(intake);
+        await _context.SaveChangesAsync();
+        _context.ChangeTracker.Clear();
+
+        var seed = (await _service.GetEncounterEvaluationSeedAsync(patient.Id, note.Id))!;
+
+        Assert.Contains(seed.Payload.Subjective.Medications, item => item.Name == "Synthetic medication");
+        Assert.Contains("Synthetic history", seed.Payload.Subjective.Comorbidities);
+        Assert.Equal("Existing surgery details", seed.Payload.Subjective.NarrativeContext.PatientHistorySummary);
+        var limitation = Assert.Single(seed.Payload.Subjective.FunctionalLimitations);
+        Assert.Equal("stable-chair-id", limitation.Id);
+        Assert.Equal("Unable to rise from chair without pushing off with hands", limitation.Description);
+        Assert.Equal(version, limitation.WordingVersion);
+        Assert.Equal(expected, FunctionalLimitationDisplayText.Format(limitation.Description, limitation.WordingVersion));
+        Assert.Equal(originalJson, (await _context.IntakeForms.AsNoTracking().SingleAsync()).StructuredDataJson);
+        Assert.Equal("{}", (await _context.ClinicalNotes.AsNoTracking().SingleAsync()).ContentJson);
+    }
+
+    [Theory]
     [InlineData(null, false)]
     [InlineData("Previously recorded setback details", false)]
     [InlineData(null, true)]
@@ -1513,8 +1560,10 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Equal(persistedRecordedAt.Ticks, persisted.DateRecorded.Ticks);
     }
 
-    [Fact]
-    public async Task GetEvaluationSeedAsync_PrefersSubmittedIntakeAndKeepsRecommendedMeasuresSeparate()
+    [Theory]
+    [InlineData(null, "Unable to rise from chair without pushing off with hands")]
+    [InlineData(FunctionalLimitationDisplayText.DifficultyV1, "Difficulty with: rise from chair without pushing off with hands")]
+    public async Task GetEvaluationSeedAsync_PrefersSubmittedIntakeAndKeepsRecommendedMeasuresSeparate(string? wordingVersion, string expectedDescription)
     {
         var patient = new Patient
         {
@@ -1567,6 +1616,8 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
             {
                 SchemaVersion = "2026-03-30",
                 MedicationIds = ["zestril-lisinopril"],
+                OtherMedications = "Synthetic additional medication",
+                OtherMedicalHistory = "Synthetic additional history",
                 PainDescriptorIds = ["aching"],
                 FunctionalLimitations =
                 [
@@ -1575,7 +1626,8 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
                         Id = "knee-mobility-chair-rise",
                         BodyPart = "Knee",
                         Category = "Mobility & Transfers",
-                        Activity = "Unable to rise from chair without pushing off with hands"
+                        Activity = "Unable to rise from chair without pushing off with hands",
+                        WordingVersion = wordingVersion
                     }
                 ],
                 Subjective = new IntakeSubjectiveDataDto
@@ -1638,7 +1690,9 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Contains("Hypertension (High Blood Pressure)", seed.Payload.Subjective.Comorbidities);
         Assert.Contains("Cane", seed.Payload.Subjective.AssistiveDevice.Devices);
         Assert.True(seed.Payload.Subjective.TakingMedications);
-        Assert.Equal("Zestril / Lisinopril", Assert.Single(seed.Payload.Subjective.Medications).Name);
+        Assert.Contains(seed.Payload.Subjective.Medications, x => x.Name == "Zestril / Lisinopril");
+        Assert.Contains(seed.Payload.Subjective.Medications, x => x.Name == "Synthetic additional medication");
+        Assert.Contains("Synthetic additional history", seed.Payload.Subjective.Comorbidities);
         Assert.Equal(
             "Can perform household tasks with pacing; requires seated breaks for community walking.",
             seed.Payload.Subjective.CurrentLevelOfFunction);
@@ -1647,6 +1701,9 @@ public sealed class NoteWorkspaceV2ServiceTests : IDisposable
         Assert.Equal(BodyPart.Knee, seededLimitation.BodyPart);
         Assert.Equal("Mobility & Transfers", seededLimitation.Category);
         Assert.Equal("Unable to rise from chair without pushing off with hands", seededLimitation.Description);
+        Assert.Equal(wordingVersion, seededLimitation.WordingVersion);
+        Assert.Equal(expectedDescription, FunctionalLimitationDisplayText.Format(seededLimitation.Description, seededLimitation.WordingVersion));
+        Assert.Equal("knee-mobility-chair-rise", seededLimitation.Id);
         Assert.Contains("Independent", seed.Payload.Subjective.PriorFunctionalLevel);
         Assert.Equal(new DateTime(2026, 3, 15), seed.Payload.Subjective.OnsetDate);
         Assert.Equal("Twisted knee stepping off a curb.", seed.Payload.Subjective.KnownCause);

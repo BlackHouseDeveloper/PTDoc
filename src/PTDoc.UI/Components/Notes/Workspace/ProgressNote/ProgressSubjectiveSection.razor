@@ -317,7 +317,7 @@
         _activities = _progress.Activities is not null ? ProgressActivityTracking.Clone(_progress.Activities) : new()
         {
             Baseline = _vm.StructuredFunctionalLimitations.Where(f => !string.IsNullOrWhiteSpace(f.Description))
-                .Select(f => ProgressActivityTracking.RecordedActivity(ParseRegion(f.BodyPart), f.Description, f.Category)).ToList()
+                .Select(f => ProgressActivityTracking.RecordedActivity(ParseRegion(f.BodyPart), f.Description, f.Category, wordingVersion: f.WordingVersion)).ToList()
         };
         _overallCondition = _progress.OverallCondition;
         _goalProgress = _progress.GoalProgress;

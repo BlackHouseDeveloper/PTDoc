@@ -603,6 +603,11 @@ public sealed class NoteWorkspaceV2Service(
             .OrderBy(label => label, StringComparer.OrdinalIgnoreCase)
             .Select(label => new MedicationEntryV2 { Name = label })
             .ToList();
+        if (!structuredData.NoMedications && !string.IsNullOrWhiteSpace(structuredData.OtherMedications))
+        {
+            medicationEntries.Add(new MedicationEntryV2 { Name = structuredData.OtherMedications.Trim() });
+        }
+
         var livingSituationSelections = ResolveStructuredLabels(
             structuredData.LivingSituationIds,
             draft.SelectedLivingSituations,
@@ -615,6 +620,11 @@ public sealed class NoteWorkspaceV2Service(
             structuredData.ComorbidityIds,
             draft.SelectedComorbidities,
             intakeReferenceData.GetComorbidity);
+        if (!structuredData.NoComorbidities && !string.IsNullOrWhiteSpace(structuredData.OtherMedicalHistory))
+        {
+            comorbiditySelections = comorbiditySelections.Append(structuredData.OtherMedicalHistory.Trim()).ToList();
+        }
+
         var assistiveDeviceSelections = ResolveStructuredLabels(
             structuredData.AssistiveDeviceIds,
             draft.SelectedAssistiveDevices,
@@ -664,6 +674,7 @@ public sealed class NoteWorkspaceV2Service(
                 BodyPart = entry.BodyPart,
                 Category = entry.Selection.Category.Trim(),
                 Description = entry.Selection.Activity.Trim(),
+                WordingVersion = entry.Selection.WordingVersion,
                 IsSourceBacked = true
             })
             .ToList();

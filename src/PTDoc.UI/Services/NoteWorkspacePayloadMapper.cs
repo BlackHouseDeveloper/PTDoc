@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using PTDoc.Application.Intake;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Outcomes;
 using PTDoc.Application.ReferenceData;
@@ -102,6 +103,7 @@ public sealed class NoteWorkspacePayloadMapper
                         BodyPart = entry.BodyPart == BodyPart.Other ? null : entry.BodyPart.ToString(),
                         Category = entry.Category,
                         Description = entry.Description,
+                        WordingVersion = entry.WordingVersion,
                         IsSourceBacked = entry.IsSourceBacked,
                         MeasurePrompt = entry.MeasurePrompt,
                         QuantifiedValue = entry.QuantifiedValue,
@@ -218,7 +220,7 @@ public sealed class NoteWorkspacePayloadMapper
                 AssessmentNarrative = payload.Assessment.AssessmentNarrative,
                 FindingsSummary = payload.Assessment.FindingsSummary,
                 FunctionalLimitations = string.IsNullOrWhiteSpace(payload.Assessment.FunctionalLimitationsSummary)
-                    ? string.Join(", ", payload.Subjective.FunctionalLimitations.Select(item => item.Description))
+                    ? string.Join(", ", payload.Subjective.FunctionalLimitations.Select(item => FunctionalLimitationDisplayText.Format(item.Description, item.WordingVersion)))
                     : payload.Assessment.FunctionalLimitationsSummary,
                 DeficitsSummary = payload.Assessment.DeficitsSummary,
                 DeficitCategories = [.. payload.Assessment.DeficitCategories],
@@ -712,6 +714,7 @@ public sealed class NoteWorkspacePayloadMapper
                     existing.BodyPart = bodyPart;
                     existing.Category = entry.Category?.Trim() ?? string.Empty;
                     existing.Description = entry.Description.Trim();
+                    existing.WordingVersion = entry.WordingVersion;
                     existing.IsSourceBacked = entry.IsSourceBacked;
                     existing.MeasurePrompt = string.IsNullOrWhiteSpace(entry.MeasurePrompt) ? null : entry.MeasurePrompt.Trim();
                     existing.QuantifiedValue = entry.QuantifiedValue;
@@ -726,6 +729,7 @@ public sealed class NoteWorkspacePayloadMapper
                     BodyPart = bodyPart,
                     Category = entry.Category?.Trim() ?? string.Empty,
                     Description = entry.Description.Trim(),
+                    WordingVersion = entry.WordingVersion,
                     IsSourceBacked = entry.IsSourceBacked,
                     MeasurePrompt = string.IsNullOrWhiteSpace(entry.MeasurePrompt) ? null : entry.MeasurePrompt.Trim(),
                     QuantifiedValue = entry.QuantifiedValue,
@@ -742,6 +746,7 @@ public sealed class NoteWorkspacePayloadMapper
         BodyPart = entry.BodyPart,
         Category = entry.Category,
         Description = entry.Description,
+        WordingVersion = entry.WordingVersion,
         IsSourceBacked = entry.IsSourceBacked,
         MeasurePrompt = entry.MeasurePrompt,
         QuantifiedValue = entry.QuantifiedValue,

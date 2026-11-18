@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using PTDoc.Application.Intake;
 using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Notes.Content;
@@ -970,7 +971,7 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             ? string.Empty
             : string.Join(", ",
                 workspace.Subjective.FunctionalLimitations
-                    .Select(item => item.Description)
+                    .Select(item => FunctionalLimitationDisplayText.Format(item.Description, item.WordingVersion))
                     .Where(value => !string.IsNullOrWhiteSpace(value))
                     .Distinct(StringComparer.OrdinalIgnoreCase));
 
@@ -1043,9 +1044,9 @@ public sealed class ClinicalDocumentHierarchyBuilder : IClinicalDocumentHierarch
             foreach (var activity in (activities.Baseline ?? []).Where(a => a is not null))
             {
                 var state = activities.ImprovedIds?.Contains(activity.Id) == true ? "Improved" : activities.SameIds?.Contains(activity.Id) == true ? "Same" : activities.WorseIds?.Contains(activity.Id) == true ? "Worse" : null;
-                if (state is not null) values.Add($"{state}: {activity.BodyPart} — {activity.Description}");
+                if (state is not null) values.Add($"{state}: {activity.BodyPart} — {FunctionalLimitationDisplayText.Format(activity.Description, activity.WordingVersion)}");
             }
-            foreach (var activity in (activities.NewlyDifficult ?? []).Where(a => a is not null)) values.Add($"Newly difficult: {activity.BodyPart} — {activity.Description}");
+            foreach (var activity in (activities.NewlyDifficult ?? []).Where(a => a is not null)) values.Add($"Newly difficult: {activity.BodyPart} — {FunctionalLimitationDisplayText.Format(activity.Description, activity.WordingVersion)}");
         }
 
         AddIfPresent(values, questionnaire.OverallCondition, "Overall condition");

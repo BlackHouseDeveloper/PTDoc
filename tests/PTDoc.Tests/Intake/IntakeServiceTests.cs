@@ -760,6 +760,53 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.Equal(original, draft.ProfilePrefillSourceModifiedUtc);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData(FunctionalLimitationDisplayText.DifficultyV1)]
+    public async Task OtherDetailsAndMultipleSelectionsSurviveSaveSubmitAndDatabaseReload(string? wordingVersion)
+    {
+        var patient = CreatePatient("Synthetic", "OtherDetails");
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var catalog = new IntakeReferenceDataCatalogService();
+        var medicationIds = catalog.GetMedications().Take(2).Select(x => x.Id).ToList();
+        var historyIds = catalog.GetComorbidities().Take(2).Select(x => x.Id).ToList();
+        await _service.EnsureDraftAsync(patient.Id, new IntakeResponseDraft
+        {
+            PatientId = patient.Id,
+            MedicalHistoryNotes = "Existing surgery evidence",
+            StructuredData = new IntakeStructuredDataDto
+            {
+                MedicationIds = medicationIds,
+                ComorbidityIds = historyIds,
+                OtherMedications = "Unlisted medication",
+                OtherMedicalHistory = "Unlisted history",
+                FunctionalLimitations = [new() { Id = "stable-chair-id", BodyPart = "Knee", Category = "Mobility & Transfers", Activity = "Unable to rise from chair without pushing off with hands", WordingVersion = wordingVersion }]
+            }
+        });
+        _context.ChangeTracker.Clear();
+        var loaded = await _service.GetLatestByPatientIdAsync(patient.Id);
+        Assert.NotNull(loaded);
+        loaded.StructuredData!.OtherMedications = "Saved unlisted medication";
+        await _service.SaveDraftAsync(loaded);
+        _context.ChangeTracker.Clear();
+        loaded = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
+        await _service.SubmitAsync(loaded);
+        _context.ChangeTracker.Clear();
+        loaded = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
+        Assert.True(loaded.IsLocked);
+        Assert.True(loaded.IsSubmitted);
+        Assert.Equal(medicationIds.OrderBy(x => x), loaded.StructuredData!.MedicationIds.OrderBy(x => x));
+        Assert.Equal(historyIds.OrderBy(x => x), loaded.StructuredData.ComorbidityIds.OrderBy(x => x));
+        Assert.Equal("Saved unlisted medication", loaded.StructuredData.OtherMedications);
+        Assert.Equal("Unlisted history", loaded.StructuredData.OtherMedicalHistory);
+        Assert.Equal("Existing surgery evidence", loaded.MedicalHistoryNotes);
+        var selection = Assert.Single(loaded.StructuredData.FunctionalLimitations);
+        Assert.Equal("stable-chair-id", selection.Id);
+        Assert.Equal("Unable to rise from chair without pushing off with hands", selection.Activity);
+        Assert.Equal(wordingVersion, selection.WordingVersion);
+    }
+
     [Fact]
     public async Task EnsureDraftAsync_ReturnsExistingUnlockedDraft_WhenPresent()
     {

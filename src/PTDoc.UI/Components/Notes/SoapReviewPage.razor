@@ -684,7 +684,9 @@
 
     private string GetFunctionalLimitations() =>
         JoinValues(
-            Note.Subjective.StructuredFunctionalLimitations.Select(entry => entry.Description).Concat(Note.Subjective.FunctionalLimitations),
+            Note.Subjective.StructuredFunctionalLimitations.Select(entry => entry.DisplayDescription)
+                .Concat(Note.Subjective.FunctionalLimitations.Where(description => !Note.Subjective.StructuredFunctionalLimitations
+                    .Any(entry => string.Equals(entry.Description, description, StringComparison.OrdinalIgnoreCase)))),
             Note.Subjective.AdditionalFunctionalLimitations);
 
     private string GetPainScoreLabel() => HasPainScore() ? $"{Math.Clamp(Note.Subjective.CurrentPainScore, 0, 10)}/10" : EmptyState;
