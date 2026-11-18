@@ -4,6 +4,7 @@
 
 <section class="demographics-step" data-testid="demographics-step">
     <BasicInfoCard
+        FocusRequested="@(FocusTarget == IntakeReviewTarget.PersonalInformation)"
         FullName="@State.FullName"
         DateOfBirth="@State.DateOfBirth"
         SexAtBirth="@State.SexAtBirth"
@@ -31,6 +32,7 @@
         EmergencyContactPhoneChanged="OnEmergencyContactPhoneChanged" />
 
     <CareTeamCard
+        FocusRequested="@(FocusTarget == IntakeReviewTarget.CareTeam)"
         PrimaryDoctorName="@State.PrimaryDoctorName"
         PrimaryDoctorPhone="@State.PrimaryDoctorPhone"
         ReferringDoctorName="@State.ReferringDoctorName"
@@ -43,6 +45,7 @@
         ReferringDoctorPhoneChanged="OnReferringDoctorPhoneChanged" />
 
     <InsurancePayerCard
+        FocusRequested="@(FocusTarget == IntakeReviewTarget.Insurance)"
         InsuranceCompanyName="@State.InsuranceCompanyName"
         MemberOrPolicyNumber="@State.MemberOrPolicyNumber"
         GroupNumber="@State.GroupNumber"
@@ -87,6 +90,8 @@
 </section>
 
 @code {
+    [Parameter] public IntakeReviewTarget? FocusTarget { get; set; }
+
     [Parameter, EditorRequired] public IntakeWizardState State { get; set; } = new();
     [Parameter] public string? ValidationMessage { get; set; }
     [Parameter] public IReadOnlyDictionary<string, string>? ValidationErrors { get; set; }

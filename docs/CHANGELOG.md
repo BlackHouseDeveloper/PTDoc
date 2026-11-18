@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - iOS simulator startup Keychain entitlement
+
+- Add an app-scoped Keychain entitlement for iOS simulator builds so `SecureStorageDbKeyProvider` can persist the encrypted local database key instead of throwing `MissingEntitlement` during app construction. Preserve fail-closed key storage and physical-device/publish signing configuration.
+- Verify the .NET 8 clean simulator rebuild (zero warnings/errors), embedded native entitlement, startup survival and relaunch with the existing database, plus eight MSBuild configuration checks. Record the exact commands and remaining native UI/device acceptance limits in `docs/client-review/plan-09.md`. No commit, push or GitHub review-state change occurred during verification.
+
+### Fixed - Plan 09 review preparation against current main
+
+- Reconciled intake Review Edit with full Evaluation/Re-evaluation and shortened Daily/Progress/Discharge flows. Focus available visit/outcome sections, retain answers and questionnaire selections, and reject unavailable destinations while preserving encounter loading, consent, scoring and outcome evidence.
+- Preserve single-row keyboard-scrollable progress, front/back pressed states and markings, and isolated heading styles. Added navigation/retention regressions and separated combined-head verification from historical Plan 09 evidence.
+
+
 ### Fixed - Addendum outcome evidence and legacy intake issuance
 
 - Reject submitted outcome snapshots on addendum creation before normalization, including malformed snapshots and duplicate, case-varied or escaped property names. Outcome evidence remains on the original signed note; rejected requests create no addendum, sync work or audit event.
@@ -536,6 +547,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planning - Client review Plan 05
 
 - Added Plan 05 evidence, development specification, acceptance criteria and exact decision/dependency gates. This is planning documentation; the feature is not implemented.
+
+### Changed - Client review Plan 09
+
+- Retained each card’s existing heading styles across the focusable heading component boundary.
+
+- Added section-specific Review Edit navigation with focus after render, single-row scrollable intake progress, visible front/back selection and concise body-map instructions. Existing answers are retained and no clinical schema changes are required.
 
 ### Fixed - PR 153 external identity markers and reminder cleanup isolation
 

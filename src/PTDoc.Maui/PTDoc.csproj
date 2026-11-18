@@ -39,6 +39,12 @@
         <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'tizen'">6.5</SupportedOSPlatformVersion>
     </PropertyGroup>
 
+    <!-- Simulator SecureStorage needs an explicit app-scoped Keychain entitlement. -->
+    <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-ios' and ($(RuntimeIdentifier.StartsWith('iossimulator-')) or ('$(RuntimeIdentifier)' == '' and '$(RuntimeIdentifiers)' == '' and '$(_IsPublishing)' != 'true'))">
+        <CodesignEntitlements>Platforms/iOS/Entitlements.Simulator.plist</CodesignEntitlements>
+        <CodesignRequireProvisioningProfile>false</CodesignRequireProvisioningProfile>
+    </PropertyGroup>
+
     <ItemGroup>
         <!-- App Icon -->
         <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />

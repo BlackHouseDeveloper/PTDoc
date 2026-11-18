@@ -1,7 +1,7 @@
 @using PTDoc.UI.Components.Intake.Models
 
 <nav class="pain-progress" data-testid="pain-progress" aria-label="Intake progress">
-    <div class="pain-progress__labels @(IsShortVisit ? "pain-progress__labels--short" : string.Empty)">
+    <div class="pain-progress__labels" role="region" aria-label="Intake steps; scroll horizontally to see all steps" tabindex="0">
         @for (var index = 0; index < Steps.Length; index++)
         {
             var step = Steps[index];

@@ -16,7 +16,7 @@
     min-width: 0;
 }
 
-.intake-step-shell h2 {
+.intake-step-shell ::deep h2 {
     color: var(--card-foreground);
     font-size: var(--text-xl);
     margin: 0 0 var(--spacing-2);

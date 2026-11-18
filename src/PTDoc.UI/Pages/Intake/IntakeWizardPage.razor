@@ -169,10 +169,12 @@
                         @if (IsShortVisit && State.CurrentStep != IntakeStep.Review && State.VisitQuestionnaire is { } visit)
                         {
                             <div class="intake-page__visit">
+                            <IntakeSectionHeading Section="IntakeReviewTarget.VisitAnswers" FocusRequested="@(_reviewFocusTarget == IntakeReviewTarget.VisitAnswers)">Visit questionnaire</IntakeSectionHeading>
                             <VisitQuestionnaireFields Value="@visit" ValueChanged="HandleVisitChangedAsync"
                                 DefinitionId="@(State.QuestionnaireDefinitionId!)" IsReadOnly="@(!CanEditDraft)" />
                             @if (State.QuestionnaireDefinitionId != IntakeQuestionnaireDefinitions.DailyV1)
                             {
+                                <IntakeSectionHeading Section="IntakeReviewTarget.OutcomeMeasures" FocusRequested="@(_reviewFocusTarget == IntakeReviewTarget.OutcomeMeasures)">Outcome Measures</IntakeSectionHeading>
                                 <PatientOutcomeFields Value="@State.PatientOutcomes" ValueChanged="HandleOutcomesChangedAsync" IsReadOnly="@(!CanEditDraft)" />
                             }
                             <IntakeFooterActions PrimaryText="Review answers" PrimaryTestId="intake-review-answers" OnPrimary="HandleVisitContinueAsync" />
@@ -183,10 +185,10 @@
                             @switch (State.CurrentStep)
                             {
                                 case IntakeStep.Demographics:
-                                    <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                                    <DemographicsStep FocusTarget="@_reviewFocusTarget" State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
                                     break;
                                 case IntakeStep.PainAssessment:
-                                    <PainAssessmentStep2 State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainAssessmentContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                                    <PainAssessmentStep2 FocusTarget="@_reviewFocusTarget" State="@State" OnBack="HandleBackAsync" OnContinue="HandlePainAssessmentContinueAsync" OnStateChanged="HandleStateChangedAsync" />
                                     break;
                                 case IntakeStep.PainDetails:
                                     <PainDetailsStep State="@State"
@@ -196,7 +198,7 @@
                                                      ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
                                     break;
                                 case IntakeStep.OutcomeMeasures:
-                                    <OutcomeMeasuresStep State="@State"
+                                    <OutcomeMeasuresStep FocusRequested="@(_reviewFocusTarget == IntakeReviewTarget.OutcomeMeasures)" State="@State"
                                                          OnBack="HandleBackAsync"
                                                          OnContinue="HandleOutcomeMeasuresContinueAsync"
                                                          OnStateChanged="HandleStateChangedAsync" />
@@ -214,7 +216,7 @@
                                                 ShowOutcomeMeasureRecommendations="@CanViewOutcomeMeasureRecommendations" />
                                     break;
                                 default:
-                                    <DemographicsStep State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
+                                    <DemographicsStep FocusTarget="@_reviewFocusTarget" State="@State" ValidationMessage="@_validationMessage" ValidationErrors="@_demographicsValidationErrors" OnContinue="HandleDemographicsContinueAsync" OnStateChanged="HandleStateChangedAsync" />
                                     break;
                             }
                         }
@@ -247,6 +249,7 @@
 
     private IntakeWizardState State { get; set; } = new();
     private Guid? _loadedPatientId;
+    private IntakeReviewTarget? _reviewFocusTarget;
     private bool _showDraftUnavailable;
     private bool _canSelectPatient;
     private bool _canManageDrafts;
@@ -363,6 +366,7 @@
             return;
         }
 
+        _reviewFocusTarget = null;
         var requestedNoteId = EffectiveNoteId;
         var requestedPatientMode = State.IsPatientMode;
         var generation = ++_loadGeneration;
@@ -523,6 +527,7 @@
         if (!CanEditDraft || IsInteractionLocked || State.VisitQuestionnaire is null) return;
         var errors = State.VisitQuestionnaire.Validate(IntakeQuestionnaireDefinitions.NoteTypeFor(State.QuestionnaireDefinitionId)!.Value, submitting: true);
         if (errors.Count > 0) { _validationMessage = string.Join(" ", errors); return; }
+        _reviewFocusTarget = null;
         State.CurrentStep = IntakeStep.Review;
         State.IsDirty = true;
         await SaveDraftIfPossibleAsync();
@@ -530,6 +535,7 @@
 
     private async Task HandleDemographicsContinueAsync()
     {
+        _reviewFocusTarget = null;
         if (!CanEditDraft)
         {
             _validationMessage = GetReadOnlyDraftMessage();
@@ -593,6 +599,7 @@
 
     private async Task HandlePainAssessmentContinueAsync()
     {
+        _reviewFocusTarget = null;
         if (!CanEditDraft)
         {
             _validationMessage = GetReadOnlyDraftMessage();
@@ -606,6 +613,7 @@
 
     private async Task HandlePainDetailsContinueAsync()
     {
+        _reviewFocusTarget = null;
         if (!CanEditDraft)
         {
             _validationMessage = GetReadOnlyDraftMessage();
@@ -625,6 +633,7 @@
 
     private async Task HandleOutcomeMeasuresContinueAsync()
     {
+        _reviewFocusTarget = null;
         if (!CanEditDraft)
         {
             _validationMessage = GetReadOnlyDraftMessage();
@@ -638,6 +647,7 @@
 
     private Task HandleBackAsync()
     {
+        _reviewFocusTarget = null;
         _validationMessage = null;
 
         if (IsShortVisit) { State.CurrentStep = IntakeStep.Demographics; return Task.CompletedTask; }
@@ -854,11 +864,26 @@
         return Task.CompletedTask;
     }
 
-    private Task HandleEditStepAsync(PTDoc.Core.Models.IntakeStep step)
+    private Task HandleEditStepAsync(IntakeReviewTarget target)
     {
-        if (CanEditDraft)
+        if (CanEditDraft && !IsInteractionLocked)
         {
-            State.CurrentStep = step;
+            var step = target switch
+            {
+                IntakeReviewTarget.PersonalInformation or IntakeReviewTarget.CareTeam or IntakeReviewTarget.Insurance when !IsShortVisit => IntakeStep.Demographics,
+                IntakeReviewTarget.MedicalHistory or IntakeReviewTarget.PainAreas when !IsShortVisit => IntakeStep.PainAssessment,
+                IntakeReviewTarget.VisitAnswers when IsShortVisit && State.VisitQuestionnaire is not null => IntakeStep.Demographics,
+                IntakeReviewTarget.OutcomeMeasures when !IsShortVisit => IntakeStep.OutcomeMeasures,
+                IntakeReviewTarget.OutcomeMeasures when State.QuestionnaireDefinitionId != IntakeQuestionnaireDefinitions.DailyV1 && State.VisitQuestionnaire is not null && State.PatientOutcomes is not null => IntakeStep.Demographics,
+                _ => (IntakeStep?)null
+            };
+            if (step is null)
+            {
+                return Task.CompletedTask;
+            }
+
+            _reviewFocusTarget = target;
+            State.CurrentStep = step.Value;
             _validationMessage = null;
         }
 

@@ -31,6 +31,20 @@ public sealed class StructuredIntakeComponentsTests : TestContext
     }
 
     [Fact]
+    public void BodyOrientationButtons_UpdateSelectionWithoutClearingMarkedAreas()
+    {
+        var state = new IntakeWizardState { SelectedBodyRegions = [BodyRegion.NeckFront] };
+        var cut = RenderComponent<PainAssessmentStep2>(p => p.Add(c => c.State, state));
+        var toggle = cut.Find("[data-testid='body-view-toggle']");
+        Assert.Equal("true", toggle.QuerySelector("button")!.GetAttribute("aria-pressed"));
+        cut.FindAll("[data-testid='body-view-toggle'] button")[1].Click();
+        Assert.Equal("true", cut.FindAll("[data-testid='body-view-toggle'] button")[1].GetAttribute("aria-pressed"));
+        Assert.Equal("false", cut.FindAll("[data-testid='body-view-toggle'] button")[0].GetAttribute("aria-pressed"));
+        Assert.Contains(BodyRegion.NeckFront, state.SelectedBodyRegions);
+        Assert.False(state.IsDirty);
+    }
+
+    [Fact]
     public void MedicalHistoryCard_RendersStructuredSelections()
     {
         var state = new IntakeWizardState
