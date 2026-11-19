@@ -347,7 +347,7 @@ public static class IntakeAccessEndpoints
                 requireHipaaAcknowledgement: false,
                 out var normalizedConsents,
                 out _,
-                out var validationProblem))
+                out var validationProblem, intake.Consents))
         {
             return validationProblem!;
         }
@@ -454,7 +454,8 @@ public static class IntakeAccessEndpoints
             intake.Id,
             intake.PatientId,
             intake.SubmittedAt.Value,
-            intake.LastModifiedUtc);
+            intake.LastModifiedUtc,
+            consentPacket);
         intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, intake.ResponseJson);
         IntakeEndpoints.ApplySubmittedIntakePatientFields(intake);
 

@@ -1,11 +1,16 @@
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using PTDoc.Api.Intake;
+using PTDoc.Application.Compliance;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Notes.Workspace;
 using PTDoc.Application.Services;
+using PTDoc.Application.Sync;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Outcomes;
@@ -23,6 +28,123 @@ public sealed class IntakeServiceTests : IDisposable
     private readonly Mock<IIdentityContextAccessor> _identityContext = new();
     private readonly Guid _clinicId = Guid.NewGuid();
     private readonly Guid _userId = Guid.NewGuid();
+
+    [Fact]
+    public async Task WrittenRevocation_StaleDraftCannotOverwriteEvidence_ReloadCanSaveAndSubmit()
+    {
+        var patient = CreatePatient("Synthetic", "Revocation");
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var stale = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        var intake = await _context.IntakeForms.SingleAsync();
+        var packet = new IntakeConsentPacket
+        {
+            TreatmentConsentAccepted = true,
+            HipaaAcknowledged = true,
+            PhiReleaseAuthorized = true,
+            AuthorizedContacts = [new() { Id = "recipient-1", Name = "Synthetic contact", PhoneNumber = "555-0101", Relationship = "Friend" }],
+            PhiAuthorizedContactIds = ["recipient-1"]
+        };
+        var timestamp = new DateTime(2026, 8, 21, 18, 30, 0, DateTimeKind.Utc);
+        Assert.True(IntakeConsentJson.ApplyWrittenRevocation(packet, ["phiReleaseAuthorized"], timestamp).IsValid);
+        intake.Consents = IntakeConsentJson.Serialize(packet);
+        await _context.SaveChangesAsync();
+
+        Assert.Equal(IntakeConsentJson.StaleRevocationMessage,
+            (await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SaveDraftAsync(stale))).Message);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SubmitAsync(stale));
+        var resumed = (await _service.GetDraftByPatientIdAsync(patient.Id))!;
+        resumed.RevokePhiRelease = false;
+        await _service.SaveDraftAsync(resumed);
+        await _service.SubmitAsync(resumed);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SaveDraftAsync(resumed));
+
+        var locked = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
+        Assert.True(locked.IsLocked);
+        var saved = locked.ConsentPacket!;
+        Assert.True(saved.WrittenRevocationReceived);
+        Assert.Equal(timestamp, saved.LastRevocationAtUtc);
+        Assert.Equal("phiReleaseAuthorized", Assert.Single(saved.RevokedConsentKeys));
+        Assert.True(saved.PhiReleaseAuthorized);
+        Assert.Equal("recipient-1", Assert.Single(saved.PhiAuthorizedContactIds));
+        Assert.Equal("recipient-1", Assert.Single(saved.AuthorizedContacts).Id);
+        Assert.False(IntakeConsentJson.IsPhiReleaseConsentActive(saved));
+        Assert.Null(saved.CreditCardAuthorizationAccepted);
+        Assert.Null(saved.DryNeedlingConsentAccepted);
+        var stored = await _context.IntakeForms.AsNoTracking().SingleAsync();
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(stored.Consents), JsonNode.Parse(stored.ResponseJson)!["consentPacket"]));
+    }
+
+    [Fact]
+    public async Task FirstWrittenRevocation_PreservesLegacyResponsePacketThroughReloadAndSave()
+    {
+        var patient = CreatePatient("Legacy", "Consent");
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        await _service.EnsureDraftAsync(patient.Id);
+        var intake = await _context.IntakeForms.SingleAsync();
+        intake.Consents = "{}";
+        intake.ResponseJson = """
+            {"consentPacket":{
+                "hipaaAcknowledged":true,"treatmentConsentAccepted":true,"phiReleaseAuthorized":true,
+                "mediaConsentAccepted":false,"evidenceRef":"legacy-form",
+                "authorizedContacts":[{"id":"recipient","name":"Alex","phoneNumber":"555-0101","relationship":"Friend"}],
+                "phiAuthorizedContactIds":["recipient"]
+            }}
+            """;
+        await _context.SaveChangesAsync();
+
+        var result = await IntakeEndpoints.RevokeIntakeConsents(intake.Id, new RevokeIntakeConsentRequest
+        {
+            ConsentKeys = ["phiReleaseAuthorized"],
+            WrittenRevocationReceived = true
+        }, _context, _identityContext.Object, Mock.Of<IAuditService>(), Mock.Of<ISyncEngine>(), CancellationToken.None);
+        var revoked = Assert.IsType<Ok<IntakeResponse>>(result).Value!;
+        var resumed = (await _service.GetDraftByPatientIdAsync(patient.Id))!;
+        var packet = resumed.ConsentPacket!;
+        Assert.True(packet.HipaaAcknowledged);
+        Assert.True(packet.TreatmentConsentAccepted);
+        Assert.True(packet.PhiReleaseAuthorized);
+        Assert.False(IntakeConsentJson.IsPhiReleaseConsentActive(packet));
+        Assert.False(packet.MediaConsentAccepted);
+        Assert.Null(packet.CreditCardAuthorizationAccepted);
+        Assert.Equal("legacy-form", packet.AdditionalData!["evidenceRef"].GetString());
+        Assert.Equal("recipient", Assert.Single(packet.AuthorizedContacts).Id);
+        Assert.Equal("recipient", Assert.Single(packet.PhiAuthorizedContactIds));
+        Assert.True(packet.WrittenRevocationReceived);
+        Assert.NotNull(packet.LastRevocationAtUtc);
+        Assert.Equal("phiReleaseAuthorized", Assert.Single(packet.RevokedConsentKeys));
+
+        await _service.SaveDraftAsync(resumed);
+        var saved = await _context.IntakeForms.AsNoTracking().SingleAsync();
+        Assert.Equal(revoked.Consents, saved.Consents);
+        var snapshot = JsonSerializer.Deserialize<IntakeResponseDraft>(saved.ResponseJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        Assert.Equal(revoked.Consents, IntakeConsentJson.Serialize(snapshot.ConsentPacket!));
+    }
+
+    [Fact]
+    public async Task RevokedFinalAttestation_CanSaveDraftButCannotSubmit()
+    {
+        var patient = CreatePatient("Synthetic", "Attestation");
+        _context.Patients.Add(patient);
+        await _context.SaveChangesAsync();
+        var draft = (await _service.EnsureDraftAsync(patient.Id)).Draft!;
+        draft.ConsentPacket = new() { TreatmentConsentAccepted = true, HipaaAcknowledged = true, FinalAttestationAccepted = true };
+        var timestamp = new DateTime(2026, 8, 21, 18, 30, 0, DateTimeKind.Utc);
+        Assert.True(IntakeConsentJson.ApplyWrittenRevocation(draft.ConsentPacket, ["finalAttestationAccepted"], timestamp).IsValid);
+        await _service.SaveDraftAsync(draft);
+
+        var resumed = (await _service.GetDraftByPatientIdAsync(patient.Id))!;
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => _service.SubmitAsync(resumed));
+        Assert.Contains("revoked", error.Message, StringComparison.OrdinalIgnoreCase);
+        var saved = await _context.IntakeForms.AsNoTracking().SingleAsync();
+        Assert.False(saved.IsLocked);
+        Assert.Null(saved.SubmittedAt);
+        Assert.True(IntakeConsentJson.TryParse(saved.Consents, out var packet, out _));
+        Assert.True(packet.FinalAttestationAccepted);
+        Assert.Equal(timestamp, packet.LastRevocationAtUtc);
+        Assert.True(IntakeConsentJson.IsRevoked(packet, "finalAttestationAccepted"));
+    }
 
     public IntakeServiceTests()
     {

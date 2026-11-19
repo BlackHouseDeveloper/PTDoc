@@ -1942,6 +1942,10 @@ public class SyncEngine : ISyncEngine
         {
             using var stored = JsonDocument.Parse(snapshot.CurrentDataJson!);
             using var incoming = JsonDocument.Parse(item.DataJson);
+            var storedConsents = TryGetString(stored.RootElement, "consents") ?? TryGetString(stored.RootElement, "Consents");
+            var incomingConsents = TryGetString(incoming.RootElement, "consents") ?? TryGetString(incoming.RootElement, "Consents") ?? storedConsents;
+            if (!IntakeConsentJson.RetainsRecordedRevocations(storedConsents, incomingConsents))
+                return ConflictType.Unknown;
             var storedResponse = TryGetString(stored.RootElement, "responseJson") ?? TryGetString(stored.RootElement, "ResponseJson");
             var incomingResponse = TryGetString(incoming.RootElement, "responseJson") ?? TryGetString(incoming.RootElement, "ResponseJson") ?? storedResponse;
             if (!IntakeProfileProvenance.HasCurrentRevision(IntakeProfileProvenance.Parse(storedResponse), IntakeProfileProvenance.Parse(incomingResponse)))
@@ -2470,6 +2474,9 @@ public class SyncEngine : ISyncEngine
                 // Only update unlocked forms (double-checked; already blocked by CheckEntitySpecificConflictAsync)
                 if (!existing.IsLocked)
                 {
+                    var consents = TryGetString(root, "consents") ?? TryGetString(root, "Consents") ?? existing.Consents;
+                    if (!IntakeConsentJson.RetainsRecordedRevocations(existing.Consents, consents))
+                        throw new InvalidOperationException(IntakeConsentJson.StaleRevocationMessage);
                     var incomingResponse = TryGetString(root, "responseJson") ?? TryGetString(root, "ResponseJson") ?? existing.ResponseJson;
                     var protectedResponse = IntakeProfileProvenance.Parse(
                         IntakeProfileProvenance.Preserve(existing.ResponseJson, incomingResponse));
@@ -2478,7 +2485,7 @@ public class SyncEngine : ISyncEngine
                     existing.ResponseJson = protectedResponse.ToJsonString();
                     existing.StructuredDataJson = TryGetString(root, "structuredDataJson") ?? TryGetString(root, "StructuredDataJson") ?? existing.StructuredDataJson;
                     existing.PainMapData = TryGetString(root, "painMapData") ?? TryGetString(root, "PainMapData") ?? existing.PainMapData;
-                    existing.Consents = TryGetString(root, "consents") ?? TryGetString(root, "Consents") ?? existing.Consents;
+                    existing.Consents = consents;
                     existing.LastModifiedUtc = item.LastModifiedUtc;
                     existing.ModifiedByUserId = actingUserId;
                     existing.SyncState = SyncState.Synced;

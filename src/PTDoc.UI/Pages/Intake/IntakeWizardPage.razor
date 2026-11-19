@@ -1337,7 +1337,8 @@
     {
         return consentCompleteness.IsComplete
             && state.TermsOfServiceAccepted
-            && (consentPacket.FinalAttestationAccepted ?? state.AccuracyConfirmed);
+            && (consentPacket.FinalAttestationAccepted ?? state.AccuracyConfirmed)
+            && !IntakeConsentJson.IsRevoked(consentPacket, "finalAttestationAccepted");
     }
 
     private static IntakeConsentPacket BuildConsentPacket(IntakeWizardState state)

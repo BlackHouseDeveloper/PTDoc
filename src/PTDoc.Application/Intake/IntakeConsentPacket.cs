@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace PTDoc.Application.Intake;
@@ -63,6 +64,9 @@ public sealed class IntakeConsentPacket
     [JsonPropertyName("phiAuthorizedContactIds")]
     public List<string> PhiAuthorizedContactIds { get; set; } = new();
 
+    [JsonIgnore]
+    public bool HasRevocationHistory => WrittenRevocationReceived == true || LastRevocationAtUtc.HasValue || RevokedConsentKeys.Count > 0;
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? AdditionalData { get; set; }
 }
@@ -116,18 +120,24 @@ public static class IntakeConsentJson
         WriteIndented = false
     };
 
-    public static bool TryParse(string? json, out IntakeConsentPacket packet, out string? errorMessage)
+    public static bool TryParse(string? json, out IntakeConsentPacket packet, out string? errorMessage, string? legacyResponseJson = null)
     {
-        if (string.IsNullOrWhiteSpace(json) || string.Equals(json.Trim(), "{}", StringComparison.Ordinal))
-        {
-            packet = new IntakeConsentPacket();
-            errorMessage = null;
-            return true;
-        }
-
         try
         {
-            packet = JsonSerializer.Deserialize<IntakeConsentPacket>(json, SerializerOptions) ?? new IntakeConsentPacket();
+            // Older intakes can store their only consent packet inside the response.
+            if (!string.IsNullOrWhiteSpace(legacyResponseJson) && IsEmptyConsentRecord(json))
+            {
+                using var response = JsonDocument.Parse(legacyResponseJson);
+                if (response.RootElement.ValueKind != JsonValueKind.Object)
+                    throw new JsonException("Expected an intake response object.");
+
+                var embedded = response.RootElement.EnumerateObject()
+                    .LastOrDefault(p => p.Name.Equals("consentPacket", StringComparison.OrdinalIgnoreCase)).Value;
+                json = embedded.ValueKind == JsonValueKind.Undefined ? null : embedded.GetRawText();
+            }
+
+            packet = string.IsNullOrWhiteSpace(json) ? new IntakeConsentPacket()
+                : JsonSerializer.Deserialize<IntakeConsentPacket>(json, SerializerOptions) ?? new IntakeConsentPacket();
             packet.AuthorizedContacts ??= new List<AuthorizedContact>();
             packet.RevokedConsentKeys ??= new List<string>();
             packet.PhiAuthorizedContactIds ??= new List<string>();
@@ -144,6 +154,14 @@ public static class IntakeConsentJson
         }
     }
 
+    private static bool IsEmptyConsentRecord(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return true;
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        return root.ValueKind == JsonValueKind.Null || (root.ValueKind == JsonValueKind.Object && !root.EnumerateObject().Any());
+    }
+
     public static string Serialize(IntakeConsentPacket packet)
     {
         packet.AuthorizedContacts = packet.AuthorizedContacts
@@ -152,22 +170,26 @@ public static class IntakeConsentJson
             .ToList();
         EnsureContactIds(packet.AuthorizedContacts);
 
-        var availableContactIds = packet.AuthorizedContacts
-            .Select(contact => contact.Id)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        packet.PhiAuthorizedContactIds = (packet.PhiAuthorizedContactIds ?? new List<string>())
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Select(id => id.Trim())
-            .Where(availableContactIds.Contains)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
         packet.RevokedConsentKeys = packet.RevokedConsentKeys
             .Where(key => !string.IsNullOrWhiteSpace(key))
             .Select(key => key.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(key => key, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        // A historical recipient ID can outlive its contact row. It no longer grants access.
+        if (!IsRevoked(packet, "phiReleaseAuthorized"))
+        {
+            var availableContactIds = packet.AuthorizedContacts
+                .Select(contact => contact.Id)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            packet.PhiAuthorizedContactIds = (packet.PhiAuthorizedContactIds ?? new List<string>())
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.Trim())
+                .Where(availableContactIds.Contains)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
 
         return JsonSerializer.Serialize(packet, SerializerOptions);
     }
@@ -178,6 +200,9 @@ public static class IntakeConsentJson
             ? Serialize(packet)
             : "{}";
     }
+
+    internal static JsonNode ToJsonNode(IntakeConsentPacket packet)
+        => JsonSerializer.SerializeToNode(packet, SerializerOptions)!;
 
     public static IntakeConsentValidationResult Validate(IntakeConsentPacket packet, bool requireHipaaAcknowledgement = false)
     {
@@ -210,21 +235,18 @@ public static class IntakeConsentJson
             }
         }
 
-        if (packet.PhiReleaseAuthorized == true
-            && populatedContacts.Count > 0
-            && !packet.PhiAuthorizedContactIds.Any(id => populatedContacts.Any(contact =>
-                string.Equals(contact.Id, id, StringComparison.OrdinalIgnoreCase))))
+        if (!HasRequiredPhiRecipient(packet))
         {
             result.AddError("phiAuthorizedContactIds", "Select at least one authorized contact to receive protected health information.");
         }
 
-        if ((packet.CommunicationCallConsent == true || packet.CommunicationTextConsent == true) &&
+        if ((IsCallConsentActive(packet) || IsTextConsentActive(packet)) &&
             string.IsNullOrWhiteSpace(packet.CommunicationPhoneNumber))
         {
             result.AddError("communicationPhoneNumber", "A phone number is required when phone or text reminders are authorized.");
         }
 
-        if (packet.CommunicationEmailConsent == true && string.IsNullOrWhiteSpace(packet.CommunicationEmail))
+        if (IsEmailConsentActive(packet) && string.IsNullOrWhiteSpace(packet.CommunicationEmail))
         {
             result.AddError("communicationEmail", "An email address is required when email reminders are authorized.");
         }
@@ -251,6 +273,11 @@ public static class IntakeConsentJson
             if (revoked.Contains("treatmentConsentAccepted", StringComparer.OrdinalIgnoreCase))
             {
                 result.AddError("treatmentConsentAccepted", "Treatment consent has been revoked and must be re-authorized before submission.");
+            }
+
+            if (IsRevoked(packet, "finalAttestationAccepted"))
+            {
+                result.AddError("finalAttestationAccepted", "Final attestation has been revoked. This intake cannot be submitted.");
             }
         }
 
@@ -453,6 +480,11 @@ public static class IntakeConsentJson
     public static bool IsPhiReleaseConsentActive(IntakeConsentPacket packet)
         => packet.PhiReleaseAuthorized == true && !IsRevoked(packet, "phiReleaseAuthorized");
 
+    public static bool HasRequiredPhiRecipient(IntakeConsentPacket packet) =>
+        !IsPhiReleaseConsentActive(packet) || packet.AuthorizedContacts.All(contact => contact.IsEmpty)
+        || packet.AuthorizedContacts.Any(contact => !contact.IsEmpty
+            && packet.PhiAuthorizedContactIds.Contains(contact.Id, StringComparer.OrdinalIgnoreCase));
+
     public static bool IsCreditCardAuthorizationConsentActive(IntakeConsentPacket packet)
         => packet.CreditCardAuthorizationAccepted == true && !IsRevoked(packet, "creditCardAuthorizationAccepted");
 
@@ -481,7 +513,35 @@ public static class IntakeConsentJson
         }
     }
 
-    private static bool IsRevoked(IntakeConsentPacket packet, string canonicalConsentKey)
+    public const string StaleRevocationMessage = "Recorded consent revocations changed. Reload the intake before saving.";
+
+    public static bool RetainsRecordedRevocations(string? storedJson, string? incomingJson)
+    {
+        if (!TryParse(storedJson, out var recorded, out _)) return false;
+        if (!recorded.HasRevocationHistory) return true;
+        if (!TryParse(incomingJson, out var incoming, out _)) return false;
+
+        if (recorded.WrittenRevocationReceived != incoming.WrittenRevocationReceived
+            || recorded.LastRevocationAtUtc != incoming.LastRevocationAtUtc
+            || recorded.RevokedConsentKeys.Except(incoming.RevokedConsentKeys, StringComparer.OrdinalIgnoreCase).Any())
+            return false;
+
+        // Historical acceptance and recipient identifiers are evidence even after release becomes inactive.
+        var original = JsonSerializer.SerializeToElement(recorded, SerializerOptions);
+        var proposed = JsonSerializer.SerializeToElement(incoming, SerializerOptions);
+        foreach (var key in recorded.RevokedConsentKeys)
+        {
+            if (!TryMapRevocableConsentKey(key, out var canonicalKey)) continue;
+            original.TryGetProperty(canonicalKey, out var prior);
+            proposed.TryGetProperty(canonicalKey, out var value);
+            if (value.ValueKind != prior.ValueKind)
+                return false;
+        }
+        return !IsRevoked(recorded, "phiReleaseAuthorized")
+            || recorded.PhiAuthorizedContactIds.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(incoming.PhiAuthorizedContactIds);
+    }
+
+    public static bool IsRevoked(IntakeConsentPacket packet, string canonicalConsentKey)
     {
         return packet.RevokedConsentKeys.Any(k => string.Equals(k, canonicalConsentKey, StringComparison.OrdinalIgnoreCase));
     }

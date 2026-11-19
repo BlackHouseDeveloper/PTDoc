@@ -1,11 +1,52 @@
 using System.Text.Json;
 using PTDoc.Application.Intake;
+using PTDoc.Application.Services;
 
 namespace PTDoc.Tests.Application;
 
 [Trait("Category", "CoreCi")]
 public sealed class IntakeConsentJsonTests
 {
+    [Theory]
+    [InlineData("false")]
+    [InlineData(null)]
+    public void Normalize_PreservesLegacyRevokedEvidenceAndUnlistedRecipient(string? legacyRevokeFlag)
+    {
+        var mirror = legacyRevokeFlag is null ? "" : $",\"revokePhiRelease\":{legacyRevokeFlag}";
+        var source = """{"consentPacket":{"revokedConsentKeys":["phiReleaseAuthorized"],"writtenRevocationReceived":true,"lastRevocationAtUtc":"2026-08-21T18:30:00Z","phiAuthorizedContactIds":["archived-recipient"],"evidenceRef":"synthetic-reference"}""" + mirror + "}";
+        var draft = JsonSerializer.Deserialize<IntakeResponseDraft>(source, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var packet = IntakeDraftPersistence.BuildCanonicalConsentPacket(draft);
+        Assert.True(IntakeConsentJson.TryParse(IntakeConsentJson.Serialize(packet), out var saved, out _));
+        Assert.Null(saved.PhiReleaseAuthorized);
+        Assert.False(IntakeConsentJson.IsPhiReleaseConsentActive(saved));
+        Assert.True(saved.WrittenRevocationReceived);
+        Assert.Equal(new DateTime(2026, 8, 21, 18, 30, 0, DateTimeKind.Utc), saved.LastRevocationAtUtc);
+        Assert.Equal("archived-recipient", Assert.Single(saved.PhiAuthorizedContactIds));
+        Assert.Equal("phiReleaseAuthorized", Assert.Single(saved.RevokedConsentKeys));
+        Assert.Equal("synthetic-reference", saved.AdditionalData!["evidenceRef"].GetString());
+    }
+
+    [Theory]
+    [InlineData(true, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, null, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, null, false)]
+    [InlineData(null, true, false)]
+    [InlineData(null, false, false)]
+    [InlineData(null, null, true)]
+    public void RetainsRecordedRevocations_RequiresSameHistoricalAcceptance(bool? recorded, bool? incoming, bool retained)
+    {
+        var packet = new IntakeConsentPacket { PhiReleaseAuthorized = recorded };
+        var timestamp = new DateTime(2026, 8, 21, 18, 30, 0, DateTimeKind.Utc);
+        Assert.True(IntakeConsentJson.ApplyWrittenRevocation(packet, ["phiReleaseAuthorized"], timestamp).IsValid);
+        var stored = IntakeConsentJson.Serialize(packet);
+        packet.PhiReleaseAuthorized = incoming;
+
+        Assert.Equal(retained, IntakeConsentJson.RetainsRecordedRevocations(stored, IntakeConsentJson.Serialize(packet)));
+    }
+
     [Fact]
     public void TryParse_LegacyHipaaPayload_ReadsHipaaAcknowledgement()
     {
@@ -19,6 +60,15 @@ public sealed class IntakeConsentJsonTests
         Assert.Null(errorMessage);
         Assert.True(packet.HipaaAcknowledged);
         Assert.Empty(packet.AuthorizedContacts);
+    }
+
+    [Fact]
+    public void TryParse_PopulatedConsentRecordTakesPrecedenceOverLegacyResponse()
+    {
+        const string response = """{"consentPacket":{"phiReleaseAuthorized":true,"mediaConsentAccepted":true}}""";
+        Assert.True(IntakeConsentJson.TryParse("""{"phiReleaseAuthorized":false}""", out var packet, out _, legacyResponseJson: response));
+        Assert.False(packet.PhiReleaseAuthorized);
+        Assert.Null(packet.MediaConsentAccepted);
     }
 
     [Fact]

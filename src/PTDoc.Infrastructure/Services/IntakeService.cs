@@ -313,6 +313,7 @@ public sealed class IntakeService : IIntakeService
         var lastName = spaceIndex > 0 ? name[(spaceIndex + 1)..].Trim() : string.Empty;
 
         var canonicalConsent = IntakeDraftPersistence.BuildCanonicalConsentPacket(canonicalState);
+        var hipaaAcknowledged = canonicalConsent.HipaaAcknowledged == true && !IntakeConsentJson.IsRevoked(canonicalConsent, "hipaaAcknowledged");
         var patient = new Patient
         {
             FirstName = string.IsNullOrWhiteSpace(firstName) ? "Unknown" : firstName,
@@ -328,8 +329,8 @@ public sealed class IntakeService : IIntakeService
             EmergencyContactName = canonicalState.EmergencyContactName?.Trim(),
             EmergencyContactPhone = canonicalState.EmergencyContactPhone?.Trim(),
             PayerInfoJson = BuildPayerInfoJson(canonicalState),
-            ConsentSigned = canonicalConsent.HipaaAcknowledged == true,
-            ConsentSignedDate = canonicalConsent.HipaaAcknowledged == true ? DateTime.UtcNow : null,
+            ConsentSigned = hipaaAcknowledged,
+            ConsentSignedDate = hipaaAcknowledged ? DateTime.UtcNow : null,
             ClinicId = clinicId,
             LastModifiedUtc = DateTime.UtcNow,
             ModifiedByUserId = userId,
@@ -427,6 +428,8 @@ public sealed class IntakeService : IIntakeService
         }
         else
         {
+            if (!IntakeConsentJson.RetainsRecordedRevocations(intake.Consents, BuildConsentsJson(canonicalState)))
+                throw new InvalidOperationException(IntakeConsentJson.StaleRevocationMessage);
             var responseJson = await IntakeProfileUpdates.PrepareAsync(
                 _context, intake, SerializeDraft(canonicalState), cancellationToken);
             intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, responseJson);
@@ -480,6 +483,15 @@ public sealed class IntakeService : IIntakeService
         if (!IntakeEncounterRules.HasSupportedResponseVersion(intake, SerializeDraft(canonicalState)))
             throw new InvalidOperationException("The issued questionnaire version must be preserved.");
 
+        var agreements = IntakeDraftPersistence.BuildCanonicalConsentPacket(canonicalState);
+        var consentsJson = IntakeConsentJson.Serialize(agreements);
+        if (!IntakeConsentJson.RetainsRecordedRevocations(intake.Consents, consentsJson))
+            throw new InvalidOperationException(IntakeConsentJson.StaleRevocationMessage);
+        if (IntakeConsentJson.IsRevoked(agreements, "hipaaAcknowledged")
+            || IntakeConsentJson.IsRevoked(agreements, "treatmentConsentAccepted")
+            || IntakeConsentJson.IsRevoked(agreements, "finalAttestationAccepted"))
+            throw new InvalidOperationException("A required consent has been revoked. This intake cannot be submitted.");
+
         canonicalState = JsonSerializer.Deserialize<IntakeResponseDraft>(await IntakeProfileUpdates.PrepareAsync(
             _context, intake, SerializeDraft(canonicalState), cancellationToken), SerializerOptions)!;
         if (!IntakeEncounterRules.IsShort(intake) && !await IntakeDomainProjection.HasCurrentPolicySourcesAsync(
@@ -506,11 +518,12 @@ public sealed class IntakeService : IIntakeService
             intake.Id,
             patientId,
             submittedAtUtc,
-            nowUtc);
+            nowUtc,
+            agreements);
         intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, intake.ResponseJson);
         intake.StructuredDataJson = SerializeStructuredData(submittedState.StructuredData);
         intake.PainMapData = BuildPainMapJson(submittedState);
-        intake.Consents = BuildConsentsJson(canonicalState);
+        intake.Consents = consentsJson;
         intake.SubmittedAt = submittedAtUtc;
         intake.IsLocked = true;
         intake.LastModifiedUtc = nowUtc;
@@ -710,6 +723,12 @@ public sealed class IntakeService : IIntakeService
     private IntakeResponseDraft DeserializeDraft(IntakeForm intake)
     {
         var draft = DeserializeDraft(intake.ResponseJson, intake.StructuredDataJson, intake.PatientId);
+        // The written-revocation endpoint updates Consents independently of the response snapshot.
+        if (IntakeConsentJson.TryParse(intake.Consents, out var recorded, out _) && recorded.HasRevocationHistory)
+        {
+            draft.ConsentPacket = recorded;
+            IntakeDraftPersistence.HydrateConsentConvenienceFields(draft);
+        }
         draft.IntakeId = intake.Id;
         draft.EncounterNoteId = intake.EncounterNoteId;
         draft.QuestionnaireDefinitionId = intake.QuestionnaireDefinitionId;

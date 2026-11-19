@@ -1555,6 +1555,29 @@ public class SyncClientProtocolTests
     }
 
     [Fact]
+    public async Task ReceiveClientPushAsync_NewerDraftCannotClearRecordedRevocation()
+    {
+        using var context = CreateInMemoryContext();
+        var patient = new Patient { FirstName = "Synthetic", LastName = "Sync" };
+        const string evidence = """{"phiReleaseAuthorized":true,"revokedConsentKeys":["phiReleaseAuthorized"],"writtenRevocationReceived":true}""";
+        var intake = new IntakeForm { PatientId = patient.Id, Consents = evidence, LastModifiedUtc = DateTime.UtcNow };
+        context.AddRange(patient, intake);
+        await context.SaveChangesAsync();
+        var engine = new SyncEngine(context, NullLogger<SyncEngine>.Instance);
+        var response = await engine.ReceiveClientPushAsync(new ClientSyncPushRequest
+        {
+            Items = [new ClientSyncPushItem
+            {
+                EntityType = "IntakeForm", ServerId = intake.Id, LocalId = 1, OperationId = Guid.NewGuid(),
+                Operation = "Update", DataJson = """{"consents":"{}"}""", LastModifiedUtc = intake.LastModifiedUtc.AddMinutes(1)
+            }]
+        });
+        Assert.Equal(0, response.AcceptedCount);
+        Assert.Equal(1, response.ConflictCount);
+        Assert.Equal(evidence, (await context.IntakeForms.AsNoTracking().SingleAsync()).Consents);
+    }
+
+    [Fact]
     public async Task ReceiveClientPushAsync_RejectsPush_WhenIntakeFormIsLocked()
     {
         // Arrange
