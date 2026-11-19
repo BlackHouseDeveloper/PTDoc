@@ -3,11 +3,16 @@ using System.Data;
 using System.Data.Common;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Moq;
+using PTDoc.Api.Patients;
+using PTDoc.Application.DTOs;
+using PTDoc.Application.Integrations;
 using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Services;
@@ -29,6 +34,64 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
     private const string MigrationsAlreadyAppliedVariable = "CI_DB_MIGRATIONS_ALREADY_APPLIED";
     private const string ProviderVariable = "DB_PROVIDER";
     private SqliteConnection? _sqliteConnection;
+
+    [SkippableFact]
+    public async Task PostgresPatientCreateAndUpdates_ReturnUsableVersionsAndRejectStaleSave()
+    {
+        Skip.If(!string.Equals(Environment.GetEnvironmentVariable(ProviderVariable), "postgres", StringComparison.OrdinalIgnoreCase),
+            "This regression exercises PostgreSQL timestamp storage.");
+        var identity = new Mock<IIdentityContextAccessor>();
+        identity.Setup(accessor => accessor.GetCurrentUserId()).Returns(Guid.NewGuid());
+        var clock = new Mock<TimeProvider>();
+        clock.Setup(provider => provider.GetUtcNow()).Returns(new DateTimeOffset(2026, 11, 1, 12, 0, 0, TimeSpan.Zero).AddTicks(7));
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseNpgsql(Environment.GetEnvironmentVariable("Database__ConnectionString"), provider => provider.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Postgres"))
+            .AddInterceptors(new SyncMetadataInterceptor(identity.Object, clock.Object)).Options;
+        await using var db = new ApplicationDbContext(options);
+        if (ShouldApplyRuntimeMigrations()) await db.Database.MigrateAsync();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var clinic = new Clinic { Name = "Patient precision", Slug = $"patient-precision-{Guid.NewGuid():N}" };
+        db.Clinics.Add(clinic);
+        await db.SaveChangesAsync();
+        var tenant = new Mock<ITenantContextAccessor>();
+        tenant.Setup(accessor => accessor.GetCurrentClinicId()).Returns(clinic.Id);
+        var integrations = Mock.Of<IIntegrationOperationsService>();
+        var create = await PatientEndpoints.CreatePatient(new CreatePatientRequest
+        {
+            FirstName = "Synthetic",
+            LastName = "Precision",
+            DateOfBirth = new DateTime(1990, 1, 15)
+        }, db, tenant.Object, identity.Object, integrations, default);
+        var patient = Assert.IsType<Created<PatientResponse>>(create).Value!;
+        var createdVersion = patient.LastModifiedUtc;
+
+        // A sync-only acknowledgement between chart requests must preserve the issued version.
+        var tracked = await db.Patients.SingleAsync(p => p.Id == patient.Id);
+        tracked.SyncState = SyncState.Synced;
+        await db.SaveChangesAsync();
+        foreach (var phone in new[] { "2025550101", "2025550102" })
+        {
+            db.ChangeTracker.Clear();
+            var expected = patient.LastModifiedUtc;
+            var result = await PatientEndpoints.UpdatePatient(patient.Id, new UpdatePatientRequest
+            {
+                ExpectedLastModifiedUtc = expected,
+                Phone = phone
+            }, db, identity.Object, integrations, default);
+            patient = Assert.IsType<Ok<PatientResponse>>(result).Value!;
+            Assert.True(patient.LastModifiedUtc > expected);
+            Assert.Equal(patient.LastModifiedUtc, await db.Patients.Where(p => p.Id == patient.Id).Select(p => p.LastModifiedUtc).SingleAsync());
+        }
+
+        db.ChangeTracker.Clear();
+        var stale = await PatientEndpoints.UpdatePatient(patient.Id, new UpdatePatientRequest
+        {
+            ExpectedLastModifiedUtc = createdVersion,
+            Phone = "stale"
+        }, db, identity.Object, integrations, default);
+        Assert.Equal(StatusCodes.Status409Conflict, ((IStatusCodeHttpResult)stale).StatusCode);
+        Assert.Equal("2025550102", await db.Patients.Where(p => p.Id == patient.Id).Select(p => p.Phone).SingleAsync());
+    }
 
     [SkippableFact]
     public async Task PostgresEncounterSaveSaveSubmit_ReturnedVersionsMatchStorage_AndStaleWritesStillFail()

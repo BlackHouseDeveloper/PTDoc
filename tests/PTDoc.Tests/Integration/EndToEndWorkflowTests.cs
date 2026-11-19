@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -11,6 +12,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -2661,6 +2663,159 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     // ── Patient demographics ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task PatientDemographics_ContactUpdateReloadPreservesOmittedFieldsAndRejectsStaleVersion()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var id = await CreatePatientAsync(client);
+        using var beforeResponse = await client.GetAsync($"/api/v1/patients/{id}");
+        var before = JsonSerializer.Deserialize<PatientResponse>(await beforeResponse.Content.ReadAsStringAsync(), JsonOpts)!;
+        using var saved = await client.PutAsync($"/api/v1/patients/{id}", JsonContent(new UpdatePatientRequest
+        {
+            ExpectedLastModifiedUtc = before.LastModifiedUtc,
+            Phone = "2025550191",
+            AddressLine1 = "123 Synthetic Street",
+            AddressLine2 = "Unit 4",
+            City = "Test City",
+            State = "MD",
+            ZipCode = "20001",
+            EmergencyContactName = "Synthetic Contact",
+            EmergencyContactPhone = "2025550192"
+        }));
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        using var reloadedResponse = await client.GetAsync($"/api/v1/patients/{id}");
+        var reloaded = JsonSerializer.Deserialize<PatientResponse>(await reloadedResponse.Content.ReadAsStringAsync(), JsonOpts)!;
+        Assert.Equal(before.Email, reloaded.Email);
+        Assert.Equal(before.FirstName, reloaded.FirstName);
+        Assert.Equal(before.DateOfBirth, reloaded.DateOfBirth);
+        Assert.Equal(before.PayerInfoJson, reloaded.PayerInfoJson);
+        Assert.Equal("2025550191", reloaded.Phone);
+        Assert.Equal("123 Synthetic Street", reloaded.AddressLine1);
+        Assert.Equal("Unit 4", reloaded.AddressLine2);
+        Assert.Equal("Test City", reloaded.City);
+        Assert.Equal("MD", reloaded.State);
+        Assert.Equal("20001", reloaded.ZipCode);
+        Assert.Equal("Synthetic Contact", reloaded.EmergencyContactName);
+        Assert.Equal("2025550192", reloaded.EmergencyContactPhone);
+        using var stale = await client.PutAsync($"/api/v1/patients/{id}", JsonContent(new UpdatePatientRequest { ExpectedLastModifiedUtc = before.LastModifiedUtc, Phone = "2025550000" }));
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        using var clear = await client.PutAsync($"/api/v1/patients/{id}", JsonContent(new UpdatePatientRequest { ExpectedLastModifiedUtc = reloaded.LastModifiedUtc, AddressLine2 = "", Email = "" }));
+        Assert.Equal(HttpStatusCode.OK, clear.StatusCode);
+        var cleared = JsonSerializer.Deserialize<PatientResponse>(await clear.Content.ReadAsStringAsync(), JsonOpts)!;
+        Assert.Equal("", cleared.AddressLine2);
+        Assert.Equal("", cleared.Email);
+        Assert.Equal("2025550191", cleared.Phone);
+    }
+
+    [Fact]
+    public async Task PatientDemographics_DatabaseRejectsAWriteRacingAfterTheVersionCheck()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var id = await CreatePatientAsync(client);
+        await using var leftScope = _factory.Services.CreateAsyncScope();
+        await using var rightScope = _factory.Services.CreateAsyncScope();
+        var left = leftScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var right = rightScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var first = await left.Patients.SingleAsync(row => row.Id == id);
+        var second = await right.Patients.SingleAsync(row => row.Id == id);
+        first.Phone = "2025550111";
+        first.LastModifiedUtc = first.LastModifiedUtc.AddSeconds(1);
+        await left.SaveChangesAsync();
+        second.Phone = "2025550222";
+        second.LastModifiedUtc = second.LastModifiedUtc.AddSeconds(2);
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => right.SaveChangesAsync());
+        using var response = await client.GetAsync($"/api/v1/patients/{id}");
+        var saved = JsonSerializer.Deserialize<PatientResponse>(await response.Content.ReadAsStringAsync(), JsonOpts)!;
+        Assert.Equal("2025550111", saved.Phone);
+    }
+
+    [Theory]
+    [InlineData("name")]
+    [InlineData("dob")]
+    [InlineData("email")]
+    [InlineData("phone")]
+    public async Task PatientDemographics_RejectsInvalidProvidedFields(string field)
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var id = await CreatePatientAsync(client);
+        var update = new UpdatePatientRequest();
+        if (field == "name") update.LastName = " ";
+        if (field == "dob") update.DateOfBirth = default(DateTime);
+        if (field == "email") update.Email = "not-an-email";
+        if (field == "phone") update.Phone = new string('1', 21);
+        using var response = await client.PutAsync($"/api/v1/patients/{id}", JsonContent(update));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PatientDemographics_SelectedClinicOwnsCreationAndScopesReadAndUpdate()
+    {
+        using var factory = await CreateClinicScopedFactoryAsync();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestRoleAuthHandler.RoleHeader, Roles.PT);
+        var id = await CreatePatientAsync(client);
+        var own = await client.GetFromJsonAsync<PatientResponse>($"/api/v1/patients/{id}");
+        Assert.Equal(PtDocApiFactory.AuthorizationClinicId, own!.ClinicId);
+        using var updated = await client.PutAsJsonAsync($"/api/v1/patients/{id}",
+            new UpdatePatientRequest { ExpectedLastModifiedUtc = own.LastModifiedUtc, Phone = "2025550199" });
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinic = new Clinic { Name = "Other synthetic clinic", Slug = $"other-{Guid.NewGuid():N}" };
+        var other = new Patient { ClinicId = clinic.Id, FirstName = "Other", LastName = "Synthetic", DateOfBirth = DateTime.UtcNow.Date };
+        db.AddRange(clinic, other);
+        await db.SaveChangesAsync();
+        using var read = await client.GetAsync($"/api/v1/patients/{other.Id}");
+        using var write = await client.PutAsJsonAsync($"/api/v1/patients/{other.Id}", new UpdatePatientRequest { Phone = "2025550000" });
+        Assert.Equal(HttpStatusCode.NotFound, read.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, write.StatusCode);
+        Assert.Null(await db.Patients.AsNoTracking().Where(p => p.Id == other.Id).Select(p => p.Phone).SingleAsync());
+    }
+
+    [Theory]
+    [InlineData("documents")]
+    [InlineData("communications")]
+    public async Task PatientDemographics_ConcurrentChartActivityReturnsConflictAndRollsBack(string route)
+    {
+        using var setup = _factory.CreateClientWithRole(Roles.PT);
+        var id = await CreatePatientAsync(setup);
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(db.Database.GetConnectionString()).Options;
+        var racingOptions = new DbContextOptionsBuilder<ApplicationDbContext>(options)
+            .AddInterceptors(new CompetingPatientSave(id, options)).Options;
+        using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddScoped<ApplicationDbContext>(_ => new ApplicationDbContext(racingOptions))));
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestRoleAuthHandler.RoleHeader, Roles.PT);
+        var content = route == "documents"
+            ? JsonContent(new { documentType = "Other", fileName = "synthetic.txt", base64Content = "YQ==" })
+            : JsonContent(new { channel = "Phone", direction = "Outbound", summary = "Synthetic" });
+        using var response = await client.PostAsync($"/api/v1/patients/{id}/{route}", content);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("2025550111", await db.Patients.Where(p => p.Id == id).Select(p => p.Phone).SingleAsync());
+        Assert.False(await db.PatientDocuments.AnyAsync(d => d.PatientId == id));
+        Assert.False(await db.PatientCommunicationLogEntries.AnyAsync(e => e.PatientId == id));
+    }
+
+    private sealed class CompetingPatientSave(Guid patientId, DbContextOptions<ApplicationDbContext> options) : SaveChangesInterceptor
+    {
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context!.ChangeTracker.Entries<Patient>().Any(e => e.Entity.Id == patientId && e.State == EntityState.Modified))
+            {
+                await using var writer = new ApplicationDbContext(options);
+                var patient = await writer.Patients.SingleAsync(p => p.Id == patientId, cancellationToken);
+                patient.Phone = "2025550111";
+                patient.LastModifiedUtc = patient.LastModifiedUtc.AddSeconds(1);
+                await writer.SaveChangesAsync(cancellationToken);
+            }
+            return result;
+        }
+    }
 
     [Fact]
     public async Task Owner_Cannot_Edit_Patient_Demographics_Returns_403()
