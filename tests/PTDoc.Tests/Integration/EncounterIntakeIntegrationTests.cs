@@ -742,9 +742,14 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
         var update = UpdateFor(issued, issued.LastModifiedUtc);
         update.ConsentPacket = new IntakeConsentPacket
         {
-            HipaaAcknowledged = true, TreatmentConsentAccepted = true, FinalAttestationAccepted = true,
-            CommunicationCallConsent = true, CommunicationTextConsent = true, CommunicationEmailConsent = true,
-            CommunicationPhoneNumber = "555-0102", CommunicationEmail = email
+            HipaaAcknowledged = true,
+            TreatmentConsentAccepted = true,
+            FinalAttestationAccepted = true,
+            CommunicationCallConsent = true,
+            CommunicationTextConsent = true,
+            CommunicationEmailConsent = true,
+            CommunicationPhoneNumber = "555-0102",
+            CommunicationEmail = email
         };
         using var initial = await staff.PutAsJsonAsync(path, update);
         Assert.Equal(HttpStatusCode.OK, initial.StatusCode);
@@ -752,7 +757,8 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
         var revokedPhoneChannel = activePhoneChannel == "communicationCallConsent" ? "communicationTextConsent" : "communicationCallConsent";
         using var partial = await staff.PostAsJsonAsync(path + "/consents/revoke", new RevokeIntakeConsentRequest
         {
-            ConsentKeys = ["communicationEmailConsent", revokedPhoneChannel], WrittenRevocationReceived = true
+            ConsentKeys = ["communicationEmailConsent", revokedPhoneChannel],
+            WrittenRevocationReceived = true
         });
         Assert.Equal(HttpStatusCode.OK, partial.StatusCode);
         var current = (await partial.Content.ReadFromJsonAsync<IntakeResponse>())!;
@@ -767,7 +773,8 @@ public sealed class EncounterIntakeIntegrationTests(PtDocApiFactory factory) : I
 
         using var remaining = await staff.PostAsJsonAsync(path + "/consents/revoke", new RevokeIntakeConsentRequest
         {
-            ConsentKeys = [activePhoneChannel], WrittenRevocationReceived = true
+            ConsentKeys = [activePhoneChannel],
+            WrittenRevocationReceived = true
         });
         Assert.Equal(HttpStatusCode.OK, remaining.StatusCode);
         current = (await remaining.Content.ReadFromJsonAsync<IntakeResponse>())!;

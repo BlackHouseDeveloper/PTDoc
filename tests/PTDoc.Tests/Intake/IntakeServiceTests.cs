@@ -96,7 +96,8 @@ public sealed class IntakeServiceTests : IDisposable
 
         var result = await IntakeEndpoints.RevokeIntakeConsents(intake.Id, new RevokeIntakeConsentRequest
         {
-            ConsentKeys = ["phiReleaseAuthorized"], WrittenRevocationReceived = true
+            ConsentKeys = ["phiReleaseAuthorized"],
+            WrittenRevocationReceived = true
         }, _context, _identityContext.Object, Mock.Of<IAuditService>(), Mock.Of<ISyncEngine>(), CancellationToken.None);
         var revoked = Assert.IsType<Ok<IntakeResponse>>(result).Value!;
         var resumed = (await _service.GetDraftByPatientIdAsync(patient.Id))!;
