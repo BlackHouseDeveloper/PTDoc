@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed - MAUI navigation to shared pages
 
+- Mac Catalyst now packages managed assemblies where Mono loads them at startup. Lato fonts and communication templates remain bundled as resources.
 - The native router discovers pages in PTDoc.UI, including the dashboard and patient chart. Shared pages and navigation now inherit their host's render mode. The Web app continues to select interactive server rendering at its root.
 - The MAUI host supplies the authenticated patient and note API clients used by the dashboard, patient list and chart.
 - Native intake now verifies standalone access before opening the wizard for signed-out users, patient accounts and patient-mode links. Clinician intake continues to use the signed-in chart layout.

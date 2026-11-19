@@ -81,9 +81,11 @@
           <ProjectReference Include="..\PTDoc.Infrastructure\PTDoc.Infrastructure.csproj" />
     </ItemGroup>
 
-    <Target Name="NormalizeQuestPdfLatoPublishMetadata" BeforeTargets="_ComputePublishLocation">
+    <Target Name="ClassifyAppleBundleResources" BeforeTargets="_ComputePublishLocation">
         <ItemGroup>
-            <ResolvedFileToPublish Update="$(NuGetPackageRoot)questpdf/*/LatoFont/*">
+            <ResolvedFileToPublish Update="@(ResolvedFileToPublish)"
+                                   Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('\', '/').StartsWith('LatoFont/')) Or
+                                              $([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('\', '/').StartsWith('Communication/Templates/'))">
                 <PublishFolderType>Resource</PublishFolderType>
             </ResolvedFileToPublish>
         </ItemGroup>
