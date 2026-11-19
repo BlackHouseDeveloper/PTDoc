@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Security.Claims;
 using Bunit;
 using Bunit.TestDoubles;
 using Microsoft.AspNetCore.Components;
@@ -21,6 +22,8 @@ namespace PTDoc.Tests.UI.Pages;
 [Trait("Category", "CoreCi")]
 public sealed class MauiRoutesTests : TestContext
 {
+    public MauiRoutesTests() => Services.AddScoped<IntakeInviteRenewal>();
+
     [Fact]
     public void SharedPagesAndNavigation_InheritTheHostRenderMode()
     {
@@ -82,18 +85,26 @@ public sealed class MauiRoutesTests : TestContext
     }
 
     [Fact]
-    public void AuthenticatedPatientDeniedClinicalDashboard_ReachesAccessDenied()
+    public async Task PatientDeniedClinicalDashboard_CanReachHomeExerciseProgramOrSignOut()
     {
-        var auth = this.AddTestAuthorization();
-        auth.SetAuthorized("patient", AuthorizationState.Unauthorized);
-        auth.SetRoles(Roles.Patient);
+        var patient = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Role, Roles.Patient)], "test"));
+        var provider = new Mock<AuthenticationStateProvider>();
+        provider.Setup(item => item.GetAuthenticationStateAsync()).ReturnsAsync(new AuthenticationState(patient));
+        Services.AddSingleton(provider.Object);
+        Services.AddAuthorizationCore(options => options.AddPTDocAuthorizationPolicies());
+        ComponentFactories.AddStub<PatientHepLaunch>();
         ComponentFactories.AddStub<MainLayout>(parameters => parameters.Get(layout => layout.Body)!);
         var nav = Services.GetRequiredService<NavigationManager>();
 
         var router = RenderComponent<MauiRoutes>();
 
         router.WaitForAssertion(() => Assert.Equal("/denied", new Uri(nav.Uri).AbsolutePath));
-        Assert.Single(router.FindComponents<AccessDenied>());
+        var denied = router.FindComponent<AccessDenied>();
+        Assert.Empty(denied.FindAll("a[href='/']"));
+        Assert.Single(denied.FindAll("a[href='/logout']"));
+        var destination = denied.Find("a[href='/my-hep']").GetAttribute("href")!;
+        await router.InvokeAsync(() => nav.NavigateTo(destination));
+        router.WaitForAssertion(() => Assert.Single(router.FindComponents<Stub<PatientHepLaunch>>()));
     }
 
     [Fact]

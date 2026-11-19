@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using PTDoc.Application.DTOs;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Services;
@@ -785,6 +787,48 @@ public sealed class IntakeApiServiceTests
             var error = await Assert.ThrowsAsync<HttpRequestException>(operation);
             Assert.Equal(HttpStatusCode.Unauthorized, error.StatusCode);
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task VerifiedWizardClient_OnStaffChart_UsesOnlyItsOriginalSession(bool sessionReplaced)
+    {
+        var patientId = Guid.NewGuid();
+        var original = IntakeSessionToken.FromVerifiedInvite("access", DateTimeOffset.UtcNow.AddMinutes(10), "original");
+        var stored = sessionReplaced ? original with { Token = "replacement" } : original;
+        var requests = 0;
+        var handler = new StubHttpMessageHandler(request =>
+        {
+            requests++;
+            Assert.Equal($"/api/v1/intake/access/patient/{patientId}/latest", request.RequestUri!.AbsolutePath);
+            Assert.Equal(original.Token, Assert.Single(request.Headers.GetValues(IntakeAccessHeaders.AccessToken)));
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        var services = new ServiceCollection();
+        services.AddScoped(_ => new HttpClient(handler) { BaseAddress = new Uri("https://localhost") });
+        services.AddSingleton<IIntakeSessionStore>(new TestSessionStore(stored));
+        services.AddSingleton(CreateNavigationManager($"https://localhost/patient/{patientId}"));
+        services.AddSingleton(Mock.Of<IIntakeDraftCanonicalizer>());
+        services.AddIntakeApiClient();
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var client = scope.ServiceProvider.GetRequiredService<StandaloneIntakeClientFactory>()(original);
+
+        if (sessionReplaced)
+        {
+            var error = await Assert.ThrowsAsync<HttpRequestException>(() => client.GetLatestByPatientIdAsync(patientId));
+            Assert.Equal(HttpStatusCode.Unauthorized, error.StatusCode);
+            Assert.Equal(0, requests);
+        }
+        else
+        {
+            Assert.Null(await client.GetLatestByPatientIdAsync(patientId));
+            Assert.Equal(1, requests);
+        }
+
+        var denied = await Assert.ThrowsAsync<HttpRequestException>(() => client.GetForNoteAsync(patientId, Guid.NewGuid()));
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
     }
 
     [Fact]

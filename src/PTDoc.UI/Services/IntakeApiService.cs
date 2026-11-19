@@ -13,7 +13,8 @@ public sealed class IntakeApiService(
     HttpClient httpClient,
     IIntakeSessionStore sessionStore,
     NavigationManager navigationManager,
-    IIntakeDraftCanonicalizer draftCanonicalizer) : IIntakeService
+    IIntakeDraftCanonicalizer draftCanonicalizer,
+    IntakeSessionToken? verifiedSession = null) : IIntakeService
 {
     private const string EligiblePatientsEndpoint = "/api/v1/intake/patients/eligible";
 
@@ -421,14 +422,16 @@ public sealed class IntakeApiService(
     // Capture the caller's authority once for the entire read/save/submit operation.
     private async Task<IntakeSessionToken?> GetRequestSessionAsync(CancellationToken cancellationToken)
     {
-        if (!StandaloneIntakeLink.IsPatientMode(new Uri(navigationManager.Uri), out var invite))
+        string? invite = null;
+        if (verifiedSession is null && !StandaloneIntakeLink.IsPatientMode(new Uri(navigationManager.Uri), out invite))
         {
             return null;
         }
 
         var session = await sessionStore.GetAsync(cancellationToken);
         if (session is null || string.IsNullOrWhiteSpace(session.Token) ||
-            session.ExpiresAt <= DateTimeOffset.UtcNow || !session.MatchesInvite(invite))
+            session.ExpiresAt <= DateTimeOffset.UtcNow || !session.MatchesInvite(invite) ||
+            (verifiedSession is not null && session != verifiedSession))
         {
             throw VerificationRequired();
         }
@@ -437,7 +440,7 @@ public sealed class IntakeApiService(
 
     private void RequireClinicianMode()
     {
-        if (StandaloneIntakeLink.IsPatientMode(new Uri(navigationManager.Uri), out _))
+        if (verifiedSession is not null || StandaloneIntakeLink.IsPatientMode(new Uri(navigationManager.Uri), out _))
         {
             throw new HttpRequestException("This action requires clinician mode.", null, HttpStatusCode.Forbidden);
         }

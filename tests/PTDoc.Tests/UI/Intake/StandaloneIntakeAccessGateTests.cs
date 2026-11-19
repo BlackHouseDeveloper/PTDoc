@@ -12,6 +12,21 @@ namespace PTDoc.Tests.UI.Intake;
 [Trait("Category", "CoreCi")]
 public sealed class StandaloneIntakeAccessGateTests : TestContext
 {
+    public StandaloneIntakeAccessGateTests() => Services.AddScoped<IntakeInviteRenewal>();
+
+    [Fact]
+    public void RenewalInvite_RequiresTheSamePatientPathAndVerifiedInvite()
+    {
+        var uri = new Uri($"https://localhost/intake/{Guid.NewGuid()}");
+        var session = IntakeSessionToken.FromVerifiedInvite("session", DateTimeOffset.UtcNow.AddMinutes(5), "first");
+        var renewal = new IntakeInviteRenewal();
+        renewal.Remember(uri, "first");
+
+        Assert.Null(renewal.ForSession(new Uri($"https://localhost/intake/{Guid.NewGuid()}"), session));
+        Assert.Null(renewal.ForSession(uri, IntakeSessionToken.FromVerifiedInvite("other", session.ExpiresAt, "second")));
+        Assert.Null(renewal.ForSession(uri, new IntakeSessionToken("legacy", session.ExpiresAt)));
+    }
+
     [Fact]
     public void CheckAccess_RunsAfterFirstRender()
     {

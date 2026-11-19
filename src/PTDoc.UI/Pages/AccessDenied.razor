@@ -10,6 +10,12 @@
             You do not have permission to view this page.
             Please contact your administrator if you believe this is an error.
         </p>
-        <a href="/" class="access-denied__home-link">Return to Dashboard</a>
+        <AuthorizeView Policy="@AuthorizationPolicies.PatientHepAccess">
+            <a href="/my-hep" class="access-denied__home-link">My Home Exercise Program</a>
+        </AuthorizeView>
+        <AuthorizeView Policy="@AuthorizationPolicies.ClinicalStaff">
+            <a href="/" class="access-denied__home-link">Return to Dashboard</a>
+        </AuthorizeView>
+        <a href="/logout" class="access-denied__home-link">Sign out</a>
     </div>
 </div>

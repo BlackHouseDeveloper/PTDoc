@@ -14,7 +14,8 @@
 @using PTDoc.UI.Components.Intake.Models
 @using PTDoc.UI.Components.Intake.Steps
 
-@inject IIntakeService IntakeService
+@inject IIntakeService DefaultIntakeService
+@inject StandaloneIntakeClientFactory CreateStandaloneClient
 @inject IIntakeReferenceDataCatalogService IntakeReferenceData
 @inject PTDoc.Core.Services.IIntakeDemographicsValidationService DemographicsValidationService
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -235,6 +236,10 @@
 }
 
 @code {
+    [CascadingParameter] private IntakeSessionToken? VerifiedSession { get; set; }
+    private IIntakeService IntakeService { get; set; } = default!;
+    private bool _disposed;
+
     [CascadingParameter(Name = nameof(IntakeVerificationRequired))] private Action? IntakeVerificationRequired { get; set; }
     [Parameter] public Guid? PatientId { get; set; }
     [SupplyParameterFromQuery(Name = "noteId")] public Guid? NoteId { get; set; }
@@ -298,12 +303,16 @@
 
     protected override void OnInitialized()
     {
+        // The gate creates a new wizard for each verified session. Keep that authority for every follow-up request.
+        IntakeService = VerifiedSession is { } session ? CreateStandaloneClient(session) : DefaultIntakeService;
         _navGuard = NavigationManager.RegisterLocationChangingHandler(OnLocationChanging);
     }
 
     protected override async Task OnParametersSetAsync()
     {
+        var origin = NavigationManager.Uri;
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (_disposed || origin != NavigationManager.Uri) return;
         var user = authState.User;
         var isAuthenticated = user.Identity?.IsAuthenticated == true;
 
@@ -797,6 +806,7 @@
         if (!CanEditDraft || IsInteractionLocked || State.ProfilePrefill is null || State.PatientId is null) return;
         var updatingState = State;
         var generation = _loadGeneration;
+        var origin = NavigationManager.Uri;
         try
         {
             _isSavingDraft = true;
@@ -806,7 +816,7 @@
             // reload may reconcile answers with the server-owned accepted provenance.
             _profileReloadRequired = true;
             await IntakeService.SaveDraftAsync(draft);
-            if (!IsCurrentIntakeOperation(updatingState, generation)) return;
+            if (origin != NavigationManager.Uri || !IsCurrentIntakeOperation(updatingState, generation)) return;
             await ReloadSavedProfileCoreAsync();
         }
         catch (HttpRequestException ex)
@@ -1004,6 +1014,8 @@
 
     public void Dispose()
     {
+        _disposed = true;
+        _loadGeneration++;
         _navGuard?.Dispose();
     }
 

@@ -46,7 +46,7 @@ builder.Services.AddScoped<IThemeService, BlazorThemeService>();
 builder.Services.AddScoped<ISyncService, HttpSyncService>();
 builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
 builder.Services.AddScoped<IViewportDiagnosticsService, WebViewportDiagnosticsService>();
-builder.Services.AddScoped<IIntakeService, IntakeApiService>();
+builder.Services.AddIntakeApiClient();
 builder.Services.AddScoped<IIntakeInviteService, HttpIntakeInviteService>();
 builder.Services.AddScoped<IIntakeDeliveryService, IntakeDeliveryApiService>();
 builder.Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
