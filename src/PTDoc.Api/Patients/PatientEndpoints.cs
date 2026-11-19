@@ -146,7 +146,7 @@ public static class PatientEndpoints
     }
 
     // POST /api/patients
-    private static async Task<IResult> CreatePatient(
+    internal static async Task<IResult> CreatePatient(
         [FromBody] CreatePatientRequest request,
         [FromServices] ApplicationDbContext db,
         [FromServices] ITenantContextAccessor tenantContext,
@@ -182,7 +182,7 @@ public static class PatientEndpoints
         {
             FirstName = request.FirstName.Trim(),
             LastName = request.LastName.Trim(),
-            DateOfBirth = request.DateOfBirth,
+            DateOfBirth = DateTime.SpecifyKind(request.DateOfBirth, DateTimeKind.Utc),
             Email = request.Email?.Trim(),
             Phone = request.Phone?.Trim(),
             AddressLine1 = request.AddressLine1?.Trim(),
@@ -231,7 +231,7 @@ public static class PatientEndpoints
     }
 
     // PUT /api/patients/{id}
-    private static async Task<IResult> UpdatePatient(
+    internal static async Task<IResult> UpdatePatient(
         Guid id,
         [FromBody] UpdatePatientRequest request,
         [FromServices] ApplicationDbContext db,
@@ -290,7 +290,7 @@ public static class PatientEndpoints
         }
 
         if (request.DateOfBirth is not null)
-            patient.DateOfBirth = request.DateOfBirth.Value;
+            patient.DateOfBirth = DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc);
 
         if (request.Email is not null)
             patient.Email = request.Email.Trim();
@@ -373,14 +373,7 @@ public static class PatientEndpoints
         }
 
         await integrations.QueuePatientSynchronizationAsync(patient.Id, patient.ModifiedByUserId, patient.LastModifiedUtc, cancellationToken);
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            return Results.Conflict(new { error = "Patient information changed while saving. Refresh before saving again." });
-        }
+        await db.SaveChangesAsync(cancellationToken);
 
         return Results.Ok(ToResponse(patient));
     }

@@ -138,7 +138,6 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.LastModifiedUtc).IsConcurrencyToken();
             entity.HasIndex(e => e.LastModifiedUtc);
             entity.HasIndex(e => new { e.FirstName, e.LastName });
-            entity.Property(e => e.LastModifiedUtc).IsConcurrencyToken();
             entity.HasIndex(e => e.MedicalRecordNumber).IsUnique().HasFilter(IsNotNullFilter("MedicalRecordNumber"));
             entity.HasIndex(e => e.Email).HasFilter(IsNotNullFilter("Email"));
 

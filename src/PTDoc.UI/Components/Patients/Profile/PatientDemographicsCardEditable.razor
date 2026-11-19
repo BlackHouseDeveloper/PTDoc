@@ -265,27 +265,36 @@
             return;
         }
 
+        var nameChanged = editName.Trim() != Patient.DisplayName;
+        if (nameChanged && (nameParts[0].Length > 100 || nameParts[1].Length > 100))
+        {
+            saveError = "First and last names must each be 100 characters or fewer.";
+            return;
+        }
+        if (editEmail.Trim().Length > 255)
+        {
+            saveError = "Email address must be 255 characters or fewer.";
+            return;
+        }
+
         isSaving = true;
         try
         {
-            var firstName = nameParts[0];
-            var lastName = nameParts.Length > 1 ? nameParts[1] : string.Empty;
-
             var request = new UpdatePatientRequest
             {
-                FirstName = firstName,
-                LastName = lastName,
-                DateOfBirth = dob,
+                FirstName = nameChanged ? nameParts[0] : null,
+                LastName = nameChanged ? nameParts[1] : null,
+                DateOfBirth = editDateOfBirth == Patient.DateOfBirth ? null : DateTime.SpecifyKind(dob.Date, DateTimeKind.Utc),
                 ExpectedLastModifiedUtc = editVersion,
-                Email = editEmail.Trim(),
-                Phone = editPhoneNumber.Trim(),
-                AddressLine1 = editAddressLine1.Trim(),
-                AddressLine2 = editAddressLine2.Trim(),
-                City = editCity.Trim(),
-                State = editState.Trim(),
-                ZipCode = editZipCode.Trim(),
-                EmergencyContactName = editEmergencyContactName.Trim(),
-                EmergencyContactPhone = editEmergencyContactPhone.Trim()
+                Email = ChangedText(editEmail, Patient.Email),
+                Phone = ChangedText(editPhoneNumber, Patient.PhoneNumber),
+                AddressLine1 = ChangedText(editAddressLine1, Patient.AddressLine1),
+                AddressLine2 = ChangedText(editAddressLine2, Patient.AddressLine2),
+                City = ChangedText(editCity, Patient.City),
+                State = ChangedText(editState, Patient.State),
+                ZipCode = ChangedText(editZipCode, Patient.ZipCode),
+                EmergencyContactName = ChangedText(editEmergencyContactName, Patient.EmergencyContactName),
+                EmergencyContactPhone = ChangedText(editEmergencyContactPhone, Patient.EmergencyContactPhone)
             };
 
             var updated = await PatientService.UpdateAsync(patientId, request);
@@ -324,6 +333,9 @@
             isSaving = false;
         }
     }
+
+    private static string? ChangedText(string entered, string? original) =>
+        entered == (original ?? string.Empty) ? null : entered.Trim();
 
     private string InsuranceAuthorizationHref
     {
