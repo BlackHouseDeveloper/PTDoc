@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Grouped PHI release authorization, status, contacts and recipients on the intake Review step. Previously recorded revocations appear as read-only history in full and shortened intakes.
 - Fixed submission for a revoked PHI release with a contact and no selected recipient. Draft saves, sync and submission preserve recorded consent flags, revocation timestamps and historical recipient IDs.
 - Staff, patient-link and direct-service submissions now reject an intake with a recorded final-attestation revocation. The draft stays editable and retains its consent evidence.
+- Locked intake responses now store the same consent packet used for submission. Resuming a draft with recorded revocations preserves unanswered authorizations, including billing and dry needling.
+- The first written revocation preserves acknowledgements, authorized contacts and recipient IDs from legacy intakes that stored their consent packet only in the response.
+- Draft saves and submissions require contact details only for active reminder channels. A phone number is still required while either calls or texts are authorized.
 
 ### Fixed - Confirmed intake wording in AI requests
 

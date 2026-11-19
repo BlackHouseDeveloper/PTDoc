@@ -63,6 +63,15 @@ public sealed class IntakeConsentJsonTests
     }
 
     [Fact]
+    public void TryParse_PopulatedConsentRecordTakesPrecedenceOverLegacyResponse()
+    {
+        const string response = """{"consentPacket":{"phiReleaseAuthorized":true,"mediaConsentAccepted":true}}""";
+        Assert.True(IntakeConsentJson.TryParse("""{"phiReleaseAuthorized":false}""", out var packet, out _, legacyResponseJson: response));
+        Assert.False(packet.PhiReleaseAuthorized);
+        Assert.Null(packet.MediaConsentAccepted);
+    }
+
+    [Fact]
     public void TryParse_LegacyConsentToTreatAlias_HydratesCanonicalTreatmentConsent()
     {
         const string json = "{\"HipaaAcknowledged\":true,\"ConsentToTreat\":true}";

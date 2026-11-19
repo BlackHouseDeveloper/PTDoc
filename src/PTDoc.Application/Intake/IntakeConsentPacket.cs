@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace PTDoc.Application.Intake;
@@ -119,18 +120,24 @@ public static class IntakeConsentJson
         WriteIndented = false
     };
 
-    public static bool TryParse(string? json, out IntakeConsentPacket packet, out string? errorMessage)
+    public static bool TryParse(string? json, out IntakeConsentPacket packet, out string? errorMessage, string? legacyResponseJson = null)
     {
-        if (string.IsNullOrWhiteSpace(json) || string.Equals(json.Trim(), "{}", StringComparison.Ordinal))
-        {
-            packet = new IntakeConsentPacket();
-            errorMessage = null;
-            return true;
-        }
-
         try
         {
-            packet = JsonSerializer.Deserialize<IntakeConsentPacket>(json, SerializerOptions) ?? new IntakeConsentPacket();
+            // Older intakes can store their only consent packet inside the response.
+            if (!string.IsNullOrWhiteSpace(legacyResponseJson) && IsEmptyConsentRecord(json))
+            {
+                using var response = JsonDocument.Parse(legacyResponseJson);
+                if (response.RootElement.ValueKind != JsonValueKind.Object)
+                    throw new JsonException("Expected an intake response object.");
+
+                var embedded = response.RootElement.EnumerateObject()
+                    .LastOrDefault(p => p.Name.Equals("consentPacket", StringComparison.OrdinalIgnoreCase)).Value;
+                json = embedded.ValueKind == JsonValueKind.Undefined ? null : embedded.GetRawText();
+            }
+
+            packet = string.IsNullOrWhiteSpace(json) ? new IntakeConsentPacket()
+                : JsonSerializer.Deserialize<IntakeConsentPacket>(json, SerializerOptions) ?? new IntakeConsentPacket();
             packet.AuthorizedContacts ??= new List<AuthorizedContact>();
             packet.RevokedConsentKeys ??= new List<string>();
             packet.PhiAuthorizedContactIds ??= new List<string>();
@@ -145,6 +152,14 @@ public static class IntakeConsentJson
             errorMessage = "Consents data is not valid JSON.";
             return false;
         }
+    }
+
+    private static bool IsEmptyConsentRecord(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return true;
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        return root.ValueKind == JsonValueKind.Null || (root.ValueKind == JsonValueKind.Object && !root.EnumerateObject().Any());
     }
 
     public static string Serialize(IntakeConsentPacket packet)
@@ -186,6 +201,9 @@ public static class IntakeConsentJson
             : "{}";
     }
 
+    internal static JsonNode ToJsonNode(IntakeConsentPacket packet)
+        => JsonSerializer.SerializeToNode(packet, SerializerOptions)!;
+
     public static IntakeConsentValidationResult Validate(IntakeConsentPacket packet, bool requireHipaaAcknowledgement = false)
     {
         var result = new IntakeConsentValidationResult();
@@ -222,13 +240,13 @@ public static class IntakeConsentJson
             result.AddError("phiAuthorizedContactIds", "Select at least one authorized contact to receive protected health information.");
         }
 
-        if ((packet.CommunicationCallConsent == true || packet.CommunicationTextConsent == true) &&
+        if ((IsCallConsentActive(packet) || IsTextConsentActive(packet)) &&
             string.IsNullOrWhiteSpace(packet.CommunicationPhoneNumber))
         {
             result.AddError("communicationPhoneNumber", "A phone number is required when phone or text reminders are authorized.");
         }
 
-        if (packet.CommunicationEmailConsent == true && string.IsNullOrWhiteSpace(packet.CommunicationEmail))
+        if (IsEmailConsentActive(packet) && string.IsNullOrWhiteSpace(packet.CommunicationEmail))
         {
             result.AddError("communicationEmail", "An email address is required when email reminders are authorized.");
         }

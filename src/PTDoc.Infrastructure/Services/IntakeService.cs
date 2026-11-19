@@ -484,7 +484,8 @@ public sealed class IntakeService : IIntakeService
             throw new InvalidOperationException("The issued questionnaire version must be preserved.");
 
         var agreements = IntakeDraftPersistence.BuildCanonicalConsentPacket(canonicalState);
-        if (!IntakeConsentJson.RetainsRecordedRevocations(intake.Consents, IntakeConsentJson.Serialize(agreements)))
+        var consentsJson = IntakeConsentJson.Serialize(agreements);
+        if (!IntakeConsentJson.RetainsRecordedRevocations(intake.Consents, consentsJson))
             throw new InvalidOperationException(IntakeConsentJson.StaleRevocationMessage);
         if (IntakeConsentJson.IsRevoked(agreements, "hipaaAcknowledged")
             || IntakeConsentJson.IsRevoked(agreements, "treatmentConsentAccepted")
@@ -517,11 +518,12 @@ public sealed class IntakeService : IIntakeService
             intake.Id,
             patientId,
             submittedAtUtc,
-            nowUtc);
+            nowUtc,
+            agreements);
         intake.ResponseJson = IntakeEncounterRules.NormalizeResponseIdentity(intake, intake.ResponseJson);
         intake.StructuredDataJson = SerializeStructuredData(submittedState.StructuredData);
         intake.PainMapData = BuildPainMapJson(submittedState);
-        intake.Consents = BuildConsentsJson(canonicalState);
+        intake.Consents = consentsJson;
         intake.SubmittedAt = submittedAtUtc;
         intake.IsLocked = true;
         intake.LastModifiedUtc = nowUtc;

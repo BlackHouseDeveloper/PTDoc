@@ -1,6 +1,5 @@
 using PTDoc.Application.Intake;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 
 namespace PTDoc.Application.Services;
 
@@ -45,18 +44,19 @@ public static class IntakeDraftPersistence
     }
 
     public static string SerializePersistenceJson(IntakeResponseDraft draft)
-    {
-        var copy = CreatePersistenceCopy(draft);
-        copy.ProfilePrefill = null; // Offers are refreshed from the authorized profile, not stored as answers.
-        var json = JsonSerializer.Serialize(copy, SerializerOptions);
-        if (copy.ConsentPacket is null)
-        {
-            return json;
-        }
+        => SerializePersistenceCopy(CreatePersistenceCopy(draft));
 
-        if (JsonNode.Parse(json) is not JsonObject root)
+    private static string SerializePersistenceCopy(IntakeResponseDraft copy, IntakeConsentPacket? recordedConsents = null)
+    {
+        copy.ProfilePrefill = null; // Offers are refreshed from the authorized profile, not stored as answers.
+        if (copy.ConsentPacket is null && recordedConsents is null)
+            return JsonSerializer.Serialize(copy, SerializerOptions);
+
+        var root = JsonSerializer.SerializeToNode(copy, SerializerOptions)!.AsObject();
+        if (recordedConsents is not null)
         {
-            return json;
+            // The locked snapshot uses exactly the packet validated for submission, including unanswered fields.
+            root["consentPacket"] = IntakeConsentJson.ToJsonNode(recordedConsents);
         }
 
         foreach (var propertyName in LegacyMirroredConsentProperties)
@@ -75,13 +75,7 @@ public static class IntakeDraftPersistence
         DateTime lastModifiedUtc,
         IntakeConsentPacket? recordedConsents = null)
     {
-        var draft = DeserializeDraft(responseJson);
-        if (recordedConsents?.HasRevocationHistory == true)
-        {
-            draft.ConsentPacket = recordedConsents;
-            HydrateConsentConvenienceFields(draft);
-        }
-        return SerializeSubmittedPersistenceJson(draft, intakeId, patientId, submittedAtUtc, lastModifiedUtc);
+        return SerializeSubmittedPersistenceJson(DeserializeDraft(responseJson), intakeId, patientId, submittedAtUtc, lastModifiedUtc, recordedConsents);
     }
 
     public static string SerializeSubmittedPersistenceJson(
@@ -89,7 +83,8 @@ public static class IntakeDraftPersistence
         Guid intakeId,
         Guid patientId,
         DateTime submittedAtUtc,
-        DateTime lastModifiedUtc)
+        DateTime lastModifiedUtc,
+        IntakeConsentPacket? recordedConsents = null)
     {
         var copy = CreatePersistenceCopy(draft);
         copy.IntakeId = intakeId;
@@ -98,7 +93,7 @@ public static class IntakeDraftPersistence
         copy.IsLocked = true;
         copy.SubmittedAt = submittedAtUtc;
         copy.LastModifiedUtc = lastModifiedUtc;
-        return SerializePersistenceJson(copy);
+        return SerializePersistenceCopy(copy, recordedConsents);
     }
 
     public static IntakeConsentPacket? CloneConsentPacket(IntakeConsentPacket? packet)
@@ -123,16 +118,20 @@ public static class IntakeDraftPersistence
         ArgumentNullException.ThrowIfNull(draft);
 
         var packet = CloneConsentPacket(draft.ConsentPacket) ?? new IntakeConsentPacket();
-        packet.HipaaAcknowledged ??= LegacyAcceptance("hipaaAcknowledged", draft.HipaaAcknowledged);
-        packet.TreatmentConsentAccepted ??= LegacyAcceptance("treatmentConsentAccepted", draft.ConsentToTreatAcknowledged);
-        packet.PhiReleaseAuthorized ??= LegacyAcceptance("phiReleaseAuthorized", draft.PhiReleaseAuthorized);
-        packet.CommunicationCallConsent ??= LegacyAcceptance("communicationCallConsent", draft.AllowPhoneCalls);
-        packet.CommunicationTextConsent ??= LegacyAcceptance("communicationTextConsent", draft.AllowTextMessages);
-        packet.CommunicationEmailConsent ??= LegacyAcceptance("communicationEmailConsent", draft.AllowEmailMessages);
-        packet.DryNeedlingConsentAccepted ??= LegacyAcceptance("dryNeedlingConsentAccepted", draft.DryNeedlingEligible);
-        packet.PelvicFloorConsentAccepted ??= LegacyAcceptance("pelvicFloorConsentAccepted", draft.PelvicFloorTherapyEligible);
-        packet.CreditCardAuthorizationAccepted ??= LegacyAcceptance("creditCardAuthorizationAccepted", draft.BillingConsentAuthorized);
-        packet.FinalAttestationAccepted ??= LegacyAcceptance("finalAttestationAccepted", draft.AccuracyConfirmed);
+        // Resuming a recorded revocation must preserve unanswered consents through the next draft save.
+        if (!packet.HasRevocationHistory)
+        {
+            packet.HipaaAcknowledged ??= draft.HipaaAcknowledged;
+            packet.TreatmentConsentAccepted ??= draft.ConsentToTreatAcknowledged;
+            packet.PhiReleaseAuthorized ??= draft.PhiReleaseAuthorized;
+            packet.CommunicationCallConsent ??= draft.AllowPhoneCalls;
+            packet.CommunicationTextConsent ??= draft.AllowTextMessages;
+            packet.CommunicationEmailConsent ??= draft.AllowEmailMessages;
+            packet.DryNeedlingConsentAccepted ??= draft.DryNeedlingEligible;
+            packet.PelvicFloorConsentAccepted ??= draft.PelvicFloorTherapyEligible;
+            packet.CreditCardAuthorizationAccepted ??= draft.BillingConsentAuthorized;
+            packet.FinalAttestationAccepted ??= draft.AccuracyConfirmed;
+        }
 
         if (!string.IsNullOrWhiteSpace(draft.PhoneNumber))
         {
@@ -152,9 +151,6 @@ public static class IntakeDraftPersistence
         MergeLegacyRevocation(packet, "communicationEmailConsent", draft.RevokeMarketingCommunications);
 
         return packet;
-
-        // When the recorded acceptance was absent, a legacy default must not invent one.
-        bool? LegacyAcceptance(string key, bool value) => IntakeConsentJson.IsRevoked(packet, key) ? null : value;
     }
 
     public static void HydrateConsentConvenienceFields(IntakeResponseDraft draft)

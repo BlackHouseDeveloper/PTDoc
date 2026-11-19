@@ -697,7 +697,7 @@ public static class IntakeEndpoints
         if (intake is null)
             return Results.NotFound(new { error = $"Intake {id} not found." });
 
-        if (!IntakeConsentJson.TryParse(intake.Consents, out var consentPacket, out var parseError))
+        if (!IntakeConsentJson.TryParse(intake.Consents, out var consentPacket, out var parseError, legacyResponseJson: intake.ResponseJson))
         {
             return Results.ValidationProblem(new Dictionary<string, string[]>
             {
