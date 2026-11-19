@@ -1,6 +1,5 @@
 @page "/fax-center"
 @attribute [Authorize(Policy = AuthorizationPolicies.FaxRead)]
-@rendermode InteractiveServer
 @using PTDoc.Application.DTOs
 @using PTDoc.Application.Integrations
 @inject IIntegrationClientService Integrations

@@ -1,6 +1,5 @@
 @page "/patient/{PatientId:guid}/hep"
 @attribute [Authorize(Policy = AuthorizationPolicies.HepRead)]
-@rendermode InteractiveServer
 @using PTDoc.Application.Integrations
 @inject IIntegrationClientService Integrations
 @inject IPatientService Patients

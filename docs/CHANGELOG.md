@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - MAUI navigation to shared pages
+
+- The native router discovers pages in PTDoc.UI, including the dashboard and patient chart. Shared pages and navigation now inherit their host's render mode. The Web app continues to select interactive server rendering at its root.
+- The MAUI host supplies the authenticated patient and note API clients used by the dashboard, patient list and chart.
+
 ### Changed - Client review Plan 11
 
 - Grouped PHI release authorization, status, contacts and recipients on the intake Review step. Previously recorded revocations appear as read-only history in full and shortened intakes.

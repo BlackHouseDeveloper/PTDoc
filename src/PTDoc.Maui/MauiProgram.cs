@@ -64,6 +64,8 @@ public static class MauiProgram
         builder.Services.AddSingleton<IIntakeBodyPartMapper, IntakeBodyPartMapper>();
         builder.Services.AddSingleton<IOutcomeMeasureRegistry, OutcomeMeasureRegistry>();
         builder.Services.AddSingleton<IIntakeDraftCanonicalizer, IntakeDraftCanonicalizer>();
+        builder.Services.AddScoped<IPatientService, PatientApiService>();
+        builder.Services.AddScoped<INoteService, NoteListApiService>();
         builder.Services.AddScoped<IAppointmentService, AppointmentApiService>();
         builder.Services.AddScoped<ISchedulingAdministrationService>(sp =>
             new SettingsAdministrationApiClient(sp.GetRequiredService<IHttpClientFactory>().CreateClient("ApiClient")));
