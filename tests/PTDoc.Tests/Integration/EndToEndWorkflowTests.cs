@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -11,6 +12,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -2747,34 +2749,72 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
     }
 
     [Fact]
-    public async Task PatientDemographics_CannotUpdatePatientOutsideCurrentClinic()
+    public async Task PatientDemographics_SelectedClinicOwnsCreationAndScopesReadAndUpdate()
+    {
+        using var factory = await CreateClinicScopedFactoryAsync();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestRoleAuthHandler.RoleHeader, Roles.PT);
+        var id = await CreatePatientAsync(client);
+        var own = await client.GetFromJsonAsync<PatientResponse>($"/api/v1/patients/{id}");
+        Assert.Equal(PtDocApiFactory.AuthorizationClinicId, own!.ClinicId);
+        using var updated = await client.PutAsJsonAsync($"/api/v1/patients/{id}",
+            new UpdatePatientRequest { ExpectedLastModifiedUtc = own.LastModifiedUtc, Phone = "2025550199" });
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var clinic = new Clinic { Name = "Other synthetic clinic", Slug = $"other-{Guid.NewGuid():N}" };
+        var other = new Patient { ClinicId = clinic.Id, FirstName = "Other", LastName = "Synthetic", DateOfBirth = DateTime.UtcNow.Date };
+        db.AddRange(clinic, other);
+        await db.SaveChangesAsync();
+        using var read = await client.GetAsync($"/api/v1/patients/{other.Id}");
+        using var write = await client.PutAsJsonAsync($"/api/v1/patients/{other.Id}", new UpdatePatientRequest { Phone = "2025550000" });
+        Assert.Equal(HttpStatusCode.NotFound, read.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, write.StatusCode);
+        Assert.Null(await db.Patients.AsNoTracking().Where(p => p.Id == other.Id).Select(p => p.Phone).SingleAsync());
+    }
+
+    [Theory]
+    [InlineData("documents")]
+    [InlineData("communications")]
+    public async Task PatientDemographics_ConcurrentChartActivityReturnsConflictAndRollsBack(string route)
     {
         using var setup = _factory.CreateClientWithRole(Roles.PT);
         var id = await CreatePatientAsync(setup);
-        var foreignClinicId = Guid.NewGuid();
-        string connectionString;
-        await using (var scope = _factory.Services.CreateAsyncScope())
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(db.Database.GetConnectionString()).Options;
+        var racingOptions = new DbContextOptionsBuilder<ApplicationDbContext>(options)
+            .AddInterceptors(new CompetingPatientSave(id, options)).Options;
+        using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddScoped<ApplicationDbContext>(_ => new ApplicationDbContext(racingOptions))));
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestRoleAuthHandler.RoleHeader, Roles.PT);
+        var content = route == "documents"
+            ? JsonContent(new { documentType = "Other", fileName = "synthetic.txt", base64Content = "YQ==" })
+            : JsonContent(new { channel = "Phone", direction = "Outbound", summary = "Synthetic" });
+        using var response = await client.PostAsync($"/api/v1/patients/{id}/{route}", content);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("2025550111", await db.Patients.Where(p => p.Id == id).Select(p => p.Phone).SingleAsync());
+        Assert.False(await db.PatientDocuments.AnyAsync(d => d.PatientId == id));
+        Assert.False(await db.PatientCommunicationLogEntries.AnyAsync(e => e.PatientId == id));
+    }
+
+    private sealed class CompetingPatientSave(Guid patientId, DbContextOptions<ApplicationDbContext> options) : SaveChangesInterceptor
+    {
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
         {
-            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            connectionString = db.Database.GetConnectionString()!;
-            db.Clinics.Add(new Clinic { Id = foreignClinicId, Name = "Other synthetic clinic", Slug = $"other-{foreignClinicId:N}" });
-            var patient = await db.Patients.SingleAsync(row => row.Id == id);
-            patient.ClinicId = foreignClinicId;
-            await db.SaveChangesAsync();
+            if (eventData.Context!.ChangeTracker.Entries<Patient>().Any(e => e.Entity.Id == patientId && e.State == EntityState.Modified))
+            {
+                await using var writer = new ApplicationDbContext(options);
+                var patient = await writer.Patients.SingleAsync(p => p.Id == patientId, cancellationToken);
+                patient.Phone = "2025550111";
+                patient.LastModifiedUtc = patient.LastModifiedUtc.AddSeconds(1);
+                await writer.SaveChangesAsync(cancellationToken);
+            }
+            return result;
         }
-        var tenant = new Mock<ITenantContextAccessor>();
-        tenant.Setup(x => x.GetCurrentClinicId()).Returns(PtDocApiFactory.AuthorizationClinicId);
-        var options = new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlite(connectionString).Options;
-        using var scopedFactory = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
-            services.AddScoped<ApplicationDbContext>(_ => new ApplicationDbContext(options, tenant.Object))));
-        using var client = scopedFactory.CreateClient();
-        client.DefaultRequestHeaders.Add("X-Test-Role", Roles.PT);
-        using var response = await client.PutAsync($"/api/v1/patients/{id}", JsonContent(new UpdatePatientRequest { Phone = "2025550000" }));
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        // Positive control: the same existing row is available to its owning clinic.
-        tenant.Setup(x => x.GetCurrentClinicId()).Returns(foreignClinicId);
-        using var ownClinic = await client.PutAsync($"/api/v1/patients/{id}", JsonContent(new UpdatePatientRequest { Phone = "2025550199" }));
-        Assert.Equal(HttpStatusCode.OK, ownClinic.StatusCode);
     }
 
     [Fact]

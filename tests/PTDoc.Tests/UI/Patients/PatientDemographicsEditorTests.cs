@@ -17,7 +17,7 @@ public sealed class PatientDemographicsEditorTests : TestContext
     private readonly PatientProfileVm patient = new()
     {
         Id = Guid.NewGuid().ToString(),
-        DisplayName = "Synthetic Patient",
+        DisplayName = "Synthetic Mary Patient",
         DateOfBirth = "1/2/1980",
         Email = "synthetic@example.test",
         PhoneNumber = "2025550101",
@@ -67,7 +67,10 @@ public sealed class PatientDemographicsEditorTests : TestContext
         Assert.Equal("22001", saved.ZipCode);
         Assert.Equal("New Contact", saved.EmergencyContactName);
         Assert.Equal("2025550112", saved.EmergencyContactPhone);
-        Assert.Equal(patient.Email, saved.Email);
+        Assert.Null(saved.Email);
+        Assert.Null(saved.FirstName);
+        Assert.Null(saved.LastName);
+        Assert.Null(saved.DateOfBirth);
         Assert.Null(saved.AuthorizationNumber);
         Assert.Null(saved.PayerInfoJson);
         Assert.Null(saved.ConsentSigned);
