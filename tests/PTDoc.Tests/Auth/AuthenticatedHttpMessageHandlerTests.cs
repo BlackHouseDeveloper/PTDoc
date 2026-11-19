@@ -45,6 +45,25 @@ public sealed class AuthenticatedHttpMessageHandlerTests
     }
 
     [Theory]
+    [InlineData("verify-otp", HttpStatusCode.OK)]
+    [InlineData("patient/example/draft", HttpStatusCode.Unauthorized)]
+    public async Task StandaloneIntake_BypassesStaffTokenAndRefresh(string path, HttpStatusCode status)
+    {
+        var store = CreateTokenStore(Tokens("staff", "refresh", DateTimeOffset.UtcNow.AddMinutes(10)));
+        var tokens = new Mock<ITokenService>(MockBehavior.Strict);
+        var user = new Mock<IUserService>(MockBehavior.Strict);
+        var inner = new SequencedHandler(status);
+        using var handler = CreateHandler(store.Object, tokens.Object, user.Object, inner);
+        using var client = new HttpClient(handler);
+
+        using var response = await client.PostAsync($"https://ptdoc.test/api/v1/intake/access/{path}", null);
+
+        Assert.Equal(status, response.StatusCode);
+        Assert.Null(Assert.Single(inner.AuthorizationParameters));
+        store.Verify(item => item.GetAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
     [InlineData("send-email")]
     [InlineData("send-sms")]
     [InlineData("validate")]

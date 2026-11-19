@@ -235,6 +235,7 @@
 }
 
 @code {
+    [CascadingParameter(Name = nameof(IntakeVerificationRequired))] private Action? IntakeVerificationRequired { get; set; }
     [Parameter] public Guid? PatientId { get; set; }
     [SupplyParameterFromQuery(Name = "noteId")] public Guid? NoteId { get; set; }
     private Guid? _loadedNoteId;
@@ -331,7 +332,8 @@
              user.IsInRole(Roles.Admin) ||
              user.IsInRole(Roles.Owner));
 
-        State.IsPatientMode = string.Equals(Mode, "patient", StringComparison.OrdinalIgnoreCase) ||
+        State.IsPatientMode = IntakeVerificationRequired is not null ||
+            string.Equals(Mode, "patient", StringComparison.OrdinalIgnoreCase) ||
             !isAuthenticated ||
             user.IsInRole(Roles.Patient);
 
@@ -474,7 +476,7 @@
         catch (HttpRequestException ex)
         {
             if (!IsCurrent()) return;
-            var message = ToUserFacingApiError(ex);
+            var message = HandleApiError(ex);
             SetDraftUnavailableState(
                 title: "Unable to Load Intake",
                 message: message,
@@ -586,7 +588,7 @@
         catch (HttpRequestException ex)
         {
             if (!IsCurrentIntakeOperation(savingState, generation)) return;
-            var message = ToUserFacingApiError(ex);
+            var message = HandleApiError(ex);
             _validationMessage = message;
             ToastService.ShowError(message, "Draft save failed");
         }
@@ -732,7 +734,7 @@
         catch (HttpRequestException ex)
         {
             if (!IsCurrentIntakeOperation(submittingState, generation)) return;
-            var message = ToUserFacingApiError(ex);
+            var message = HandleApiError(ex);
             _validationMessage = message;
             ToastService.ShowError(message, "Intake submit failed");
         }
@@ -785,7 +787,7 @@
         }
         catch (HttpRequestException ex)
         {
-            if (IsCurrentIntakeOperation(refreshingState, generation)) _validationMessage = ToUserFacingApiError(ex);
+            if (IsCurrentIntakeOperation(refreshingState, generation)) _validationMessage = HandleApiError(ex);
         }
         finally { if (generation == _loadGeneration) _isSavingDraft = false; }
     }
@@ -809,7 +811,7 @@
         }
         catch (HttpRequestException ex)
         {
-            if (IsCurrentIntakeOperation(updatingState, generation)) _validationMessage = ToUserFacingApiError(ex);
+            if (IsCurrentIntakeOperation(updatingState, generation)) _validationMessage = HandleApiError(ex);
         }
         catch (InvalidOperationException ex)
         {
@@ -827,7 +829,7 @@
         try { await ReloadSavedProfileCoreAsync(); }
         catch (HttpRequestException ex)
         {
-            if (IsCurrentIntakeOperation(reloadingState, generation)) _validationMessage = ToUserFacingApiError(ex);
+            if (IsCurrentIntakeOperation(reloadingState, generation)) _validationMessage = HandleApiError(ex);
         }
         catch (InvalidOperationException ex)
         {
@@ -919,7 +921,7 @@
         }
         catch (HttpRequestException ex)
         {
-            var message = ToUserFacingApiError(ex);
+            var message = HandleApiError(ex);
             _validationMessage = message;
             ToastService.ShowError(message, "Review failed");
         }
@@ -966,7 +968,7 @@
         catch (HttpRequestException ex)
         {
             if (!IsCurrentIntakeOperation(savingState, generation)) return;
-            var message = ToUserFacingApiError(ex);
+            var message = HandleApiError(ex);
             _validationMessage = message;
             ToastService.ShowError(message, "Draft save failed");
         }
@@ -976,8 +978,14 @@
         }
     }
 
-    private static string ToUserFacingApiError(HttpRequestException ex)
+    private string HandleApiError(HttpRequestException ex)
     {
+        if (ex.StatusCode == HttpStatusCode.Unauthorized && IntakeVerificationRequired is not null)
+        {
+            IntakeVerificationRequired();
+            return "Please verify your identity again to continue this intake.";
+        }
+
         if (!string.IsNullOrWhiteSpace(ex.Message) &&
             !ex.Message.StartsWith("Response status code", StringComparison.OrdinalIgnoreCase))
         {

@@ -750,6 +750,65 @@ public sealed class IntakeApiServiceTests
         Assert.Equal(reviewerId, result.ReviewedByUserId);
     }
 
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("expired")]
+    [InlineData("empty")]
+    [InlineData("other-invite")]
+    [InlineData("legacy")]
+    public async Task PatientMode_RequiresUsableSessionForThisInviteBeforeReadingSavingOrSubmitting(string condition)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var session = condition switch
+        {
+            "missing" => null,
+            "expired" => IntakeSessionToken.FromVerifiedInvite("token", now.AddMinutes(-1), "invite"),
+            "empty" => IntakeSessionToken.FromVerifiedInvite(" ", now.AddMinutes(5), "invite"),
+            "other-invite" => IntakeSessionToken.FromVerifiedInvite("token", now.AddMinutes(5), "another"),
+            "legacy" => new IntakeSessionToken("token", now.AddMinutes(5)),
+            _ => throw new ArgumentOutOfRangeException(nameof(condition))
+        };
+        var patientId = Guid.NewGuid();
+        var service = CreateService(
+            new StubHttpMessageHandler(_ => throw new InvalidOperationException("Unexpected HTTP request")),
+            session, $"https://localhost/intake/{patientId}?mode=%70atient&invite=invite");
+        var draft = new IntakeResponseDraft { PatientId = patientId };
+
+        foreach (var operation in new Func<Task>[]
+        {
+            () => service.GetDraftByPatientIdAsync(patientId),
+            () => service.GetLatestByPatientIdAsync(patientId),
+            () => service.SaveDraftAsync(draft),
+            () => service.SubmitAsync(draft)
+        })
+        {
+            var error = await Assert.ThrowsAsync<HttpRequestException>(operation);
+            Assert.Equal(HttpStatusCode.Unauthorized, error.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task PatientLink_RejectsClinicianOnlyOperations()
+    {
+        var patientId = Guid.NewGuid();
+        var service = CreateService(
+            new StubHttpMessageHandler(_ => throw new InvalidOperationException("Unexpected clinician request")),
+            IntakeSessionToken.FromVerifiedInvite("session", DateTimeOffset.UtcNow.AddMinutes(10), "invite"),
+            $"https://localhost/intake/{patientId}?invite=invite");
+        foreach (var operation in new Func<Task>[]
+        {
+            () => service.GetForNoteAsync(patientId, Guid.NewGuid()),
+            () => service.SearchEligiblePatientsAsync(),
+            () => service.EnsureDraftAsync(patientId),
+            () => service.CreateTemporaryPatientAndDraftIntakeAsync(new IntakeResponseDraft()),
+            () => service.MarkReviewedAsync(Guid.NewGuid())
+        })
+        {
+            var error = await Assert.ThrowsAsync<HttpRequestException>(operation);
+            Assert.Equal(HttpStatusCode.Forbidden, error.StatusCode);
+        }
+    }
+
     [Fact]
     public async Task GetLatestByPatientIdAsync_InStandalonePatientMode_UsesAccessEndpointAndSessionHeader()
     {

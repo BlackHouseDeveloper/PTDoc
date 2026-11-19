@@ -18,7 +18,7 @@
     <Found Context="routeData">
         @if (ShouldUseStandaloneIntakeLayout(routeData))
         {
-            <StandaloneIntakeAccessGate>
+            <StandaloneIntakeAccessGate @key="NavigationManager.Uri">
                 <RouteView RouteData="@routeData" DefaultLayout="@typeof(StandaloneIntakeLayout)" />
             </StandaloneIntakeAccessGate>
         }
@@ -153,10 +153,7 @@
         }
 
         var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
-        var query = uri.Query;
-        var isPatientQueryMode = query.Contains("mode=patient", StringComparison.OrdinalIgnoreCase);
-
-        return isPatientQueryMode || !isAuthenticated;
+        return !isAuthenticated || StandaloneIntakeLink.IsPatientMode(uri, out _);
     }
 
     public void Dispose()

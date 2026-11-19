@@ -35,15 +35,8 @@ public sealed class JsIntakeSessionStore : IIntakeSessionStore
 
     public async Task SaveAsync(IntakeSessionToken token, CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var json = JsonSerializer.Serialize(token);
-            await _js.InvokeVoidAsync("sessionStorage.setItem", StorageKey, json);
-        }
-        catch (Exception ex) when (ex is JSException or JSDisconnectedException)
-        {
-            // Silently ignore storage failures (e.g., quota exceeded, disconnected circuit).
-        }
+        var json = JsonSerializer.Serialize(token);
+        await _js.InvokeVoidAsync("sessionStorage.setItem", cancellationToken, StorageKey, json);
     }
 
     public async Task ClearAsync(CancellationToken cancellationToken = default)

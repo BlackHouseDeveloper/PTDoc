@@ -103,18 +103,22 @@ public sealed class StandaloneIntakeAccessGateTests : TestContext
             Times.Never);
     }
 
-    [Fact]
-    public async Task VerifyAgain_UsesRememberedInviteToken_WhenAuthorizedSessionExpiresAfterNavigation()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Verification_RequiresStoredSession_AndRemembersInviteForRenewal(bool canStoreToken)
     {
         var inviteService = new Mock<IIntakeInviteService>(MockBehavior.Strict);
         var sessionStore = new Mock<IIntakeSessionStore>(MockBehavior.Strict);
+        IntakeSessionToken? stored = null;
         sessionStore
             .Setup(store => store.GetAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IntakeSessionToken?)null);
+            .ReturnsAsync(() => stored);
         sessionStore
             .Setup(store => store.SaveAsync(
                 It.Is<IntakeSessionToken>(token => token.Token == "access-token"),
                 It.IsAny<CancellationToken>()))
+            .Callback<IntakeSessionToken, CancellationToken>((token, _) => stored = canStoreToken ? token : null)
             .Returns(Task.CompletedTask);
         sessionStore
             .Setup(store => store.ClearAsync(It.IsAny<CancellationToken>()))
@@ -163,8 +167,16 @@ public sealed class StandaloneIntakeAccessGateTests : TestContext
 
         cut.Find("#intake-otp-input").Input("123456");
         cut.Find("button.intake-access-gate__btn--primary").Click();
+        if (!canStoreToken)
+        {
+            cut.WaitForAssertion(() => Assert.Contains("request a new code", cut.Markup, StringComparison.Ordinal));
+            Assert.DoesNotContain("Authorized intake", cut.Markup, StringComparison.Ordinal);
+            return;
+        }
         cut.WaitForAssertion(() =>
             Assert.Contains("Authorized intake", cut.Markup, StringComparison.Ordinal));
+        Assert.True(stored!.MatchesInvite("valid-token"));
+        Assert.False(stored.MatchesInvite("different-token"));
 
         Services.GetRequiredService<NavigationManager>().NavigateTo("/intake");
 

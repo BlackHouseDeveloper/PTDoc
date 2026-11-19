@@ -1,0 +1,15 @@
+@page "/logout"
+@namespace PTDoc.Maui.Components
+@layout PTDoc.UI.Components.Layout.AuthLayout
+@inject PTDoc.Application.Auth.IUserService UserService
+@inject NavigationManager Navigation
+
+<p>Signing out…</p>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await UserService.LogoutAsync();
+        Navigation.NavigateTo("/login", replace: true);
+    }
+}

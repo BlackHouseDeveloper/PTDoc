@@ -21,6 +21,7 @@ using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.Infrastructure.Outcomes;
 using PTDoc.Infrastructure.Services;
 using PTDoc.UI.Components;
+using PTDoc.UI.Components.Intake;
 using PTDoc.UI.Components.Intake.Models;
 using PTDoc.UI.Components.Intake.Steps;
 using PTDoc.UI.Pages.Intake;
@@ -38,6 +39,32 @@ public sealed class IntakeWizardPageTests : TestContext
         Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
         Services.AddSingleton<IIntakeBodyPartMapper>(new IntakeBodyPartMapper(new IntakeReferenceDataCatalogService()));
         Services.AddSingleton<IOutcomeMeasureRegistry, OutcomeMeasureRegistry>();
+    }
+
+    [Fact]
+    public void PatientSessionRejectedDuringLoad_ReturnsToVerification()
+    {
+        this.AddTestAuthorization();
+        var patientId = Guid.NewGuid();
+        var session = IntakeSessionToken.FromVerifiedInvite("session", DateTimeOffset.UtcNow.AddMinutes(30), "invite");
+        var store = new Mock<IIntakeSessionStore>();
+        store.Setup(item => item.GetAsync(default)).ReturnsAsync(session);
+        var invites = new Mock<IIntakeInviteService>();
+        invites.Setup(item => item.ValidateAccessTokenAsync(session.Token, default)).ReturnsAsync(true);
+        Services.AddSingleton(store.Object);
+        Services.AddSingleton(invites.Object);
+        var intake = CreateIntakeServiceMock(new IntakeResponseDraft { PatientId = patientId });
+        intake.Setup(item => item.GetLatestByPatientIdAsync(patientId, default))
+            .ThrowsAsync(new HttpRequestException("Session unavailable", null, HttpStatusCode.Unauthorized));
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}?mode=patient&invite=invite");
+
+        var gate = RenderComponent<StandaloneIntakeAccessGate>(parameters =>
+            parameters.AddChildContent<IntakeWizardPage>(wizard => wizard.Add(page => page.PatientId, patientId)));
+
+        gate.WaitForAssertion(() => Assert.Contains("Session Expired", gate.Markup, StringComparison.Ordinal));
+        Assert.Empty(gate.FindComponents<IntakeWizardPage>());
+        gate.Find("button").Click();
+        Assert.Contains("Verify Your Identity", gate.Markup, StringComparison.Ordinal);
     }
 
     [Theory]

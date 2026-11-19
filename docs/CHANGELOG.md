@@ -9,7 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed - MAUI navigation to shared pages
 
-- The launcher can start the local API and open an already signed Mac Catalyst app from one terminal.
+- Native logout clears the saved session. Staff sign-in returns to the requested chart, and signed-in users who lack the required role see the access-denied page.
+- Standalone intake reuses a verified session only for its matching invite when opening a link. A different invite requires verification. Missing or expired patient sessions prompt verification before the wizard can read or save with them.
+- Patient-mode intake reads, saves and submissions use the intake access token. Native standalone requests leave the clinician’s session credentials out of the request.
+- The launcher can start the local API and open an already signed Intel or Apple Silicon Mac Catalyst Debug app. Option 5 checks the app’s configured API at `http://localhost:5170` and reports incompatible `API_URL` overrides before startup.
 - Mac Catalyst now packages managed assemblies where Mono loads them at startup. Lato fonts and communication templates remain bundled as resources.
 - The native router discovers pages in PTDoc.UI, including the dashboard and patient chart. Shared pages and navigation now inherit their host's render mode. The Web app continues to select interactive server rendering at its root.
 - The MAUI host supplies the authenticated patient and note API clients used by the dashboard, patient list and chart.

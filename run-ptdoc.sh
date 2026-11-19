@@ -24,9 +24,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$SCRIPT_DIR"
 WEB_CSPROJ="$ROOT_DIR/src/PTDoc.Web/PTDoc.Web.csproj"
 MAUI_CSPROJ="$ROOT_DIR/src/PTDoc.Maui/PTDoc.csproj"
-SIGNED_CATALYST_APP="$ROOT_DIR/src/PTDoc.Maui/bin/Debug/net8.0-maccatalyst/maccatalyst-arm64/PTDoc.app"
 API_CSPROJ="$ROOT_DIR/src/PTDoc.Api/PTDoc.Api.csproj"
 API_URL="${API_URL:-http://localhost:5170}"
+API_URL="${API_URL%/}"
 API_PORT="${API_URL##*:}"
 PUBLIC_WEB_BASE_URL="${PUBLIC_WEB_BASE_URL:-}"
 API_PID=""
@@ -298,6 +298,16 @@ case "$choice" in
   5)
     if [[ "$(uname -s)" != "Darwin" ]]; then
       echo "${RED}Opening a signed Mac Catalyst app requires macOS.${RESET}" >&2
+      exit 1
+    fi
+    case "$(uname -m)" in
+      arm64) catalyst_rid="maccatalyst-arm64" ;;
+      x86_64) catalyst_rid="maccatalyst-x64" ;;
+      *) echo "Unsupported Mac Catalyst architecture: $(uname -m)" >&2; exit 1 ;;
+    esac
+    SIGNED_CATALYST_APP="$ROOT_DIR/src/PTDoc.Maui/bin/Debug/net8.0-maccatalyst/$catalyst_rid/PTDoc.app"
+    if [[ "$API_URL" != "http://localhost:5170" ]]; then
+      echo "The signed Debug app uses http://localhost:5170. Set API_URL to this address for option 5." >&2
       exit 1
     fi
     if [[ ! -d "$SIGNED_CATALYST_APP" ]]; then

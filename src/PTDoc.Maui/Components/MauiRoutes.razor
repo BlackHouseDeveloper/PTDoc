@@ -6,6 +6,7 @@
 @using PTDoc.UI.Components.Layout
 @using PTDoc.UI.Pages
 @using PTDoc.UI.Pages.Intake
+@using PTDoc.UI.Services
 @inject NavigationManager Navigation
 
 <Router AppAssembly="@typeof(MauiRoutes).Assembly" AdditionalAssemblies="@SharedPageAssemblies">
@@ -14,7 +15,7 @@
         {
             <AuthorizeView>
                 <Authorized Context="auth">
-                    @if (auth.User.IsInRole(Roles.Patient) || IsPatientMode())
+                    @if (auth.User.IsInRole(Roles.Patient) || StandaloneIntakeLink.IsPatientMode(new Uri(Navigation.Uri), out _))
                     {
                         <MauiStandaloneIntakeRoute RouteData="@routeData" />
                     }
@@ -43,15 +44,18 @@
 @code {
     private static readonly System.Reflection.Assembly[] SharedPageAssemblies = [typeof(Dashboard).Assembly];
 
-    private bool IsPatientMode()
-    {
-        var query = System.Web.HttpUtility.ParseQueryString(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
-        return query.GetValues("mode")?.Contains("patient", StringComparer.OrdinalIgnoreCase) == true;
-    }
-
     private static RenderFragment AuthorizedRoute(RouteData routeData) =>
         @<AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
             <Authorizing><p>Loading...</p></Authorizing>
-            <NotAuthorized><RedirectToLogin /></NotAuthorized>
+            <NotAuthorized Context="auth">
+                @if (auth.User.Identity?.IsAuthenticated == true)
+                {
+                    <RedirectToAccessDenied />
+                }
+                else
+                {
+                    <RedirectToLogin />
+                }
+            </NotAuthorized>
         </AuthorizeRouteView>;
 }
