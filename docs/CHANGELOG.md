@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The native router discovers pages in PTDoc.UI, including the dashboard and patient chart. Shared pages and navigation now inherit their host's render mode. The Web app continues to select interactive server rendering at its root.
 - The MAUI host supplies the authenticated patient and note API clients used by the dashboard, patient list and chart.
+- Native intake now verifies standalone access before opening the wizard for signed-out users, patient accounts and patient-mode links. Clinician intake continues to use the signed-in chart layout.
 
 ### Changed - Client review Plan 11
 

@@ -1,20 +1,36 @@
 @namespace PTDoc.Maui.Components
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Routing
-@using PTDoc.UI.Components.Layout
+@using PTDoc.Application.Services
 @using PTDoc.UI.Components.Auth
+@using PTDoc.UI.Components.Layout
 @using PTDoc.UI.Pages
+@using PTDoc.UI.Pages.Intake
+@inject NavigationManager Navigation
 
 <Router AppAssembly="@typeof(MauiRoutes).Assembly" AdditionalAssemblies="@SharedPageAssemblies">
     <Found Context="routeData">
-        <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
-            <Authorizing>
-                <p>Loading...</p>
-            </Authorizing>
-            <NotAuthorized>
-                <RedirectToLogin />
-            </NotAuthorized>
-        </AuthorizeRouteView>
+        @if (routeData.PageType == typeof(IntakeWizardPage))
+        {
+            <AuthorizeView>
+                <Authorized Context="auth">
+                    @if (auth.User.IsInRole(Roles.Patient) || IsPatientMode())
+                    {
+                        <MauiStandaloneIntakeRoute RouteData="@routeData" />
+                    }
+                    else
+                    {
+                        @AuthorizedRoute(routeData)
+                    }
+                </Authorized>
+                <NotAuthorized><MauiStandaloneIntakeRoute RouteData="@routeData" /></NotAuthorized>
+                <Authorizing><p>Loading...</p></Authorizing>
+            </AuthorizeView>
+        }
+        else
+        {
+            @AuthorizedRoute(routeData)
+        }
     </Found>
 
     <NotFound>
@@ -26,4 +42,16 @@
 
 @code {
     private static readonly System.Reflection.Assembly[] SharedPageAssemblies = [typeof(Dashboard).Assembly];
+
+    private bool IsPatientMode()
+    {
+        var query = System.Web.HttpUtility.ParseQueryString(Navigation.ToAbsoluteUri(Navigation.Uri).Query);
+        return query.GetValues("mode")?.Contains("patient", StringComparer.OrdinalIgnoreCase) == true;
+    }
+
+    private static RenderFragment AuthorizedRoute(RouteData routeData) =>
+        @<AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+            <Authorizing><p>Loading...</p></Authorizing>
+            <NotAuthorized><RedirectToLogin /></NotAuthorized>
+        </AuthorizeRouteView>;
 }
