@@ -4,7 +4,6 @@ using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
-using PTDoc.Application.Settings;
 using PTDoc.Core.Services;
 using PTDoc.Infrastructure.Services;
 using PTDoc.Infrastructure.ReferenceData;
@@ -71,12 +70,7 @@ builder.Services.AddScoped<INavigationBadgeService, HttpNavigationBadgeService>(
 builder.Services.AddScoped<IOrganizationAdministrationService, OrganizationApiClient>();
 builder.Services.AddScoped(sp => new SubscriptionApiClient(
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("PTDocAuthApi"), sp.GetRequiredService<HttpClient>()));
-builder.Services.AddScoped<SettingsAdministrationApiClient>();
-builder.Services.AddScoped<IRolePermissionAdministrationService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
-builder.Services.AddScoped<ISecurityPolicyAdministrationService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
-builder.Services.AddScoped<ISchedulingAdministrationService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
-builder.Services.AddScoped<IAutoCheckInAdministrationService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
-builder.Services.AddScoped<IKioskCheckInService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
+builder.Services.AddSettingsAdministrationApiClient();
 builder.Services.AddScoped<INavigationBadgeRefreshNotifier, NavigationBadgeRefreshNotifier>();
 builder.Services.AddScoped<IToastService, ToastService>();
 builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
