@@ -50,6 +50,9 @@
 @code {
     [Parameter] public IReadOnlyList<Assembly>? AdditionalAssemblies { get; set; }
 
+    public static bool IsExplicitLogout(string location) =>
+        new Uri(location).AbsolutePath.TrimEnd('/').Equals("/logout", StringComparison.OrdinalIgnoreCase);
+
     private ClaimsPrincipal? authenticatedUser;
     private int logoutTriggered;
 
@@ -83,7 +86,7 @@
     private async Task ApplyAuthenticationStateAsync(Task<AuthenticationState>? state = null)
     {
         var location = NavigationManager.Uri;
-        if (KioskCheckIn.IsPublicKiosk(location)) return;
+        if (KioskCheckIn.IsPublicKiosk(location) || IsExplicitLogout(location)) return;
 
         var authState = await (state ?? AuthenticationStateProvider.GetAuthenticationStateAsync());
         // A staff authentication check can finish after navigation to the public station.

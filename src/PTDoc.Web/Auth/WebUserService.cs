@@ -7,6 +7,7 @@ using Microsoft.JSInterop;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
+using PTDoc.UI.Components;
 
 public sealed class WebUserService : IUserService
 {
@@ -205,8 +206,13 @@ public sealed class WebUserService : IUserService
     public Task LogoutAsync(CancellationToken cancellationToken = default)
     {
         // Navigation-time expiry checks in an ended circuit must not log out a
-        // newer browser session. Explicit user logout still uses /logout directly.
-        if (sessionState.EndedReason is not null) return Task.CompletedTask;
+        // newer browser session. On /logout, let WebLogout clear the tab's intake
+        // credentials before it navigates to the server sign-out endpoint.
+        if (sessionState.EndedReason is not null || Routes.IsExplicitLogout(navigationManager.Uri))
+        {
+            return Task.CompletedTask;
+        }
+
         if (Interlocked.Exchange(ref logoutTriggered, 1) != 0)
         {
             return Task.CompletedTask;

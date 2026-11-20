@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed - MAUI navigation to shared pages
 
 - Native sign-out clears the staff login, the saved patient intake session and the invitation remembered by the WebView. Staff sign-in returns to the requested chart. Patients denied access to the clinical dashboard can open their home exercise program or sign out from the access-denied page.
+- Web sign-out clears the tab’s saved intake session and remembered invitation before ending the login. A second patient who reopens the first patient’s intake from browser history must verify access again. A regression test checks that the second patient’s session never submits the first patient’s token for validation.
 - Standalone intake reuses a verified session only for its matching invite when opening a link. A different invite requires verification. Missing or expired patient sessions prompt verification before the wizard can read or save with them.
 - Signed-in Web patients stay in standalone intake when they remove the invitation from the URL. If the intake session expires, returning to the same patient in the same WebView or web circuit lets them request a new one-time code with the previously verified invitation.
 - Opening a staff visit link containing `noteId` from standalone intake now directs the patient to the clinic-issued invitation for that visit. This prevents a previous visit’s form from reopening for the same patient.

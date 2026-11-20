@@ -82,6 +82,19 @@ public sealed class WebUserServiceTests
         Assert.True(navigationManager.LastForceLoad);
     }
 
+    [Fact]
+    public async Task LogoutAsync_DuringExplicitSignOut_LeavesNavigationToTheLogoutPage()
+    {
+        var navigation = CreateNavigationManager();
+        navigation.NavigateTo("/LOGOUT/?from=settings");
+        var service = CreateService(new RecordingJsRuntime(), navigation, externalIdentityEnabled: false);
+
+        await service.LogoutAsync();
+
+        Assert.Equal("/LOGOUT/", new Uri(navigation.Uri).AbsolutePath);
+        Assert.Equal(1, navigation.NavigationCount);
+    }
+
     [Theory]
     [InlineData("SessionEnded")]
     [InlineData("SessionChanged")]

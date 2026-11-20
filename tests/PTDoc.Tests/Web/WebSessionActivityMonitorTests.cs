@@ -70,21 +70,23 @@ public sealed class WebSessionActivityMonitorTests : TestContext
         else Assert.Equal(originalUri, navigation.Uri);
     }
 
-    [Fact]
-    public async Task ExpiredStaffSession_ShowsRecoveryOnlyAfterLeavingPublicKiosk()
+    [Theory]
+    [InlineData("/KIOSK/?station=1#enroll")]
+    [InlineData("/LOGOUT/?from=settings")]
+    public async Task ExpiredStaffSession_ShowsRecoveryAfterReturningToStaffPages(string path)
     {
         var navigation = Services.GetRequiredService<NavigationManager>();
-        navigation.NavigateTo("/KIOSK/?station=1#enroll");
+        navigation.NavigateTo(path);
         var cut = RenderComponent<WebSessionActivityMonitor>();
 
         await cut.InvokeAsync(() => cut.Instance.SessionEnded("SessionEnded"));
 
         Assert.Empty(cut.FindAll("[role=alert]"));
-        Assert.Equal("/KIOSK/", new Uri(navigation.Uri).AbsolutePath);
+        Assert.Equal(navigation.ToAbsoluteUri(path), new Uri(navigation.Uri));
         await cut.InvokeAsync(() => navigation.NavigateTo("/settings/kiosk"));
         cut.WaitForAssertion(() => Assert.Contains("Sign in", cut.Find("button").TextContent));
 
-        await cut.InvokeAsync(() => navigation.NavigateTo("/kiosk"));
+        await cut.InvokeAsync(() => navigation.NavigateTo(path));
         cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role=alert]")));
     }
 

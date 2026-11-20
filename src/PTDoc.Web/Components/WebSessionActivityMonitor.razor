@@ -7,7 +7,7 @@
 @inject NavigationManager Navigation
 @inject WebCircuitSessionState SessionState
 
-@if (_endedReason is not null && !KioskCheckIn.IsPublicKiosk(Navigation.Uri))
+@if (_endedReason is not null && !KioskCheckIn.IsPublicKiosk(Navigation.Uri) && !Routes.IsExplicitLogout(Navigation.Uri))
 {
     <div class="alert alert-warning" role="alert">
         @if (_endedReason == "SessionChanged")
