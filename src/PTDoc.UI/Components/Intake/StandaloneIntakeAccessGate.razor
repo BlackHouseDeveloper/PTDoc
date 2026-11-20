@@ -27,6 +27,15 @@
         </CascadingValue>
         break;
 
+    case GateState.StaffVisit:
+        <div class="intake-access-gate">
+            <div class="intake-access-gate__card">
+                <h1 class="intake-access-gate__title">Open your patient invitation</h1>
+                <p>This visit link is for clinic staff. Open the secure intake invitation from your clinic for this visit.</p>
+            </div>
+        </div>
+        break;
+
     case GateState.RequestContact:
         <div class="intake-access-gate">
             <div class="intake-access-gate__card">
@@ -161,7 +170,7 @@
 }
 
 @code {
-    private enum GateState { Checking, Authorized, RequestContact, EnterOtp, SessionExpired }
+    private enum GateState { Checking, Authorized, RequestContact, EnterOtp, SessionExpired, StaffVisit }
 
     private static readonly TimeSpan FallbackTokenLifetime = TimeSpan.FromHours(2);
 
@@ -205,6 +214,12 @@
         {
             var origin = NavigationManager.Uri;
             var uri = new Uri(origin);
+            if (StandaloneIntakeLink.IsStaffVisit(uri))
+            {
+                _gateState = GateState.StaffVisit;
+                return;
+            }
+
             StandaloneIntakeLink.IsPatientMode(uri, out var inviteToken);
             var session = await SessionStore.GetAsync();
             if (_disposed || origin != NavigationManager.Uri) return;
@@ -230,8 +245,17 @@
 
             if (session is not null)
             {
+                Renewal.Clear();
                 await SessionStore.ClearAsync();
+                if (_disposed || origin != NavigationManager.Uri) return;
             }
+
+            var remembered = Renewal.ForSession(uri, null);
+            if (inviteToken is not null && inviteToken != remembered)
+            {
+                Renewal.Clear();
+            }
+            inviteToken ??= remembered;
 
             if (!string.IsNullOrEmpty(inviteToken))
             {

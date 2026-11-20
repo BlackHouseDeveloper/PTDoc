@@ -1,12 +1,16 @@
 using System.Reflection;
 using System.Security.Claims;
+using System.Text.Json;
 using Bunit;
 using Bunit.TestDoubles;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
-using Moq;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.JSInterop;
+using Moq;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Services;
@@ -60,9 +64,10 @@ public sealed class MauiRoutesTests : TestContext
     }
 
     [Fact]
-    public async Task LogoutRoute_ClearsStoredSessionBeforeReturningToLogin()
+    public async Task LogoutRoute_ClearsLoginAndIntakeBeforeSameWebViewReopensPatientLink()
     {
-        this.AddTestAuthorization().SetAuthorized("staff");
+        var auth = this.AddTestAuthorization();
+        auth.SetAuthorized("staff");
         TokenResponse? stored = new("access", "refresh", DateTimeOffset.UtcNow.AddMinutes(10));
         var store = new Mock<ITokenStore>();
         store.Setup(item => item.GetAsync(default)).ReturnsAsync(() => stored);
@@ -71,8 +76,24 @@ public sealed class MauiRoutesTests : TestContext
         using var provider = new MauiAuthenticationStateProvider(store.Object, tokens.Object, NullLogger<MauiAuthenticationStateProvider>.Instance);
         using var user = new MauiUserService(tokens.Object, store.Object, Mock.Of<IHttpClientFactory>(), provider, NullLogger<MauiUserService>.Instance);
         Services.AddSingleton<IUserService>(user);
+        var invite = IntakeSessionToken.FromVerifiedInvite("patient-session", DateTimeOffset.UtcNow.AddMinutes(10), "previous");
+        const string storageKey = "ptdoc.intake.access_token";
+        JSInterop.Setup<string?>("sessionStorage.getItem", storageKey).SetResult(JsonSerializer.Serialize(invite));
+        JSInterop.SetupVoid("sessionStorage.removeItem", storageKey).SetVoidResult();
+        Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
+        var invites = new Mock<IIntakeInviteService>();
+        invites.Setup(item => item.ValidateAccessTokenAsync(invite.Token, default)).ReturnsAsync(true);
+        invites.Setup(item => item.ValidateInviteTokenAsync("previous", default))
+            .ReturnsAsync(new IntakeInviteValidationResponse(true, null, null));
+        Services.AddSingleton(invites.Object);
         ComponentFactories.AddStub<Login>();
+        ComponentFactories.AddStub<IntakeWizardPage>();
         var nav = Services.GetRequiredService<NavigationManager>();
+        var path = $"/intake/{Guid.NewGuid()}?mode=patient";
+        var renewal = Services.GetRequiredService<IntakeInviteRenewal>();
+        renewal.Remember(nav.ToAbsoluteUri(path), "previous");
+        var sessions = Services.GetRequiredService<IIntakeSessionStore>();
+        Assert.Equal(invite, await sessions.GetAsync());
         nav.NavigateTo("/logout");
 
         var router = RenderComponent<MauiRoutes>();
@@ -82,6 +103,47 @@ public sealed class MauiRoutesTests : TestContext
         tokens.Verify(item => item.LogoutAsync(new RefreshTokenRequest("refresh"), default), Times.Once);
         using var reopened = new MauiAuthenticationStateProvider(store.Object, tokens.Object, NullLogger<MauiAuthenticationStateProvider>.Instance);
         Assert.False((await reopened.GetAuthenticationStateAsync()).User.Identity!.IsAuthenticated);
+        Assert.Single(JSInterop.Invocations["sessionStorage.removeItem"]);
+        Assert.Null(await sessions.GetAsync());
+        Assert.Null(renewal.ForSession(nav.ToAbsoluteUri(path), null));
+
+        await router.InvokeAsync(() =>
+        {
+            auth.SetNotAuthorized();
+            nav.NavigateTo(path + "&invite=previous");
+        });
+        router.WaitForAssertion(() => Assert.Contains("Verify Your Identity", router.Markup));
+        Assert.Empty(router.FindComponents<Stub<IntakeWizardPage>>());
+        invites.Verify(item => item.ValidateAccessTokenAsync(invite.Token, default), Times.Never);
+    }
+
+    [Fact]
+    public async Task Logout_RetriesStorageRemovalWithoutRestoringThePreviousIntake()
+    {
+        const string storageKey = "ptdoc.intake.access_token";
+        var session = IntakeSessionToken.FromVerifiedInvite("access", DateTimeOffset.UtcNow.AddMinutes(10), "previous");
+        var failRemoval = true;
+        JSInterop.Setup<string?>("sessionStorage.getItem", storageKey).SetResult(JsonSerializer.Serialize(session));
+        JSInterop.SetupVoid("sessionStorage.removeItem", _ => failRemoval).SetException(new JSException("Storage unavailable"));
+        JSInterop.SetupVoid("sessionStorage.removeItem", _ => !failRemoval).SetVoidResult();
+        Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
+        var user = new Mock<IUserService>();
+        Services.AddSingleton(user.Object);
+        var sessions = Services.GetRequiredService<IIntakeSessionStore>();
+        var nav = Services.GetRequiredService<NavigationManager>();
+        nav.NavigateTo("/logout");
+        Assert.Equal(session, await sessions.GetAsync());
+
+        var logout = RenderComponent<MauiLogout>();
+
+        logout.WaitForElement("[role='alert']");
+        Assert.Null(await sessions.GetAsync());
+        user.Verify(item => item.LogoutAsync(default), Times.Once);
+        Assert.Equal("/logout", new Uri(nav.Uri).AbsolutePath);
+        failRemoval = false;
+        logout.Find("button").Click();
+        logout.WaitForAssertion(() => Assert.Equal("/login", new Uri(nav.Uri).AbsolutePath));
+        Assert.Equal(2, JSInterop.Invocations["sessionStorage.removeItem"].Count);
     }
 
     [Fact]
@@ -91,6 +153,9 @@ public sealed class MauiRoutesTests : TestContext
         var provider = new Mock<AuthenticationStateProvider>();
         provider.Setup(item => item.GetAuthenticationStateAsync()).ReturnsAsync(new AuthenticationState(patient));
         Services.AddSingleton(provider.Object);
+        // AddAuthorizationCore uses TryAdd. Replace bUnit's placeholders with the production policy services.
+        Services.RemoveAll<IAuthorizationService>();
+        Services.RemoveAll<IAuthorizationPolicyProvider>();
         Services.AddAuthorizationCore(options => options.AddPTDocAuthorizationPolicies());
         ComponentFactories.AddStub<PatientHepLaunch>();
         ComponentFactories.AddStub<MainLayout>(parameters => parameters.Get(layout => layout.Body)!);
@@ -225,6 +290,36 @@ public sealed class MauiRoutesTests : TestContext
         Assert.Empty(router.FindComponents<Stub<RouteView>>());
         invites.Verify(item => item.ValidateInviteTokenAsync("second", default), Times.Once);
         invites.Verify(item => item.ValidateAccessTokenAsync(session.Token, default), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task StandaloneGate_DoesNotReusePreviousIntakeOnStaffVisitLink(bool native)
+    {
+        this.AddTestAuthorization();
+        Services.AddSingleton(Mock.Of<IUserService>());
+        var session = IntakeSessionToken.FromVerifiedInvite("access-A", DateTimeOffset.UtcNow.AddMinutes(5), "invite-A");
+        var store = new Mock<IIntakeSessionStore>();
+        store.Setup(item => item.GetAsync(default)).ReturnsAsync(session);
+        var invites = new Mock<IIntakeInviteService>();
+        invites.Setup(item => item.ValidateAccessTokenAsync(session.Token, default)).ReturnsAsync(true);
+        Services.AddSingleton(store.Object);
+        Services.AddSingleton(invites.Object);
+        ComponentFactories.AddStub<RouteView>();
+        var nav = Services.GetRequiredService<NavigationManager>();
+        var path = $"/intake/{Guid.NewGuid()}";
+        nav.NavigateTo(path + "?mode=patient&invite=invite-A");
+        IRenderedFragment router = native ? RenderComponent<MauiRoutes>() : RenderComponent<PTDoc.UI.Components.Routes>();
+        router.WaitForAssertion(() => Assert.Single(router.FindComponents<Stub<RouteView>>()));
+
+        await router.InvokeAsync(() => nav.NavigateTo($"{path}?noteId={Guid.NewGuid()}"));
+
+        router.WaitForAssertion(() => Assert.Contains("Open your patient invitation", router.Markup));
+        Assert.Empty(router.FindComponents<Stub<RouteView>>());
+        Assert.Empty(router.FindAll("#intake-contact-input"));
+        invites.Verify(item => item.ValidateAccessTokenAsync(session.Token, default), Times.Once);
+        store.Verify(item => item.GetAsync(default), Times.Once);
     }
 
     [Fact]

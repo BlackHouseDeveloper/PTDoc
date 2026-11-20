@@ -90,12 +90,18 @@ public sealed class IntakeWizardPageTests : TestContext
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task SamePatientWithoutInvite_CanRequestAnotherCodeAfterGateRemount(bool native)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task SamePatientWithoutInvite_CanRequestAnotherCodeAfterGateRemount(bool native, bool patientAccount)
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
-        this.AddTestAuthorization();
+        var auth = this.AddTestAuthorization();
+        if (patientAccount)
+        {
+            auth.SetAuthorized("patient");
+            auth.SetRoles(Roles.Patient);
+        }
         Services.AddSingleton(Mock.Of<PTDoc.Application.Auth.IUserService>());
         var patientId = Guid.NewGuid();
         var session = IntakeSessionToken.FromVerifiedInvite("session", DateTimeOffset.UtcNow.AddMinutes(10), "original");
@@ -104,13 +110,14 @@ public sealed class IntakeWizardPageTests : TestContext
         var intake = CreateIntakeServiceMock(new IntakeResponseDraft { PatientId = patientId });
         ComponentFactories.AddStub<DemographicsStep>();
         var nav = Services.GetRequiredService<NavigationManager>();
-        var path = $"/intake/{patientId}?mode=patient";
-        nav.NavigateTo(path + "&invite=original");
+        var path = $"/intake/{patientId}";
+        var returnPath = patientAccount ? path : path + "?mode=patient";
+        nav.NavigateTo(path + (patientAccount ? "?invite=original" : "?mode=patient&invite=original"));
         IRenderedFragment router = native ? RenderComponent<MauiRoutes>() : RenderComponent<Routes>();
         router.WaitForElement("[data-testid='intake-refresh-profile']");
         var originalGate = router.FindComponent<StandaloneIntakeAccessGate>().Instance;
 
-        await router.InvokeAsync(() => nav.NavigateTo(path));
+        await router.InvokeAsync(() => nav.NavigateTo(returnPath));
         router.WaitForAssertion(() =>
         {
             Assert.NotSame(originalGate, router.FindComponent<StandaloneIntakeAccessGate>().Instance);

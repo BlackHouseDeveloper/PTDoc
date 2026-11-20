@@ -6,19 +6,27 @@ public sealed class IntakeInviteRenewal
     private string? patientPath;
     private string? verifiedInvite;
 
+    public void Clear()
+    {
+        patientPath = null;
+        verifiedInvite = null;
+    }
+
     public void Remember(Uri uri, string invite)
     {
         patientPath = uri.AbsolutePath.TrimEnd('/');
         verifiedInvite = invite;
     }
 
-    public string? ForSession(Uri uri, IntakeSessionToken session)
+    // This recovers only the invite needed for a new OTP. Access still requires a valid session.
+    public string? ForSession(Uri uri, IntakeSessionToken? session)
     {
-        if (!string.Equals(patientPath, uri.AbsolutePath.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+        if (StandaloneIntakeLink.IsStaffVisit(uri) ||
+            !string.Equals(patientPath, uri.AbsolutePath.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
 
-        return session.MatchesInvite(verifiedInvite) ? verifiedInvite : null;
+        return session is null || session.MatchesInvite(verifiedInvite) ? verifiedInvite : null;
     }
 }

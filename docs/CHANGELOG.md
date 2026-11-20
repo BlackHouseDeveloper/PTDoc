@@ -9,9 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed - MAUI navigation to shared pages
 
-- Native logout clears the saved session. Staff sign-in returns to the requested chart. Patients denied access to the clinical dashboard can open their home exercise program or sign out from the access-denied page.
+- Native sign-out clears the staff login, the saved patient intake session and the invitation remembered by the WebView. Staff sign-in returns to the requested chart. Patients denied access to the clinical dashboard can open their home exercise program or sign out from the access-denied page.
 - Standalone intake reuses a verified session only for its matching invite when opening a link. A different invite requires verification. Missing or expired patient sessions prompt verification before the wizard can read or save with them.
-- Returning to the same intake without its invite in the URL still allows OTP renewal in the current WebView or web circuit. Renewal checks the patient path and the verified invite fingerprint before reusing the link.
+- Signed-in Web patients stay in standalone intake when they remove the invitation from the URL. If the intake session expires, returning to the same patient in the same WebView or web circuit lets them request a new one-time code with the previously verified invitation.
+- Opening a staff visit link containing `noteId` from standalone intake now directs the patient to the clinic-issued invitation for that visit. This prevents a previous visit’s form from reopening for the same patient.
 - Patient-mode intake reads, saves and submissions stay bound to the verified session. Leaving an intake during a profile save cancels its follow-up reload. Native standalone requests leave the clinician’s session credentials out of the request.
 - The launcher can start the local API and open an already signed Intel or Apple Silicon Mac Catalyst Debug app. Option 5 checks the app’s configured API at `http://localhost:5170` and reports incompatible `API_URL` overrides before startup.
 - Mac Catalyst now packages managed assemblies where Mono loads them at startup. Lato fonts and communication templates remain bundled as resources.

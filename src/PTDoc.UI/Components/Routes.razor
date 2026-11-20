@@ -29,7 +29,7 @@
                     <p>Loading...</p>
                 </Authorizing>
                 <NotAuthorized>
-                    @if (isAuthenticated)
+                    @if (authenticatedUser is not null)
                     {
                         <RedirectToAccessDenied />
                     }
@@ -44,7 +44,7 @@
 </Router>
 
 @code {
-    private bool isAuthenticated;
+    private ClaimsPrincipal? authenticatedUser;
     private int logoutTriggered;
     private IReadOnlyList<Assembly>? resolvedAdditionalAssemblies;
 
@@ -98,8 +98,8 @@
 
     private async Task ApplyAuthenticationStateAsync(AuthenticationState authState)
     {
-        isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
-        if (!isAuthenticated)
+        authenticatedUser = authState.User.Identity?.IsAuthenticated == true ? authState.User : null;
+        if (authenticatedUser is null)
         {
             return;
         }
@@ -110,7 +110,7 @@
             return;
         }
 
-        isAuthenticated = false;
+        authenticatedUser = null;
         if (Interlocked.Exchange(ref logoutTriggered, 1) == 0)
         {
             Logger.LogInformation("Ending the authenticated session because its API access token is missing, invalid, or expired during navigation.");
@@ -153,7 +153,8 @@
         }
 
         var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
-        return !isAuthenticated || StandaloneIntakeLink.IsPatientMode(uri, out _);
+        return authenticatedUser is null || authenticatedUser.IsInRole(Roles.Patient) ||
+            StandaloneIntakeLink.IsPatientMode(uri, out _);
     }
 
     public void Dispose()
