@@ -14,6 +14,8 @@ using PTDoc.UI.Components;
 using PTDoc.UI.Components.Layout;
 using PTDoc.UI.Pages.Intake;
 using PTDoc.UI.Services;
+using PTDoc.Web.Auth;
+using PTDoc.Web.Components;
 using PTDoc.Web.Components.Pages;
 
 namespace PTDoc.Tests.Web;
@@ -23,8 +25,11 @@ public sealed class WebLogoutTests : TestContext
 {
     private const string StorageKey = "ptdoc.intake.access_token";
 
-    [Fact]
-    public async Task SwitchingPatientsInSameTab_RequiresVerificationForPreviousPatientsIntake()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("SessionEnded")]
+    [InlineData("SessionChanged")]
+    public async Task SwitchingPatientsInSameTab_RequiresVerificationForPreviousPatientsIntake(string? recoveryReason)
     {
         var session = IntakeSessionToken.FromVerifiedInvite("patient-a-session", DateTimeOffset.UtcNow.AddHours(1), "invite-a");
         string? saved = JsonSerializer.Serialize(session);
@@ -46,6 +51,7 @@ public sealed class WebLogoutTests : TestContext
             account.SetRoles(Roles.Patient);
             circuit.Services.AddScoped<IIntakeSessionStore>(_ => new JsIntakeSessionStore(tab.Object));
             circuit.Services.AddScoped<IntakeInviteRenewal>();
+            circuit.Services.AddScoped<WebCircuitSessionState>();
             circuit.Services.AddSingleton(invites.Object);
             circuit.Services.AddSingleton(Mock.Of<IUserService>());
             circuit.ComponentFactories.AddStub<IntakeWizardPage>();
@@ -56,6 +62,8 @@ public sealed class WebLogoutTests : TestContext
             return (router, invites);
         }
 
+        // bUnit follows the recovery redirect in this circuit. The next sign-in is modeled below.
+        ComponentFactories.AddStub<PTDoc.UI.Pages.Login>();
         var (first, firstInvites) = OpenIntake(this, "patient-a", path + "?mode=patient&invite=invite-a");
         first.WaitForAssertion(() => Assert.Single(first.FindComponents<Stub<IntakeWizardPage>>()));
         firstInvites.Verify(item => item.ValidateAccessTokenAsync(session.Token, It.IsAny<CancellationToken>()), Times.AtLeastOnce);
@@ -63,10 +71,23 @@ public sealed class WebLogoutTests : TestContext
         var renewal = Services.GetRequiredService<IntakeInviteRenewal>();
         Assert.Equal("invite-a", renewal.ForSession(navigation.ToAbsoluteUri(path), session));
 
-        await first.InvokeAsync(() => navigation.NavigateTo("/logout"));
+        string destination;
+        if (recoveryReason is null)
+        {
+            await first.InvokeAsync(() => navigation.NavigateTo("/logout"));
+            destination = "/auth/logout";
+        }
+        else
+        {
+            var monitor = RenderComponent<WebSessionActivityMonitor>();
+            await monitor.Instance.SessionEnded(recoveryReason);
+            Assert.NotNull(saved);
+            destination = recoveryReason == "SessionChanged" ? new Uri(navigation.Uri).PathAndQuery : "/login?session_expired=1";
+            await monitor.Find("button").ClickAsync(new MouseEventArgs());
+        }
 
         first.WaitForAssertion(() => Assert.Contains(navigation.History, entry =>
-            entry.Options.ForceLoad && navigation.ToAbsoluteUri(entry.Uri).AbsolutePath == "/auth/logout"));
+            entry.Options.ForceLoad && navigation.ToAbsoluteUri(entry.Uri).PathAndQuery == destination));
         Assert.Null(saved);
         Assert.Null(renewal.ForSession(navigation.ToAbsoluteUri(path), null));
 

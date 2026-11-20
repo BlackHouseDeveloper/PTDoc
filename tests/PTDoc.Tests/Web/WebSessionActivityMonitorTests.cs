@@ -2,10 +2,12 @@ using System.Security.Claims;
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
 using Moq;
 using PTDoc.Application.Identity;
+using PTDoc.UI.Services;
 using PTDoc.Web.Auth;
 using PTDoc.Web.Components;
 
@@ -14,12 +16,16 @@ namespace PTDoc.Tests.Web;
 [Trait("Category", "CoreCi")]
 public sealed class WebSessionActivityMonitorTests : TestContext
 {
+    private const string StorageKey = "ptdoc.intake.access_token";
+
     private readonly Mock<AuthenticationStateProvider> _authentication = new();
     private readonly ClaimsIdentity _identity;
 
     public WebSessionActivityMonitorTests()
     {
         Services.AddScoped<WebCircuitSessionState>();
+        Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
+        Services.AddScoped<IntakeInviteRenewal>();
         _identity = new ClaimsIdentity(new[]
         {
             new Claim(PTDocClaimTypes.AuthenticationType, "web_cookie"),
@@ -58,6 +64,7 @@ public sealed class WebSessionActivityMonitorTests : TestContext
         var state = Services.GetRequiredService<WebCircuitSessionState>();
         var navigation = Services.GetRequiredService<NavigationManager>();
         var originalUri = navigation.Uri;
+        var removal = JSInterop.SetupVoid("sessionStorage.removeItem", StorageKey);
         var cut = RenderComponent<WebSessionActivityMonitor>();
 
         await cut.InvokeAsync(() => cut.Instance.SessionEnded(reason));
@@ -65,9 +72,43 @@ public sealed class WebSessionActivityMonitorTests : TestContext
         Assert.Equal(reason, state.EndedReason);
         Assert.Equal(originalUri, navigation.Uri);
         cut.WaitForAssertion(() => Assert.Contains(action, cut.Find("[role=alert]").TextContent));
-        cut.Find("button").Click();
+        Assert.Empty(removal.Invocations);
+        var recover = cut.Find("button").ClickAsync(new MouseEventArgs());
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Single(removal.Invocations);
+            Assert.True(cut.Find("button").HasAttribute("disabled"));
+        });
+        Assert.Equal(originalUri, navigation.Uri);
+
+        removal.SetVoidResult();
+        await recover;
         if (reason == "SessionEnded") Assert.EndsWith("/login?session_expired=1", navigation.Uri);
         else Assert.Equal(originalUri, navigation.Uri);
+    }
+
+    [Fact]
+    public async Task RecoveryWaitsForRetryWhenIntakeCleanupFails()
+    {
+        var failRemoval = true;
+        JSInterop.SetupVoid("sessionStorage.removeItem", _ => failRemoval)
+            .SetException(new JSException("Storage unavailable"));
+        JSInterop.SetupVoid("sessionStorage.removeItem", _ => !failRemoval).SetVoidResult();
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        var originalUri = navigation.Uri;
+        var cut = RenderComponent<WebSessionActivityMonitor>();
+        await cut.Instance.SessionEnded("SessionEnded");
+
+        await cut.Find("button").ClickAsync(new MouseEventArgs());
+
+        Assert.Contains("saved intake session could not be removed", cut.Find("[role=alert]").TextContent);
+        Assert.Equal(originalUri, navigation.Uri);
+        Assert.False(cut.Find("button").HasAttribute("disabled"));
+        failRemoval = false;
+
+        await cut.Find("button").ClickAsync(new MouseEventArgs());
+
+        Assert.EndsWith("/login?session_expired=1", navigation.Uri);
     }
 
     [Theory]

@@ -15,6 +15,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moq;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
+using PTDoc.UI.Services;
 using PTDoc.Web.Auth;
 using PTDoc.Web.Components;
 
@@ -276,6 +277,8 @@ public sealed class WebScopedHttpClientFactoryTests
         var ui = new Bunit.TestContext();
         ui.Services.AddSingleton(services.GetRequiredService<AuthenticationStateProvider>());
         ui.Services.AddSingleton(services.GetRequiredService<WebCircuitSessionState>());
+        ui.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
+        ui.Services.AddScoped<IntakeInviteRenewal>();
         ui.Services.AddSingleton(services.GetRequiredService<HttpClient>());
         var module = ui.JSInterop.SetupModule("./js/sessionActivity.js");
         module.SetupVoid("start", _ => true).SetVoidResult();

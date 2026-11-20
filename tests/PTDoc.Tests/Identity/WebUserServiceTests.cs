@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.JSInterop;
 using Moq;
 using PTDoc.Application.Identity;
+using PTDoc.UI.Services;
 using PTDoc.Web.Auth;
 
 namespace PTDoc.Tests.Identity;
@@ -23,13 +24,13 @@ public sealed class WebUserServiceTests
         var result = await service.LoginAsync("alice", "1234", "/patients");
 
         Assert.True(result);
-        Assert.Equal("ptdocAuth.submitLogin", jsRuntime.LastIdentifier);
+        Assert.Equal(new[] { "sessionStorage.removeItem", "ptdocAuth.submitLogin" }, jsRuntime.Identifiers);
         Assert.Equal(new object?[] { "alice", "1234", "/patients" }, jsRuntime.LastArguments);
         Assert.Equal("https://localhost/login", navigationManager.Uri);
     }
 
     [Fact]
-    public async Task BeginExternalLoginAsync_NavigatesToExplicitExternalEndpoint()
+    public async Task BeginExternalLoginAsync_ClearsIntakeAndNavigatesToExplicitExternalEndpoint()
     {
         var jsRuntime = new RecordingJsRuntime();
         var navigationManager = new TestNavigationManager();
@@ -40,6 +41,8 @@ public sealed class WebUserServiceTests
         var started = await service.BeginExternalLoginAsync("/patients");
 
         Assert.True(started);
+        Assert.Equal("sessionStorage.removeItem", Assert.Single(jsRuntime.Identifiers));
+        Assert.Equal(new object?[] { "ptdoc.intake.access_token" }, jsRuntime.LastArguments);
         Assert.Equal("https://localhost/auth/external/start?returnUrl=%2Fpatients", navigationManager.Uri);
     }
 
@@ -56,6 +59,23 @@ public sealed class WebUserServiceTests
 
         Assert.False(started);
         Assert.Equal("https://localhost/login", navigationManager.Uri);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SignIn_DoesNotStartWhenIntakeCleanupFails(bool external)
+    {
+        var jsRuntime = new RecordingJsRuntime { IntakeCleanupError = new JSException("Storage unavailable") };
+        var navigation = CreateNavigationManager();
+        var service = CreateService(jsRuntime, navigation, externalIdentityEnabled: true);
+
+        await Assert.ThrowsAsync<JSException>(() => external
+            ? service.BeginExternalLoginAsync("/patients")
+            : service.LoginAsync("alice", "1234", "/patients"));
+
+        Assert.Equal("sessionStorage.removeItem", Assert.Single(jsRuntime.Identifiers));
+        Assert.Equal(0, navigation.NavigationCount);
     }
 
     [Fact]
@@ -129,7 +149,10 @@ public sealed class WebUserServiceTests
             {
                 Enabled = externalIdentityEnabled,
                 DisplayName = "Microsoft"
-            }), sessionState ?? new WebCircuitSessionState());
+            }),
+            sessionState ?? new WebCircuitSessionState(),
+            new JsIntakeSessionStore(jsRuntime),
+            new IntakeInviteRenewal());
     }
 
     private static TestNavigationManager CreateNavigationManager()
@@ -141,7 +164,8 @@ public sealed class WebUserServiceTests
 
     private sealed class RecordingJsRuntime : IJSRuntime
     {
-        public string? LastIdentifier { get; private set; }
+        public List<string> Identifiers { get; } = [];
+        public JSException? IntakeCleanupError { get; init; }
 
         public object?[] LastArguments { get; private set; } = [];
 
@@ -150,8 +174,13 @@ public sealed class WebUserServiceTests
 
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
         {
-            LastIdentifier = identifier;
+            Identifiers.Add(identifier);
             LastArguments = args ?? [];
+            if (identifier == "sessionStorage.removeItem" && IntakeCleanupError is not null)
+            {
+                return ValueTask.FromException<TValue>(IntakeCleanupError);
+            }
+
             return ValueTask.FromResult(default(TValue)!);
         }
     }
