@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Reflection;
 using System.Security.Claims;
 using System.Text.Json;
@@ -10,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
+using Microsoft.JSInterop.Infrastructure;
 using Moq;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Intake;
@@ -75,8 +77,9 @@ public sealed class MauiRoutesTests : TestContext
         store.Setup(item => item.ClearAsync(default)).Callback(() => stored = null).Returns(Task.CompletedTask);
         var tokens = new Mock<ITokenService>();
         using var provider = new MauiAuthenticationStateProvider(store.Object, tokens.Object, NullLogger<MauiAuthenticationStateProvider>.Instance);
-        using var user = new MauiUserService(tokens.Object, store.Object, Mock.Of<IHttpClientFactory>(), provider, NullLogger<MauiUserService>.Instance);
-        Services.AddSingleton<IUserService>(user);
+        Services.AddScoped<IUserService>(services => new MauiUserService(
+            tokens.Object, store.Object, Mock.Of<IHttpClientFactory>(), provider, NullLogger<MauiUserService>.Instance,
+            services.GetRequiredService<IIntakeSessionStore>(), services.GetRequiredService<IntakeInviteRenewal>()));
         var invite = IntakeSessionToken.FromVerifiedInvite("patient-session", DateTimeOffset.UtcNow.AddMinutes(10), "previous");
         const string storageKey = "ptdoc.intake.access_token";
         JSInterop.Setup<string?>("sessionStorage.getItem", storageKey).SetResult(JsonSerializer.Serialize(invite));
@@ -116,6 +119,91 @@ public sealed class MauiRoutesTests : TestContext
         router.WaitForAssertion(() => Assert.Contains("Verify Your Identity", router.Markup));
         Assert.Empty(router.FindComponents<Stub<IntakeWizardPage>>());
         invites.Verify(item => item.ValidateAccessTokenAsync(invite.Token, default), Times.Never);
+    }
+
+    [Fact]
+    public async Task SigningInAfterExpiryInSameWebView_DoesNotReopenPreviousPatientsIntake()
+    {
+        const string storageKey = "ptdoc.intake.access_token";
+        var intake = IntakeSessionToken.FromVerifiedInvite("patient-a-intake", DateTimeOffset.UtcNow.AddHours(1), "invite-a");
+        string? saved = JsonSerializer.Serialize(intake);
+        var webView = new Mock<IJSRuntime>(MockBehavior.Strict);
+        webView.Setup(js => js.InvokeAsync<string?>("sessionStorage.getItem", default, new object?[] { storageKey }))
+            .Returns(() => ValueTask.FromResult<string?>(saved));
+        webView.Setup(js => js.InvokeAsync<IJSVoidResult>("sessionStorage.removeItem", default, new object?[] { storageKey }))
+            .Callback(() => saved = null)
+            .Returns(ValueTask.FromResult<IJSVoidResult>(null!));
+        var sessions = new JsIntakeSessionStore(webView.Object);
+
+        static TokenResponse CreatePatientLogin(string patient, string refreshToken)
+        {
+            var expires = DateTimeOffset.UtcNow.AddMinutes(10);
+            var token = new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken(
+                claims: [new Claim(ClaimTypes.Name, patient), new Claim(ClaimTypes.Role, Roles.Patient)],
+                expires: expires.UtcDateTime));
+            return new TokenResponse(token, refreshToken, expires);
+        }
+
+        var patientA = CreatePatientLogin("patient-a", "original-refresh");
+        var refreshedA = CreatePatientLogin("patient-a", "rotated-refresh");
+        var patientB = CreatePatientLogin("patient-b", "patient-b-refresh");
+        TokenResponse? stored = patientA;
+        var tokenStore = new Mock<ITokenStore>();
+        tokenStore.Setup(store => store.GetAsync(default)).ReturnsAsync(() => stored);
+        tokenStore.Setup(store => store.SaveAsync(It.IsAny<TokenResponse>(), default))
+            .Callback<TokenResponse, CancellationToken>((token, _) => stored = token).Returns(Task.CompletedTask);
+        tokenStore.Setup(store => store.ClearAsync(default)).Callback(() => stored = null).Returns(Task.CompletedTask);
+        var tokens = new Mock<ITokenService>();
+        tokens.Setup(service => service.RefreshAsync(new RefreshTokenRequest(patientA.RefreshToken), default)).ReturnsAsync(refreshedA);
+        tokens.Setup(service => service.RefreshAsync(new RefreshTokenRequest(refreshedA.RefreshToken), default)).ReturnsAsync((TokenResponse?)null);
+        tokens.Setup(service => service.LoginAsync(It.Is<LoginRequest>(request => request.Username == "patient-b"), default))
+            .ReturnsAsync(new TokenLoginResult(Tokens: patientB));
+        using var provider = new MauiAuthenticationStateProvider(tokenStore.Object, tokens.Object, NullLogger<MauiAuthenticationStateProvider>.Instance);
+        Services.AddSingleton<AuthenticationStateProvider>(provider);
+        Services.AddSingleton<IIntakeSessionStore>(sessions);
+        var invites = new Mock<IIntakeInviteService>();
+        invites.Setup(service => service.ValidateAccessTokenAsync(intake.Token, default)).ReturnsAsync(true);
+        Services.AddSingleton(invites.Object);
+        Services.RemoveAll<IAuthorizationService>();
+        Services.RemoveAll<IAuthorizationPolicyProvider>();
+        Services.AddAuthorizationCore(options => options.AddPTDocAuthorizationPolicies());
+        ComponentFactories.AddStub<Login>();
+        ComponentFactories.AddStub<IntakeWizardPage>();
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        var renewal = Services.GetRequiredService<IntakeInviteRenewal>();
+        using var user = new MauiUserService(tokens.Object, tokenStore.Object, Mock.Of<IHttpClientFactory>(),
+            provider, NullLogger<MauiUserService>.Instance, sessions, renewal, navigation);
+
+        var path = $"/intake/{Guid.NewGuid()}";
+        navigation.NavigateTo(path + "?mode=patient&invite=invite-a");
+        var router = RenderComponent<MauiRoutes>();
+        router.WaitForAssertion(() => Assert.Single(router.FindComponents<Stub<IntakeWizardPage>>()));
+
+        await router.InvokeAsync(async () => Assert.True(await user.RefreshTokenAsync()));
+        Assert.Equal(refreshedA, stored);
+        Assert.Equal(intake, await sessions.GetAsync());
+        Assert.Equal("invite-a", renewal.ForSession(navigation.ToAbsoluteUri(path), intake));
+
+        stored = refreshedA with { ExpiresAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1) };
+        Assert.False((await provider.GetAuthenticationStateAsync()).User.Identity!.IsAuthenticated);
+        Assert.Null(stored);
+        Assert.NotNull(saved);
+
+        await router.InvokeAsync(() => navigation.NavigateTo("/login"));
+        router.WaitForAssertion(() => Assert.Single(router.FindComponents<Stub<Login>>()));
+        invites.Invocations.Clear();
+        bool? intakeClearedAtPublication = null;
+        provider.AuthenticationStateChanged += _ =>
+            intakeClearedAtPublication = saved is null && renewal.ForSession(navigation.ToAbsoluteUri(path), null) is null;
+        await router.InvokeAsync(async () => Assert.True(await user.LoginAsync("patient-b", "12345678")));
+        Assert.True(intakeClearedAtPublication);
+        Assert.Equal("patient-b", user.UserDisplayName);
+        Assert.Null(await new JsIntakeSessionStore(webView.Object).GetAsync());
+
+        await router.InvokeAsync(() => navigation.NavigateTo(path));
+        router.WaitForAssertion(() => Assert.Contains("Use the secure invite link from your clinic", router.Markup));
+        Assert.Empty(router.FindComponents<Stub<IntakeWizardPage>>());
+        invites.Verify(service => service.ValidateAccessTokenAsync(intake.Token, default), Times.Never);
     }
 
     [Fact]
