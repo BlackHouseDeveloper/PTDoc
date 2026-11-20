@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Settings;
@@ -12,6 +13,25 @@ namespace PTDoc.Tests.UI.Settings;
 public sealed class SettingsAdministrationApiClientTests
 {
     [Fact]
+    public void SettingsInterfaces_ResolveTheSameClientWithinEachScope()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<HttpClient>();
+        services.AddSettingsAdministrationApiClient();
+        using var provider = services.BuildServiceProvider();
+        using var first = provider.CreateScope();
+        using var second = provider.CreateScope();
+
+        var client = first.ServiceProvider.GetRequiredService<SettingsAdministrationApiClient>();
+        Assert.Same(client, first.ServiceProvider.GetRequiredService<IRolePermissionAdministrationService>());
+        Assert.Same(client, first.ServiceProvider.GetRequiredService<ISecurityPolicyAdministrationService>());
+        Assert.Same(client, first.ServiceProvider.GetRequiredService<ISchedulingAdministrationService>());
+        Assert.Same(client, first.ServiceProvider.GetRequiredService<IAutoCheckInAdministrationService>());
+        Assert.Same(client, first.ServiceProvider.GetRequiredService<IKioskCheckInService>());
+        Assert.NotSame(client, second.ServiceProvider.GetRequiredService<IKioskCheckInService>());
+    }
+
+    [Fact]
     public async Task VisitTypes_UsesMauiAuthenticatedHandlerForCatalogRequests()
     {
         var tokenStore = new Mock<ITokenStore>();
@@ -22,7 +42,12 @@ public sealed class SettingsAdministrationApiClientTests
             InnerHandler = new CatalogHandler("/api/v1/appointments/visit-types", "catalog-access")
         };
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://localhost") };
-        ISchedulingAdministrationService client = new SettingsAdministrationApiClient(http);
+        var services = new ServiceCollection();
+        services.AddSingleton(http);
+        services.AddSettingsAdministrationApiClient();
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var client = scope.ServiceProvider.GetRequiredService<ISchedulingAdministrationService>();
 
         Assert.Equal("Custom visit", Assert.Single(await client.GetVisitTypesAsync(Guid.Empty, false)).Name);
     }

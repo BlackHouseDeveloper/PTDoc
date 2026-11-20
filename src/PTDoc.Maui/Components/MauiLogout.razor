@@ -1,0 +1,49 @@
+@page "/logout"
+@namespace PTDoc.Maui.Components
+@layout PTDoc.UI.Components.Layout.AuthLayout
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@using PTDoc.UI.Services
+@inject PTDoc.Application.Auth.IUserService UserService
+@inject NavigationManager Navigation
+@inject IIntakeSessionStore IntakeSessions
+@inject IntakeInviteRenewal Renewal
+
+@if (clearFailed)
+{
+    <p role="alert">The saved intake session could not be removed from this device.</p>
+    <button type="button" @onclick="SignOutAsync">Retry sign-out</button>
+}
+else
+{
+    <p>Signing out…</p>
+}
+
+@code {
+    private bool clearFailed;
+
+    protected override Task OnInitializedAsync() => SignOutAsync();
+
+    private async Task SignOutAsync()
+    {
+        clearFailed = false;
+        Renewal.Clear();
+        try
+        {
+            await IntakeSessions.ClearAsync();
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            clearFailed = true;
+        }
+        finally
+        {
+            await UserService.LogoutAsync();
+        }
+
+        if (!clearFailed)
+        {
+            Navigation.NavigateTo("/login", replace: true);
+        }
+    }
+}

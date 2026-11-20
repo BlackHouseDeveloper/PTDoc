@@ -1,0 +1,27 @@
+@namespace PTDoc.Maui.Components
+@using PTDoc.UI.Components.Intake
+@using PTDoc.UI.Components.Layout
+@inject NavigationManager Navigation
+
+@if (Navigation.Uri == patientModeUri)
+{
+    <StandaloneIntakeAccessGate @key="patientModeUri">
+        <RouteView RouteData="@RouteData" DefaultLayout="@typeof(StandaloneIntakeLayout)" />
+    </StandaloneIntakeAccessGate>
+}
+
+@code {
+    [Parameter, EditorRequired] public RouteData RouteData { get; set; } = default!;
+
+    private string? patientModeUri;
+
+    protected override void OnParametersSet()
+    {
+        // The intake API client selects its session-token endpoints from the patient-mode URL.
+        patientModeUri = Navigation.GetUriWithQueryParameter("mode", "patient");
+        if (Navigation.Uri != patientModeUri)
+        {
+            Navigation.NavigateTo(patientModeUri, replace: true);
+        }
+    }
+}

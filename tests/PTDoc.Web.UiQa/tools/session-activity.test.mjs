@@ -12,7 +12,10 @@ function harness() {
   let now = 0;
   let wallClock = 1_000_000;
   let respond = async () => ({ status: 204 });
+  const location = { pathname: '/patients' };
   const document = {
+    kioskLayout: null,
+    querySelector: selector => selector === '[data-public-kiosk]' ? document.kioskLayout : null,
     visibilityState: 'visible',
     addEventListener: (name, handler) => listeners.set(name, handler),
     removeEventListener: (name, handler) => {
@@ -20,13 +23,13 @@ function harness() {
     }
   };
   const context = vm.createContext({
-    document, AbortController, Date: { now: () => wallClock }, performance: { now: () => now },
+    document, location, AbortController, Date: { now: () => wallClock }, performance: { now: () => now },
     fetch: async (url, options) => { requests.push({ url, options }); return respond(); }
   });
   vm.runInContext(source.replace(/^export /gm, '') + '\nthis.monitor = { start, stop };', context);
   const receiver = { invokeMethodAsync: async (...args) => { notices.push(args); } };
   return {
-    monitor: context.monitor, receiver, requests, notices, document, listeners,
+    monitor: context.monitor, receiver, requests, notices, document, location, listeners,
     advance: ms => { now += ms; wallClock += ms; },
     adjustWallClock: ms => { wallClock += ms; },
     respond: fn => { respond = fn; },
@@ -50,6 +53,32 @@ test('only visible trusted user input renews; no timer or synthetic heartbeat', 
   assert.equal(h.requests[0].options.credentials, 'same-origin');
   assert.deepEqual(Object.keys(h.requests[0].options.headers), ['X-PTDoc-Web-Session']);
   assert.equal(h.requests[0].options.headers['X-PTDoc-Web-Session'], 'circuit-session');
+});
+
+test('public kiosk input never renews a staff session during navigation or check-in', async () => {
+  const h = harness();
+  h.location.pathname = '/KIOSK/';
+  h.monitor.start('staff-session', h.receiver);
+  await h.fire('pointerdown'); // Navigation reached the kiosk before the layout rendered.
+  h.document.kioskLayout = {};
+  for (const event of h.listeners.keys()) {
+    h.advance(61_000);
+    await h.fire(event);
+  }
+  h.location.pathname = '/settings/kiosk';
+  await h.fire('keydown'); // The kiosk is still on screen while navigating away.
+  assert.equal(h.requests.length, 0);
+
+  h.document.kioskLayout = null;
+  await h.fire('pointerdown');
+  assert.equal(h.requests.length, 1);
+  h.location.pathname = '/kiosk';
+  h.advance(61_000);
+  await h.fire('input');
+  assert.equal(h.requests.length, 1);
+  h.location.pathname = '/patients';
+  await h.fire('keydown');
+  assert.equal(h.requests.length, 2);
 });
 
 test('rapid and in-flight input cannot multiply renewal requests', async () => {

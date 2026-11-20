@@ -7,6 +7,8 @@ using Microsoft.JSInterop;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
+using PTDoc.UI.Components;
+using PTDoc.UI.Services;
 
 public sealed class WebUserService : IUserService
 {
@@ -19,6 +21,8 @@ public sealed class WebUserService : IUserService
     private readonly SignupApiClient signupApiClient;
     private readonly PasswordResetApiClient passwordResetApiClient;
     private readonly WebCircuitSessionState sessionState;
+    private readonly IIntakeSessionStore intakeSessions;
+    private readonly IntakeInviteRenewal intakeInviteRenewal;
     private int logoutTriggered;
 
     public WebUserService(
@@ -28,7 +32,9 @@ public sealed class WebUserService : IUserService
         SignupApiClient signupApiClient,
         PasswordResetApiClient passwordResetApiClient,
         IOptions<EntraExternalIdOptions> entraExternalIdOptions,
-        WebCircuitSessionState sessionState)
+        WebCircuitSessionState sessionState,
+        IIntakeSessionStore intakeSessions,
+        IntakeInviteRenewal intakeInviteRenewal)
     {
         this.jsRuntime = jsRuntime;
         this.logger = logger;
@@ -37,6 +43,8 @@ public sealed class WebUserService : IUserService
         this.passwordResetApiClient = passwordResetApiClient;
         this.entraExternalIdOptions = entraExternalIdOptions.Value;
         this.sessionState = sessionState;
+        this.intakeSessions = intakeSessions;
+        this.intakeInviteRenewal = intakeInviteRenewal;
     }
 
     public bool IsAuthenticated => false;
@@ -68,6 +76,7 @@ public sealed class WebUserService : IUserService
             ? ReturnUrlValidator.ExtractFromUri(navigationManager.Uri)
             : ReturnUrlValidator.Normalize(returnUrl).Value;
 
+        await ClearIntakeBeforeSignInAsync(cancellationToken);
         await jsRuntime.InvokeVoidAsync(
             "ptdocAuth.submitLogin",
             cancellationToken,
@@ -78,13 +87,13 @@ public sealed class WebUserService : IUserService
         return true;
     }
 
-    public Task<bool> BeginExternalLoginAsync(
+    public async Task<bool> BeginExternalLoginAsync(
         string? returnUrl = null,
         CancellationToken cancellationToken = default)
     {
         if (!SupportsExternalIdentityLogin)
         {
-            return Task.FromResult(false);
+            return false;
         }
 
         var effectiveReturnUrl = string.IsNullOrWhiteSpace(returnUrl)
@@ -92,8 +101,15 @@ public sealed class WebUserService : IUserService
             : ReturnUrlValidator.Normalize(returnUrl).Value;
 
         var encodedReturnUrl = Uri.EscapeDataString(effectiveReturnUrl);
+        await ClearIntakeBeforeSignInAsync(cancellationToken);
         navigationManager.NavigateTo($"{ExternalLoginPath}?returnUrl={encodedReturnUrl}", forceLoad: true);
-        return Task.FromResult(true);
+        return true;
+    }
+
+    private Task ClearIntakeBeforeSignInAsync(CancellationToken cancellationToken)
+    {
+        intakeInviteRenewal.Clear();
+        return intakeSessions.ClearAsync(cancellationToken);
     }
 
     public async Task<bool> RequestPasswordResetAsync(
@@ -205,8 +221,13 @@ public sealed class WebUserService : IUserService
     public Task LogoutAsync(CancellationToken cancellationToken = default)
     {
         // Navigation-time expiry checks in an ended circuit must not log out a
-        // newer browser session. Explicit user logout still uses /logout directly.
-        if (sessionState.EndedReason is not null) return Task.CompletedTask;
+        // newer browser session. On /logout, let WebLogout clear the tab's intake
+        // credentials before it navigates to the server sign-out endpoint.
+        if (sessionState.EndedReason is not null || Routes.IsExplicitLogout(navigationManager.Uri))
+        {
+            return Task.CompletedTask;
+        }
+
         if (Interlocked.Exchange(ref logoutTriggered, 1) != 0)
         {
             return Task.CompletedTask;

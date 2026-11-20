@@ -13,7 +13,8 @@ public sealed class IntakeApiService(
     HttpClient httpClient,
     IIntakeSessionStore sessionStore,
     NavigationManager navigationManager,
-    IIntakeDraftCanonicalizer draftCanonicalizer) : IIntakeService
+    IIntakeDraftCanonicalizer draftCanonicalizer,
+    IntakeSessionToken? verifiedSession = null) : IIntakeService
 {
     private const string EligiblePatientsEndpoint = "/api/v1/intake/patients/eligible";
 
@@ -25,7 +26,9 @@ public sealed class IntakeApiService(
 
     public async Task<IntakeResponseDraft?> GetDraftByPatientIdAsync(Guid patientId, CancellationToken cancellationToken = default)
     {
-        var response = await SendWithOptionalStandaloneAccessAsync(
+        var session = await GetRequestSessionAsync(cancellationToken);
+        var response = await SendIntakeRequestAsync(
+            session,
             HttpMethod.Get,
             authenticatedPath: $"/api/v1/intake/patient/{patientId}/draft",
             standalonePath: $"/api/v1/intake/access/patient/{patientId}/draft",
@@ -52,7 +55,9 @@ public sealed class IntakeApiService(
 
     public async Task<IntakeResponseDraft?> GetLatestByPatientIdAsync(Guid patientId, CancellationToken cancellationToken = default)
     {
-        var response = await SendWithOptionalStandaloneAccessAsync(
+        var session = await GetRequestSessionAsync(cancellationToken);
+        var response = await SendIntakeRequestAsync(
+            session,
             HttpMethod.Get,
             authenticatedPath: $"/api/v1/intake/patient/{patientId}/latest",
             standalonePath: $"/api/v1/intake/access/patient/{patientId}/latest",
@@ -74,6 +79,7 @@ public sealed class IntakeApiService(
 
     public async Task<IntakeResponseDraft?> GetForNoteAsync(Guid patientId, Guid noteId, CancellationToken cancellationToken = default)
     {
+        RequireClinicianMode();
         using var response = await httpClient.GetAsync($"/api/v1/intake/patient/{patientId}/note/{noteId}", cancellationToken);
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
         if (!response.IsSuccessStatusCode) throw await CreateHttpRequestExceptionAsync(response, cancellationToken);
@@ -86,6 +92,7 @@ public sealed class IntakeApiService(
         IntakeResponseDraft? seedState = null,
         CancellationToken cancellationToken = default)
     {
+        RequireClinicianMode();
         var includeConsentPayload = HasConsentPayload(seedState);
         var request = new EnsureIntakeDraftRequest
         {
@@ -136,6 +143,7 @@ public sealed class IntakeApiService(
         int take = 100,
         CancellationToken cancellationToken = default)
     {
+        RequireClinicianMode();
         var normalizedTake = take <= 0 ? 100 : take;
         var path = string.IsNullOrWhiteSpace(query)
             ? $"{EligiblePatientsEndpoint}?take={normalizedTake}"
@@ -147,6 +155,7 @@ public sealed class IntakeApiService(
 
     public async Task<Guid> CreateTemporaryPatientAndDraftIntakeAsync(IntakeResponseDraft state, CancellationToken cancellationToken = default)
     {
+        RequireClinicianMode();
         var (firstName, lastName) = SplitName(state.FullName);
 
         if (state.DateOfBirth is null)
@@ -190,20 +199,25 @@ public sealed class IntakeApiService(
 
     public async Task SaveDraftAsync(IntakeResponseDraft state, CancellationToken cancellationToken = default)
     {
-        if (!state.PatientId.HasValue)
+        if (state.PatientId.HasValue)
         {
-            return;
+            var session = await GetRequestSessionAsync(cancellationToken);
+            await SaveDraftAsync(state, state.PatientId.Value, session, cancellationToken);
         }
+    }
 
+    private async Task SaveDraftAsync(
+        IntakeResponseDraft state, Guid patientId, IntakeSessionToken? session, CancellationToken cancellationToken)
+    {
         if (state.EncounterNoteId.HasValue && !state.IntakeId.HasValue)
             throw new HttpRequestException("Open the intake associated with this note before saving.", null, HttpStatusCode.Conflict);
 
-        var existing = await GetIntakeByPatientAsync(state.PatientId.Value, cancellationToken, state.IntakeId);
+        var existing = await GetIntakeByPatientAsync(patientId, state.IntakeId, session, cancellationToken);
         if (existing is null)
         {
             if (state.IntakeId.HasValue)
                 throw new HttpRequestException("The selected intake is unavailable.", null, HttpStatusCode.NotFound);
-            if (await TryGetStandaloneAccessTokenAsync(cancellationToken) is not null)
+            if (session is not null)
             {
                 throw new HttpRequestException(
                     "The intake form is not available.",
@@ -211,7 +225,7 @@ public sealed class IntakeApiService(
                     statusCode: HttpStatusCode.NotFound);
             }
 
-            var ensured = await EnsureDraftAsync(state.PatientId.Value, state, cancellationToken);
+            var ensured = await EnsureDraftAsync(patientId, state, cancellationToken);
             if (ensured.Status is IntakeEnsureDraftStatus.Locked or IntakeEnsureDraftStatus.PatientNotFound)
             {
                 throw new HttpRequestException(
@@ -225,7 +239,7 @@ public sealed class IntakeApiService(
                 return;
             }
 
-            existing = await GetIntakeByPatientAsync(state.PatientId.Value, cancellationToken, state.IntakeId);
+            existing = await GetIntakeByPatientAsync(patientId, state.IntakeId, session, cancellationToken);
             if (existing is null)
             {
                 throw new HttpRequestException(
@@ -253,7 +267,8 @@ public sealed class IntakeApiService(
             TemplateVersion = "1.0"
         };
 
-        var response = await SendWithOptionalStandaloneAccessAsync(
+        var response = await SendIntakeRequestAsync(
+            session,
             HttpMethod.Put,
             authenticatedPath: $"/api/v1/intake/{existing.Id}",
             standalonePath: $"/api/v1/intake/access/{existing.Id}",
@@ -277,9 +292,10 @@ public sealed class IntakeApiService(
             throw new InvalidOperationException("Cannot submit intake because PatientId is missing.");
         }
 
-        await SaveDraftAsync(state, cancellationToken);
+        var session = await GetRequestSessionAsync(cancellationToken);
+        await SaveDraftAsync(state, state.PatientId.Value, session, cancellationToken);
 
-        var existing = await GetIntakeByPatientAsync(state.PatientId.Value, cancellationToken, state.IntakeId);
+        var existing = await GetIntakeByPatientAsync(state.PatientId.Value, state.IntakeId, session, cancellationToken);
         if (existing is null)
         {
             throw new InvalidOperationException($"Cannot submit intake; no draft intake found for patient {state.PatientId.Value}.");
@@ -290,7 +306,8 @@ public sealed class IntakeApiService(
             throw new InvalidOperationException($"Cannot submit intake; intake {existing.Id} is already locked.");
         }
 
-        var response = await SendWithOptionalStandaloneAccessAsync(
+        var response = await SendIntakeRequestAsync(
+            session,
             HttpMethod.Post,
             authenticatedPath: $"/api/v1/intake/{existing.Id}/submit",
             standalonePath: $"/api/v1/intake/access/{existing.Id}/submit",
@@ -304,6 +321,7 @@ public sealed class IntakeApiService(
 
     public async Task<IntakeResponseDraft> MarkReviewedAsync(Guid intakeId, CancellationToken cancellationToken = default)
     {
+        RequireClinicianMode();
         using var response = await httpClient.PostAsync($"/api/v1/intake/{intakeId}/review", content: null, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
@@ -316,9 +334,11 @@ public sealed class IntakeApiService(
         return ToDraft(intake);
     }
 
-    private async Task<IntakeResponse?> GetIntakeByPatientAsync(Guid patientId, CancellationToken cancellationToken, Guid? intakeId = null)
+    private async Task<IntakeResponse?> GetIntakeByPatientAsync(
+        Guid patientId, Guid? intakeId, IntakeSessionToken? session, CancellationToken cancellationToken)
     {
-        var response = await SendWithOptionalStandaloneAccessAsync(
+        var response = await SendIntakeRequestAsync(
+            session,
             HttpMethod.Get,
             authenticatedPath: intakeId.HasValue ? $"/api/v1/intake/{intakeId.Value}" : $"/api/v1/intake/patient/{patientId}/draft",
             standalonePath: $"/api/v1/intake/access/patient/{patientId}/draft",
@@ -375,82 +395,59 @@ public sealed class IntakeApiService(
             response.StatusCode);
     }
 
-    private async Task<HttpResponseMessage> SendWithOptionalStandaloneAccessAsync(
+    private async Task<HttpResponseMessage> SendIntakeRequestAsync(
+        IntakeSessionToken? session,
         HttpMethod method,
         string authenticatedPath,
         string standalonePath,
         object? body,
         CancellationToken cancellationToken)
     {
-        var accessToken = await TryGetStandaloneAccessTokenAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(accessToken))
+        using var request = new HttpRequestMessage(method, session is null ? authenticatedPath : standalonePath);
+        if (session is not null)
         {
-            if (body is null)
+            if (session.ExpiresAt <= DateTimeOffset.UtcNow)
             {
-                using var authenticatedRequest = new HttpRequestMessage(method, authenticatedPath);
-                return await httpClient.SendAsync(authenticatedRequest, cancellationToken);
+                throw VerificationRequired();
             }
-
-            return await SendJsonAsync(method, authenticatedPath, body, cancellationToken);
+            request.Headers.Add(IntakeAccessHeaders.AccessToken, session.Token);
         }
-
-        using var standaloneRequest = new HttpRequestMessage(method, standalonePath);
-        standaloneRequest.Headers.Add(IntakeAccessHeaders.AccessToken, accessToken);
         if (body is not null)
         {
-            standaloneRequest.Content = JsonContent.Create(body, options: SerializerOptions);
+            request.Content = JsonContent.Create(body, options: SerializerOptions);
         }
-
-        return await httpClient.SendAsync(standaloneRequest, cancellationToken);
-    }
-
-    private async Task<HttpResponseMessage> SendJsonAsync(
-        HttpMethod method,
-        string path,
-        object body,
-        CancellationToken cancellationToken)
-    {
-        using var request = new HttpRequestMessage(method, path)
-        {
-            Content = JsonContent.Create(body, options: SerializerOptions)
-        };
-
         return await httpClient.SendAsync(request, cancellationToken);
     }
 
-    private async Task<string?> TryGetStandaloneAccessTokenAsync(CancellationToken cancellationToken)
+    // Capture the caller's authority once for the entire read/save/submit operation.
+    private async Task<IntakeSessionToken?> GetRequestSessionAsync(CancellationToken cancellationToken)
     {
-        if (!IsStandalonePatientMode())
+        string? invite = null;
+        if (verifiedSession is null && !StandaloneIntakeLink.IsPatientMode(new Uri(navigationManager.Uri), out invite))
         {
             return null;
         }
 
         var session = await sessionStore.GetAsync(cancellationToken);
-        if (session is null || session.ExpiresAt <= DateTimeOffset.UtcNow)
+        if (session is null || string.IsNullOrWhiteSpace(session.Token) ||
+            session.ExpiresAt <= DateTimeOffset.UtcNow || !session.MatchesInvite(invite) ||
+            (verifiedSession is not null && session != verifiedSession))
         {
-            return null;
+            throw VerificationRequired();
         }
-
-        return session.Token;
+        return session;
     }
 
-    private bool IsStandalonePatientMode()
+    private void RequireClinicianMode()
     {
-        if (!Uri.TryCreate(navigationManager.Uri, UriKind.Absolute, out var uri))
+        if (verifiedSession is not null || StandaloneIntakeLink.IsPatientMode(new Uri(navigationManager.Uri), out _))
         {
-            return false;
+            throw new HttpRequestException("This action requires clinician mode.", null, HttpStatusCode.Forbidden);
         }
-
-        if (!uri.AbsolutePath.StartsWith("/intake", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        var query = uri.Query.TrimStart('?')
-            .Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        return query.Any(part => string.Equals(part, "mode=patient", StringComparison.OrdinalIgnoreCase));
     }
+
+    private static HttpRequestException VerificationRequired()
+        => new("Please verify your identity again to continue this intake.", null, HttpStatusCode.Unauthorized);
 
     private IntakeResponseDraft ToDraft(IntakeResponse response)
     {

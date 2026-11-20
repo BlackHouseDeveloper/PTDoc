@@ -6,9 +6,11 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.Logging;
+using Microsoft.JSInterop;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
 using PTDoc.Infrastructure.Services;
+using PTDoc.UI.Services;
 
 public sealed class MauiUserService : IUserService, IAuthenticationStepUserService, IDisposable
 {
@@ -17,6 +19,8 @@ public sealed class MauiUserService : IUserService, IAuthenticationStepUserServi
     private readonly IHttpClientFactory httpClientFactory;
     private readonly MauiAuthenticationStateProvider authStateProvider;
     private readonly ILogger<MauiUserService> logger;
+    private readonly IIntakeSessionStore intakeSessions;
+    private readonly IntakeInviteRenewal intakeInviteRenewal;
     private readonly Microsoft.AspNetCore.Components.NavigationManager? navigation;
 
     private ClaimsPrincipal? currentUser;
@@ -30,6 +34,8 @@ public sealed class MauiUserService : IUserService, IAuthenticationStepUserServi
         IHttpClientFactory httpClientFactory,
         AuthenticationStateProvider authStateProvider,
         ILogger<MauiUserService> logger,
+        IIntakeSessionStore intakeSessions,
+        IntakeInviteRenewal intakeInviteRenewal,
         Microsoft.AspNetCore.Components.NavigationManager? navigation = null)
     {
         this.tokenService = tokenService;
@@ -37,6 +43,8 @@ public sealed class MauiUserService : IUserService, IAuthenticationStepUserServi
         this.httpClientFactory = httpClientFactory;
         this.authStateProvider = (MauiAuthenticationStateProvider)authStateProvider;
         this.logger = logger;
+        this.intakeSessions = intakeSessions;
+        this.intakeInviteRenewal = intakeInviteRenewal;
         this.navigation = navigation;
         this.authStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
     }
@@ -521,6 +529,19 @@ public sealed class MauiUserService : IUserService, IAuthenticationStepUserServi
         if (principal.Identity?.IsAuthenticated != true)
         {
             logger.LogWarning("Login returned an unusable access token");
+            return false;
+        }
+
+        try
+        {
+            intakeInviteRenewal.Clear();
+            await intakeSessions.ClearAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Could not clear the saved intake session during native sign-in.");
+            // PIN and MFA completion may have already consumed the challenge.
+            CancelAuthenticationStep();
             return false;
         }
 

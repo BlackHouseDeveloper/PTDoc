@@ -2,7 +2,6 @@
 @page "/patient/{PatientId}/notes/{NoteId}"
 @page "/patient/{PatientId}/new-note"
 @attribute [Authorize(Policy = AuthorizationPolicies.NoteRead)]
-@rendermode InteractiveServer
 @implements IAsyncDisposable
 
 @using System.Globalization

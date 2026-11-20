@@ -13,7 +13,6 @@ using PTDoc.Application.Outcomes;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Security;
 using PTDoc.Application.Services;
-using PTDoc.Application.Settings;
 using PTDoc.Core.Services;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.LocalData;
@@ -57,16 +56,17 @@ public static class MauiProgram
         builder.Services.AddSingleton<IConnectivityService, MauiConnectivityService>();
         builder.Services.AddSingleton<LocalSyncCoordinator>();
         builder.Services.AddSingleton<ISyncService>(sp => sp.GetRequiredService<LocalSyncCoordinator>());
-        builder.Services.AddScoped<IIntakeService, IntakeApiService>();
+        builder.Services.AddIntakeApiClient();
         builder.Services.AddScoped<IIntakeInviteService, HttpIntakeInviteService>();
         builder.Services.AddScoped<IIntakeDeliveryService, IntakeDeliveryApiService>();
         builder.Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
         builder.Services.AddSingleton<IIntakeBodyPartMapper, IntakeBodyPartMapper>();
         builder.Services.AddSingleton<IOutcomeMeasureRegistry, OutcomeMeasureRegistry>();
         builder.Services.AddSingleton<IIntakeDraftCanonicalizer, IntakeDraftCanonicalizer>();
+        builder.Services.AddScoped<IPatientService, PatientApiService>();
+        builder.Services.AddScoped<INoteService, NoteListApiService>();
         builder.Services.AddScoped<IAppointmentService, AppointmentApiService>();
-        builder.Services.AddScoped<ISchedulingAdministrationService>(sp =>
-            new SettingsAdministrationApiClient(sp.GetRequiredService<IHttpClientFactory>().CreateClient("ApiClient")));
+        builder.Services.AddSettingsAdministrationApiClient();
         builder.Services.AddScoped<IPaymentClientService, PaymentClientApiService>();
         builder.Services.AddScoped<IIntegrationClientService, IntegrationClientApiService>();
         builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();

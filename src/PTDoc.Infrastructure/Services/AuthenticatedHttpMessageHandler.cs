@@ -30,6 +30,11 @@ public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
+        if (StaffTokenForwarding.TryPrepareWithoutStaffToken(request))
+        {
+            return await base.SendAsync(request, cancellationToken);
+        }
+
         // Sync already owns this lease across its request and local writes. Other
         // requests acquire it here so token refresh cannot race a clinic change.
         using var scopeLease = localScope is not null
