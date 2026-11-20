@@ -1,4 +1,6 @@
-@namespace PTDoc.UI.Components
+@using System.Reflection
+@using Microsoft.AspNetCore.Components.Authorization
+@using PTDoc.Web.Auth
 @rendermode InteractiveServer
 @inject NavigationManager Navigation
 
@@ -19,12 +21,15 @@
      inert="@(_isInteractive ? null : "inert")">
     <CascadingAuthenticationState>
         <CascadingValue Name="@nameof(OpenKioskAdministration)" Value="@((Action)OpenKioskAdministration)" IsFixed="true">
-            <Routes />
+            <CascadingValue Name="RecoveryCodesPath" Value="@WebAuthenticationStepFlow.RecoveryCodesPath" IsFixed="true">
+                <Routes AdditionalAssemblies="@WebPageAssemblies" />
+            </CascadingValue>
         </CascadingValue>
     </CascadingAuthenticationState>
 </div>
 
 @code {
+    private static readonly Assembly[] WebPageAssemblies = [typeof(AppRoot).Assembly];
     private bool _isInteractive;
 
     private void OpenKioskAdministration() => Navigation.NavigateTo("/settings/kiosk");

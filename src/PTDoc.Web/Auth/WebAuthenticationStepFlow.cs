@@ -15,6 +15,8 @@ namespace PTDoc.Web.Auth;
 
 internal static class WebAuthenticationStepFlow
 {
+    internal const string RecoveryCodesPath = "/auth/mfa/recovery-codes";
+
     internal static void MapWebAuthenticationStepEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/auth/pin-change", CompletePinChangeAsync).AllowAnonymous();
@@ -23,10 +25,10 @@ internal static class WebAuthenticationStepFlow
         app.MapPost("/auth/mfa/method", (Delegate)ChooseMfaMethodAsync).AllowAnonymous();
         app.MapPost("/auth/mfa/verify-enrollment", VerifyEnrollmentAsync).AllowAnonymous();
         app.MapPost("/auth/complete", CompleteAuthenticationAsync).AllowAnonymous();
-        app.MapGet("/auth/mfa/recovery-codes", (HttpContext context, IAntiforgery antiforgery) =>
+        app.MapGet(RecoveryCodesPath, (HttpContext context, IAntiforgery antiforgery) =>
             RenderRecoveryCodeRegeneration(context, antiforgery, NormalizeReturnUrl(context.Request.Query["returnUrl"])))
             .RequireAuthorization();
-        app.MapPost("/auth/mfa/recovery-codes", RegenerateRecoveryCodesAsync).RequireAuthorization();
+        app.MapPost(RecoveryCodesPath, RegenerateRecoveryCodesAsync).RequireAuthorization();
     }
 
     private static IResult RenderRecoveryCodeRegeneration(

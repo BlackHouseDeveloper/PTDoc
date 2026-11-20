@@ -242,16 +242,19 @@
                         <div><strong>Security Audit Log</strong><p>Mandatory auditing of security and permission changes</p></div>
                         <span aria-label="Security Audit Log enabled and locked">Enabled · Locked</span>
                     </div>
-                    <button type="button" class="manage-roles-row" @onclick="RegenerateRecoveryCodes">
-                        <span class="manage-roles-row__copy">
-                            <img src="_content/PTDoc.UI/images/settings/security-requirements.svg" alt="" aria-hidden="true" />
-                            <span>
-                                <strong>Regenerate My Recovery Codes</strong>
-                                <small>Verify with TOTP and invalidate your previous recovery-code set</small>
+                    @if (RecoveryCodesPath is not null)
+                    {
+                        <button type="button" class="manage-roles-row" @onclick="RegenerateRecoveryCodes">
+                            <span class="manage-roles-row__copy">
+                                <img src="_content/PTDoc.UI/images/settings/security-requirements.svg" alt="" aria-hidden="true" />
+                                <span>
+                                    <strong>Regenerate My Recovery Codes</strong>
+                                    <small>Verify with TOTP and invalidate your previous recovery-code set</small>
+                                </span>
                             </span>
-                        </span>
-                        <span class="manage-roles-row__action">Regenerate</span>
-                    </button>
+                            <span class="manage-roles-row__action">Regenerate</span>
+                        </button>
+                    }
                     <button type="button" class="manage-roles-row" @onclick="GoToRoles">
                         <span class="manage-roles-row__copy">
                             <img src="_content/PTDoc.UI/images/settings/manage-roles.svg" alt="" aria-hidden="true" />
@@ -601,8 +604,11 @@
     [CascadingParameter(Name = nameof(OpenKioskAdministration))]
     private Action? OpenKioskAdministration { get; set; }
 
+    [CascadingParameter(Name = nameof(RecoveryCodesPath))]
+    private string? RecoveryCodesPath { get; set; }
+
     private void RegenerateRecoveryCodes() => Navigation.NavigateTo(
-        "/auth/mfa/recovery-codes?returnUrl=%2Fsettings", forceLoad: true);
+        $"{RecoveryCodesPath}?returnUrl=%2Fsettings", forceLoad: true);
 
     private void ResetSecuritySettings()
     {

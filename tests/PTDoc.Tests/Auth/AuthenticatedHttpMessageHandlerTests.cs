@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using Moq;
 using PTDoc.Application.Auth;
 using PTDoc.Application.LocalData;
@@ -64,6 +65,26 @@ public sealed class AuthenticatedHttpMessageHandlerTests
     }
 
     [Theory]
+    [InlineData("enroll", HttpStatusCode.OK)]
+    [InlineData("check-in", HttpStatusCode.Unauthorized)]
+    public async Task PublicKioskPost_SendsOnceWithoutTheDefaultStaffBearer(string operation, HttpStatusCode status)
+    {
+        var store = CreateTokenStore(Tokens("staff", "refresh", DateTimeOffset.UtcNow.AddMinutes(10)));
+        var tokens = new Mock<ITokenService>(MockBehavior.Strict);
+        var user = new Mock<IUserService>(MockBehavior.Strict);
+        var inner = new SequencedHandler(status);
+        using var handler = CreateHandler(store.Object, tokens.Object, user.Object, inner);
+        using var client = new HttpClient(handler);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "staff");
+
+        using var response = await client.PostAsync($"https://ptdoc.test/api/v1/kiosk/{operation}", null);
+
+        Assert.Equal(status, response.StatusCode);
+        Assert.Null(Assert.Single(inner.AuthorizationParameters));
+        store.VerifyNoOtherCalls();
+    }
+
+    [Theory]
     [InlineData("send-email")]
     [InlineData("send-sms")]
     [InlineData("validate")]
@@ -86,8 +107,11 @@ public sealed class AuthenticatedHttpMessageHandlerTests
         Assert.Null(scope.Key);
     }
 
-    [Fact]
-    public async Task SendAsync_LogsOutWithoutCallingApi_WhenExpiredTokenCannotRefresh()
+    [Theory]
+    [InlineData("GET", "/api/v1/patients")]
+    [InlineData("POST", "/api/v1/admin/kiosk/stations")]
+    [InlineData("GET", "/api/v1/kiosk/enroll")]
+    public async Task SendAsync_LogsOutWithoutCallingApi_WhenExpiredTokenCannotRefresh(string method, string path)
     {
         var stored = Tokens("expired", "refresh", DateTimeOffset.UtcNow.AddMinutes(-1));
         var tokenStore = CreateTokenStore(stored);
@@ -100,7 +124,8 @@ public sealed class AuthenticatedHttpMessageHandlerTests
         using var handler = CreateHandler(tokenStore.Object, tokenService.Object, userService.Object, inner);
         using var client = new HttpClient(handler);
 
-        var response = await client.GetAsync("https://ptdoc.test/api/v1/patients");
+        using var request = new HttpRequestMessage(new HttpMethod(method), $"https://ptdoc.test{path}");
+        using var response = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.Empty(inner.AuthorizationParameters);

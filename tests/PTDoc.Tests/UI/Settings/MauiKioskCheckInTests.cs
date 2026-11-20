@@ -22,11 +22,16 @@ namespace PTDoc.Tests.UI.Settings;
 public sealed class MauiKioskCheckInTests(PtDocApiFactory api) : TestContext, IClassFixture<PtDocApiFactory>
 {
     [Fact]
-    public async Task AnonymousKiosk_EnrollsStationAndChecksInAppointment()
+    public async Task AnonymousKiosk_WithExpiredStaffToken_EnrollsStationAndChecksInAppointment()
     {
         var (appointmentId, enrollmentCode, appointmentCode) = await PrepareAppointmentAndStationAsync();
-        Services.AddScoped(_ => api.CreateDefaultClient(new Uri("https://localhost"), new AuthenticatedHttpMessageHandler(
-            Mock.Of<ITokenStore>(), Mock.Of<ITokenService>(), Mock.Of<IUserService>())));
+        var staffTokens = new Mock<ITokenStore>();
+        staffTokens.Setup(store => store.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TokenResponse("expired-staff", "refresh", DateTimeOffset.UtcNow.AddMinutes(-5)));
+        var refresh = new Mock<ITokenService>(MockBehavior.Strict);
+        var staff = new Mock<IUserService>(MockBehavior.Strict);
+        Services.AddScoped(_ => api.CreateDefaultClient(new Uri("https://localhost"),
+            new AuthenticatedHttpMessageHandler(staffTokens.Object, refresh.Object, staff.Object)));
         Services.AddSettingsAdministrationApiClient();
         this.AddTestAuthorization();
         ComponentFactories.AddStub<MainLayout>(parameters => parameters.Get(layout => layout.Body)!);
@@ -50,6 +55,9 @@ public sealed class MauiKioskCheckInTests(PtDocApiFactory api) : TestContext, IC
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var status = await db.Appointments.Where(item => item.Id == appointmentId).Select(item => item.Status).SingleAsync();
         Assert.Equal(AppointmentStatus.CheckedIn, status);
+        staffTokens.VerifyNoOtherCalls();
+        refresh.VerifyNoOtherCalls();
+        staff.VerifyNoOtherCalls();
     }
 
     private async Task<(Guid AppointmentId, string EnrollmentCode, string AppointmentCode)> PrepareAppointmentAndStationAsync()

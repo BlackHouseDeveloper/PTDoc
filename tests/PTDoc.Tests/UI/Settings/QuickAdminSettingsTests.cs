@@ -1,20 +1,17 @@
 using Bunit;
 using Bunit.TestDoubles;
 using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Authorization;
-using Microsoft.AspNetCore.Components.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
 using Moq;
 using PTDoc.Application.Auth;
-using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.Services;
 using PTDoc.Application.Settings;
 using PTDoc.Maui.Components;
-using PTDoc.UI.Components;
 using PTDoc.UI.Components.Layout;
 using PTDoc.UI.Components.Settings;
 using PTDoc.UI.Pages;
+using PTDoc.Web.Components;
 using PTDoc.Web.Components.Pages;
 
 namespace PTDoc.Tests.UI.Settings;
@@ -241,22 +238,8 @@ public sealed class QuickAdminSettingsTests : TestContext
     [Fact]
     public async Task WebSettings_NavigatesBetweenAutoCheckInAndKioskAdministration()
     {
-        var authorization = this.AddTestAuthorization();
-        authorization.SetAuthorized("admin-user");
-        authorization.SetRoles(Roles.Admin);
-        Services.AddSingleton<IHeaderConfigurationService, HeaderConfigurationService>();
-        var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
-        navigation.NavigateTo("/settings/auto-check-in");
-
-        var router = RenderComponent<Router>(parameters => parameters
-            .Add(component => component.AppAssembly, typeof(WebKioskSettings).Assembly)
-            .Add(component => component.AdditionalAssemblies, new[] { typeof(PTDoc.UI.Pages.Settings).Assembly })
-            .Add(component => component.Found, route => builder =>
-            {
-                builder.OpenComponent<AuthorizeRouteView>(0);
-                builder.AddAttribute(1, nameof(AuthorizeRouteView.RouteData), route);
-                builder.CloseComponent();
-            }));
+        var router = RenderAdminSettings(web: true, path: "/settings/auto-check-in");
+        var navigation = Services.GetRequiredService<NavigationManager>();
         router.WaitForElement("#auto-check-in-title");
 
         await router.InvokeAsync(() => navigation.NavigateTo("/settings/kiosk"));
@@ -276,6 +259,7 @@ public sealed class QuickAdminSettingsTests : TestContext
         var authorization = this.AddTestAuthorization();
         authorization.SetAuthorized("native-admin");
         authorization.SetRoles(Roles.Admin);
+        authorization.SetPolicies(AuthorizationPolicies.ClinicalStaff);
         var stations = new Mock<IKioskCheckInService>(MockBehavior.Strict);
         Services.AddSingleton(stations.Object);
         ComponentFactories.AddStub<MainLayout>(parameters => parameters.Get(layout => layout.Body)!);
@@ -284,7 +268,9 @@ public sealed class QuickAdminSettingsTests : TestContext
 
         var router = RenderComponent<MauiRoutes>();
 
-        router.WaitForAssertion(() => Assert.Contains("nothing at this address", router.Find("p").TextContent));
+        router.WaitForElement("#not-found-title");
+        Assert.Single(router.FindComponents<NotFound>());
+        Assert.Equal(navigation.ToAbsoluteUri(directLink), new Uri(navigation.Uri));
         Assert.Empty(router.FindComponents<KioskAdministrationSettings>());
         stations.VerifyNoOtherCalls();
 
@@ -302,17 +288,8 @@ public sealed class QuickAdminSettingsTests : TestContext
     [InlineData(true, "Documentation and Compliance")]
     public void KioskAdministrationShortcut_IsAvailableOnlyOnWeb(bool web, string section)
     {
-        var authorization = this.AddTestAuthorization();
-        authorization.SetAuthorized("admin-user");
-        authorization.SetRoles(Roles.Admin);
-        Services.AddSingleton(Mock.Of<IUserService>());
-        ComponentFactories.AddStub<MainLayout>(parameters => parameters.Get(layout => layout.Body)!);
-        ComponentFactories.AddStub<GlobalPageHeader>();
-        ComponentFactories.AddStub<NoteTemplateSettingsPanel>();
+        var root = RenderAdminSettings(web);
         var navigation = Services.GetRequiredService<NavigationManager>();
-        navigation.NavigateTo("/settings");
-        IRenderedFragment root = web ? RenderComponent<AppRoot>() : RenderComponent<MauiRoutes>();
-        root.WaitForElement(".settings-sidebar-nav");
         root.FindAll(".settings-nav-item").Single(button =>
             button.QuerySelector(".settings-nav-item-title")!.TextContent == section).Click();
 
@@ -322,12 +299,53 @@ public sealed class QuickAdminSettingsTests : TestContext
         if (web)
         {
             Assert.Single(kioskActions).Closest("button")!.Click();
+            root.WaitForElement("#kiosk-admin-title");
+            Assert.Single(root.FindComponents<WebKioskSettings>());
             Assert.Equal("/settings/kiosk", new Uri(navigation.Uri).AbsolutePath);
         }
         else
         {
             Assert.Empty(kioskActions);
         }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void RecoveryCodeRegeneration_IsAvailableOnlyFromWebSecuritySettings(bool web)
+    {
+        var root = RenderAdminSettings(web);
+        root.Find("#security-settings-tab").Click();
+        var actions = root.FindAll("#roles-settings-panel .manage-roles-row");
+        Assert.Contains(actions, action => action.TextContent.Contains("Manage Individual Roles"));
+        var recovery = actions.Where(action => action.TextContent.Contains("Regenerate My Recovery Codes"));
+        if (web)
+        {
+            Assert.Single(recovery).Click();
+            var navigation = (FakeNavigationManager)Services.GetRequiredService<NavigationManager>();
+            Assert.Contains(navigation.History, entry => entry.Options.ForceLoad &&
+                navigation.ToAbsoluteUri(entry.Uri).PathAndQuery == "/auth/mfa/recovery-codes?returnUrl=%2Fsettings");
+        }
+        else
+        {
+            Assert.Empty(recovery);
+        }
+    }
+
+    private IRenderedFragment RenderAdminSettings(bool web, string path = "/settings")
+    {
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("admin-user");
+        authorization.SetRoles(Roles.Admin);
+        Services.AddSingleton(Mock.Of<IUserService>());
+        ComponentFactories.AddStub<MainLayout>(parameters => parameters.Get(layout => layout.Body)!);
+        ComponentFactories.AddStub<GlobalPageHeader>();
+        ComponentFactories.AddStub<NoteTemplateSettingsPanel>();
+        Services.GetRequiredService<NavigationManager>().NavigateTo(path);
+
+        IRenderedFragment root = web ? RenderComponent<AppRoot>() : RenderComponent<MauiRoutes>();
+        root.WaitForElement(".settings-sidebar-nav");
+        return root;
     }
 
     [Fact]
@@ -447,17 +465,34 @@ public sealed class QuickAdminSettingsTests : TestContext
         });
     }
 
+    [Fact]
+    public void NativeRecoveryCodeCompatibilityLink_DirectsTheUserToWebSettings()
+    {
+        this.AddTestAuthorization();
+        ComponentFactories.AddStub<MainLayout>(parameters => parameters.Get(layout => layout.Body)!);
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        const string link = "/authentication-step-up?mode=recovery-codes&returnUrl=%2Fsettings";
+        navigation.NavigateTo(link);
+
+        var router = RenderComponent<MauiRoutes>();
+
+        router.WaitForAssertion(() => Assert.Contains("PTDoc Web", router.Find(".step-up-card p").TextContent));
+        Assert.Empty(router.FindAll(".step-up-primary, form"));
+        Assert.Equal(navigation.ToAbsoluteUri(link), new Uri(navigation.Uri));
+    }
+
     [Theory]
     [InlineData("recovery-codes", "/auth/mfa/recovery-codes")]
     [InlineData("pin-change", "/login")]
     [InlineData("enroll", "/login")]
     [InlineData("verify", "/login")]
     [InlineData("unknown", "/login")]
-    public void AuthenticationStepUp_OnlyRoutesToServerAuthentication(string mode, string expectedPath)
+    public void WebAuthenticationStepUp_OnlyRoutesToServerAuthentication(string mode, string expectedPath)
     {
         var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
         navigation.NavigateTo($"/authentication-step-up?mode={mode}&returnUrl=%2Fsettings");
-        var cut = RenderComponent<AuthenticationStepUp>();
+        var cut = RenderComponent<AuthenticationStepUp>(parameters =>
+            parameters.AddCascadingValue("RecoveryCodesPath", "/auth/mfa/recovery-codes"));
         Assert.Equal(expectedPath, new Uri(navigation.Uri).AbsolutePath);
         Assert.Equal("/settings", Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(navigation.Uri).Query)["returnUrl"].ToString());
         Assert.Empty(cut.FindAll("form"));

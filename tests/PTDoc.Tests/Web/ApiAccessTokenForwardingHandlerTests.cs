@@ -31,6 +31,31 @@ public sealed class ApiAccessTokenForwardingHandlerTests
         userService.Verify(service => service.LogoutAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Theory]
+    [InlineData("enroll", HttpStatusCode.OK)]
+    [InlineData("check-in", HttpStatusCode.Unauthorized)]
+    public async Task PublicKioskPost_SendsWithoutStaffCredentialsAfterSessionEnds(string operation, HttpStatusCode status)
+    {
+        var context = CreateAuthenticatedContext("old-staff-token", DateTimeOffset.UtcNow.AddMinutes(-1));
+        var capture = new CaptureHandler(status);
+        var auth = new ThrowingAuthenticationStateProvider();
+        var staff = new Mock<IUserService>(MockBehavior.Strict);
+        var state = new WebCircuitSessionState();
+        state.End("SessionEnded");
+        using var handler = CreateHandler(new HttpContextAccessor { HttpContext = context }, auth, staff.Object, capture, state);
+        using var client = new HttpClient(handler);
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "old-staff-token");
+
+        using var response = await client.PostAsync($"https://ptdoc.test/api/v1/kiosk/{operation}", null);
+
+        Assert.Equal(status, response.StatusCode);
+        Assert.Equal(1, capture.CallCount);
+        Assert.Null(capture.Request!.Headers.Authorization);
+        Assert.Equal(0, auth.CallCount);
+        Assert.Equal("SessionEnded", state.EndedReason);
+        staff.VerifyNoOtherCalls();
+    }
+
     [Fact]
     public async Task SendAsync_ContinuesWithoutToken_WhenAuthenticationStateScopeIsUnavailable()
     {

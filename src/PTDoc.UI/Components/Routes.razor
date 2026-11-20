@@ -14,7 +14,7 @@
 @inject IUserService UserService
 @inject ILogger<Routes> Logger
 
-<Router AppAssembly="@typeof(Routes).Assembly" AdditionalAssemblies="@resolvedAdditionalAssemblies">
+<Router AppAssembly="@typeof(Routes).Assembly" AdditionalAssemblies="@AdditionalAssemblies">
     <Found Context="routeData">
         @if (ShouldUseStandaloneIntakeLayout(routeData))
         {
@@ -44,13 +44,13 @@
 </Router>
 
 @code {
+    [Parameter] public IReadOnlyList<Assembly>? AdditionalAssemblies { get; set; }
+
     private ClaimsPrincipal? authenticatedUser;
     private int logoutTriggered;
-    private IReadOnlyList<Assembly>? resolvedAdditionalAssemblies;
 
     protected override async Task OnInitializedAsync()
     {
-        resolvedAdditionalAssemblies = ResolveAdditionalAssemblies();
         AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
         NavigationManager.LocationChanged += OnLocationChanged;
 
@@ -161,16 +161,5 @@
     {
         AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
         NavigationManager.LocationChanged -= OnLocationChanged;
-    }
-
-    private static IReadOnlyList<Assembly>? ResolveAdditionalAssemblies()
-    {
-        var appAssembly = Assembly.GetEntryAssembly();
-        if (appAssembly is null || appAssembly == typeof(Routes).Assembly)
-        {
-            return null;
-        }
-
-        return [appAssembly];
     }
 }

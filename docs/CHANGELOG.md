@@ -19,7 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The native router discovers pages in PTDoc.UI, including the dashboard and patient chart. Shared pages and navigation now inherit their host's render mode. The Web app continues to select interactive server rendering at its root.
 - The MAUI host supplies the authenticated patient and note API clients used by the dashboard, patient list and chart.
 - Native intake now verifies standalone access before opening the wizard for signed-out users, patient accounts and patient-mode links. Clinician intake continues to use the signed-in chart layout.
-- Kiosk station administration at `/settings/kiosk` and its Settings shortcuts are Web-only. Native stations can still enroll and check in appointments at `/kiosk`. MAUI and Web share the Settings client for role permissions, security policies, scheduling and auto check-in.
+- Kiosk station administration at `/settings/kiosk` and its Settings shortcuts are Web-only. Web and native stations can enroll and check in appointments at `/kiosk` even after a staff session expires. MAUI and Web share the Settings client for role permissions, security policies, scheduling and auto check-in.
+- Security Settings opens recovery-code regeneration in the authenticated Web form. On native, older recovery-code links direct users to PTDoc Web.
 
 ### Changed - Client review Plan 11
 

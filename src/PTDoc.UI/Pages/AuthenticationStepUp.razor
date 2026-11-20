@@ -7,8 +7,15 @@
 <main class="step-up-page">
     <section class="step-up-card" aria-labelledby="step-up-title">
         <h1 id="step-up-title">Continue authentication</h1>
-        <p>Continue to the secure authentication form.</p>
-        <a class="step-up-primary" href="@ContinuationUrl">Continue</a>
+        @if (ContinuationUrl is { } url)
+        {
+            <p>Continue to the secure authentication form.</p>
+            <a class="step-up-primary" href="@url">Continue</a>
+        }
+        else
+        {
+            <p>Open Security Settings in PTDoc Web to regenerate your recovery codes.</p>
+        }
     </section>
 </main>
 
@@ -19,14 +26,20 @@
     [SupplyParameterFromQuery(Name = "returnUrl")]
     public string ReturnUrl { get; set; } = "/";
 
+    [CascadingParameter(Name = nameof(RecoveryCodesPath))]
+    private string? RecoveryCodesPath { get; set; }
+
     // This compatibility route never selects or completes an authentication step.
     // The login response supplies the purpose-bound challenge to the Web form flow.
-    private string ContinuationUrl => Mode == "recovery-codes"
-        ? $"/auth/mfa/recovery-codes?returnUrl={Uri.EscapeDataString(ReturnUrl ?? "/")}"
-        : $"/login?ReturnUrl={Uri.EscapeDataString(ReturnUrl ?? "/")}";
+    private string? ContinuationUrl => Mode switch
+    {
+        "recovery-codes" when RecoveryCodesPath is not null => $"{RecoveryCodesPath}?returnUrl={Uri.EscapeDataString(ReturnUrl ?? "/")}",
+        "recovery-codes" => null,
+        _ => $"/login?ReturnUrl={Uri.EscapeDataString(ReturnUrl ?? "/")}"
+    };
 
     protected override void OnAfterRender(bool firstRender)
     {
-        if (firstRender) Navigation.NavigateTo(ContinuationUrl, forceLoad: true);
+        if (firstRender && ContinuationUrl is { } url) Navigation.NavigateTo(url, forceLoad: true);
     }
 }

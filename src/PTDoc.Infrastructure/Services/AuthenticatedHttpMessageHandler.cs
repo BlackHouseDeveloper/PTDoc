@@ -30,8 +30,7 @@ public sealed class AuthenticatedHttpMessageHandler : DelegatingHandler
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        // Standalone intake uses its own verified session, including when a clinician is signed in.
-        if (request.RequestUri?.AbsolutePath.StartsWith("/api/v1/intake/access/", StringComparison.OrdinalIgnoreCase) == true)
+        if (StaffTokenForwarding.TryPrepareWithoutStaffToken(request))
         {
             return await base.SendAsync(request, cancellationToken);
         }
