@@ -26,11 +26,11 @@ namespace PTDoc.Tests.UI.Settings;
 public sealed class MauiKioskCheckInTests(PtDocApiFactory api) : TestContext, IClassFixture<PtDocApiFactory>
 {
     [Theory]
-    [InlineData(-5)]
-    [InlineData(15)]
-    public async Task PublicKiosk_EnrollsAndChecksInWithoutOpeningStaffSession(int staffTokenLifetimeMinutes)
+    [InlineData(-5, 9)]
+    [InlineData(15, 10)]
+    public async Task PublicKiosk_EnrollsAndChecksInWithoutOpeningStaffSession(int staffTokenLifetimeMinutes, int appointmentHourUtc)
     {
-        var (appointmentId, enrollmentCode, appointmentCode) = await PrepareAppointmentAndStationAsync();
+        var (appointmentId, enrollmentCode, appointmentCode) = await PrepareAppointmentAndStationAsync(appointmentHourUtc);
         var expires = DateTimeOffset.UtcNow.AddMinutes(staffTokenLifetimeMinutes);
         var accessToken = new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken(
             claims: [new Claim(ClaimTypes.Name, "clinician"), new Claim(ClaimTypes.Role, Roles.PT)],
@@ -76,13 +76,13 @@ public sealed class MauiKioskCheckInTests(PtDocApiFactory api) : TestContext, IC
         staff.VerifyNoOtherCalls();
     }
 
-    private async Task<(Guid AppointmentId, string EnrollmentCode, string AppointmentCode)> PrepareAppointmentAndStationAsync()
+    private async Task<(Guid AppointmentId, string EnrollmentCode, string AppointmentCode)> PrepareAppointmentAndStationAsync(int appointmentHourUtc)
     {
         await using var scope = api.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var clinicId = PtDocApiFactory.AuthorizationClinicId;
         var clinicianId = await db.Users.Where(user => user.Username == "integration-pt").Select(user => user.Id).SingleAsync();
-        var start = DateTime.UtcNow.AddHours(1);
+        var start = DateTime.UtcNow.Date.AddDays(1).AddHours(appointmentHourUtc);
         var appointment = new Appointment
         {
             Patient = new Patient

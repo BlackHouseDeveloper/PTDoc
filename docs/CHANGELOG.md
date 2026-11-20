@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Native intake now verifies standalone access before opening the wizard for signed-out users, patient accounts and patient-mode links. Clinician intake continues to use the signed-in chart layout.
 - Kiosk station administration at `/settings/kiosk` and its Settings shortcuts are Web-only. Web and native stations can enroll and check in appointments at `/kiosk` even after a staff session expires. MAUI and Web share the Settings client for role permissions, security policies, scheduling and auto check-in.
 - Native `/kiosk` opens directly into enrollment and check-in without loading staff credentials, clinical navigation or badges. On Web, station activity no longer renews a staff session, and staff expiry leaves check-in uninterrupted. Returning to a staff page checks the session again.
+- The native kiosk check-in tests now book separate appointment slots for active and expired staff tokens so both cases can exercise check-in against the shared Linux Core test database.
 - Security Settings opens recovery-code regeneration in the authenticated Web form. On native, older recovery-code links direct users to PTDoc Web.
 
 ### Changed - Client review Plan 11
