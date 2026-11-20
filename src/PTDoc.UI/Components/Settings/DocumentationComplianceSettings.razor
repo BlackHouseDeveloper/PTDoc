@@ -244,10 +244,13 @@
                     <span class="quick-admin-tools__copy"><span class="quick-admin-tools__icon"><img src="_content/PTDoc.UI/images/settings/quick-message.svg" alt="" aria-hidden="true" /></span><span><strong>Auto Check-In Messaging</strong><small>Configure automated intake and check-in messages</small></span></span>
                     <img class="quick-admin-tools__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
                 </button>
-                <button type="button" class="quick-admin-tools__row" @onclick="OpenKioskCheckIn">
-                    <span class="quick-admin-tools__copy"><span class="quick-admin-tools__icon"><img src="_content/PTDoc.UI/images/settings/quick-kiosk.svg" alt="" aria-hidden="true" /></span><span><strong>Kiosk Check-In</strong><small>Enroll stations and manage kiosk access</small></span></span>
-                    <img class="quick-admin-tools__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
-                </button>
+                @if (OpenKioskAdministration is not null)
+                {
+                    <button type="button" class="quick-admin-tools__row" @onclick="OpenKioskAdministration">
+                        <span class="quick-admin-tools__copy"><span class="quick-admin-tools__icon"><img src="_content/PTDoc.UI/images/settings/quick-kiosk.svg" alt="" aria-hidden="true" /></span><span><strong>Kiosk Check-In</strong><small>Enroll stations and manage kiosk access</small></span></span>
+                        <img class="quick-admin-tools__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
+                    </button>
+                }
             </div>
         </section>
 
@@ -388,7 +391,8 @@
     }
 
     private void OpenAutoCheckInMessaging() => Navigation.NavigateTo("/settings/auto-check-in");
-    private void OpenKioskCheckIn() => Navigation.NavigateTo("/settings/kiosk");
+    [CascadingParameter(Name = nameof(OpenKioskAdministration))]
+    private Action? OpenKioskAdministration { get; set; }
 
     private void ResetToDefaults()
     {

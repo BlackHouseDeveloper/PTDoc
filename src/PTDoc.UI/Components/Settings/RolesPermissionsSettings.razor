@@ -598,7 +598,8 @@
 
     private void OpenAutoCheckInMessaging() => Navigation.NavigateTo("/settings/auto-check-in");
 
-    private void OpenKioskCheckIn() => Navigation.NavigateTo("/settings/kiosk");
+    [CascadingParameter(Name = nameof(OpenKioskAdministration))]
+    private Action? OpenKioskAdministration { get; set; }
 
     private void RegenerateRecoveryCodes() => Navigation.NavigateTo(
         "/auth/mfa/recovery-codes?returnUrl=%2Fsettings", forceLoad: true);
@@ -806,13 +807,16 @@
                     </span>
                     <img class="quick-admin__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
                 </button>
-                <button type="button" @onclick="OpenKioskCheckIn">
-                    <span class="quick-admin__copy">
-                        <span class="quick-admin__icon"><img src="_content/PTDoc.UI/images/settings/quick-kiosk.svg" alt="" aria-hidden="true" /></span>
-                        <span><strong>Kiosk Check-In</strong><small>Set up and manage kiosk check-in stations</small></span>
-                    </span>
-                    <img class="quick-admin__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
-                </button>
+                @if (OpenKioskAdministration is not null)
+                {
+                    <button type="button" @onclick="OpenKioskAdministration">
+                        <span class="quick-admin__copy">
+                            <span class="quick-admin__icon"><img src="_content/PTDoc.UI/images/settings/quick-kiosk.svg" alt="" aria-hidden="true" /></span>
+                            <span><strong>Kiosk Check-In</strong><small>Set up and manage kiosk check-in stations</small></span>
+                        </span>
+                        <img class="quick-admin__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
+                    </button>
+                }
             </div>
         </section>
     </text>;

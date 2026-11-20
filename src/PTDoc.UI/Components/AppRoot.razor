@@ -1,5 +1,6 @@
 @namespace PTDoc.UI.Components
 @rendermode InteractiveServer
+@inject NavigationManager Navigation
 
 @if (!_isInteractive)
 {
@@ -17,12 +18,16 @@
      aria-busy="@((!_isInteractive).ToString().ToLowerInvariant())"
      inert="@(_isInteractive ? null : "inert")">
     <CascadingAuthenticationState>
-        <Routes />
+        <CascadingValue Name="@nameof(OpenKioskAdministration)" Value="@((Action)OpenKioskAdministration)" IsFixed="true">
+            <Routes />
+        </CascadingValue>
     </CascadingAuthenticationState>
 </div>
 
 @code {
     private bool _isInteractive;
+
+    private void OpenKioskAdministration() => Navigation.NavigateTo("/settings/kiosk");
 
     protected override Task OnAfterRenderAsync(bool firstRender)
     {

@@ -1,13 +1,21 @@
 using Bunit;
 using Bunit.TestDoubles;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
 using Moq;
+using PTDoc.Application.Auth;
 using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.Services;
 using PTDoc.Application.Settings;
+using PTDoc.Maui.Components;
+using PTDoc.UI.Components;
+using PTDoc.UI.Components.Layout;
 using PTDoc.UI.Components.Settings;
 using PTDoc.UI.Pages;
+using PTDoc.Web.Components.Pages;
 
 namespace PTDoc.Tests.UI.Settings;
 
@@ -231,7 +239,7 @@ public sealed class QuickAdminSettingsTests : TestContext
     }
 
     [Fact]
-    public void SettingsRoute_ReappliesQuickAdminSectionWhenRouteChanges()
+    public async Task WebSettings_NavigatesBetweenAutoCheckInAndKioskAdministration()
     {
         var authorization = this.AddTestAuthorization();
         authorization.SetAuthorized("admin-user");
@@ -240,16 +248,86 @@ public sealed class QuickAdminSettingsTests : TestContext
         var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
         navigation.NavigateTo("/settings/auto-check-in");
 
-        var cut = RenderComponent<PTDoc.UI.Pages.Settings>();
-        Assert.Contains("Auto Check-In Messaging", cut.Markup, StringComparison.Ordinal);
+        var router = RenderComponent<Router>(parameters => parameters
+            .Add(component => component.AppAssembly, typeof(WebKioskSettings).Assembly)
+            .Add(component => component.AdditionalAssemblies, new[] { typeof(PTDoc.UI.Pages.Settings).Assembly })
+            .Add(component => component.Found, route => builder =>
+            {
+                builder.OpenComponent<AuthorizeRouteView>(0);
+                builder.AddAttribute(1, nameof(AuthorizeRouteView.RouteData), route);
+                builder.CloseComponent();
+            }));
+        router.WaitForElement("#auto-check-in-title");
 
-        navigation.NavigateTo("/settings/kiosk");
+        await router.InvokeAsync(() => navigation.NavigateTo("/settings/kiosk"));
+        router.WaitForElement("#kiosk-admin-title");
+        Assert.Single(router.FindComponents<WebKioskSettings>());
 
-        cut.WaitForAssertion(() =>
+        await router.InvokeAsync(() => navigation.NavigateTo("/settings/auto-check-in"));
+        router.WaitForElement("#auto-check-in-title");
+        Assert.Empty(router.FindComponents<KioskAdministrationSettings>());
+    }
+
+    [Theory]
+    [InlineData("/settings/kiosk")]
+    [InlineData("/SETTINGS/KIOSK/?station=1#stations")]
+    public async Task NativeAdmin_CannotOpenKioskAdministrationAndCanReachPublicEnrollment(string directLink)
+    {
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("native-admin");
+        authorization.SetRoles(Roles.Admin);
+        var stations = new Mock<IKioskCheckInService>(MockBehavior.Strict);
+        Services.AddSingleton(stations.Object);
+        ComponentFactories.AddStub<MainLayout>(parameters => parameters.Get(layout => layout.Body)!);
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        navigation.NavigateTo(directLink);
+
+        var router = RenderComponent<MauiRoutes>();
+
+        router.WaitForAssertion(() => Assert.Contains("nothing at this address", router.Find("p").TextContent));
+        Assert.Empty(router.FindComponents<KioskAdministrationSettings>());
+        stations.VerifyNoOtherCalls();
+
+        await router.InvokeAsync(() => navigation.NavigateTo("/kiosk"));
+        router.WaitForElement(".kiosk-check-in form");
+        Assert.Equal("Enroll this station", router.Find(".kiosk-check-in form h2").TextContent);
+    }
+
+    [Theory]
+    [InlineData(false, "Roles & Permissions")]
+    [InlineData(false, "Scheduling & Visit Types")]
+    [InlineData(false, "Documentation and Compliance")]
+    [InlineData(true, "Roles & Permissions")]
+    [InlineData(true, "Scheduling & Visit Types")]
+    [InlineData(true, "Documentation and Compliance")]
+    public void KioskAdministrationShortcut_IsAvailableOnlyOnWeb(bool web, string section)
+    {
+        var authorization = this.AddTestAuthorization();
+        authorization.SetAuthorized("admin-user");
+        authorization.SetRoles(Roles.Admin);
+        Services.AddSingleton(Mock.Of<IUserService>());
+        ComponentFactories.AddStub<MainLayout>(parameters => parameters.Get(layout => layout.Body)!);
+        ComponentFactories.AddStub<GlobalPageHeader>();
+        ComponentFactories.AddStub<NoteTemplateSettingsPanel>();
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        navigation.NavigateTo("/settings");
+        IRenderedFragment root = web ? RenderComponent<AppRoot>() : RenderComponent<MauiRoutes>();
+        root.WaitForElement(".settings-sidebar-nav");
+        root.FindAll(".settings-nav-item").Single(button =>
+            button.QuerySelector(".settings-nav-item-title")!.TextContent == section).Click();
+
+        var quickActions = root.FindAll(".settings-main-content button strong");
+        Assert.Contains(quickActions, label => label.TextContent == "Auto Check-In Messaging");
+        var kioskActions = quickActions.Where(label => label.TextContent == "Kiosk Check-In");
+        if (web)
         {
-            Assert.Contains("Kiosk Check-In", cut.Markup, StringComparison.Ordinal);
-            Assert.DoesNotContain("Documentation &amp; Compliance", cut.Markup, StringComparison.Ordinal);
-        });
+            Assert.Single(kioskActions).Closest("button")!.Click();
+            Assert.Equal("/settings/kiosk", new Uri(navigation.Uri).AbsolutePath);
+        }
+        else
+        {
+            Assert.Empty(kioskActions);
+        }
     }
 
     [Fact]

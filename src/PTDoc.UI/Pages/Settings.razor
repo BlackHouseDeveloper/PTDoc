@@ -1,7 +1,6 @@
 @page "/settings"
-@attribute [Authorize(Roles = "Admin,Owner,PT")]
+@attribute [Authorize(Roles = Settings.AccessRoles)]
 @page "/settings/auto-check-in"
-@page "/settings/kiosk"
 @inject NavigationManager Navigation
 @implements IDisposable
 
@@ -46,7 +45,7 @@
             {
                 <AutoCheckInSettings />
             }
-            else if (activeSection == "kiosk")
+            else if (IsKioskAdministrationPage && activeSection == "kiosk")
             {
                 <KioskAdministrationSettings />
             }
@@ -82,6 +81,10 @@
 </div>
 
 @code {
+    public const string AccessRoles = Roles.Admin + "," + Roles.Owner + "," + Roles.PT;
+
+    [Parameter] public bool IsKioskAdministrationPage { get; set; }
+
     private string activeSection = "documentation";
     private bool isClinicalApproverOnly = true;
     private bool authorizationResolved;
@@ -120,12 +123,16 @@
             return;
         }
 
+        if (IsKioskAdministrationPage)
+        {
+            activeSection = "kiosk";
+            return;
+        }
+
         var path = new Uri(location).AbsolutePath.TrimEnd('/');
         activeSection = path.EndsWith("/auto-check-in", StringComparison.OrdinalIgnoreCase)
             ? "auto-check-in"
-            : path.EndsWith("/kiosk", StringComparison.OrdinalIgnoreCase)
-                ? "kiosk"
-                : "roles-permissions";
+            : "roles-permissions";
     }
 
     private void HandleSectionSelected(string sectionKey)
