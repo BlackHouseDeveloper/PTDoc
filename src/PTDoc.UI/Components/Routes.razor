@@ -16,7 +16,11 @@
 
 <Router AppAssembly="@typeof(Routes).Assembly" AdditionalAssemblies="@AdditionalAssemblies">
     <Found Context="routeData">
-        @if (ShouldUseStandaloneIntakeLayout(routeData))
+        @if (routeData.PageType == typeof(KioskCheckIn))
+        {
+            <RouteView RouteData="@routeData" />
+        }
+        else if (ShouldUseStandaloneIntakeLayout(routeData))
         {
             <StandaloneIntakeAccessGate @key="NavigationManager.Uri">
                 <RouteView RouteData="@routeData" DefaultLayout="@typeof(StandaloneIntakeLayout)" />
@@ -54,50 +58,37 @@
         AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
         NavigationManager.LocationChanged += OnLocationChanged;
 
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        await ApplyAuthenticationStateAsync(authState);
+        await ApplyAuthenticationStateAsync();
     }
 
-    private void OnAuthenticationStateChanged(Task<AuthenticationState> authStateTask)
-    {
-        _ = HandleAuthenticationStateChangedAsync(authStateTask);
-    }
+    private void OnAuthenticationStateChanged(Task<AuthenticationState> state) =>
+        _ = InvokeAsync(() => RefreshAuthenticationAsync(state));
 
-    private async Task HandleAuthenticationStateChangedAsync(Task<AuthenticationState> authStateTask)
-    {
-        try
-        {
-            var authState = await authStateTask;
-            await ApplyAuthenticationStateAsync(authState);
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Authentication state change handler failed.");
-        }
-    }
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args) =>
+        _ = InvokeAsync(() => RefreshAuthenticationAsync());
 
-    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args)
-    {
-        _ = ValidateAuthenticationOnNavigationAsync();
-    }
-
-    private async Task ValidateAuthenticationOnNavigationAsync()
+    private async Task RefreshAuthenticationAsync(Task<AuthenticationState>? state = null)
     {
         try
         {
-            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            await ApplyAuthenticationStateAsync(authState);
-            await InvokeAsync(StateHasChanged);
+            await ApplyAuthenticationStateAsync(state);
+            StateHasChanged();
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Authentication validation during navigation failed.");
+            Logger.LogError(ex, "Authentication validation failed.");
         }
     }
 
-    private async Task ApplyAuthenticationStateAsync(AuthenticationState authState)
+    private async Task ApplyAuthenticationStateAsync(Task<AuthenticationState>? state = null)
     {
+        var location = NavigationManager.Uri;
+        if (KioskCheckIn.IsPublicKiosk(location)) return;
+
+        var authState = await (state ?? AuthenticationStateProvider.GetAuthenticationStateAsync());
+        // A staff authentication check can finish after navigation to the public station.
+        if (location != NavigationManager.Uri) return;
+
         authenticatedUser = authState.User.Identity?.IsAuthenticated == true ? authState.User : null;
         if (authenticatedUser is null)
         {

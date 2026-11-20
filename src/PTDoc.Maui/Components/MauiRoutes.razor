@@ -11,33 +11,44 @@
 
 <Router AppAssembly="@typeof(MauiRoutes).Assembly" AdditionalAssemblies="@SharedPageAssemblies">
     <Found Context="routeData">
-        @if (routeData.PageType == typeof(IntakeWizardPage))
+        @if (routeData.PageType == typeof(KioskCheckIn))
         {
-            <AuthorizeView>
-                <Authorized Context="auth">
-                    @if (auth.User.IsInRole(Roles.Patient) || StandaloneIntakeLink.IsPatientMode(new Uri(Navigation.Uri), out _))
-                    {
-                        <MauiStandaloneIntakeRoute RouteData="@routeData" />
-                    }
-                    else
-                    {
-                        @AuthorizedRoute(routeData)
-                    }
-                </Authorized>
-                <NotAuthorized><MauiStandaloneIntakeRoute RouteData="@routeData" /></NotAuthorized>
-                <Authorizing><p>Loading...</p></Authorizing>
-            </AuthorizeView>
+            <RouteView RouteData="@routeData" />
         }
         else
         {
-            @AuthorizedRoute(routeData)
+            <CascadingAuthenticationState>
+                @if (routeData.PageType == typeof(IntakeWizardPage))
+                {
+                    <AuthorizeView>
+                        <Authorized Context="auth">
+                            @if (auth.User.IsInRole(Roles.Patient) || StandaloneIntakeLink.IsPatientMode(new Uri(Navigation.Uri), out _))
+                            {
+                                <MauiStandaloneIntakeRoute RouteData="@routeData" />
+                            }
+                            else
+                            {
+                                @AuthorizedRoute(routeData)
+                            }
+                        </Authorized>
+                        <NotAuthorized><MauiStandaloneIntakeRoute RouteData="@routeData" /></NotAuthorized>
+                        <Authorizing><p>Loading...</p></Authorizing>
+                    </AuthorizeView>
+                }
+                else
+                {
+                    @AuthorizedRoute(routeData)
+                }
+            </CascadingAuthenticationState>
         }
     </Found>
 
     <NotFound>
-        <LayoutView Layout="@typeof(MainLayout)">
-            <p>Sorry, there's nothing at this address.</p>
-        </LayoutView>
+        <CascadingAuthenticationState>
+            <LayoutView Layout="@typeof(MainLayout)">
+                <p>Sorry, there's nothing at this address.</p>
+            </LayoutView>
+        </CascadingAuthenticationState>
     </NotFound>
 </Router>
 

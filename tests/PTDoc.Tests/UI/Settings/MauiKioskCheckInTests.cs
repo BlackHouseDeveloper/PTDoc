@@ -1,8 +1,11 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using Bunit;
-using Bunit.TestDoubles;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Services;
@@ -10,6 +13,7 @@ using PTDoc.Application.Settings;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Services;
+using PTDoc.Maui.Auth;
 using PTDoc.Maui.Components;
 using PTDoc.Tests.Integration;
 using PTDoc.UI.Components.Layout;
@@ -21,24 +25,35 @@ namespace PTDoc.Tests.UI.Settings;
 [Trait("Category", "CoreCi")]
 public sealed class MauiKioskCheckInTests(PtDocApiFactory api) : TestContext, IClassFixture<PtDocApiFactory>
 {
-    [Fact]
-    public async Task AnonymousKiosk_WithExpiredStaffToken_EnrollsStationAndChecksInAppointment()
+    [Theory]
+    [InlineData(-5)]
+    [InlineData(15)]
+    public async Task PublicKiosk_EnrollsAndChecksInWithoutOpeningStaffSession(int staffTokenLifetimeMinutes)
     {
         var (appointmentId, enrollmentCode, appointmentCode) = await PrepareAppointmentAndStationAsync();
+        var expires = DateTimeOffset.UtcNow.AddMinutes(staffTokenLifetimeMinutes);
+        var accessToken = new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken(
+            claims: [new Claim(ClaimTypes.Name, "clinician"), new Claim(ClaimTypes.Role, Roles.PT)],
+            expires: expires.UtcDateTime));
         var staffTokens = new Mock<ITokenStore>();
         staffTokens.Setup(store => store.GetAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TokenResponse("expired-staff", "refresh", DateTimeOffset.UtcNow.AddMinutes(-5)));
+            .ReturnsAsync(new TokenResponse(accessToken, "refresh", expires));
         var refresh = new Mock<ITokenService>(MockBehavior.Strict);
         var staff = new Mock<IUserService>(MockBehavior.Strict);
         Services.AddScoped(_ => api.CreateDefaultClient(new Uri("https://localhost"),
             new AuthenticatedHttpMessageHandler(staffTokens.Object, refresh.Object, staff.Object)));
         Services.AddSettingsAdministrationApiClient();
-        this.AddTestAuthorization();
-        ComponentFactories.AddStub<MainLayout>(parameters => parameters.Get(layout => layout.Body)!);
+        Services.AddSingleton<AuthenticationStateProvider>(_ => new MauiAuthenticationStateProvider(
+            staffTokens.Object, refresh.Object, NullLogger<MauiAuthenticationStateProvider>.Instance));
+        var badges = new Mock<INavigationBadgeService>(MockBehavior.Strict);
+        Services.AddSingleton(badges.Object);
         JSInterop.Setup<string?>("localStorage.getItem", "ptdoc.kiosk.deviceCredential").SetResult(null);
         JSInterop.SetupVoid("localStorage.setItem", _ => true).SetVoidResult();
         Services.GetRequiredService<NavigationManager>().NavigateTo("/kiosk");
-        var kiosk = RenderComponent<MauiRoutes>().FindComponent<KioskCheckIn>();
+        var router = RenderComponent<MauiAppRoot>();
+        var kiosk = router.FindComponent<KioskLayout>().FindComponent<KioskCheckIn>();
+        Assert.Empty(router.FindComponents<MainLayout>());
+        Assert.Empty(router.FindComponents<NavMenu>());
 
         kiosk.Find("form input").Change(enrollmentCode);
         await kiosk.Find("form").SubmitAsync();
@@ -55,6 +70,7 @@ public sealed class MauiKioskCheckInTests(PtDocApiFactory api) : TestContext, IC
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var status = await db.Appointments.Where(item => item.Id == appointmentId).Select(item => item.Status).SingleAsync();
         Assert.Equal(AppointmentStatus.CheckedIn, status);
+        badges.VerifyNoOtherCalls();
         staffTokens.VerifyNoOtherCalls();
         refresh.VerifyNoOtherCalls();
         staff.VerifyNoOtherCalls();
@@ -88,7 +104,7 @@ public sealed class MauiKioskCheckInTests(PtDocApiFactory api) : TestContext, IC
         await db.SaveChangesAsync();
 
         var service = scope.ServiceProvider.GetRequiredService<IKioskCheckInService>();
-        var station = await service.CreateStationAsync(clinicId, new CreateKioskStationRequest("Test lobby"), clinicianId, "test-enrollment");
+        var station = await service.CreateStationAsync(clinicId, new CreateKioskStationRequest($"Test lobby {appointment.Id:N}"), clinicianId, "test-enrollment");
         var token = await service.CreateCheckInTokenAsync(clinicId, appointment.Id, clinicianId, "test-check-in");
         return (appointment.Id, Assert.IsType<KioskEnrollmentCodeDto>(station.Value).Code,
             Assert.IsType<KioskCheckInTokenDto>(token.Value).NumericCode);

@@ -71,6 +71,24 @@ public sealed class WebSessionActivityMonitorTests : TestContext
     }
 
     [Fact]
+    public async Task ExpiredStaffSession_ShowsRecoveryOnlyAfterLeavingPublicKiosk()
+    {
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        navigation.NavigateTo("/KIOSK/?station=1#enroll");
+        var cut = RenderComponent<WebSessionActivityMonitor>();
+
+        await cut.InvokeAsync(() => cut.Instance.SessionEnded("SessionEnded"));
+
+        Assert.Empty(cut.FindAll("[role=alert]"));
+        Assert.Equal("/KIOSK/", new Uri(navigation.Uri).AbsolutePath);
+        await cut.InvokeAsync(() => navigation.NavigateTo("/settings/kiosk"));
+        cut.WaitForAssertion(() => Assert.Contains("Sign in", cut.Find("button").TextContent));
+
+        await cut.InvokeAsync(() => navigation.NavigateTo("/kiosk"));
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role=alert]")));
+    }
+
+    [Fact]
     public async Task ApiRejection_AlsoShowsRecoveryWithoutWaitingForBrowserCallback()
     {
         var state = Services.GetRequiredService<WebCircuitSessionState>();

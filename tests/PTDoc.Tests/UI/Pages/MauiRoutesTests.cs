@@ -48,6 +48,7 @@ public sealed class MauiRoutesTests : TestContext
     [InlineData("/patient/4e9089a3-34f8-4b79-bc33-afef83d51292", typeof(PatientProfile))]
     public void SharedRoute_PassesMatchedPageAndParametersToAuthorization(string path, Type pageType)
     {
+        this.AddTestAuthorization();
         ComponentFactories.AddStub<MainLayout>();
         ComponentFactories.AddStub<AuthorizeRouteView>();
         Services.GetRequiredService<NavigationManager>().NavigateTo(path);
