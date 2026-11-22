@@ -1,6 +1,8 @@
+@page "/settings"
+@page "/settings/auto-check-in"
 @page "/settings/kiosk"
 @using Microsoft.AspNetCore.Authorization
 @using PTDoc.UI.Pages
 @attribute [Authorize(Roles = Settings.AccessRoles)]
 
-<Settings IsKioskAdministrationPage="true" />
+<Settings WebAdministration="true" />

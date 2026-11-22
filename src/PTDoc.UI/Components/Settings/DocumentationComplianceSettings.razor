@@ -237,22 +237,25 @@
                 break;
         }
 
-        <section class="documentation-panel quick-admin-tools" aria-labelledby="documentation-quick-admin-title">
-            <header><h2 id="documentation-quick-admin-title">Quick Admin Tools</h2><p>Manage connected patient check-in workflows.</p></header>
-            <div class="quick-admin-tools__items">
-                <button type="button" class="quick-admin-tools__row" @onclick="OpenAutoCheckInMessaging">
-                    <span class="quick-admin-tools__copy"><span class="quick-admin-tools__icon"><img src="_content/PTDoc.UI/images/settings/quick-message.svg" alt="" aria-hidden="true" /></span><span><strong>Auto Check-In Messaging</strong><small>Configure automated intake and check-in messages</small></span></span>
-                    <img class="quick-admin-tools__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
-                </button>
-                @if (OpenKioskAdministration is not null)
-                {
-                    <button type="button" class="quick-admin-tools__row" @onclick="OpenKioskAdministration">
-                        <span class="quick-admin-tools__copy"><span class="quick-admin-tools__icon"><img src="_content/PTDoc.UI/images/settings/quick-kiosk.svg" alt="" aria-hidden="true" /></span><span><strong>Kiosk Check-In</strong><small>Enroll stations and manage kiosk access</small></span></span>
+        @if (WebAdministration)
+        {
+            <section class="documentation-panel quick-admin-tools" aria-labelledby="documentation-quick-admin-title">
+                <header><h2 id="documentation-quick-admin-title">Quick Admin Tools</h2><p>Manage connected patient check-in workflows.</p></header>
+                <div class="quick-admin-tools__items">
+                    <button type="button" class="quick-admin-tools__row" @onclick="OpenAutoCheckInMessaging">
+                        <span class="quick-admin-tools__copy"><span class="quick-admin-tools__icon"><img src="_content/PTDoc.UI/images/settings/quick-message.svg" alt="" aria-hidden="true" /></span><span><strong>Auto Check-In Messaging</strong><small>Configure automated intake and check-in messages</small></span></span>
                         <img class="quick-admin-tools__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
                     </button>
-                }
-            </div>
-        </section>
+                    @if (OpenKioskAdministration is not null)
+                    {
+                        <button type="button" class="quick-admin-tools__row" @onclick="OpenKioskAdministration">
+                            <span class="quick-admin-tools__copy"><span class="quick-admin-tools__icon"><img src="_content/PTDoc.UI/images/settings/quick-kiosk.svg" alt="" aria-hidden="true" /></span><span><strong>Kiosk Check-In</strong><small>Enroll stations and manage kiosk access</small></span></span>
+                            <img class="quick-admin-tools__chevron" src="_content/PTDoc.UI/images/settings/chevron.svg" alt="" aria-hidden="true" />
+                        </button>
+                    }
+                </div>
+            </section>
+        }
 
         <footer class="documentation-settings__action-bar" aria-label="Documentation settings actions">
             <span class="documentation-settings__dirty-state">@(_isDirty ? "Unsaved preview changes" : "Preview matches the loaded defaults")</span>
@@ -278,6 +281,8 @@
 </section>
 
 @code {
+    [Parameter] public bool WebAdministration { get; set; }
+
     private ElementReference _root;
     private readonly ElementReference[] _tabButtons = new ElementReference[Tabs.Count];
     private IJSObjectReference? _keyboardModule;

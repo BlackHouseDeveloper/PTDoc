@@ -66,7 +66,7 @@ public static class MauiProgram
         builder.Services.AddScoped<IPatientService, PatientApiService>();
         builder.Services.AddScoped<INoteService, NoteListApiService>();
         builder.Services.AddScoped<IAppointmentService, AppointmentApiService>();
-        builder.Services.AddSettingsAdministrationApiClient();
+        builder.Services.AddAppointmentAndKioskApiClient();
         builder.Services.AddScoped<IPaymentClientService, PaymentClientApiService>();
         builder.Services.AddScoped<IIntegrationClientService, IntegrationClientApiService>();
         builder.Services.AddScoped<INoteWorkspaceService, NoteWorkspaceApiService>();

@@ -36,6 +36,7 @@
 
   <ItemGroup>
     <RazorComponent Include="../../src/PTDoc.Maui/Components/MauiLogout.razor" Link="Maui/MauiLogout.razor" />
+    <RazorComponent Include="../../src/PTDoc.Maui/Components/MauiSettings.razor" Link="Maui/MauiSettings.razor" />
     <RazorComponent Include="../../src/PTDoc.Maui/Components/MauiAppRoot.razor" Link="Maui/MauiAppRoot.razor" />
     <RazorComponent Include="../../src/PTDoc.Maui/Components/MauiRoutes.razor" Link="Maui/MauiRoutes.razor" />
     <RazorComponent Include="../../src/PTDoc.Maui/Components/MauiStandaloneIntakeRoute.razor" Link="Maui/MauiStandaloneIntakeRoute.razor" />

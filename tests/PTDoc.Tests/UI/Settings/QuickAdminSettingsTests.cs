@@ -244,7 +244,7 @@ public sealed class QuickAdminSettingsTests : TestContext
 
         await router.InvokeAsync(() => navigation.NavigateTo("/settings/kiosk"));
         router.WaitForElement("#kiosk-admin-title");
-        Assert.Single(router.FindComponents<WebKioskSettings>());
+        Assert.Single(router.FindComponents<WebSettings>());
 
         await router.InvokeAsync(() => navigation.NavigateTo("/settings/auto-check-in"));
         router.WaitForElement("#auto-check-in-title");
@@ -252,9 +252,11 @@ public sealed class QuickAdminSettingsTests : TestContext
     }
 
     [Theory]
+    [InlineData("/settings/auto-check-in")]
+    [InlineData("/SETTINGS/AUTO-CHECK-IN/?from=settings")]
     [InlineData("/settings/kiosk")]
     [InlineData("/SETTINGS/KIOSK/?station=1#stations")]
-    public async Task NativeAdmin_CannotOpenKioskAdministrationAndCanReachPublicEnrollment(string directLink)
+    public async Task NativeAdmin_CannotOpenWebAdministrationRoutesAndCanReachPublicEnrollment(string directLink)
     {
         var authorization = this.AddTestAuthorization();
         authorization.SetAuthorized("native-admin");
@@ -272,6 +274,7 @@ public sealed class QuickAdminSettingsTests : TestContext
         Assert.Single(router.FindComponents<NotFound>());
         Assert.Equal(navigation.ToAbsoluteUri(directLink), new Uri(navigation.Uri));
         Assert.Empty(router.FindComponents<KioskAdministrationSettings>());
+        Assert.Empty(router.FindComponents<AutoCheckInSettings>());
         stations.VerifyNoOtherCalls();
 
         await router.InvokeAsync(() => navigation.NavigateTo("/kiosk"));
@@ -280,56 +283,44 @@ public sealed class QuickAdminSettingsTests : TestContext
     }
 
     [Theory]
-    [InlineData(false, "Roles & Permissions")]
-    [InlineData(false, "Scheduling & Visit Types")]
-    [InlineData(false, "Documentation and Compliance")]
-    [InlineData(true, "Roles & Permissions")]
-    [InlineData(true, "Scheduling & Visit Types")]
-    [InlineData(true, "Documentation and Compliance")]
-    public void KioskAdministrationShortcut_IsAvailableOnlyOnWeb(bool web, string section)
+    [InlineData("Roles & Permissions")]
+    [InlineData("Scheduling & Visit Types")]
+    [InlineData("Documentation and Compliance")]
+    public void WebSettings_OfferAutoCheckInAndKioskShortcuts(string section)
     {
-        var root = RenderAdminSettings(web);
-        var navigation = Services.GetRequiredService<NavigationManager>();
+        var root = RenderAdminSettings(web: true);
         root.FindAll(".settings-nav-item").Single(button =>
             button.QuerySelector(".settings-nav-item-title")!.TextContent == section).Click();
 
         var quickActions = root.FindAll(".settings-main-content button strong");
         Assert.Contains(quickActions, label => label.TextContent == "Auto Check-In Messaging");
-        var kioskActions = quickActions.Where(label => label.TextContent == "Kiosk Check-In");
-        if (web)
-        {
-            Assert.Single(kioskActions).Closest("button")!.Click();
-            root.WaitForElement("#kiosk-admin-title");
-            Assert.Single(root.FindComponents<WebKioskSettings>());
-            Assert.Equal("/settings/kiosk", new Uri(navigation.Uri).AbsolutePath);
-        }
-        else
-        {
-            Assert.Empty(kioskActions);
-        }
+        quickActions.Single(label => label.TextContent == "Kiosk Check-In").Closest("button")!.Click();
+        root.WaitForElement("#kiosk-admin-title");
     }
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void RecoveryCodeRegeneration_IsAvailableOnlyFromWebSecuritySettings(bool web)
+    [Fact]
+    public void NativeSettings_OpenDocumentationWithoutWebAdministration()
     {
-        var root = RenderAdminSettings(web);
+        var root = RenderAdminSettings(web: false);
+        Assert.Single(root.FindComponents<DocumentationComplianceSettings>());
+        var sections = root.FindAll(".settings-nav-item-title").Select(title => title.TextContent).ToArray();
+        Assert.Contains("Documentation and Compliance", sections);
+        Assert.DoesNotContain("Roles & Permissions", sections);
+        Assert.DoesNotContain("Scheduling & Visit Types", sections);
+        Assert.Empty(root.FindAll("#security-settings-tab, .quick-admin-tools"));
+    }
+
+    [Fact]
+    public void WebSecuritySettings_OpenRecoveryCodeRegeneration()
+    {
+        var root = RenderAdminSettings(web: true);
         root.Find("#security-settings-tab").Click();
         var actions = root.FindAll("#roles-settings-panel .manage-roles-row");
         Assert.Contains(actions, action => action.TextContent.Contains("Manage Individual Roles"));
-        var recovery = actions.Where(action => action.TextContent.Contains("Regenerate My Recovery Codes"));
-        if (web)
-        {
-            Assert.Single(recovery).Click();
-            var navigation = (FakeNavigationManager)Services.GetRequiredService<NavigationManager>();
-            Assert.Contains(navigation.History, entry => entry.Options.ForceLoad &&
-                navigation.ToAbsoluteUri(entry.Uri).PathAndQuery == "/auth/mfa/recovery-codes?returnUrl=%2Fsettings");
-        }
-        else
-        {
-            Assert.Empty(recovery);
-        }
+        actions.Single(action => action.TextContent.Contains("Regenerate My Recovery Codes")).Click();
+        var navigation = (FakeNavigationManager)Services.GetRequiredService<NavigationManager>();
+        Assert.Contains(navigation.History, entry => entry.Options.ForceLoad &&
+            navigation.ToAbsoluteUri(entry.Uri).PathAndQuery == "/auth/mfa/recovery-codes?returnUrl=%2Fsettings");
     }
 
     private IRenderedFragment RenderAdminSettings(bool web, string path = "/settings")

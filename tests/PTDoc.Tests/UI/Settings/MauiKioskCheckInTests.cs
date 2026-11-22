@@ -42,7 +42,7 @@ public sealed class MauiKioskCheckInTests(PtDocApiFactory api) : TestContext, IC
         var staff = new Mock<IUserService>(MockBehavior.Strict);
         Services.AddScoped(_ => api.CreateDefaultClient(new Uri("https://localhost"),
             new AuthenticatedHttpMessageHandler(staffTokens.Object, refresh.Object, staff.Object)));
-        Services.AddSettingsAdministrationApiClient();
+        Services.AddAppointmentAndKioskApiClient();
         Services.AddSingleton<AuthenticationStateProvider>(_ => new MauiAuthenticationStateProvider(
             staffTokens.Object, refresh.Object, NullLogger<MauiAuthenticationStateProvider>.Instance));
         var badges = new Mock<INavigationBadgeService>(MockBehavior.Strict);

@@ -24,9 +24,7 @@ public sealed class SettingsPageAuthorizationTests : TestContext
         Services.AddSingleton<IHeaderConfigurationService, HeaderConfigurationService>();
         var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
         navigation.NavigateTo(route);
-        IRenderedFragment cut = route == "/settings/kiosk"
-            ? RenderComponent<WebKioskSettings>()
-            : RenderComponent<global::PTDoc.UI.Pages.Settings>();
+        IRenderedFragment cut = RenderComponent<WebSettings>();
         Assert.Contains("Loading settings", cut.Markup, StringComparison.Ordinal);
         await cut.InvokeAsync(() => authentication.Complete(role));
         cut.WaitForAssertion(() => Assert.Equal(heading, cut.Find(".settings-main-content h1").TextContent));
@@ -48,8 +46,9 @@ public sealed class SettingsPageAuthorizationTests : TestContext
         Services.AddSingleton(templates.Object);
         Services.AddSingleton(Mock.Of<IToastService>());
 
+        Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>().NavigateTo(kioskRoute ? "/settings/kiosk" : "/settings");
         IRenderedFragment cut = kioskRoute
-            ? RenderComponent<WebKioskSettings>()
+            ? RenderComponent<WebSettings>()
             : RenderComponent<global::PTDoc.UI.Pages.Settings>();
 
         Assert.Contains("Loading settings", cut.Markup, StringComparison.Ordinal);

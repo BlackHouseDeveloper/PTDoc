@@ -44,9 +44,12 @@ public sealed class SettingsAdministrationApiClientTests
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://localhost") };
         var services = new ServiceCollection();
         services.AddSingleton(http);
-        services.AddSettingsAdministrationApiClient();
+        services.AddAppointmentAndKioskApiClient();
         using var provider = services.BuildServiceProvider();
         using var scope = provider.CreateScope();
+        Assert.Null(scope.ServiceProvider.GetService<IRolePermissionAdministrationService>());
+        Assert.Null(scope.ServiceProvider.GetService<ISecurityPolicyAdministrationService>());
+        Assert.Null(scope.ServiceProvider.GetService<IAutoCheckInAdministrationService>());
         var client = scope.ServiceProvider.GetRequiredService<ISchedulingAdministrationService>();
 
         Assert.Equal("Custom visit", Assert.Single(await client.GetVisitTypesAsync(Guid.Empty, false)).Name);
