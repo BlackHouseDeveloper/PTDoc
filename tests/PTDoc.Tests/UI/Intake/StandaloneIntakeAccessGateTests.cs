@@ -80,6 +80,42 @@ public sealed class StandaloneIntakeAccessGateTests : TestContext
         Assert.Null(stored);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BareIntake_RequiresAnInviteBoundSessionThatSurvivesValidation(bool inviteBound)
+    {
+        var expires = DateTimeOffset.UtcNow.AddMinutes(5);
+        IntakeSessionToken? stored = inviteBound
+            ? IntakeSessionToken.FromVerifiedInvite("access", expires, "original")
+            : new IntakeSessionToken("access", expires);
+        var validation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var store = new Mock<IIntakeSessionStore>();
+        store.Setup(item => item.GetAsync(default)).ReturnsAsync(() => stored);
+        store.Setup(item => item.ClearAsync(default)).Callback(() => stored = null).Returns(Task.CompletedTask);
+        var invites = new Mock<IIntakeInviteService>(MockBehavior.Strict);
+        invites.Setup(item => item.ValidateAccessTokenAsync("access", default)).Returns(validation.Task);
+        Services.AddSingleton(store.Object);
+        Services.AddSingleton(invites.Object);
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/intake?mode=patient");
+
+        var gate = RenderComponent<StandaloneIntakeAccessGate>(
+            parameters => parameters.AddChildContent("<p>Authorized intake</p>"));
+
+        if (inviteBound)
+        {
+            gate.WaitForAssertion(() =>
+                invites.Verify(item => item.ValidateAccessTokenAsync("access", default), Times.Once));
+            await gate.InvokeAsync(() => store.Object.ClearAsync());
+        }
+
+        validation.SetResult(true);
+        gate.WaitForAssertion(() => Assert.Contains("Verify Your Identity", gate.Markup));
+        Assert.DoesNotContain("Authorized intake", gate.Markup);
+        if (!inviteBound)
+            invites.VerifyNoOtherCalls();
+    }
+
     [Fact]
     public void CheckAccess_RunsAfterFirstRender()
     {

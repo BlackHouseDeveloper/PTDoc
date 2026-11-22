@@ -135,12 +135,44 @@ public sealed class WebLogoutTests : TestContext
         Assert.Null(await replacement.GetAsync());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ClearingStorage_RejectsSavesDuringClearAndWaitsForAStartedWrite(bool web)
+    {
+        var releaseWrite = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tab = new TabStorage { BeforeWrite = releaseWrite.Task };
+        IIntakeSessionStore store = web
+            ? new WebIntakeSessionStore(tab.Runtime, Authentication("patient-a"), new WebCircuitSessionState(),
+                new EphemeralDataProtectionProvider())
+            : new JsIntakeSessionStore(tab.Runtime);
+        var expires = DateTimeOffset.UtcNow.AddMinutes(5);
+        var old = IntakeSessionToken.FromVerifiedInvite("old", expires, "original");
+        var replacement = IntakeSessionToken.FromVerifiedInvite("replacement", expires, "next");
+
+        var startedWrite = store.SaveAsync(old);
+        Assert.False(startedWrite.IsCompleted);
+        var clear = store.ClearAsync();
+        var concurrentSave = store.SaveAsync(old);
+        Assert.Null(await store.GetAsync());
+        Assert.Equal(0, tab.RemovalAttempts);
+
+        releaseWrite.SetResult();
+        await Task.WhenAll(startedWrite, clear, concurrentSave);
+        Assert.Equal(1, tab.WriteAttempts);
+        Assert.Null(tab.Saved);
+        Assert.Null(await store.GetAsync());
+
+        await store.SaveAsync(replacement);
+        Assert.Equal(replacement, await store.GetAsync());
+    }
+
     [Fact]
     public async Task AnonymousIntake_RequiresVerificationForLegacyStorageAndResumesAfterReload()
     {
         var protection = new EphemeralDataProtectionProvider();
         var tab = new TabStorage();
-        var intake = new IntakeSessionToken("anonymous-token", DateTimeOffset.UtcNow.AddHours(1));
+        var intake = IntakeSessionToken.FromVerifiedInvite("anonymous-token", DateTimeOffset.UtcNow.AddHours(1), "invite");
         tab.Saved = System.Text.Json.JsonSerializer.Serialize(intake);
         var current = new WebIntakeSessionStore(tab.Runtime, Authentication(null), new WebCircuitSessionState(), protection);
 
@@ -178,10 +210,12 @@ public sealed class WebLogoutTests : TestContext
                 .Returns(() => ValueTask.FromResult<string?>(Saved));
             js.Setup(item => item.InvokeAsync<IJSVoidResult>(
                     "sessionStorage.setItem", default, It.Is<object?[]?>(args => args != null && Equals(args[0], StorageKey))))
-                .Returns((string _, CancellationToken _, object?[]? args) =>
+                .Returns(async (string _, CancellationToken _, object?[]? args) =>
                 {
+                    WriteAttempts++;
+                    await BeforeWrite;
                     Saved = (string)args![1]!;
-                    return ValueTask.FromResult<IJSVoidResult>(null!);
+                    return (IJSVoidResult)null!;
                 });
             js.Setup(item => item.InvokeAsync<IJSVoidResult>("sessionStorage.removeItem", default, new object?[] { StorageKey }))
                 .Returns(() =>
@@ -201,6 +235,8 @@ public sealed class WebLogoutTests : TestContext
         public IJSRuntime Runtime { get; }
         public string? Saved { get; set; }
         public bool RemovalFails { get; init; }
+        public Task BeforeWrite { get; init; } = Task.CompletedTask;
+        public int WriteAttempts { get; private set; }
         public int RemovalAttempts { get; private set; }
     }
 }

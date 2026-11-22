@@ -312,7 +312,7 @@ public sealed class IntakeApiServiceTests
 
         var service = CreateService(
             handler,
-            new IntakeSessionToken("session-token", DateTimeOffset.UtcNow.AddMinutes(30)),
+            IntakeSessionToken.FromVerifiedInvite("session-token", DateTimeOffset.UtcNow.AddMinutes(30), "invite"),
             $"https://localhost/intake/{patientId:D}?mode=patient");
 
         await service.SaveDraftAsync(new IntakeResponseDraft
@@ -879,7 +879,7 @@ public sealed class IntakeApiServiceTests
 
         var service = CreateService(
             handler,
-            new IntakeSessionToken("session-token", DateTimeOffset.UtcNow.AddMinutes(30)),
+            IntakeSessionToken.FromVerifiedInvite("session-token", DateTimeOffset.UtcNow.AddMinutes(30), "invite"),
             $"https://localhost/intake/{patientId:D}?mode=patient");
 
         var draft = await service.GetLatestByPatientIdAsync(patientId);

@@ -408,7 +408,7 @@ public sealed class MauiRoutesTests : TestContext
         Assert.Empty(router.FindComponents<Stub<RouteView>>());
         Assert.Empty(router.FindAll("#intake-contact-input"));
         invites.Verify(item => item.ValidateAccessTokenAsync(session.Token, default), Times.Once);
-        store.Verify(item => item.GetAsync(default), Times.Once);
+        store.Verify(item => item.GetAsync(default), Times.Exactly(2));
     }
 
     [Fact]

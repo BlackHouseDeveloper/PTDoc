@@ -232,7 +232,18 @@
                     if (_disposed || origin != NavigationManager.Uri) return;
                     if (isValid)
                     {
-                        OpenVerifiedIntake(uri, session);
+                        var current = await SessionStore.GetAsync();
+                        if (_disposed || origin != NavigationManager.Uri) return;
+                        if (current == session)
+                        {
+                            OpenVerifiedIntake(uri, session);
+                        }
+                        else
+                        {
+                            // Validation finished after the session was cleared or replaced.
+                            _inviteToken = inviteToken ?? string.Empty;
+                            _gateState = GateState.RequestContact;
+                        }
                         return;
                     }
                 }

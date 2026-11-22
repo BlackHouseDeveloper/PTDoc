@@ -5,30 +5,32 @@ namespace PTDoc.UI.Services;
 
 /// <summary>
 /// Stores the intake session access token in browser <c>sessionStorage</c> via JS interop.
-/// Works for both Blazor Server (web) and MAUI Blazor Hybrid.
+/// Used by MAUI Blazor Hybrid.
 /// </summary>
 public sealed class JsIntakeSessionStore : IIntakeSessionStore
 {
     private const string StorageKey = "ptdoc.intake.access_token";
 
     private readonly IJSRuntime _js;
-    private bool _cleared;
+    private readonly SemaphoreSlim _writes = new(1, 1);
+    private int _pendingClears;
     private long _clearVersion;
+    private long _readableVersion;
 
     public JsIntakeSessionStore(IJSRuntime js) => _js = js;
 
     public async Task<IntakeSessionToken?> GetAsync(CancellationToken cancellationToken = default)
     {
-        if (_cleared)
+        var version = Interlocked.Read(ref _clearVersion);
+        if (!IsReadable(version))
         {
             return null;
         }
 
-        var version = _clearVersion;
         try
         {
             var json = await _js.InvokeAsync<string?>("sessionStorage.getItem", cancellationToken, StorageKey);
-            if (version != _clearVersion || string.IsNullOrEmpty(json))
+            if (!IsReadable(version) || string.IsNullOrEmpty(json))
             {
                 return null;
             }
@@ -43,20 +45,53 @@ public sealed class JsIntakeSessionStore : IIntakeSessionStore
 
     public async Task SaveAsync(IntakeSessionToken token, CancellationToken cancellationToken = default)
     {
-        var version = _clearVersion;
-        var json = JsonSerializer.Serialize(token);
-        await _js.InvokeVoidAsync("sessionStorage.setItem", cancellationToken, StorageKey, json);
-        if (version == _clearVersion)
+        var version = Interlocked.Read(ref _clearVersion);
+        if (!IsCurrent(version)) return;
+
+        await _writes.WaitAsync(cancellationToken);
+        try
         {
-            _cleared = false;
+            if (!IsCurrent(version)) return;
+
+            var json = JsonSerializer.Serialize(token);
+            await _js.InvokeVoidAsync("sessionStorage.setItem", cancellationToken, StorageKey, json);
+            if (IsCurrent(version))
+            {
+                Interlocked.Exchange(ref _readableVersion, version);
+            }
+        }
+        finally
+        {
+            _writes.Release();
         }
     }
 
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
         // Stop serving the old token even if storage is unavailable. Sign-out can retry its removal.
-        _cleared = true;
-        _clearVersion++;
-        await _js.InvokeVoidAsync("sessionStorage.removeItem", cancellationToken, StorageKey);
+        Interlocked.Increment(ref _pendingClears);
+        Interlocked.Increment(ref _clearVersion);
+        try
+        {
+            await _writes.WaitAsync(cancellationToken);
+            try
+            {
+                await _js.InvokeVoidAsync("sessionStorage.removeItem", cancellationToken, StorageKey);
+            }
+            finally
+            {
+                _writes.Release();
+            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _pendingClears);
+        }
     }
+
+    private bool IsCurrent(long version) =>
+        Volatile.Read(ref _pendingClears) == 0 && version == Interlocked.Read(ref _clearVersion);
+
+    private bool IsReadable(long version) =>
+        IsCurrent(version) && version == Interlocked.Read(ref _readableVersion);
 }

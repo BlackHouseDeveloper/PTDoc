@@ -9,7 +9,8 @@ public record IntakeSessionToken(string Token, DateTimeOffset ExpiresAt, string?
     public static IntakeSessionToken FromVerifiedInvite(string token, DateTimeOffset expiresAt, string invite)
         => new(token, expiresAt, HashInvite(invite));
 
-    public bool MatchesInvite(string? invite) => invite is null || InviteHash == HashInvite(invite);
+    public bool MatchesInvite(string? invite) =>
+        !string.IsNullOrEmpty(InviteHash) && (invite is null || InviteHash == HashInvite(invite));
 
     private static string HashInvite(string invite)
         => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(invite)));

@@ -22,6 +22,7 @@ public sealed class WebIntakeSessionStore(
     private string? _originalScope;
     private long _revision;
     private long _readableRevision;
+    private int _pendingClears;
 
     public async Task<IntakeSessionToken?> GetAsync(CancellationToken cancellationToken = default)
     {
@@ -74,20 +75,29 @@ public sealed class WebIntakeSessionStore(
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
         // Reject reads and queued writes immediately, even if browser removal fails.
+        Interlocked.Increment(ref _pendingClears);
         Interlocked.Increment(ref _revision);
-        await _writes.WaitAsync(cancellationToken);
         try
         {
-            await js.InvokeVoidAsync("sessionStorage.removeItem", cancellationToken, StorageKey);
+            await _writes.WaitAsync(cancellationToken);
+            try
+            {
+                await js.InvokeVoidAsync("sessionStorage.removeItem", cancellationToken, StorageKey);
+            }
+            finally
+            {
+                _writes.Release();
+            }
         }
         finally
         {
-            _writes.Release();
+            Interlocked.Decrement(ref _pendingClears);
         }
     }
 
     private bool IsCurrent(long revision) =>
-        sessionState.EndedReason is null && revision == Interlocked.Read(ref _revision);
+        sessionState.EndedReason is null && Volatile.Read(ref _pendingClears) == 0
+        && revision == Interlocked.Read(ref _revision);
 
     private bool IsReadable(long revision) =>
         IsCurrent(revision) && revision == Interlocked.Read(ref _readableRevision);
