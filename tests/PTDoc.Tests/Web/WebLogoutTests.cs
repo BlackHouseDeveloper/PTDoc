@@ -1,13 +1,16 @@
-using System.Text.Json;
+using System.Security.Claims;
 using Bunit;
 using Bunit.TestDoubles;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
 using Microsoft.JSInterop.Infrastructure;
 using Moq;
 using PTDoc.Application.Auth;
+using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
 using PTDoc.Application.Services;
 using PTDoc.UI.Components;
@@ -17,6 +20,7 @@ using PTDoc.UI.Services;
 using PTDoc.Web.Auth;
 using PTDoc.Web.Components;
 using PTDoc.Web.Components.Pages;
+using PTDoc.Web.Services;
 
 namespace PTDoc.Tests.Web;
 
@@ -32,13 +36,10 @@ public sealed class WebLogoutTests : TestContext
     public async Task SwitchingPatientsInSameTab_RequiresVerificationForPreviousPatientsIntake(string? recoveryReason)
     {
         var session = IntakeSessionToken.FromVerifiedInvite("patient-a-session", DateTimeOffset.UtcNow.AddHours(1), "invite-a");
-        string? saved = JsonSerializer.Serialize(session);
-        var tab = new Mock<IJSRuntime>(MockBehavior.Strict);
-        tab.Setup(js => js.InvokeAsync<string?>("sessionStorage.getItem", default, new object?[] { StorageKey }))
-            .Returns(() => ValueTask.FromResult<string?>(saved));
-        tab.Setup(js => js.InvokeAsync<IJSVoidResult>("sessionStorage.removeItem", default, new object?[] { StorageKey }))
-            .Callback(() => saved = null)
-            .Returns(ValueTask.FromResult<IJSVoidResult>(null!));
+        var tab = new TabStorage();
+        var protection = new EphemeralDataProtectionProvider();
+        var initial = new WebIntakeSessionStore(tab.Runtime, Authentication("patient-a"), new WebCircuitSessionState(), protection);
+        await initial.SaveAsync(session);
         var path = $"/intake/{Guid.NewGuid()}";
 
         (IRenderedComponent<Routes> Router, Mock<IIntakeInviteService> Invites) OpenIntake(
@@ -49,7 +50,10 @@ public sealed class WebLogoutTests : TestContext
             var account = circuit.AddTestAuthorization();
             account.SetAuthorized(patient);
             account.SetRoles(Roles.Patient);
-            circuit.Services.AddScoped<IIntakeSessionStore>(_ => new JsIntakeSessionStore(tab.Object));
+            account.SetClaims(LocalSignInClaims(patient));
+            circuit.Services.AddScoped<IIntakeSessionStore>(services => new WebIntakeSessionStore(
+                tab.Runtime, services.GetRequiredService<AuthenticationStateProvider>(),
+                services.GetRequiredService<WebCircuitSessionState>(), protection));
             circuit.Services.AddScoped<IntakeInviteRenewal>();
             circuit.Services.AddScoped<WebCircuitSessionState>();
             circuit.Services.AddSingleton(invites.Object);
@@ -81,14 +85,14 @@ public sealed class WebLogoutTests : TestContext
         {
             var monitor = RenderComponent<WebSessionActivityMonitor>();
             await monitor.Instance.SessionEnded(recoveryReason);
-            Assert.NotNull(saved);
+            Assert.NotNull(tab.Saved);
             destination = recoveryReason == "SessionChanged" ? new Uri(navigation.Uri).PathAndQuery : "/login?session_expired=1";
             await monitor.Find("button").ClickAsync(new MouseEventArgs());
         }
 
         first.WaitForAssertion(() => Assert.Contains(navigation.History, entry =>
             entry.Options.ForceLoad && navigation.ToAbsoluteUri(entry.Uri).PathAndQuery == destination));
-        Assert.Null(saved);
+        Assert.Null(tab.Saved);
         Assert.Null(renewal.ForSession(navigation.ToAbsoluteUri(path), null));
 
         // The next login creates a fresh circuit in the same tab. The old API token is still valid.
@@ -102,29 +106,101 @@ public sealed class WebLogoutTests : TestContext
     }
 
     [Fact]
-    public async Task StorageFailure_RequiresSuccessfulRetryBeforeServerSignOut()
+    public async Task StorageFailure_StillSignsOutAndOldIntakeIsUnreadableToTheNextSession()
     {
-        var failRemoval = true;
-        JSInterop.SetupVoid("sessionStorage.removeItem", _ => failRemoval)
-            .SetException(new JSException("Storage unavailable"));
-        var removal = JSInterop.SetupVoid("sessionStorage.removeItem", _ => !failRemoval);
-        Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
+        var protection = new EphemeralDataProtectionProvider();
+        var tab = new TabStorage { RemovalFails = true };
+        var signedIn = new WebIntakeSessionStore(tab.Runtime, Authentication("patient-a"), new WebCircuitSessionState(), protection);
+        var intake = IntakeSessionToken.FromVerifiedInvite("patient-a-token", DateTimeOffset.UtcNow.AddHours(1), "invite-a");
+        await signedIn.SaveAsync(intake);
+        Assert.NotNull(tab.Saved);
+        var sameSignIn = new WebIntakeSessionStore(tab.Runtime, Authentication("patient-a"), new WebCircuitSessionState(), protection);
+        Assert.Equal(intake, await sameSignIn.GetAsync());
+        Services.AddSingleton<IIntakeSessionStore>(signedIn);
         Services.AddScoped<IntakeInviteRenewal>();
         var navigation = (FakeNavigationManager)Services.GetRequiredService<NavigationManager>();
         navigation.NavigateTo("/logout");
 
         var page = RenderComponent<WebLogout>();
-        page.WaitForElement("[role=alert]");
-        Assert.Equal("/logout", new Uri(navigation.Uri).AbsolutePath);
-
-        failRemoval = false;
-        var retry = page.Find("button").ClickAsync(new MouseEventArgs());
-        page.WaitForAssertion(() => Assert.Equal(2, JSInterop.Invocations["sessionStorage.removeItem"].Count));
-        Assert.Equal("/logout", new Uri(navigation.Uri).AbsolutePath);
-        removal.SetVoidResult();
-        await retry;
 
         page.WaitForAssertion(() => Assert.Equal("/auth/logout", new Uri(navigation.Uri).AbsolutePath));
         Assert.True(navigation.History.First().Options.ForceLoad);
+        Assert.Equal(1, tab.RemovalAttempts);
+        Assert.NotNull(tab.Saved);
+        Assert.Null(await signedIn.GetAsync());
+
+        var afterSignOut = new WebIntakeSessionStore(tab.Runtime, Authentication(null), new WebCircuitSessionState(), protection);
+        var replacement = new WebIntakeSessionStore(tab.Runtime, Authentication("patient-b"), new WebCircuitSessionState(), protection);
+        Assert.Null(await afterSignOut.GetAsync());
+        Assert.Null(await replacement.GetAsync());
+    }
+
+    [Fact]
+    public async Task AnonymousIntake_RequiresVerificationForLegacyStorageAndResumesAfterReload()
+    {
+        var protection = new EphemeralDataProtectionProvider();
+        var tab = new TabStorage();
+        var intake = new IntakeSessionToken("anonymous-token", DateTimeOffset.UtcNow.AddHours(1));
+        tab.Saved = System.Text.Json.JsonSerializer.Serialize(intake);
+        var current = new WebIntakeSessionStore(tab.Runtime, Authentication(null), new WebCircuitSessionState(), protection);
+
+        Assert.Null(await current.GetAsync());
+        await current.SaveAsync(intake);
+
+        var reloaded = new WebIntakeSessionStore(tab.Runtime, Authentication(null), new WebCircuitSessionState(), protection);
+        Assert.Equal(intake, await reloaded.GetAsync());
+    }
+
+    private static Claim[] LocalSignInClaims(string id) =>
+        [
+            new(PTDocClaimTypes.AuthenticationType, "web_cookie"),
+            new("ptdoc_web_session_id", id),
+            new(PTDocClaimTypes.ApiAccessToken, "staff-api-token"),
+            new(PTDocClaimTypes.ApiAccessTokenExpiresAt, DateTimeOffset.UtcNow.AddHours(1).ToString("O"))
+        ];
+
+    private static AuthenticationStateProvider Authentication(string? id)
+    {
+        var user = new ClaimsPrincipal(id is null
+            ? new ClaimsIdentity()
+            : new ClaimsIdentity(LocalSignInClaims(id), "Cookies"));
+        var authentication = new Mock<AuthenticationStateProvider>();
+        authentication.Setup(item => item.GetAuthenticationStateAsync()).ReturnsAsync(new AuthenticationState(user));
+        return authentication.Object;
+    }
+
+    private sealed class TabStorage
+    {
+        public TabStorage()
+        {
+            var js = new Mock<IJSRuntime>(MockBehavior.Strict);
+            js.Setup(item => item.InvokeAsync<string?>("sessionStorage.getItem", default, new object?[] { StorageKey }))
+                .Returns(() => ValueTask.FromResult<string?>(Saved));
+            js.Setup(item => item.InvokeAsync<IJSVoidResult>(
+                    "sessionStorage.setItem", default, It.Is<object?[]?>(args => args != null && Equals(args[0], StorageKey))))
+                .Returns((string _, CancellationToken _, object?[]? args) =>
+                {
+                    Saved = (string)args![1]!;
+                    return ValueTask.FromResult<IJSVoidResult>(null!);
+                });
+            js.Setup(item => item.InvokeAsync<IJSVoidResult>("sessionStorage.removeItem", default, new object?[] { StorageKey }))
+                .Returns(() =>
+                {
+                    RemovalAttempts++;
+                    if (RemovalFails)
+                    {
+                        return ValueTask.FromException<IJSVoidResult>(new JSException("Storage unavailable"));
+                    }
+
+                    Saved = null;
+                    return ValueTask.FromResult<IJSVoidResult>(null!);
+                });
+            Runtime = js.Object;
+        }
+
+        public IJSRuntime Runtime { get; }
+        public string? Saved { get; set; }
+        public bool RemovalFails { get; init; }
+        public int RemovalAttempts { get; private set; }
     }
 }

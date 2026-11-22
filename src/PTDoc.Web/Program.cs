@@ -73,7 +73,7 @@ builder.Services.AddScoped(sp => new SubscriptionApiClient(
 builder.Services.AddSettingsAdministrationApiClient();
 builder.Services.AddScoped<INavigationBadgeRefreshNotifier, NavigationBadgeRefreshNotifier>();
 builder.Services.AddScoped<IToastService, ToastService>();
-builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
+builder.Services.AddScoped<IIntakeSessionStore, WebIntakeSessionStore>();
 builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
 builder.Services.AddSingleton<ApiClusterAddressResolver>();
 builder.Services.Configure<EntraExternalIdOptions>(builder.Configuration.GetSection(EntraExternalIdOptions.SectionName));
@@ -613,6 +613,19 @@ static void ConfigureCookieOptions(CookieAuthenticationOptions options)
     options.ExpireTimeSpan = TimeSpan.FromMinutes(15);
     options.SlidingExpiration = true;
 
+    options.Events.OnSigningIn = context =>
+    {
+        // Local sign-ins already have an ID. Give external sign-ins the same intake isolation.
+        if (!WebSessionActivity.IsLocal(context.Principal) && context.Principal?.Identity is ClaimsIdentity identity)
+        {
+            foreach (var claim in identity.FindAll(WebIntakeSessionStore.ExternalSignInIdClaim).ToArray())
+            {
+                identity.RemoveClaim(claim);
+            }
+            identity.AddClaim(new Claim(WebIntakeSessionStore.ExternalSignInIdClaim, Guid.NewGuid().ToString("N")));
+        }
+        return Task.CompletedTask;
+    };
     options.Events.OnValidatePrincipal = WebSessionActivity.ValidateCookieAsync;
     options.Events.OnCheckSlidingExpiration = context =>
     {
