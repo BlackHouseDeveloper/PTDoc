@@ -1,5 +1,9 @@
 @page "/logout"
+@layout AuthLayout
 @rendermode InteractiveServer
+@using PTDoc.UI.Services
+@inject IIntakeSessionStore IntakeSessions
+@inject IntakeInviteRenewal Renewal
 @inject NavigationManager Navigation
 @inject ILogger<WebLogout> Logger
 
@@ -13,22 +17,22 @@
 </div>
 
 @code {
-    protected override void OnAfterRender(bool firstRender)
+    protected override Task OnAfterRenderAsync(bool firstRender) =>
+        firstRender ? SignOutAsync() : Task.CompletedTask;
+
+    private async Task SignOutAsync()
     {
-        if (firstRender)
+        Renewal.Clear();
+        try
         {
-            try
-            {
-                Logger.LogInformation("Web user initiated logout");
-                
-                // Redirect to the server logout endpoint that clears cookies
-                Navigation.NavigateTo("/auth/logout", forceLoad: true);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Error during web logout");
-                Navigation.NavigateTo("/login", forceLoad: true);
-            }
+            await IntakeSessions.ClearAsync();
         }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or OperationCanceledException)
+        {
+            Logger.LogWarning(ex, "Could not clear the intake session during Web sign-out.");
+        }
+
+        Logger.LogInformation("Web user initiated logout");
+        Navigation.NavigateTo("/auth/logout", forceLoad: true, replace: true);
     }
 }

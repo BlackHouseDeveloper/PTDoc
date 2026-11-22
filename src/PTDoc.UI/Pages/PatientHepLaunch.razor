@@ -1,6 +1,5 @@
 @page "/my-hep"
 @attribute [Authorize(Policy = AuthorizationPolicies.PatientHepAccess)]
-@rendermode InteractiveServer
 @using PTDoc.Application.Integrations
 @inject IIntegrationClientService Integrations
 @inject IToastService Toasts

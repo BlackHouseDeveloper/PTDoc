@@ -17,6 +17,8 @@ export function start(sessionId, receiver, startupId) {
     if (!event.isTrusted || document.visibilityState !== "visible" || stopped || pending) return;
     const now = performance.now();
     if (now - lastAttempt < 60000) return;
+    // The URL can change before Blazor replaces the previous screen.
+    if (/^\/kiosk\/*$/i.test(location.pathname) || document.querySelector("[data-public-kiosk]")) return;
     lastAttempt = now;
     pending = true;
     try {

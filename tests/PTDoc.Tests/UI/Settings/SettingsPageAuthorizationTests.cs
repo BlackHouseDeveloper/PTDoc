@@ -6,6 +6,7 @@ using Moq;
 using PTDoc.Application.Configurations.Header;
 using PTDoc.Application.NoteTemplates;
 using PTDoc.Application.Services;
+using PTDoc.Web.Components.Pages;
 
 namespace PTDoc.Tests.UI.Settings;
 
@@ -23,14 +24,16 @@ public sealed class SettingsPageAuthorizationTests : TestContext
         Services.AddSingleton<IHeaderConfigurationService, HeaderConfigurationService>();
         var navigation = Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
         navigation.NavigateTo(route);
-        var cut = RenderComponent<global::PTDoc.UI.Pages.Settings>();
+        IRenderedFragment cut = RenderComponent<WebSettings>();
         Assert.Contains("Loading settings", cut.Markup, StringComparison.Ordinal);
         await cut.InvokeAsync(() => authentication.Complete(role));
         cut.WaitForAssertion(() => Assert.Equal(heading, cut.Find(".settings-main-content h1").TextContent));
     }
 
-    [Fact]
-    public async Task PendingAuthentication_DoesNotRenderAdministrativeSettingsForPtUser()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PendingAuthentication_DoesNotRenderAdministrativeSettingsForPtUser(bool kioskRoute)
     {
         var authentication = new DeferredAuthenticationStateProvider();
         var templates = new Mock<INoteTemplateAdministrationService>(MockBehavior.Strict);
@@ -43,7 +46,10 @@ public sealed class SettingsPageAuthorizationTests : TestContext
         Services.AddSingleton(templates.Object);
         Services.AddSingleton(Mock.Of<IToastService>());
 
-        var cut = RenderComponent<global::PTDoc.UI.Pages.Settings>();
+        Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>().NavigateTo(kioskRoute ? "/settings/kiosk" : "/settings");
+        IRenderedFragment cut = kioskRoute
+            ? RenderComponent<WebSettings>()
+            : RenderComponent<global::PTDoc.UI.Pages.Settings>();
 
         Assert.Contains("Loading settings", cut.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Roles & Permissions", cut.Markup, StringComparison.Ordinal);
@@ -55,6 +61,7 @@ public sealed class SettingsPageAuthorizationTests : TestContext
         {
             Assert.DoesNotContain("Loading settings", cut.Markup, StringComparison.Ordinal);
             Assert.Contains("Documentation Templates", cut.Markup, StringComparison.Ordinal);
+            Assert.Empty(cut.FindAll("#kiosk-admin-title"));
             Assert.DoesNotContain("Roles & Permissions", cut.Markup, StringComparison.Ordinal);
             Assert.DoesNotContain("Scheduling & Visit Types", cut.Markup, StringComparison.Ordinal);
         });

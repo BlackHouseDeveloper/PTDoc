@@ -5,6 +5,7 @@
 
 @inject IIntakeInviteService InviteService
 @inject IIntakeSessionStore SessionStore
+@inject IntakeInviteRenewal Renewal
 @inject NavigationManager NavigationManager
 @inject ILogger<StandaloneIntakeAccessGate> Logger
 
@@ -19,7 +20,20 @@
         break;
 
     case GateState.Authorized:
-        @ChildContent
+        <CascadingValue Value="@_verifiedSession" IsFixed="true">
+            <CascadingValue Name="IntakeVerificationRequired" Value="@((Action)ShowSessionExpired)" IsFixed="true">
+                @ChildContent
+            </CascadingValue>
+        </CascadingValue>
+        break;
+
+    case GateState.StaffVisit:
+        <div class="intake-access-gate">
+            <div class="intake-access-gate__card">
+                <h1 class="intake-access-gate__title">Open your patient invitation</h1>
+                <p>This visit link is for clinic staff. Open the secure intake invitation from your clinic for this visit.</p>
+            </div>
+        </div>
         break;
 
     case GateState.RequestContact:
@@ -156,12 +170,13 @@
 }
 
 @code {
-    private enum GateState { Checking, Authorized, RequestContact, EnterOtp, SessionExpired }
+    private enum GateState { Checking, Authorized, RequestContact, EnterOtp, SessionExpired, StaffVisit }
 
     private static readonly TimeSpan FallbackTokenLifetime = TimeSpan.FromHours(2);
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
+    private IntakeSessionToken? _verifiedSession;
     private GateState _gateState = GateState.Checking;
     private string _contact = string.Empty;
     private string _inviteToken = string.Empty;
@@ -169,7 +184,7 @@
     private string _otpCode = string.Empty;
     private string? _errorMessage;
     private bool _isBusy;
-    private bool _hasCheckedAccess;
+    private bool _disposed;
     private System.Threading.Timer? _expiryTimer;
 
     private bool CanRequestOtp =>
@@ -179,14 +194,16 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || _hasCheckedAccess)
+        if (!firstRender)
         {
             return;
         }
 
-        _hasCheckedAccess = true;
         await CheckAccessAsync();
-        await InvokeAsync(StateHasChanged);
+        if (!_disposed)
+        {
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task CheckAccessAsync()
@@ -195,17 +212,38 @@
 
         try
         {
-            // 1. Check for an existing valid session token.
-            var session = await SessionStore.GetAsync();
-            if (session is not null)
+            var origin = NavigationManager.Uri;
+            var uri = new Uri(origin);
+            if (StandaloneIntakeLink.IsStaffVisit(uri))
             {
-                if (session.ExpiresAt > DateTimeOffset.UtcNow)
+                _gateState = GateState.StaffVisit;
+                return;
+            }
+
+            StandaloneIntakeLink.IsPatientMode(uri, out var inviteToken);
+            var session = await SessionStore.GetAsync();
+            if (_disposed || origin != NavigationManager.Uri) return;
+            if (session is not null && session.MatchesInvite(inviteToken))
+            {
+                _inviteToken = inviteToken ?? Renewal.ForSession(uri, session) ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(session.Token) && session.ExpiresAt > DateTimeOffset.UtcNow)
                 {
                     var isValid = await InviteService.ValidateAccessTokenAsync(session.Token);
+                    if (_disposed || origin != NavigationManager.Uri) return;
                     if (isValid)
                     {
-                        ScheduleExpiryCheck(session.ExpiresAt);
-                        _gateState = GateState.Authorized;
+                        var current = await SessionStore.GetAsync();
+                        if (_disposed || origin != NavigationManager.Uri) return;
+                        if (current == session)
+                        {
+                            OpenVerifiedIntake(uri, session);
+                        }
+                        else
+                        {
+                            // Validation finished after the session was cleared or replaced.
+                            _inviteToken = inviteToken ?? string.Empty;
+                            _gateState = GateState.RequestContact;
+                        }
                         return;
                     }
                 }
@@ -216,8 +254,20 @@
                 return;
             }
 
-            // 2. Check for a signed invite token in the URL query string.
-            var inviteToken = GetQueryParam(NavigationManager.Uri, "invite");
+            if (session is not null)
+            {
+                Renewal.Clear();
+                await SessionStore.ClearAsync();
+                if (_disposed || origin != NavigationManager.Uri) return;
+            }
+
+            var remembered = Renewal.ForSession(uri, null);
+            if (inviteToken is not null && inviteToken != remembered)
+            {
+                Renewal.Clear();
+            }
+            inviteToken ??= remembered;
+
             if (!string.IsNullOrEmpty(inviteToken))
             {
                 var result = await InviteService.ValidateInviteTokenAsync(inviteToken);
@@ -233,7 +283,6 @@
                 _errorMessage = result.Error ?? "The secure invite link is invalid or expired.";
             }
 
-            // 3. No valid token found — prompt identity verification.
             if (string.IsNullOrWhiteSpace(_inviteToken) && string.IsNullOrWhiteSpace(_errorMessage))
             {
                 _errorMessage = "Use the secure invite link from your clinic to request an access code.";
@@ -296,16 +345,35 @@
 
         try
         {
+            var origin = NavigationManager.Uri;
+            var uri = new Uri(origin);
             var result = await InviteService.VerifyOtpAndIssueAccessTokenAsync(_inviteToken, _contact, _otpChannel, _otpCode);
-            if (result.IsValid && result.AccessToken is not null)
+            // An OTP response from a previous link must never replace the new link's session.
+            if (_disposed || origin != NavigationManager.Uri) return;
+            if (result.IsValid && !string.IsNullOrWhiteSpace(result.AccessToken))
             {
-                var token = new IntakeSessionToken(
+                var token = IntakeSessionToken.FromVerifiedInvite(
                     result.AccessToken,
-                    result.ExpiresAt ?? DateTimeOffset.UtcNow.Add(FallbackTokenLifetime));
+                    result.ExpiresAt ?? DateTimeOffset.UtcNow.Add(FallbackTokenLifetime),
+                    _inviteToken);
 
-                await SessionStore.SaveAsync(token);
-                ScheduleExpiryCheck(token.ExpiresAt);
-                _gateState = GateState.Authorized;
+                try
+                {
+                    await SessionStore.SaveAsync(token);
+                    var stored = await SessionStore.GetAsync();
+                    if (_disposed || origin != NavigationManager.Uri) return;
+                    if (token.ExpiresAt > DateTimeOffset.UtcNow && stored == token)
+                    {
+                        OpenVerifiedIntake(uri, token);
+                        return;
+                    }
+                }
+                catch (Exception ex) when (ex is JSException or JSDisconnectedException)
+                {
+                    Logger.LogWarning(ex, "Unable to store the verified intake session.");
+                }
+                _errorMessage = "Your intake session could not be saved. Allow session storage and request a new code.";
+                _gateState = GateState.RequestContact;
             }
             else
             {
@@ -323,11 +391,30 @@
         }
     }
 
+    private void OpenVerifiedIntake(Uri uri, IntakeSessionToken session)
+    {
+        // A resumed standalone session on a bare URL must also use the patient API.
+        if (!StandaloneIntakeLink.IsPatientMode(uri, out _))
+        {
+            NavigationManager.NavigateTo(NavigationManager.GetUriWithQueryParameter("mode", "patient"), replace: true);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(_inviteToken) && session.MatchesInvite(_inviteToken))
+        {
+            Renewal.Remember(uri, _inviteToken);
+        }
+        _verifiedSession = session;
+        _gateState = GateState.Authorized;
+        ScheduleExpiryCheck(session.ExpiresAt);
+    }
+
     private void StartVerification()
     {
         _errorMessage = null;
         _otpCode = string.Empty;
-        _inviteToken = GetQueryParam(NavigationManager.Uri, "invite") ?? _inviteToken;
+        StandaloneIntakeLink.IsPatientMode(new Uri(NavigationManager.Uri), out var invite);
+        _inviteToken = invite ?? _inviteToken;
         if (string.IsNullOrWhiteSpace(_inviteToken))
         {
             _errorMessage = "Use the secure invite link from your clinic to request an access code.";
@@ -367,11 +454,11 @@
     {
         try
         {
-            await SessionStore.ClearAsync();
-            await InvokeAsync(() =>
+            await InvokeAsync(async () =>
             {
-                _gateState = GateState.SessionExpired;
-                StateHasChanged();
+                if (_disposed || _gateState != GateState.Authorized) return;
+                ShowSessionExpired();
+                await SessionStore.ClearAsync();
             });
         }
         catch (Exception ex)
@@ -380,44 +467,18 @@
         }
     }
 
-    private static string? GetQueryParam(string uri, string key)
+    private void ShowSessionExpired()
     {
-        string query;
-
-        try
-        {
-            query = new Uri(uri).Query;
-        }
-        catch (UriFormatException)
-        {
-            return null;
-        }
-
-        if (string.IsNullOrEmpty(query))
-        {
-            return null;
-        }
-
-        foreach (var part in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var eq = part.IndexOf('=');
-            if (eq < 0)
-            {
-                continue;
-            }
-
-            var k = Uri.UnescapeDataString(part[..eq]);
-            if (string.Equals(k, key, StringComparison.OrdinalIgnoreCase))
-            {
-                return Uri.UnescapeDataString(part[(eq + 1)..]);
-            }
-        }
-
-        return null;
+        if (_disposed) return;
+        _expiryTimer?.Dispose();
+        _verifiedSession = null;
+        _gateState = GateState.SessionExpired;
+        StateHasChanged();
     }
 
     public void Dispose()
     {
+        _disposed = true;
         _expiryTimer?.Dispose();
     }
 }

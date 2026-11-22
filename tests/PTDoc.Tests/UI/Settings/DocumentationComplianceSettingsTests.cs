@@ -100,7 +100,7 @@ public sealed class DocumentationComplianceSettingsTests : TestContext
     [Fact]
     public void QuickAdminTools_NavigateToImplementedSettingsRoutes()
     {
-        var cut = RenderComponent<DocumentationComplianceSettings>();
+        var cut = RenderComponent<DocumentationComplianceSettings>(parameters => parameters.Add(x => x.WebAdministration, true));
 
         cut.FindAll(".quick-admin-tools__row")[0].Click();
         Assert.EndsWith("/settings/auto-check-in", Services.GetRequiredService<NavigationManager>().Uri, StringComparison.Ordinal);

@@ -15,7 +15,8 @@ set -euo pipefail
 #   1) Blazor Web (browser)
 #   2) Android (emulator)
 #   3) iOS (simulator)
-#   4) Mac Catalyst (desktop)
+#   4) Mac Catalyst (build and launch)
+#   5) Mac Catalyst (launch existing signed app)
 #
 # ============================================================================
 
@@ -25,6 +26,7 @@ WEB_CSPROJ="$ROOT_DIR/src/PTDoc.Web/PTDoc.Web.csproj"
 MAUI_CSPROJ="$ROOT_DIR/src/PTDoc.Maui/PTDoc.csproj"
 API_CSPROJ="$ROOT_DIR/src/PTDoc.Api/PTDoc.Api.csproj"
 API_URL="${API_URL:-http://localhost:5170}"
+API_URL="${API_URL%/}"
 API_PORT="${API_URL##*:}"
 PUBLIC_WEB_BASE_URL="${PUBLIC_WEB_BASE_URL:-}"
 API_PID=""
@@ -54,7 +56,9 @@ cleanup() {
   fi
 }
 
-trap cleanup EXIT INT
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # Check .NET SDK
 if ! command -v dotnet >/dev/null 2>&1; then
@@ -170,6 +174,11 @@ start_api() {
     exit 1
   fi
 
+  if [[ "${1:-}" == "--build" ]]; then
+    echo "${BLUE}Building PTDoc API...${RESET}"
+    dotnet build "$API_CSPROJ"
+  fi
+
   for attempt in 1 2; do
     echo "${BLUE}🚀 Starting PTDoc API on $API_URL...${RESET}"
     api_env=()
@@ -240,9 +249,10 @@ echo ""
 echo "  ${GREEN}1)${RESET} Blazor Web ${BOLD}(browser)${RESET}"
 echo "  ${GREEN}2)${RESET} Android ${BOLD}(emulator)${RESET}"
 echo "  ${GREEN}3)${RESET} iOS ${BOLD}(simulator)${RESET}"
-echo "  ${GREEN}4)${RESET} Mac Catalyst ${BOLD}(desktop)${RESET}"
+echo "  ${GREEN}4)${RESET} Mac Catalyst ${BOLD}(build and launch)${RESET}"
+echo "  ${GREEN}5)${RESET} Mac Catalyst ${BOLD}(launch existing signed app)${RESET}"
 echo ""
-read -rp "Enter choice [1-4]: " choice
+read -rp "Enter choice [1-5]: " choice
 
 echo ""
 
@@ -285,8 +295,36 @@ case "$choice" in
     echo ""
     dotnet build -t:Run -f net8.0-maccatalyst "$MAUI_CSPROJ"
     ;;
+  5)
+    if [[ "$(uname -s)" != "Darwin" ]]; then
+      echo "${RED}Opening a signed Mac Catalyst app requires macOS.${RESET}" >&2
+      exit 1
+    fi
+    case "$(uname -m)" in
+      arm64) catalyst_rid="maccatalyst-arm64" ;;
+      x86_64) catalyst_rid="maccatalyst-x64" ;;
+      *) echo "Unsupported Mac Catalyst architecture: $(uname -m)" >&2; exit 1 ;;
+    esac
+    SIGNED_CATALYST_APP="$ROOT_DIR/src/PTDoc.Maui/bin/Debug/net8.0-maccatalyst/$catalyst_rid/PTDoc.app"
+    if [[ "$API_URL" != "http://localhost:5170" ]]; then
+      echo "The signed Debug app uses http://localhost:5170. Set API_URL to this address for option 5." >&2
+      exit 1
+    fi
+    if [[ ! -d "$SIGNED_CATALYST_APP" ]]; then
+      echo "${RED}Signed app not found at $SIGNED_CATALYST_APP. Build it with Apple signing first.${RESET}" >&2
+      exit 1
+    fi
+    if ! codesign --verify --strict -R='anchor apple generic' "$SIGNED_CATALYST_APP"; then
+      echo "${RED}The existing Mac Catalyst app failed Apple signature verification.${RESET}" >&2
+      exit 1
+    fi
+
+    start_api --build
+    echo "${BLUE}Launching the existing signed Mac Catalyst app. Quit PTDoc to stop the launcher.${RESET}"
+    open -W "$SIGNED_CATALYST_APP"
+    ;;
   *)
-    echo "${RED}Invalid choice. Please enter 1-4${RESET}"
+    echo "${RED}Invalid choice. Please enter 1-5${RESET}"
     exit 1
     ;;
 esac

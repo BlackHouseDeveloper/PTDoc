@@ -1,7 +1,6 @@
 @page "/not-found"
 @page "/{*Path}"
 @attribute [Authorize(Policy = AuthorizationPolicies.ClinicalStaff)]
-@rendermode InteractiveServer
 @inject NavigationManager NavigationManager
 
 <PageTitle>Page Not Found - PTDoc</PageTitle>

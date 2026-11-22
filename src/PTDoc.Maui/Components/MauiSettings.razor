@@ -1,0 +1,7 @@
+@page "/settings"
+@namespace PTDoc.Maui.Components
+@using Microsoft.AspNetCore.Authorization
+@using PTDoc.UI.Pages
+@attribute [Authorize(Roles = Settings.AccessRoles)]
+
+<Settings />

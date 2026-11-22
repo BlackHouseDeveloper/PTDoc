@@ -568,7 +568,10 @@
         </header>
         <div class="quick-admin-tools__items">
             @QuickAdminRow("Auto Check-In Messaging", "Configure automated intake form delivery", "_content/PTDoc.UI/images/settings/quick-message.svg", OpenAutoCheckInMessaging)
-            @QuickAdminRow("Kiosk Check-In", "Set up and manage kiosk check-in stations", "_content/PTDoc.UI/images/settings/quick-kiosk.svg", OpenKioskCheckIn)
+            @if (OpenKioskAdministration is not null)
+            {
+                @QuickAdminRow("Kiosk Check-In", "Set up and manage kiosk check-in stations", "_content/PTDoc.UI/images/settings/quick-kiosk.svg", OpenKioskAdministration)
+            }
         </div>
     </section>;
 
@@ -728,7 +731,8 @@
 
     private void OpenAutoCheckInMessaging() => Navigation.NavigateTo("/settings/auto-check-in");
 
-    private void OpenKioskCheckIn() => Navigation.NavigateTo("/settings/kiosk");
+    [CascadingParameter(Name = nameof(OpenKioskAdministration))]
+    private Action? OpenKioskAdministration { get; set; }
 
     private void CloseEditor() { if (!_isBusy) _editor = null; }
 

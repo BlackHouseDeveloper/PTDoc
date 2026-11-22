@@ -1,8 +1,3 @@
-@page "/settings"
-@attribute [Authorize(Roles = "Admin,Owner,PT")]
-@page "/settings/auto-check-in"
-@page "/settings/kiosk"
-@rendermode InteractiveServer
 @inject NavigationManager Navigation
 @implements IDisposable
 
@@ -22,15 +17,16 @@
         <div class="settings-shell" aria-label="Settings center">
             <SettingsSidebarNav
                 ActiveSection="@activeSection"
+                WebAdministration="@WebAdministration"
                 ClinicalApproverOnly="@isClinicalApproverOnly"
                 OnSectionSelected="HandleSectionSelected" />
 
             <main class="settings-main-content" aria-live="polite">
-            @if (activeSection == "roles-permissions")
+            @if (WebAdministration && activeSection == "roles-permissions")
             {
                 <RolesPermissionsSettings />
             }
-            else if (activeSection == "scheduling")
+            else if (WebAdministration && activeSection == "scheduling")
             {
                 <SchedulingVisitTypesSettings />
             }
@@ -40,14 +36,14 @@
             }
             else if (activeSection == "documentation")
             {
-                <DocumentationComplianceSettings />
+                <DocumentationComplianceSettings WebAdministration="@WebAdministration" />
                 <NoteTemplateSettingsPanel />
             }
-            else if (activeSection == "auto-check-in")
+            else if (WebAdministration && activeSection == "auto-check-in")
             {
                 <AutoCheckInSettings />
             }
-            else if (activeSection == "kiosk")
+            else if (WebAdministration && activeSection == "kiosk")
             {
                 <KioskAdministrationSettings />
             }
@@ -83,6 +79,10 @@
 </div>
 
 @code {
+    public const string AccessRoles = Roles.Admin + "," + Roles.Owner + "," + Roles.PT;
+
+    [Parameter] public bool WebAdministration { get; set; }
+
     private string activeSection = "documentation";
     private bool isClinicalApproverOnly = true;
     private bool authorizationResolved;
@@ -115,18 +115,22 @@
 
     private void ApplyRouteSection(string location)
     {
-        if (isClinicalApproverOnly)
+        if (isClinicalApproverOnly || !WebAdministration)
         {
             activeSection = "documentation";
             return;
         }
 
         var path = new Uri(location).AbsolutePath.TrimEnd('/');
+        if (path.EndsWith("/settings/kiosk", StringComparison.OrdinalIgnoreCase))
+        {
+            activeSection = "kiosk";
+            return;
+        }
+
         activeSection = path.EndsWith("/auto-check-in", StringComparison.OrdinalIgnoreCase)
             ? "auto-check-in"
-            : path.EndsWith("/kiosk", StringComparison.OrdinalIgnoreCase)
-                ? "kiosk"
-                : "roles-permissions";
+            : "roles-permissions";
     }
 
     private void HandleSectionSelected(string sectionKey)

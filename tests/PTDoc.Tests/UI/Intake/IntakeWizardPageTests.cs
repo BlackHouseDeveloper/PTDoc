@@ -20,7 +20,10 @@ using PTDoc.Core.Services;
 using PTDoc.Infrastructure.ReferenceData;
 using PTDoc.Infrastructure.Outcomes;
 using PTDoc.Infrastructure.Services;
+using PTDoc.Maui.Components;
+using PTDoc.UI.Components.Layout;
 using PTDoc.UI.Components;
+using PTDoc.UI.Components.Intake;
 using PTDoc.UI.Components.Intake.Models;
 using PTDoc.UI.Components.Intake.Steps;
 using PTDoc.UI.Pages.Intake;
@@ -34,10 +37,141 @@ public sealed class IntakeWizardPageTests : TestContext
 {
     public IntakeWizardPageTests()
     {
+        Services.AddScoped<IntakeInviteRenewal>();
+        Services.AddScoped<StandaloneIntakeClientFactory>(sp => _ => sp.GetRequiredService<IIntakeService>());
         Services.AddSingleton<IToastService, ToastService>();
         Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
         Services.AddSingleton<IIntakeBodyPartMapper>(new IntakeBodyPartMapper(new IntakeReferenceDataCatalogService()));
         Services.AddSingleton<IOutcomeMeasureRegistry, OutcomeMeasureRegistry>();
+    }
+
+    [Fact]
+    public async Task LeavingPatientIntakeDuringProfileSave_DoesNotReloadWithStaffAuthority()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var auth = this.AddTestAuthorization();
+        auth.SetAuthorized("staff");
+        auth.SetRoles(Roles.PT);
+        auth.SetPolicies(AuthorizationPolicies.PatientRead);
+        var patientId = Guid.NewGuid();
+        var session = IntakeSessionToken.FromVerifiedInvite("session", DateTimeOffset.UtcNow.AddMinutes(10), "invite");
+        RegisterVerifiedSession(session);
+        var patient = CreateIntakeServiceMock(new IntakeResponseDraft
+        {
+            PatientId = patientId,
+            ProfilePrefill = new IntakeProfilePrefill { PhoneNumber = "555-0101", Fingerprint = "offer" }
+        });
+        var staff = new Mock<IIntakeService>(MockBehavior.Strict);
+        Services.AddSingleton(staff.Object);
+        Services.AddSingleton<StandaloneIntakeClientFactory>(verified =>
+        {
+            Assert.Equal(session, verified);
+            return patient.Object;
+        });
+        var saved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        patient.Setup(service => service.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), default)).Returns(saved.Task);
+        ComponentFactories.AddStub<DemographicsStep>();
+        ComponentFactories.AddStub<MainLayout>(parameters => parameters.Get(layout => layout.Body)!);
+        ComponentFactories.AddStub<PTDoc.UI.Pages.PatientProfile>();
+        var nav = Services.GetRequiredService<NavigationManager>();
+        nav.NavigateTo($"/intake/{patientId}?mode=patient&invite=invite");
+        var router = RenderComponent<MauiRoutes>();
+        var apply = router.WaitForElement("[data-testid='intake-apply-profile']").ClickAsync(new MouseEventArgs());
+        router.WaitForAssertion(() => patient.Verify(service => service.SaveDraftAsync(It.IsAny<IntakeResponseDraft>(), default), Times.Once));
+
+        await router.InvokeAsync(() => nav.NavigateTo($"/patient/{patientId}"));
+        router.WaitForAssertion(() => Assert.Single(router.FindComponents<Stub<PTDoc.UI.Pages.PatientProfile>>()));
+        Assert.Empty(router.FindComponents<IntakeWizardPage>());
+        saved.SetResult();
+        await apply;
+
+        patient.Verify(service => service.GetLatestByPatientIdAsync(patientId, default), Times.Once);
+        staff.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task SamePatientWithoutInvite_CanRequestAnotherCodeAfterGateRemount(bool native, bool patientAccount)
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        var auth = this.AddTestAuthorization();
+        if (patientAccount)
+        {
+            auth.SetAuthorized("patient");
+            auth.SetRoles(Roles.Patient);
+        }
+        Services.AddSingleton(Mock.Of<PTDoc.Application.Auth.IUserService>());
+        var patientId = Guid.NewGuid();
+        var session = IntakeSessionToken.FromVerifiedInvite("session", DateTimeOffset.UtcNow.AddMinutes(10), "original");
+        var invites = RegisterVerifiedSession(session);
+        invites.Setup(service => service.SendOtpAsync("original", "patient@example.com", OtpChannel.Sms, default)).ReturnsAsync(true);
+        var intake = CreateIntakeServiceMock(new IntakeResponseDraft { PatientId = patientId });
+        ComponentFactories.AddStub<DemographicsStep>();
+        var nav = Services.GetRequiredService<NavigationManager>();
+        var path = $"/intake/{patientId}";
+        var returnPath = patientAccount ? path : path + "?mode=patient";
+        nav.NavigateTo(path + (patientAccount ? "?invite=original" : "?mode=patient&invite=original"));
+        IRenderedFragment router = native ? RenderComponent<MauiRoutes>() : RenderComponent<Routes>();
+        router.WaitForElement("[data-testid='intake-refresh-profile']");
+        var originalGate = router.FindComponent<StandaloneIntakeAccessGate>().Instance;
+
+        await router.InvokeAsync(() => nav.NavigateTo(returnPath));
+        router.WaitForAssertion(() =>
+        {
+            Assert.NotSame(originalGate, router.FindComponent<StandaloneIntakeAccessGate>().Instance);
+            Assert.Single(router.FindComponents<IntakeWizardPage>());
+        });
+        intake.Setup(service => service.GetLatestByPatientIdAsync(patientId, default))
+            .ThrowsAsync(new HttpRequestException("Session expired", null, HttpStatusCode.Unauthorized));
+        await router.Find("[data-testid='intake-refresh-profile']").ClickAsync(new MouseEventArgs());
+        router.WaitForAssertion(() => Assert.Contains("Session Expired", router.Markup));
+        router.Find("button").Click();
+        router.Find("#intake-contact-input").Input("patient@example.com");
+        var sendCode = router.Find("button.intake-access-gate__btn--primary");
+        Assert.False(sendCode.HasAttribute("disabled"));
+        sendCode.Click();
+
+        invites.Verify(service => service.SendOtpAsync("original", "patient@example.com", OtpChannel.Sms, default), Times.Once);
+        Assert.Empty(router.FindComponents<IntakeWizardPage>());
+    }
+
+    private Mock<IIntakeInviteService> RegisterVerifiedSession(IntakeSessionToken session)
+    {
+        var store = new Mock<IIntakeSessionStore>();
+        store.Setup(service => service.GetAsync(default)).ReturnsAsync(session);
+        var invites = new Mock<IIntakeInviteService>();
+        invites.Setup(service => service.ValidateAccessTokenAsync(session.Token, default)).ReturnsAsync(true);
+        Services.AddSingleton(store.Object);
+        Services.AddSingleton(invites.Object);
+        return invites;
+    }
+
+    [Fact]
+    public void PatientSessionRejectedDuringLoad_ReturnsToVerification()
+    {
+        this.AddTestAuthorization();
+        var patientId = Guid.NewGuid();
+        var session = IntakeSessionToken.FromVerifiedInvite("session", DateTimeOffset.UtcNow.AddMinutes(30), "invite");
+        var store = new Mock<IIntakeSessionStore>();
+        store.Setup(item => item.GetAsync(default)).ReturnsAsync(session);
+        var invites = new Mock<IIntakeInviteService>();
+        invites.Setup(item => item.ValidateAccessTokenAsync(session.Token, default)).ReturnsAsync(true);
+        Services.AddSingleton(store.Object);
+        Services.AddSingleton(invites.Object);
+        var intake = CreateIntakeServiceMock(new IntakeResponseDraft { PatientId = patientId });
+        intake.Setup(item => item.GetLatestByPatientIdAsync(patientId, default))
+            .ThrowsAsync(new HttpRequestException("Session unavailable", null, HttpStatusCode.Unauthorized));
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/intake/{patientId}?mode=patient&invite=invite");
+
+        var gate = RenderComponent<StandaloneIntakeAccessGate>(parameters =>
+            parameters.AddChildContent<IntakeWizardPage>(wizard => wizard.Add(page => page.PatientId, patientId)));
+
+        gate.WaitForAssertion(() => Assert.Contains("Session Expired", gate.Markup, StringComparison.Ordinal));
+        Assert.Empty(gate.FindComponents<IntakeWizardPage>());
+        gate.Find("button").Click();
+        Assert.Contains("Verify Your Identity", gate.Markup, StringComparison.Ordinal);
     }
 
     [Theory]

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.Logging;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
+using PTDoc.Infrastructure.Services;
 using PTDoc.Web.Auth;
 
 namespace PTDoc.Web.Services;
@@ -20,7 +21,7 @@ public sealed class ApiAccessTokenForwardingHandler(
 {
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        if (ShouldSkipTokenForwarding(request))
+        if (StaffTokenForwarding.TryPrepareWithoutStaffToken(request))
         {
             return await base.SendAsync(request, cancellationToken);
         }
@@ -48,13 +49,6 @@ public sealed class ApiAccessTokenForwardingHandler(
         }
 
         return response;
-    }
-
-    private static bool ShouldSkipTokenForwarding(HttpRequestMessage request)
-    {
-        var path = request.RequestUri?.AbsolutePath;
-        return path is not null
-            && path.StartsWith("/api/v1/intake/access/", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<SessionToken> GetSessionTokenAsync()

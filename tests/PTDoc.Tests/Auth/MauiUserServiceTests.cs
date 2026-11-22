@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.JSInterop;
 using Moq;
 using PTDoc.Application.Auth;
 using PTDoc.Application.Identity;
@@ -13,6 +14,7 @@ using PTDoc.Application.LocalData;
 using PTDoc.Infrastructure.LocalData;
 using PTDoc.Infrastructure.Services;
 using PTDoc.Maui.Auth;
+using PTDoc.UI.Services;
 
 namespace PTDoc.Tests.Auth;
 
@@ -45,7 +47,7 @@ public sealed class MauiUserServiceTests
         using var provider = new MauiAuthenticationStateProvider(tokenStore.Object, tokenService.Object,
             NullLogger<MauiAuthenticationStateProvider>.Instance, scope);
         using var user = new MauiUserService(tokenService.Object, tokenStore.Object, Mock.Of<IHttpClientFactory>(),
-            provider, NullLogger<MauiUserService>.Instance);
+            provider, NullLogger<MauiUserService>.Instance, Mock.Of<IIntakeSessionStore>(), new IntakeInviteRenewal());
         var authenticationChanges = new List<Task<AuthenticationState>>();
         provider.AuthenticationStateChanged += state => authenticationChanges.Add(state);
         Assert.True(await user.LoginAsync("clinician", "12345678"));
@@ -127,6 +129,37 @@ public sealed class MauiUserServiceTests
     }
 
     [Fact]
+    public async Task RequiredPinChange_WaitsForIntakeCleanupBeforeSavingLoginTokens()
+    {
+        var tokenService = new Mock<ITokenService>();
+        var tokenStore = CreateTokenStore();
+        var tokens = CreateTokens();
+        tokenService.Setup(service => service.LoginAsync(It.IsAny<LoginRequest>(), default))
+            .ReturnsAsync(new TokenLoginResult(
+                StepUp: new TokenAuthenticationStep(AuthStatus.RequiresPinChange, "pin-challenge", 8)));
+        tokenService.Setup(service => service.CompletePinChangeAsync("pin-challenge", "12345678", default))
+            .ReturnsAsync(new TokenLoginResult(Tokens: tokens));
+        var intake = new Mock<IIntakeSessionStore>();
+        var removal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        intake.Setup(store => store.ClearAsync(default)).Returns(removal.Task);
+        using var service = CreateService(tokenService, tokenStore, intakeSessions: intake.Object);
+
+        Assert.False(await service.LoginAsync("patient", "1234"));
+        intake.Verify(store => store.ClearAsync(default), Times.Never);
+        var completion = service.CompleteRequiredPinChangeAsync("12345678");
+
+        intake.Verify(store => store.ClearAsync(default), Times.Once);
+        Assert.False(completion.IsCompleted);
+        Assert.False(service.IsAuthenticated);
+        tokenStore.Verify(store => store.SaveAsync(It.IsAny<TokenResponse>(), default), Times.Never);
+        removal.SetResult();
+
+        Assert.True((await completion).Succeeded);
+        Assert.True(service.IsAuthenticated);
+        tokenStore.Verify(store => store.SaveAsync(tokens, default), Times.Once);
+    }
+
+    [Fact]
     public async Task PinChangeAndEnrollmentFlow_StoresTokensOnlyAfterRecoveryCodesAreAcknowledged()
     {
         var tokenService = new Mock<ITokenService>();
@@ -151,7 +184,8 @@ public sealed class MauiUserServiceTests
         tokenService.Setup(service => service.CompleteAuthenticationAsync(
                 "completion-token", It.IsAny<CancellationToken>()))
             .ReturnsAsync(tokens);
-        var service = CreateService(tokenService, tokenStore);
+        var intake = new Mock<IIntakeSessionStore>();
+        using var service = CreateService(tokenService, tokenStore, intakeSessions: intake.Object);
 
         Assert.False(await service.LoginAsync("clinician", "1234567890"));
         Assert.Equal(AuthenticationStepKind.RequiredPinChange, service.PendingAuthenticationStep?.Kind);
@@ -175,9 +209,11 @@ public sealed class MauiUserServiceTests
         Assert.False(service.IsAuthenticated);
         tokenStore.Verify(store => store.SaveAsync(It.IsAny<TokenResponse>(), It.IsAny<CancellationToken>()), Times.Never);
 
+        intake.Verify(store => store.ClearAsync(default), Times.Never);
         var completion = await service.CompleteAuthenticatorEnrollmentAsync();
 
         Assert.True(completion.Succeeded);
+        intake.Verify(store => store.ClearAsync(default), Times.Once);
         Assert.True(service.IsAuthenticated);
         Assert.Null(service.PendingAuthenticationStep);
         Assert.Equal("clinician@example.com", service.UserEmail);
@@ -203,7 +239,8 @@ public sealed class MauiUserServiceTests
         tokenService.Setup(service => service.CompleteAuthenticationAsync(
                 "mfa-completion", It.IsAny<CancellationToken>()))
             .ReturnsAsync(tokens);
-        var service = CreateService(tokenService, tokenStore);
+        var intake = new Mock<IIntakeSessionStore>();
+        using var service = CreateService(tokenService, tokenStore, intakeSessions: intake.Object);
 
         Assert.False(await service.LoginAsync("clinician", "1234567890"));
         Assert.Equal(AuthenticationStepKind.MfaVerification, service.PendingAuthenticationStep?.Kind);
@@ -215,12 +252,37 @@ public sealed class MauiUserServiceTests
         Assert.False(service.IsAuthenticated);
         tokenStore.Verify(store => store.SaveAsync(It.IsAny<TokenResponse>(), It.IsAny<CancellationToken>()), Times.Never);
 
+        intake.Verify(store => store.ClearAsync(default), Times.Never);
         var accepted = await service.VerifyMfaAsync("recovery-code", useRecoveryCode: true);
 
         Assert.True(accepted.Succeeded);
+        intake.Verify(store => store.ClearAsync(default), Times.Once);
         Assert.True(service.IsAuthenticated);
         Assert.Null(service.PendingAuthenticationStep);
         tokenStore.Verify(store => store.SaveAsync(tokens, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Login_IntakeCleanupFailureBlocksSignInUntilRetrySucceeds()
+    {
+        var tokenService = new Mock<ITokenService>();
+        var tokenStore = CreateTokenStore();
+        var tokens = CreateTokens();
+        tokenService.Setup(service => service.LoginAsync(It.IsAny<LoginRequest>(), default))
+            .ReturnsAsync(new TokenLoginResult(Tokens: tokens));
+        var intake = new Mock<IIntakeSessionStore>();
+        intake.SetupSequence(store => store.ClearAsync(default))
+            .ThrowsAsync(new JSException("Storage unavailable"))
+            .Returns(Task.CompletedTask);
+        using var service = CreateService(tokenService, tokenStore, intakeSessions: intake.Object);
+
+        Assert.False(await service.LoginAsync("patient", "12345678"));
+        Assert.False(service.IsAuthenticated);
+        tokenStore.Verify(store => store.SaveAsync(It.IsAny<TokenResponse>(), default), Times.Never);
+
+        Assert.True(await service.LoginAsync("patient", "12345678"));
+        Assert.True(service.IsAuthenticated);
+        tokenStore.Verify(store => store.SaveAsync(tokens, default), Times.Once);
     }
 
     [Fact]
@@ -291,7 +353,8 @@ public sealed class MauiUserServiceTests
     private static MauiUserService CreateService(
         Mock<ITokenService> tokenService,
         Mock<ITokenStore> tokenStore,
-        NavigationManager? navigation = null)
+        NavigationManager? navigation = null,
+        IIntakeSessionStore? intakeSessions = null)
     {
         var stateProvider = new MauiAuthenticationStateProvider(
             tokenStore.Object,
@@ -303,6 +366,8 @@ public sealed class MauiUserServiceTests
             Mock.Of<IHttpClientFactory>(),
             stateProvider,
             NullLogger<MauiUserService>.Instance,
+            intakeSessions ?? Mock.Of<IIntakeSessionStore>(),
+            new IntakeInviteRenewal(),
             navigation);
     }
 

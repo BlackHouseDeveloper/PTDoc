@@ -29,6 +29,8 @@
     [Parameter]
     public bool ClinicalApproverOnly { get; set; }
 
+    [Parameter] public bool WebAdministration { get; set; }
+
     private static readonly IReadOnlyList<SettingsNavItem> navItems =
     [
         new("roles-permissions", "Roles & Permissions", "Manage roles, access levels, and security policies"),
@@ -44,7 +46,7 @@
 
     private IEnumerable<SettingsNavItem> VisibleNavItems => ClinicalApproverOnly
         ? navItems.Where(item => item.Key == "documentation")
-        : navItems;
+        : navItems.Where(item => WebAdministration || item.Key is not ("roles-permissions" or "scheduling"));
 
     private async Task SelectSection(string sectionKey)
     {

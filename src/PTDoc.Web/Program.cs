@@ -4,7 +4,6 @@ using PTDoc.Application.Identity;
 using PTDoc.Application.Intake;
 using PTDoc.Application.ReferenceData;
 using PTDoc.Application.Services;
-using PTDoc.Application.Settings;
 using PTDoc.Core.Services;
 using PTDoc.Infrastructure.Services;
 using PTDoc.Infrastructure.ReferenceData;
@@ -47,7 +46,7 @@ builder.Services.AddScoped<IThemeService, BlazorThemeService>();
 builder.Services.AddScoped<ISyncService, HttpSyncService>();
 builder.Services.AddScoped<IConnectivityService, ConnectivityService>();
 builder.Services.AddScoped<IViewportDiagnosticsService, WebViewportDiagnosticsService>();
-builder.Services.AddScoped<IIntakeService, IntakeApiService>();
+builder.Services.AddIntakeApiClient();
 builder.Services.AddScoped<IIntakeInviteService, HttpIntakeInviteService>();
 builder.Services.AddScoped<IIntakeDeliveryService, IntakeDeliveryApiService>();
 builder.Services.AddSingleton<IIntakeReferenceDataCatalogService, IntakeReferenceDataCatalogService>();
@@ -71,15 +70,10 @@ builder.Services.AddScoped<INavigationBadgeService, HttpNavigationBadgeService>(
 builder.Services.AddScoped<IOrganizationAdministrationService, OrganizationApiClient>();
 builder.Services.AddScoped(sp => new SubscriptionApiClient(
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("PTDocAuthApi"), sp.GetRequiredService<HttpClient>()));
-builder.Services.AddScoped<SettingsAdministrationApiClient>();
-builder.Services.AddScoped<IRolePermissionAdministrationService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
-builder.Services.AddScoped<ISecurityPolicyAdministrationService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
-builder.Services.AddScoped<ISchedulingAdministrationService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
-builder.Services.AddScoped<IAutoCheckInAdministrationService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
-builder.Services.AddScoped<IKioskCheckInService>(sp => sp.GetRequiredService<SettingsAdministrationApiClient>());
+builder.Services.AddSettingsAdministrationApiClient();
 builder.Services.AddScoped<INavigationBadgeRefreshNotifier, NavigationBadgeRefreshNotifier>();
 builder.Services.AddScoped<IToastService, ToastService>();
-builder.Services.AddScoped<IIntakeSessionStore, JsIntakeSessionStore>();
+builder.Services.AddScoped<IIntakeSessionStore, WebIntakeSessionStore>();
 builder.Services.AddScoped<IIntakeDemographicsValidationService, IntakeDemographicsValidationService>();
 builder.Services.AddSingleton<ApiClusterAddressResolver>();
 builder.Services.Configure<EntraExternalIdOptions>(builder.Configuration.GetSection(EntraExternalIdOptions.SectionName));
@@ -619,6 +613,19 @@ static void ConfigureCookieOptions(CookieAuthenticationOptions options)
     options.ExpireTimeSpan = TimeSpan.FromMinutes(15);
     options.SlidingExpiration = true;
 
+    options.Events.OnSigningIn = context =>
+    {
+        // Local sign-ins already have an ID. Give external sign-ins the same intake isolation.
+        if (!WebSessionActivity.IsLocal(context.Principal) && context.Principal?.Identity is ClaimsIdentity identity)
+        {
+            foreach (var claim in identity.FindAll(WebIntakeSessionStore.ExternalSignInIdClaim).ToArray())
+            {
+                identity.RemoveClaim(claim);
+            }
+            identity.AddClaim(new Claim(WebIntakeSessionStore.ExternalSignInIdClaim, Guid.NewGuid().ToString("N")));
+        }
+        return Task.CompletedTask;
+    };
     options.Events.OnValidatePrincipal = WebSessionActivity.ValidateCookieAsync;
     options.Events.OnCheckSlidingExpiration = context =>
     {

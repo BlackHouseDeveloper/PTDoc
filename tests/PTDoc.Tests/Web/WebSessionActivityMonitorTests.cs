@@ -2,24 +2,35 @@ using System.Security.Claims;
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.JSInterop;
 using Moq;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Intake;
+using PTDoc.UI.Components.Intake;
+using PTDoc.UI.Services;
 using PTDoc.Web.Auth;
 using PTDoc.Web.Components;
+using PTDoc.Web.Services;
 
 namespace PTDoc.Tests.Web;
 
 [Trait("Category", "CoreCi")]
 public sealed class WebSessionActivityMonitorTests : TestContext
 {
+    private const string StorageKey = "ptdoc.intake.access_token";
+
     private readonly Mock<AuthenticationStateProvider> _authentication = new();
     private readonly ClaimsIdentity _identity;
 
     public WebSessionActivityMonitorTests()
     {
         Services.AddScoped<WebCircuitSessionState>();
+        Services.AddScoped<IIntakeSessionStore, WebIntakeSessionStore>();
+        Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+        Services.AddScoped<IntakeInviteRenewal>();
         _identity = new ClaimsIdentity(new[]
         {
             new Claim(PTDocClaimTypes.AuthenticationType, "web_cookie"),
@@ -58,6 +69,7 @@ public sealed class WebSessionActivityMonitorTests : TestContext
         var state = Services.GetRequiredService<WebCircuitSessionState>();
         var navigation = Services.GetRequiredService<NavigationManager>();
         var originalUri = navigation.Uri;
+        var removal = JSInterop.SetupVoid("sessionStorage.removeItem", StorageKey);
         var cut = RenderComponent<WebSessionActivityMonitor>();
 
         await cut.InvokeAsync(() => cut.Instance.SessionEnded(reason));
@@ -65,9 +77,108 @@ public sealed class WebSessionActivityMonitorTests : TestContext
         Assert.Equal(reason, state.EndedReason);
         Assert.Equal(originalUri, navigation.Uri);
         cut.WaitForAssertion(() => Assert.Contains(action, cut.Find("[role=alert]").TextContent));
-        cut.Find("button").Click();
+        Assert.Empty(removal.Invocations);
+        var recover = cut.Find("button").ClickAsync(new MouseEventArgs());
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Single(removal.Invocations);
+            Assert.True(cut.Find("button").HasAttribute("disabled"));
+        });
+        Assert.Equal(originalUri, navigation.Uri);
+
+        removal.SetVoidResult();
+        await recover;
         if (reason == "SessionEnded") Assert.EndsWith("/login?session_expired=1", navigation.Uri);
         else Assert.Equal(originalUri, navigation.Uri);
+    }
+
+    [Fact]
+    public async Task SessionReplacement_DiscardsOtpThatCompletesDuringIntakeCleanup()
+    {
+        JSInterop.Setup<string?>("sessionStorage.getItem", StorageKey).SetResult(null);
+        var removal = JSInterop.SetupVoid("sessionStorage.removeItem", StorageKey);
+        var save = JSInterop.SetupVoid("sessionStorage.setItem", _ => true).SetVoidResult();
+        var otp = new TaskCompletionSource<IntakeInviteResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var invites = new Mock<IIntakeInviteService>(MockBehavior.Strict);
+        invites.Setup(service => service.ValidateInviteTokenAsync("prior-invite", default))
+            .ReturnsAsync(new IntakeInviteValidationResponse(true, DateTimeOffset.UtcNow.AddHours(1), null));
+        invites.Setup(service => service.SendOtpAsync("prior-invite", "patient@example.test", OtpChannel.Sms, default))
+            .ReturnsAsync(true);
+        invites.Setup(service => service.VerifyOtpAndIssueAccessTokenAsync(
+                "prior-invite", "patient@example.test", OtpChannel.Sms, "123456", default))
+            .Returns(otp.Task);
+        Services.AddSingleton(invites.Object);
+        var navigation = (Bunit.TestDoubles.FakeNavigationManager)Services.GetRequiredService<NavigationManager>();
+        const string path = "/intake?mode=patient&invite=prior-invite";
+        navigation.NavigateTo(path);
+        var gate = RenderComponent<StandaloneIntakeAccessGate>(parameters => parameters.AddChildContent("<p>Authorized intake</p>"));
+        var monitor = RenderComponent<WebSessionActivityMonitor>();
+        gate.WaitForElement("#intake-contact-input").Input("patient@example.test");
+        await gate.Find("button.intake-access-gate__btn--primary").ClickAsync(new MouseEventArgs());
+        gate.WaitForElement("#intake-otp-input").Input("123456");
+        var verify = gate.Find("button.intake-access-gate__btn--primary").ClickAsync(new MouseEventArgs());
+        gate.WaitForAssertion(() => invites.Verify(service => service.VerifyOtpAndIssueAccessTokenAsync(
+            "prior-invite", "patient@example.test", OtpChannel.Sms, "123456", default), Times.Once));
+
+        await monitor.Instance.SessionEnded("SessionChanged");
+        var recover = monitor.Find("button").ClickAsync(new MouseEventArgs());
+        monitor.WaitForAssertion(() => Assert.Single(removal.Invocations));
+        Assert.DoesNotContain(navigation.History, entry => entry.Options.ForceLoad);
+
+        otp.SetResult(new IntakeInviteResult(true, "prior-intake-token", DateTimeOffset.UtcNow.AddHours(1), null));
+        await verify;
+
+        Assert.Empty(save.Invocations);
+        Assert.DoesNotContain("Authorized intake", gate.Markup);
+        Assert.Null(Services.GetRequiredService<IntakeInviteRenewal>().ForSession(new Uri(navigation.Uri), null));
+        removal.SetVoidResult();
+        await recover;
+        Assert.Contains(navigation.History, entry => entry.Options.ForceLoad &&
+            navigation.ToAbsoluteUri(entry.Uri).PathAndQuery == path);
+    }
+
+    [Fact]
+    public async Task RecoveryWaitsForRetryWhenIntakeCleanupFails()
+    {
+        var failRemoval = true;
+        JSInterop.SetupVoid("sessionStorage.removeItem", _ => failRemoval)
+            .SetException(new JSException("Storage unavailable"));
+        JSInterop.SetupVoid("sessionStorage.removeItem", _ => !failRemoval).SetVoidResult();
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        var originalUri = navigation.Uri;
+        var cut = RenderComponent<WebSessionActivityMonitor>();
+        await cut.Instance.SessionEnded("SessionEnded");
+
+        await cut.Find("button").ClickAsync(new MouseEventArgs());
+
+        Assert.Contains("saved intake session could not be removed", cut.Find("[role=alert]").TextContent);
+        Assert.Equal(originalUri, navigation.Uri);
+        Assert.False(cut.Find("button").HasAttribute("disabled"));
+        failRemoval = false;
+
+        await cut.Find("button").ClickAsync(new MouseEventArgs());
+
+        Assert.EndsWith("/login?session_expired=1", navigation.Uri);
+    }
+
+    [Theory]
+    [InlineData("/KIOSK/?station=1#enroll")]
+    [InlineData("/LOGOUT/?from=settings")]
+    public async Task ExpiredStaffSession_ShowsRecoveryAfterReturningToStaffPages(string path)
+    {
+        var navigation = Services.GetRequiredService<NavigationManager>();
+        navigation.NavigateTo(path);
+        var cut = RenderComponent<WebSessionActivityMonitor>();
+
+        await cut.InvokeAsync(() => cut.Instance.SessionEnded("SessionEnded"));
+
+        Assert.Empty(cut.FindAll("[role=alert]"));
+        Assert.Equal(navigation.ToAbsoluteUri(path), new Uri(navigation.Uri));
+        await cut.InvokeAsync(() => navigation.NavigateTo("/settings/kiosk"));
+        cut.WaitForAssertion(() => Assert.Contains("Sign in", cut.Find("button").TextContent));
+
+        await cut.InvokeAsync(() => navigation.NavigateTo(path));
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role=alert]")));
     }
 
     [Fact]

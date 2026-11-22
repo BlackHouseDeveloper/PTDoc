@@ -14,11 +14,15 @@
 @inject IUserService UserService
 @inject ILogger<Routes> Logger
 
-<Router AppAssembly="@typeof(Routes).Assembly" AdditionalAssemblies="@resolvedAdditionalAssemblies">
+<Router AppAssembly="@typeof(Routes).Assembly" AdditionalAssemblies="@AdditionalAssemblies">
     <Found Context="routeData">
-        @if (ShouldUseStandaloneIntakeLayout(routeData))
+        @if (routeData.PageType == typeof(KioskCheckIn))
         {
-            <StandaloneIntakeAccessGate>
+            <RouteView RouteData="@routeData" />
+        }
+        else if (ShouldUseStandaloneIntakeLayout(routeData))
+        {
+            <StandaloneIntakeAccessGate @key="NavigationManager.Uri">
                 <RouteView RouteData="@routeData" DefaultLayout="@typeof(StandaloneIntakeLayout)" />
             </StandaloneIntakeAccessGate>
         }
@@ -29,7 +33,7 @@
                     <p>Loading...</p>
                 </Authorizing>
                 <NotAuthorized>
-                    @if (isAuthenticated)
+                    @if (authenticatedUser is not null)
                     {
                         <RedirectToAccessDenied />
                     }
@@ -44,62 +48,52 @@
 </Router>
 
 @code {
-    private bool isAuthenticated;
+    [Parameter] public IReadOnlyList<Assembly>? AdditionalAssemblies { get; set; }
+
+    public static bool IsExplicitLogout(string location) =>
+        new Uri(location).AbsolutePath.TrimEnd('/').Equals("/logout", StringComparison.OrdinalIgnoreCase);
+
+    private ClaimsPrincipal? authenticatedUser;
     private int logoutTriggered;
-    private IReadOnlyList<Assembly>? resolvedAdditionalAssemblies;
 
     protected override async Task OnInitializedAsync()
     {
-        resolvedAdditionalAssemblies = ResolveAdditionalAssemblies();
         AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
         NavigationManager.LocationChanged += OnLocationChanged;
 
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        await ApplyAuthenticationStateAsync(authState);
+        await ApplyAuthenticationStateAsync();
     }
 
-    private void OnAuthenticationStateChanged(Task<AuthenticationState> authStateTask)
-    {
-        _ = HandleAuthenticationStateChangedAsync(authStateTask);
-    }
+    private void OnAuthenticationStateChanged(Task<AuthenticationState> state) =>
+        _ = InvokeAsync(() => RefreshAuthenticationAsync(state));
 
-    private async Task HandleAuthenticationStateChangedAsync(Task<AuthenticationState> authStateTask)
-    {
-        try
-        {
-            var authState = await authStateTask;
-            await ApplyAuthenticationStateAsync(authState);
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Authentication state change handler failed.");
-        }
-    }
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args) =>
+        _ = InvokeAsync(() => RefreshAuthenticationAsync());
 
-    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args)
-    {
-        _ = ValidateAuthenticationOnNavigationAsync();
-    }
-
-    private async Task ValidateAuthenticationOnNavigationAsync()
+    private async Task RefreshAuthenticationAsync(Task<AuthenticationState>? state = null)
     {
         try
         {
-            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            await ApplyAuthenticationStateAsync(authState);
-            await InvokeAsync(StateHasChanged);
+            await ApplyAuthenticationStateAsync(state);
+            StateHasChanged();
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Authentication validation during navigation failed.");
+            Logger.LogError(ex, "Authentication validation failed.");
         }
     }
 
-    private async Task ApplyAuthenticationStateAsync(AuthenticationState authState)
+    private async Task ApplyAuthenticationStateAsync(Task<AuthenticationState>? state = null)
     {
-        isAuthenticated = authState.User.Identity?.IsAuthenticated == true;
-        if (!isAuthenticated)
+        var location = NavigationManager.Uri;
+        if (KioskCheckIn.IsPublicKiosk(location) || IsExplicitLogout(location)) return;
+
+        var authState = await (state ?? AuthenticationStateProvider.GetAuthenticationStateAsync());
+        // A staff authentication check can finish after navigation to the public station.
+        if (location != NavigationManager.Uri) return;
+
+        authenticatedUser = authState.User.Identity?.IsAuthenticated == true ? authState.User : null;
+        if (authenticatedUser is null)
         {
             return;
         }
@@ -110,7 +104,7 @@
             return;
         }
 
-        isAuthenticated = false;
+        authenticatedUser = null;
         if (Interlocked.Exchange(ref logoutTriggered, 1) == 0)
         {
             Logger.LogInformation("Ending the authenticated session because its API access token is missing, invalid, or expired during navigation.");
@@ -153,26 +147,13 @@
         }
 
         var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
-        var query = uri.Query;
-        var isPatientQueryMode = query.Contains("mode=patient", StringComparison.OrdinalIgnoreCase);
-
-        return isPatientQueryMode || !isAuthenticated;
+        return authenticatedUser is null || authenticatedUser.IsInRole(Roles.Patient) ||
+            StandaloneIntakeLink.IsPatientMode(uri, out _);
     }
 
     public void Dispose()
     {
         AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
         NavigationManager.LocationChanged -= OnLocationChanged;
-    }
-
-    private static IReadOnlyList<Assembly>? ResolveAdditionalAssemblies()
-    {
-        var appAssembly = Assembly.GetEntryAssembly();
-        if (appAssembly is null || appAssembly == typeof(Routes).Assembly)
-        {
-            return null;
-        }
-
-        return [appAssembly];
     }
 }

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed - MAUI navigation to shared pages
+
+- Native sign-out clears the staff login, the saved patient intake session and the invitation remembered by the WebView. Staff sign-in returns to the requested chart. Patients denied access to the clinical dashboard can open their home exercise program or sign out from the access-denied page.
+- Native sign-in clears the WebView’s saved intake token and remembered invitation before completing sign-in, including after PIN change or MFA. A different patient signing in after the prior login expires must verify intake access again. Routine token refresh preserves active intake.
+- Web sign-out ends the login even when browser storage removal fails. Saved Web intake tokens are protected for the sign-in that created them. Older unbound Web intake sessions require verification once after the update.
+- Web session recovery clears saved intake credentials before sign-in or reload. A pending OTP response from an ended circuit cannot save an intake token during recovery. Starting a new Web sign-in also clears saved intake credentials.
+- Standalone intake reuses a verified session only for its matching invite when opening a link. A different invite requires verification. Missing, expired, or legacy sessions without an invite binding require verification. Web and native storage discard writes that overlap a session clear, and a validation response cannot reopen a session cleared while it was pending.
+- Signed-in Web patients stay in standalone intake when they remove the invitation from the URL. If the intake session expires, returning to the same patient in the same WebView or web circuit lets them request a new one-time code with the previously verified invitation.
+- Opening a staff visit link containing `noteId` from standalone intake now directs the patient to the clinic-issued invitation for that visit. This prevents a previous visit’s form from reopening for the same patient.
+- Patient-mode intake reads, saves and submissions stay bound to the verified session. Leaving an intake during a profile save cancels its follow-up reload. Native standalone requests leave the clinician’s session credentials out of the request.
+- The launcher can start the local API and open an already signed Intel or Apple Silicon Mac Catalyst Debug app. Option 5 checks the app’s configured API at `http://localhost:5170` and reports incompatible `API_URL` overrides before startup.
+- Mac Catalyst now packages managed assemblies where Mono loads them at startup. Lato fonts and communication templates remain bundled as resources.
+- The native router discovers pages in PTDoc.UI, including the dashboard and patient chart. Shared pages and navigation now inherit their host's render mode. The Web app continues to select interactive server rendering at its root.
+- The MAUI host supplies the authenticated patient and note API clients used by the dashboard, patient list and chart.
+- Native intake now verifies standalone access before opening the wizard for signed-out users, patient accounts and patient-mode links. Clinician intake continues to use the signed-in chart layout.
+- Kiosk station administration at `/settings/kiosk` and its Settings shortcuts are Web-only. Web and native stations can enroll and check in appointments at `/kiosk` even after a staff session expires. Roles, security policies, scheduling administration and auto check-in are also Web-only. Native Settings opens Documentation and Compliance. Native Appointments can still load active visit types.
+- Native `/kiosk` opens directly into enrollment and check-in without loading staff credentials, clinical navigation or badges. On Web, station activity no longer renews a staff session, and staff expiry leaves check-in uninterrupted. Returning to a staff page checks the session again.
+- The native kiosk check-in tests now book separate appointment slots for active and expired staff tokens so both cases can exercise check-in against the shared Linux Core test database.
+- Security Settings opens recovery-code regeneration in the authenticated Web form. On native, older recovery-code links direct users to PTDoc Web.
+
 ### Changed - Client review Plan 11
 
 - Grouped PHI release authorization, status, contacts and recipients on the intake Review step. Previously recorded revocations appear as read-only history in full and shortened intakes.
