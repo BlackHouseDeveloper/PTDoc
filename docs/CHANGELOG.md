@@ -27,6 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The native kiosk check-in tests now book separate appointment slots for active and expired staff tokens so both cases can exercise check-in against the shared Linux Core test database.
 - Security Settings opens recovery-code regeneration in the authenticated Web form. On native, older recovery-code links direct users to PTDoc Web.
 
+### Changed - Client review Plan 12
+
+- The patient chart now edits phone, address and emergency contacts, retains entered values after validation or a stale save, and supports clearing individual optional fields. Add Patient opens the clinic-scoped creation form. Start New Note focuses the first note type on every activation.
+- Patient write races return HTTP 409 and roll back the losing chart operation. PostgreSQL returns patient versions at stored precision, and a sync acknowledgement preserves the version an editor loaded.
+- A patient edit stays pending for sync when a worker acknowledges the previous version during the edit. Saving unchanged demographics preserves the patient version and skips synchronization, so another clinician can still save from the same version.
+- The patient chart requires a four-digit year for an edited birth date and reads the month first. A two-digit year prompts for correction and preserves the other edits.
+- Contact updates skip validation of unchanged birth dates and email addresses. Clinicians can update an emergency phone number on a chart with a malformed email, or correct or clear the email in the same save.
+- Patients with a single-part name can have their phone or emergency contact number updated. The editor requires a first and last name only when a clinician edits the name.
+
 ### Changed - Client review Plan 11
 
 - Grouped PHI release authorization, status, contacts and recipients on the intake Review step. Previously recorded revocations appear as read-only history in full and shortened intakes.

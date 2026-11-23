@@ -101,6 +101,7 @@
     line-height: var(--line-height-normal);
     color: var(--card-foreground);
     min-height: 48px;
+    overflow-wrap: anywhere;
     display: flex;
     align-items: center;
 }

@@ -49,9 +49,9 @@ public class SyncMetadataInterceptor : SaveChangesInterceptor
 
         foreach (var entry in entries)
         {
-            // A sync acknowledgement is not a new answer version. Encounter intake
-            // clients use this timestamp for optimistic concurrency across wizard steps.
-            if (entry.State == EntityState.Modified && entry.Entity is IntakeForm { EncounterNoteId: not null }
+            // A sync-only acknowledgement preserves the version loaded by an open chart or encounter wizard.
+            if (entry.State == EntityState.Modified
+                && entry.Entity is (Patient { SyncState: SyncState.Synced } or IntakeForm { EncounterNoteId: not null })
                 && entry.Properties.Where(property => property.IsModified)
                     .All(property => property.Metadata.Name == nameof(ISyncTrackedEntity.SyncState)))
             {
@@ -61,14 +61,14 @@ public class SyncMetadataInterceptor : SaveChangesInterceptor
             // Always update LastModifiedUtc and ModifiedByUserId
             // PostgreSQL timestamps store microseconds. Return the same version that
             // a fresh request will read, without weakening exact concurrency checks.
-            entry.Entity.LastModifiedUtc = entry.Entity is IntakeForm { EncounterNoteId: not null }
+            entry.Entity.LastModifiedUtc = entry.Entity is (Patient or IntakeForm { EncounterNoteId: not null })
                 && context.Database.IsNpgsql()
                     ? new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMicrosecond, DateTimeKind.Utc)
                     : now;
             if (entry.State == EntityState.Modified
-                && entry.Entity is IntakeForm { EncounterNoteId: null, IsLocked: true, SubmittedAt: not null })
+                && entry.Entity is (Patient or IntakeForm { EncounterNoteId: null, IsLocked: true, SubmittedAt: not null }))
             {
-                // Standalone outcome consumption uses this token in the note's atomic save.
+                // The chart and standalone outcome projection both reject stale versions.
                 // Keep it strictly increasing even with a fixed/backward clock, at PostgreSQL precision.
                 var original = entry.Property(entity => entity.LastModifiedUtc).OriginalValue;
                 var minimumTicks = original.Ticks - original.Ticks % TimeSpan.TicksPerMicrosecond + TimeSpan.TicksPerMicrosecond;
@@ -77,23 +77,14 @@ public class SyncMetadataInterceptor : SaveChangesInterceptor
             }
             entry.Entity.ModifiedByUserId = currentUserId;
 
-            // For new entities, ensure sync state is Pending
-            if (entry.State == EntityState.Added)
+            if (entry.Entity.SyncState == SyncState.Synced)
             {
-                // Set to Pending unless already Pending or Conflict
-                // (SyncState defaults to Pending=0, but enforce it in case it was manually set to Synced)
-                if (entry.Entity.SyncState == SyncState.Synced)
-                {
-                    entry.Entity.SyncState = SyncState.Pending;
-                }
+                entry.Entity.SyncState = SyncState.Pending;
             }
-            else if (entry.State == EntityState.Modified)
+            if (entry.State == EntityState.Modified && entry.Entity is Patient { SyncState: SyncState.Pending })
             {
-                // Modified entity - mark as pending if it was previously synced
-                if (entry.Entity.SyncState == SyncState.Synced)
-                {
-                    entry.Entity.SyncState = SyncState.Pending;
-                }
+                // A worker may have acknowledged the previous version since this context loaded it.
+                entry.Property(entity => entity.SyncState).IsModified = true;
             }
         }
     }

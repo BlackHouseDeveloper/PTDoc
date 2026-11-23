@@ -8,6 +8,7 @@ using PTDoc.Application.Services;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
 using PTDoc.Infrastructure.Services;
+using System.ComponentModel.DataAnnotations;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
@@ -145,7 +146,7 @@ public static class PatientEndpoints
     }
 
     // POST /api/patients
-    private static async Task<IResult> CreatePatient(
+    internal static async Task<IResult> CreatePatient(
         [FromBody] CreatePatientRequest request,
         [FromServices] ApplicationDbContext db,
         [FromServices] ITenantContextAccessor tenantContext,
@@ -181,7 +182,7 @@ public static class PatientEndpoints
         {
             FirstName = request.FirstName.Trim(),
             LastName = request.LastName.Trim(),
-            DateOfBirth = request.DateOfBirth,
+            DateOfBirth = DateTime.SpecifyKind(request.DateOfBirth, DateTimeKind.Utc),
             Email = request.Email?.Trim(),
             Phone = request.Phone?.Trim(),
             AddressLine1 = request.AddressLine1?.Trim(),
@@ -230,7 +231,7 @@ public static class PatientEndpoints
     }
 
     // PUT /api/patients/{id}
-    private static async Task<IResult> UpdatePatient(
+    internal static async Task<IResult> UpdatePatient(
         Guid id,
         [FromBody] UpdatePatientRequest request,
         [FromServices] ApplicationDbContext db,
@@ -243,6 +244,27 @@ public static class PatientEndpoints
 
         if (patient is null)
             return Results.NotFound(new { error = $"Patient {id} not found." });
+
+        if (request.ExpectedLastModifiedUtc.HasValue && request.ExpectedLastModifiedUtc.Value != patient.LastModifiedUtc)
+        {
+            return Results.Conflict(new { error = "Patient information changed since it was loaded. Refresh before saving again." });
+        }
+
+        var validationResults = new List<ValidationResult>();
+        Validator.TryValidateObject(request, new ValidationContext(request), validationResults, validateAllProperties: true);
+        var errors = validationResults
+            .Where(result => !(string.IsNullOrEmpty(request.Email) && result.MemberNames.SequenceEqual([nameof(request.Email)])))
+            .SelectMany(result => result.MemberNames.Select(name => (Name: name, Message: result.ErrorMessage ?? "Invalid value.")))
+            .GroupBy(result => result.Name)
+            .ToDictionary(group => group.Key, group => group.Select(result => result.Message).ToArray());
+        if (request.DateOfBirth == default(DateTime))
+        {
+            errors[nameof(request.DateOfBirth)] = ["A valid date of birth is required."];
+        }
+        if (errors.Count > 0)
+        {
+            return Results.ValidationProblem(errors);
+        }
 
         // Apply only provided (non-null) fields
         if (request.FirstName is not null)
@@ -268,7 +290,7 @@ public static class PatientEndpoints
         }
 
         if (request.DateOfBirth is not null)
-            patient.DateOfBirth = request.DateOfBirth.Value;
+            patient.DateOfBirth = DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc);
 
         if (request.Email is not null)
             patient.Email = request.Email.Trim();
@@ -341,11 +363,17 @@ public static class PatientEndpoints
         if (request.IsArchived is not null)
             patient.IsArchived = request.IsArchived.Value;
 
+        var updateIntakeProjection = request.PayerInfoJson is not null || request.ReferringPhysician is not null || request.PhysicianNpi is not null;
+        if (!updateIntakeProjection && db.Entry(patient).State == EntityState.Unchanged)
+        {
+            return Results.Ok(ToResponse(patient));
+        }
+
         patient.LastModifiedUtc = DateTime.UtcNow;
         patient.ModifiedByUserId = identityContext.GetCurrentUserId();
         patient.SyncState = SyncState.Pending;
 
-        if (request.PayerInfoJson is not null || request.ReferringPhysician is not null || request.PhysicianNpi is not null)
+        if (updateIntakeProjection)
         {
             await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, patient.PayerInfoJson, patient.ReferringPhysician, patient.PhysicianNpi, patient.ModifiedByUserId, cancellationToken);
         }

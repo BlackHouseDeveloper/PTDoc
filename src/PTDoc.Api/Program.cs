@@ -712,6 +712,13 @@ app.UseExceptionHandler(errorApp =>
         }
 
         var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+        if (exception is DbUpdateConcurrencyException conflict
+            && conflict.Entries.Any(entry => entry.Entity is PTDoc.Core.Models.Patient))
+        {
+            await Results.Conflict(new { error = "Patient information changed while saving. Refresh before saving again." }).ExecuteAsync(context);
+            return;
+        }
+
         var statusCode = exception switch
         {
             BadHttpRequestException => StatusCodes.Status400BadRequest,

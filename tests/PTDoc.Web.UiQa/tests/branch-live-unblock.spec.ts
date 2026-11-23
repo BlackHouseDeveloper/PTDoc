@@ -86,6 +86,102 @@ test.describe.serial('PTDoc fixable live-run blockers', () => {
     }
   });
 
+  test.describe('Plan 12 patient chart', () => {
+    test.use({ timezoneId: 'Asia/Kathmandu' });
+
+    for (const width of [390, 768, 1440]) {
+      test(`contact editing, clinic creation and keyboard entry at ${width}px`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 844 });
+        await loginAs(page, 'pt');
+        const patient = await createSyntheticPatient(page, `chart-${width}`);
+        const route = `/api/v1/patients/${patient.id}`;
+        type ChartRecord = { firstName: string; lastName: string; clinicId: string; lastModifiedUtc: string; phone: string };
+        const original = await apiJson<ChartRecord>(page, 'GET', route);
+        expect(original.clinicId).toBeTruthy();
+        await createDraftNote(page, patient.id, 1);
+        const openChart = () => gotoInteractive(page, `/patient/${patient.id}`);
+        await openChart();
+        const card = page.getByTestId('patient-demographics-card');
+        const edit = card.getByRole('button', { name: 'Edit patient information' });
+        const save = card.getByRole('button', { name: 'Save Changes' });
+        await edit.click();
+        const dob = card.getByLabel('Date of Birth');
+        const originalDob = await dob.inputValue();
+        const fields = {
+          'Phone Number': '2025550111', 'Address Line 1': '42 Synthetic St', 'Address Line 2': 'Unit 3',
+          City: 'Example City', 'State / Province': 'MD', 'Postal Code': '20001',
+          'Emergency Contact Name': 'SyntheticContact'.repeat(7), 'Emergency Contact Phone': '2025550123'
+        };
+        for (const [label, value] of Object.entries(fields)) await card.getByLabel(label, { exact: true }).fill(value);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await dob.fill('invalid');
+        await save.press('Enter');
+        await expect(card.getByRole('alert')).toContainText('valid date of birth');
+        await expect(card.getByLabel('Phone Number')).toHaveValue(fields['Phone Number']);
+        await dob.fill(originalDob);
+        await save.click();
+        await expect(edit).toBeVisible();
+        await openChart();
+        await edit.click();
+        for (const [label, value] of Object.entries(fields)) await expect(card.getByLabel(label, { exact: true })).toHaveValue(value);
+        await card.getByLabel('Address Line 2').fill('');
+        await save.click();
+        await expect(edit).toBeVisible();
+        await openChart();
+        await edit.click();
+        await expect(card.getByLabel('Address Line 2')).toHaveValue('');
+        await expect(card.getByLabel('Emergency Contact Name')).toHaveValue(fields['Emergency Contact Name']);
+
+        const loaded = await apiJson<ChartRecord>(page, 'GET', route);
+        await card.getByLabel('Phone Number').fill('2025550112');
+        await apiJson(page, 'PUT', route, { expectedLastModifiedUtc: loaded.lastModifiedUtc, phone: '2025550113' });
+        await save.click();
+        await expect(card.getByRole('alert')).toContainText('changed since you opened it');
+        await expect(card.getByLabel('Phone Number')).toHaveValue('2025550112');
+        expect((await apiResponse(page, 'PUT', route, { expectedLastModifiedUtc: loaded.lastModifiedUtc, phone: 'stale' })).status()).toBe(409);
+        expect(await apiJson(page, 'GET', route)).toMatchObject({
+          phone: '2025550113', firstName: original.firstName, lastName: original.lastName, addressLine2: ''
+        });
+        await card.getByRole('button', { name: 'Cancel editing' }).click();
+
+        const viewerZone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+        const time = page.locator(`time[title="${viewerZone}"]`).first();
+        await expect(time).toContainText('UTC+05:45');
+        const timestamp = await time.getAttribute('datetime');
+        const localTime = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'Asia/Kathmandu', hour: 'numeric', minute: '2-digit'
+        }).format(new Date(timestamp!));
+        await expect(time).toHaveText(`${localTime} UTC+05:45`);
+
+        const start = page.getByRole('link', { name: 'Start New Note' });
+        const firstChoice = page.getByRole('button', { name: 'Daily Treatment Note' });
+        for (let activation = 0; activation < 2; activation++) {
+          await start.focus();
+          await start.press('Enter');
+          await expect(firstChoice).toBeFocused();
+          await expect(firstChoice).toBeInViewport({ ratio: 1 });
+          await page.keyboard.press('Tab');
+          await expect(page.getByRole('button', { name: 'Evaluation Note' })).toBeFocused();
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+        await page.getByRole('link', { name: 'Add Patient' }).press('Enter');
+        const modal = page.getByRole('dialog');
+        const lastName = `${fixturePrefix}-created-${width}`;
+        await modal.getByLabel('First Name').fill('Synthetic');
+        await modal.getByLabel('Last Name').fill(lastName);
+        await modal.getByLabel('Email Address').fill(`${lastName}@example.test`);
+        await modal.getByLabel('Date of Birth').fill('1990-07-12');
+        await modal.getByRole('button', { name: 'Add Patient', exact: true }).press('Enter');
+        await expect(modal).toBeHidden();
+        const matches = await apiJson<{ id: string }[]>(page, 'GET', `/api/v1/patients/?query=${encodeURIComponent(lastName)}`);
+        expect(matches).toHaveLength(1);
+        expect(matches[0].id).not.toBe(patient.id);
+        expect(await apiJson(page, 'GET', `/api/v1/patients/${matches[0].id}`)).toMatchObject({ lastName, clinicId: original.clinicId });
+      });
+    }
+  });
+
   test('provider submission, review, search, relationships, duplicates, merge, archive, and concurrency', async ({ page, browser }, testInfo) => {
     await loginAs(page, 'admin');
 
