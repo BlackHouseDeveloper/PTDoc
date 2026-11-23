@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
@@ -75,6 +76,37 @@ public sealed class PatientDemographicsEditorTests : TestContext
         Assert.Null(saved.PayerInfoJson);
         Assert.Null(saved.ConsentSigned);
         Assert.Equal("Old Street", patient.AddressLine1);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("4/5/1981")]
+    public void SaveUnderBritishCultureUsesDisplayedMonthDayOrderOnlyForEditedBirthDate(string? enteredDob)
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-GB");
+            patient.DateOfBirth = "3/31/1980";
+            service.Setup(x => x.UpdateAsync(It.IsAny<Guid>(), It.IsAny<UpdatePatientRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new PatientResponse());
+            var cut = RenderComponent<PatientDemographicsCardEditable>(p => p.Add(x => x.Patient, patient));
+            cut.Find("button[aria-label='Edit patient information']").Click();
+            cut.Find("#edit-phone").Change("2025550199");
+            if (enteredDob is not null)
+            {
+                cut.Find("#edit-dob").Change(enteredDob);
+            }
+            cut.Find(".patient-demographics-save-btn").Click();
+
+            DateTime? expectedDob = enteredDob is null ? null : new DateTime(1981, 4, 5, 0, 0, 0, DateTimeKind.Utc);
+            service.Verify(x => x.UpdateAsync(Guid.Parse(patient.Id), It.Is<UpdatePatientRequest>(request =>
+                request.Phone == "2025550199" && request.DateOfBirth == expectedDob), It.IsAny<CancellationToken>()), Times.Once);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
     }
 
     [Theory]

@@ -2,6 +2,7 @@
 @using PTDoc.Application.Services
 @using PTDoc.Application.DTOs
 @using System.Net
+@using System.Globalization
 @using System.ComponentModel.DataAnnotations
 @inject IPatientService PatientService
 @inject IToastService ToastService
@@ -95,7 +96,7 @@
                     <input id="edit-name" type="text" class="patient-demographics-input" @bind="editName" disabled="@isSaving" />
                 </div>
                 <div class="patient-demographics-field">
-                    <label class="patient-demographics-label" for="edit-dob">Date of Birth</label>
+                    <label class="patient-demographics-label" for="edit-dob">Date of Birth (month/day/year)</label>
                     <input id="edit-dob" type="text" class="patient-demographics-input" @bind="editDateOfBirth" disabled="@isSaving" />
                 </div>
             </div>
@@ -254,10 +255,18 @@
             saveError = "First and last name are required.";
             return;
         }
-        if (!DateTime.TryParse(editDateOfBirth, out var dob) || dob == default)
+        DateTime? changedDateOfBirth = null;
+        if (editDateOfBirth != (Patient.DateOfBirth ?? string.Empty))
         {
-            saveError = "Enter a valid date of birth.";
-            return;
+            var culture = CultureInfo.CurrentCulture;
+            var parsed = DateTime.TryParseExact(editDateOfBirth, PatientProfileVm.DateOfBirthFormat, culture, DateTimeStyles.AllowWhiteSpaces, out var dob)
+                || DateTime.TryParse(editDateOfBirth, culture, DateTimeStyles.AllowWhiteSpaces, out dob);
+            if (!parsed || dob == default)
+            {
+                saveError = "Enter a valid date of birth.";
+                return;
+            }
+            changedDateOfBirth = DateTime.SpecifyKind(dob.Date, DateTimeKind.Utc);
         }
         if (!string.IsNullOrWhiteSpace(editEmail) && !new EmailAddressAttribute().IsValid(editEmail.Trim()))
         {
@@ -284,7 +293,7 @@
             {
                 FirstName = nameChanged ? nameParts[0] : null,
                 LastName = nameChanged ? nameParts[1] : null,
-                DateOfBirth = editDateOfBirth == Patient.DateOfBirth ? null : DateTime.SpecifyKind(dob.Date, DateTimeKind.Utc),
+                DateOfBirth = changedDateOfBirth,
                 ExpectedLastModifiedUtc = editVersion,
                 Email = ChangedText(editEmail, Patient.Email),
                 Phone = ChangedText(editPhoneNumber, Patient.PhoneNumber),

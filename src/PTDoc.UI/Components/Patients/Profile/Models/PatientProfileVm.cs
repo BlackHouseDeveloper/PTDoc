@@ -5,6 +5,8 @@ namespace PTDoc.UI.Components.Patients.Profile.Models;
 /// </summary>
 public class PatientProfileVm
 {
+    public const string DateOfBirthFormat = "M/d/yyyy";
+
     public string Id { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public string? DateOfBirth { get; set; }

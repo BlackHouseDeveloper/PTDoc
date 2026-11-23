@@ -220,7 +220,7 @@
                 Id = response.Id.ToString(),
                 DisplayName = $"{response.FirstName} {response.LastName}".Trim(),
                 DateOfBirth = response.DateOfBirth != default
-                    ? response.DateOfBirth.ToString("M/d/yyyy")
+                    ? response.DateOfBirth.ToString(PatientProfileVm.DateOfBirthFormat)
                     : null,
                 Email = response.Email,
                 PhoneNumber = response.Phone,

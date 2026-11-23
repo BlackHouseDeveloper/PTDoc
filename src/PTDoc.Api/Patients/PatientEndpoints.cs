@@ -363,11 +363,17 @@ public static class PatientEndpoints
         if (request.IsArchived is not null)
             patient.IsArchived = request.IsArchived.Value;
 
+        var updateIntakeProjection = request.PayerInfoJson is not null || request.ReferringPhysician is not null || request.PhysicianNpi is not null;
+        if (!updateIntakeProjection && db.Entry(patient).State == EntityState.Unchanged)
+        {
+            return Results.Ok(ToResponse(patient));
+        }
+
         patient.LastModifiedUtc = DateTime.UtcNow;
         patient.ModifiedByUserId = identityContext.GetCurrentUserId();
         patient.SyncState = SyncState.Pending;
 
-        if (request.PayerInfoJson is not null || request.ReferringPhysician is not null || request.PhysicianNpi is not null)
+        if (updateIntakeProjection)
         {
             await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, patient.PayerInfoJson, patient.ReferringPhysician, patient.PhysicianNpi, patient.ModifiedByUserId, cancellationToken);
         }

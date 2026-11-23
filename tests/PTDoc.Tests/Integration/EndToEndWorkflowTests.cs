@@ -37,6 +37,7 @@ using PTDoc.Application.Sync;
 using PTDoc.Core.Communication;
 using PTDoc.Core.Models;
 using PTDoc.Infrastructure.Data;
+using PTDoc.Infrastructure.Data.Interceptors;
 using PTDoc.Infrastructure.Identity;
 
 namespace PTDoc.Tests.Integration;
@@ -2706,6 +2707,66 @@ public sealed class EndToEndWorkflowTests : IClassFixture<PtDocApiFactory>
         Assert.Equal("", cleared.AddressLine2);
         Assert.Equal("", cleared.Email);
         Assert.Equal("2025550191", cleared.Phone);
+    }
+
+    [Fact]
+    public async Task PatientDemographics_EditAfterSyncAcknowledgementPersistsAsPending()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var id = await CreatePatientAsync(client);
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var identity = scope.ServiceProvider.GetRequiredService<IIdentityContextAccessor>();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(db.Database.GetConnectionString())
+            .AddInterceptors(new SyncMetadataInterceptor(identity)).Options;
+        await using var chart = new ApplicationDbContext(options);
+        await using var worker = new ApplicationDbContext(options);
+        var editing = await chart.Patients.SingleAsync(p => p.Id == id);
+        Assert.Equal(SyncState.Pending, editing.SyncState);
+        var loadedVersion = editing.LastModifiedUtc;
+
+        var acknowledged = await worker.Patients.SingleAsync(p => p.Id == id);
+        acknowledged.SyncState = SyncState.Synced;
+        await worker.SaveChangesAsync();
+        var stored = await db.Patients.AsNoTracking().SingleAsync(p => p.Id == id);
+        Assert.Equal(SyncState.Synced, stored.SyncState);
+        Assert.Equal(loadedVersion, stored.LastModifiedUtc);
+
+        editing.Phone = "2025550111";
+        await chart.SaveChangesAsync();
+        stored = await db.Patients.AsNoTracking().SingleAsync(p => p.Id == id);
+        Assert.Equal("2025550111", stored.Phone);
+        Assert.True(stored.LastModifiedUtc > loadedVersion);
+        Assert.Equal(SyncState.Pending, stored.SyncState);
+    }
+
+    [Fact]
+    public async Task PatientDemographics_UnchangedSavePreservesSyncStateAndOtherEditorsVersion()
+    {
+        using var client = _factory.CreateClientWithRole(Roles.PT);
+        var id = await CreatePatientAsync(client);
+        var route = $"/api/v1/patients/{id}";
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var rows = db.Patients.Where(p => p.Id == id);
+        await rows.ExecuteUpdateAsync(set => set.SetProperty(p => p.SyncState, SyncState.Synced));
+        var loaded = (await client.GetFromJsonAsync<PatientResponse>(route))!;
+
+        using var unchanged = await client.PutAsJsonAsync(route, new UpdatePatientRequest { ExpectedLastModifiedUtc = loaded.LastModifiedUtc });
+        Assert.Equal(HttpStatusCode.OK, unchanged.StatusCode);
+        var response = (await unchanged.Content.ReadFromJsonAsync<PatientResponse>())!;
+        Assert.Equal(loaded.LastModifiedUtc, response.LastModifiedUtc);
+        var stored = await rows.AsNoTracking().SingleAsync();
+        Assert.Equal(loaded.LastModifiedUtc, stored.LastModifiedUtc);
+        Assert.Equal(SyncState.Synced, stored.SyncState);
+
+        using var edited = await client.PutAsJsonAsync(route, new UpdatePatientRequest { ExpectedLastModifiedUtc = loaded.LastModifiedUtc, Phone = "2025550112" });
+        Assert.Equal(HttpStatusCode.OK, edited.StatusCode);
+        stored = await rows.AsNoTracking().SingleAsync();
+        Assert.Equal("2025550112", stored.Phone);
+        Assert.True(stored.LastModifiedUtc > loaded.LastModifiedUtc);
+        Assert.Equal(SyncState.Pending, stored.SyncState);
     }
 
     [Fact]
