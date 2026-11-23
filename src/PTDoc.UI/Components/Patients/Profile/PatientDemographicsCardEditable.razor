@@ -96,7 +96,7 @@
                     <input id="edit-name" type="text" class="patient-demographics-input" @bind="editName" disabled="@isSaving" />
                 </div>
                 <div class="patient-demographics-field">
-                    <label class="patient-demographics-label" for="edit-dob">Date of Birth (month/day/year)</label>
+                    <label class="patient-demographics-label" for="edit-dob">Date of Birth (month/day/four-digit year)</label>
                     <input id="edit-dob" type="text" class="patient-demographics-input" @bind="editDateOfBirth" disabled="@isSaving" />
                 </div>
             </div>
@@ -258,19 +258,23 @@
         DateTime? changedDateOfBirth = null;
         if (editDateOfBirth != (Patient.DateOfBirth ?? string.Empty))
         {
-            var culture = CultureInfo.CurrentCulture;
-            var parsed = DateTime.TryParseExact(editDateOfBirth, PatientProfileVm.DateOfBirthFormat, culture, DateTimeStyles.AllowWhiteSpaces, out var dob)
-                || DateTime.TryParse(editDateOfBirth, culture, DateTimeStyles.AllowWhiteSpaces, out dob);
-            if (!parsed || dob == default)
+            if (!DateTime.TryParseExact(editDateOfBirth, PatientProfileVm.DateOfBirthFormat, CultureInfo.CurrentCulture,
+                DateTimeStyles.AllowWhiteSpaces, out var dob) || dob == default)
             {
-                saveError = "Enter a valid date of birth.";
+                saveError = "Enter a valid date of birth with the month first and a four-digit year.";
                 return;
             }
             changedDateOfBirth = DateTime.SpecifyKind(dob.Date, DateTimeKind.Utc);
         }
-        if (!string.IsNullOrWhiteSpace(editEmail) && !new EmailAddressAttribute().IsValid(editEmail.Trim()))
+        var changedEmail = ChangedText(editEmail, Patient.Email);
+        if (!string.IsNullOrEmpty(changedEmail) && !new EmailAddressAttribute().IsValid(changedEmail))
         {
             saveError = "Enter a valid email address.";
+            return;
+        }
+        if (changedEmail is { Length: > 255 })
+        {
+            saveError = "Email address must be 255 characters or fewer.";
             return;
         }
 
@@ -278,11 +282,6 @@
         if (nameChanged && (nameParts[0].Length > 100 || nameParts[1].Length > 100))
         {
             saveError = "First and last names must each be 100 characters or fewer.";
-            return;
-        }
-        if (editEmail.Trim().Length > 255)
-        {
-            saveError = "Email address must be 255 characters or fewer.";
             return;
         }
 
@@ -295,7 +294,7 @@
                 LastName = nameChanged ? nameParts[1] : null,
                 DateOfBirth = changedDateOfBirth,
                 ExpectedLastModifiedUtc = editVersion,
-                Email = ChangedText(editEmail, Patient.Email),
+                Email = changedEmail,
                 Phone = ChangedText(editPhoneNumber, Patient.PhoneNumber),
                 AddressLine1 = ChangedText(editAddressLine1, Patient.AddressLine1),
                 AddressLine2 = ChangedText(editAddressLine2, Patient.AddressLine2),

@@ -32,7 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The patient chart now edits phone, address and emergency contacts, retains entered values after validation or a stale save, and supports clearing individual optional fields. Add Patient opens the clinic-scoped creation form. Start New Note focuses the first note type on every activation.
 - Patient write races return HTTP 409 and roll back the losing chart operation. PostgreSQL returns patient versions at stored precision, and a sync acknowledgement preserves the version an editor loaded.
 - A patient edit stays pending for sync when a worker acknowledges the previous version during the edit. Saving unchanged demographics preserves the patient version and skips synchronization, so another clinician can still save from the same version.
-- Contact-only edits skip birth date validation. When the birth date changes, the editor reads the displayed month/day/year order consistently across device locales.
+- The patient chart requires a four-digit year for an edited birth date and reads the month first. A two-digit year prompts for correction and preserves the other edits.
+- Contact updates skip validation of unchanged birth dates and email addresses. Clinicians can update an emergency phone number on a chart with a malformed email, or correct or clear the email in the same save.
 
 ### Changed - Client review Plan 11
 

@@ -110,8 +110,62 @@ public sealed class PatientDemographicsEditorTests : TestContext
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("corrected@example.test")]
+    public void EmergencyPhoneUpdateOnChartWithMalformedEmailSendsOnlyTheRequestedEmailChange(string? editedEmail)
+    {
+        patient.Email = "legacy-invalid";
+        service.Setup(x => x.UpdateAsync(It.IsAny<Guid>(), It.IsAny<UpdatePatientRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse());
+        var cut = RenderComponent<PatientDemographicsCardEditable>(p => p.Add(x => x.Patient, patient));
+        cut.Find("button[aria-label='Edit patient information']").Click();
+        cut.Find("#edit-emergency-phone").Change("2025550199");
+        if (editedEmail is not null)
+        {
+            cut.Find("#edit-email").Change(editedEmail);
+        }
+        cut.Find(".patient-demographics-save-btn").Click();
+
+        service.Verify(x => x.UpdateAsync(Guid.Parse(patient.Id), It.Is<UpdatePatientRequest>(request =>
+            request.EmergencyContactPhone == "2025550199" && request.Email == editedEmail), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public void TwoDigitBirthYearUnderBritishCultureRequiresCorrectionBeforeSave()
+    {
+        var originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-GB");
+            service.Setup(x => x.UpdateAsync(It.IsAny<Guid>(), It.IsAny<UpdatePatientRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new PatientResponse());
+            var cut = RenderComponent<PatientDemographicsCardEditable>(p => p.Add(x => x.Patient, patient));
+            cut.Find("button[aria-label='Edit patient information']").Click();
+            cut.Find("#edit-phone").Change("2025550199");
+            cut.Find("#edit-dob").Change("4/5/81");
+            cut.Find(".patient-demographics-save-btn").Click();
+
+            Assert.Contains("four-digit year", cut.Find("[role='alert']").TextContent);
+            Assert.Equal("4/5/81", cut.Find("#edit-dob").GetAttribute("value"));
+            service.Verify(x => x.UpdateAsync(It.IsAny<Guid>(), It.IsAny<UpdatePatientRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+
+            cut.Find("#edit-dob").Change("4/5/1981");
+            cut.Find(".patient-demographics-save-btn").Click();
+            var aprilFifth = new DateTime(1981, 4, 5, 0, 0, 0, DateTimeKind.Utc);
+            service.Verify(x => x.UpdateAsync(Guid.Parse(patient.Id), It.Is<UpdatePatientRequest>(request =>
+                request.DateOfBirth == aprilFifth && request.Phone == "2025550199"), It.IsAny<CancellationToken>()), Times.Once);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+        }
+    }
+
+    [Theory]
     [InlineData("edit-name", "", "name is required")]
     [InlineData("edit-dob", "not-a-date", "valid date of birth")]
+    [InlineData("edit-dob", "12:30", "valid date of birth")]
     [InlineData("edit-email", "not-an-email", "valid email")]
     public void InvalidInputPreservesEditsWithoutCallingApi(string field, string value, string message)
     {
