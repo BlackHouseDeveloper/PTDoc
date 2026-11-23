@@ -79,6 +79,24 @@ public sealed class PatientDemographicsEditorTests : TestContext
     }
 
     [Theory]
+    [InlineData("edit-phone", "2025550199", null)]
+    [InlineData("edit-emergency-phone", null, "2025550199")]
+    public void PhoneOnlySaveWithSinglePartNameOmitsNameFields(string field, string? expectedPhone, string? expectedEmergencyPhone)
+    {
+        patient.DisplayName = "Cher";
+        service.Setup(x => x.UpdateAsync(It.IsAny<Guid>(), It.IsAny<UpdatePatientRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PatientResponse());
+        var cut = RenderComponent<PatientDemographicsCardEditable>(p => p.Add(x => x.Patient, patient));
+        cut.Find("button[aria-label='Edit patient information']").Click();
+        cut.Find("#" + field).Change("2025550199");
+        cut.Find(".patient-demographics-save-btn").Click();
+
+        service.Verify(x => x.UpdateAsync(Guid.Parse(patient.Id), It.Is<UpdatePatientRequest>(request =>
+            request.Phone == expectedPhone && request.EmergencyContactPhone == expectedEmergencyPhone
+            && request.FirstName == null && request.LastName == null), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData("4/5/1981")]
     public void SaveUnderBritishCultureUsesDisplayedMonthDayOrderOnlyForEditedBirthDate(string? enteredDob)
@@ -164,6 +182,7 @@ public sealed class PatientDemographicsEditorTests : TestContext
 
     [Theory]
     [InlineData("edit-name", "", "name is required")]
+    [InlineData("edit-name", "Cher", "First and last name are required")]
     [InlineData("edit-dob", "not-a-date", "valid date of birth")]
     [InlineData("edit-dob", "12:30", "valid date of birth")]
     [InlineData("edit-email", "not-an-email", "valid email")]

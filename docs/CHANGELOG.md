@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A patient edit stays pending for sync when a worker acknowledges the previous version during the edit. Saving unchanged demographics preserves the patient version and skips synchronization, so another clinician can still save from the same version.
 - The patient chart requires a four-digit year for an edited birth date and reads the month first. A two-digit year prompts for correction and preserves the other edits.
 - Contact updates skip validation of unchanged birth dates and email addresses. Clinicians can update an emergency phone number on a chart with a malformed email, or correct or clear the email in the same save.
+- Patients with a single-part name can have their phone or emergency contact number updated. The editor requires a first and last name only when a clinician edits the name.
 
 ### Changed - Client review Plan 11
 

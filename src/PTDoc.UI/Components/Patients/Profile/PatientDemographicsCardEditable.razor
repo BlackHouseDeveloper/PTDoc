@@ -243,18 +243,31 @@
 
         if (isSaving) return;
         saveError = null;
-        if (string.IsNullOrWhiteSpace(editName))
+        string? firstName = null;
+        string? lastName = null;
+        var name = editName?.Trim() ?? string.Empty;
+        if (name != Patient.DisplayName.Trim())
         {
-            saveError = "Patient name is required.";
-            return;
+            if (name.Length == 0)
+            {
+                saveError = "Patient name is required.";
+                return;
+            }
+            var nameParts = name.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            if (nameParts.Length < 2 || string.IsNullOrWhiteSpace(nameParts[1]))
+            {
+                saveError = "First and last name are required.";
+                return;
+            }
+            if (nameParts[0].Length > 100 || nameParts[1].Length > 100)
+            {
+                saveError = "First and last names must each be 100 characters or fewer.";
+                return;
+            }
+            firstName = nameParts[0];
+            lastName = nameParts[1];
         }
 
-        var nameParts = editName.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-        if (nameParts.Length < 2 || string.IsNullOrWhiteSpace(nameParts[1]))
-        {
-            saveError = "First and last name are required.";
-            return;
-        }
         DateTime? changedDateOfBirth = null;
         if (editDateOfBirth != (Patient.DateOfBirth ?? string.Empty))
         {
@@ -278,20 +291,13 @@
             return;
         }
 
-        var nameChanged = editName.Trim() != Patient.DisplayName;
-        if (nameChanged && (nameParts[0].Length > 100 || nameParts[1].Length > 100))
-        {
-            saveError = "First and last names must each be 100 characters or fewer.";
-            return;
-        }
-
         isSaving = true;
         try
         {
             var request = new UpdatePatientRequest
             {
-                FirstName = nameChanged ? nameParts[0] : null,
-                LastName = nameChanged ? nameParts[1] : null,
+                FirstName = firstName,
+                LastName = lastName,
                 DateOfBirth = changedDateOfBirth,
                 ExpectedLastModifiedUtc = editVersion,
                 Email = changedEmail,
