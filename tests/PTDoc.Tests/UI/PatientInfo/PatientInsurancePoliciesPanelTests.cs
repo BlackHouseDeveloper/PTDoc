@@ -30,8 +30,8 @@ public sealed class PatientInsurancePoliciesPanelTests : TestContext
         var insurance = new Mock<IInsurancePolicyService>(MockBehavior.Strict);
         insurance.Setup(service => service.ListAsync(patientId, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync([policy]);
-        insurance.Setup(service => service.UpsertPolicyAsync(patientId, policy.Id,
-                It.Is<UpsertInsurancePolicyRequest>(request => request.PayerType == InsurancePayerType.Tricare),
+        insurance.Setup(service => service.SaveWorkflowAsync(patientId, policy.Id,
+                It.Is<SaveInsurancePolicyWorkflowRequest>(request => request.Policy.PayerType == InsurancePayerType.Tricare),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(policy);
         Services.AddSingleton(insurance.Object);
@@ -39,14 +39,14 @@ public sealed class PatientInsurancePoliciesPanelTests : TestContext
         Services.AddSingleton<IToastService, ToastService>();
         var cut = RenderComponent<PatientInsurancePoliciesPanel>(parameters => parameters.Add(component => component.PatientId, patientId));
         cut.WaitForAssertion(() => Assert.Contains("TRICARE", cut.Find("section[aria-labelledby='current-insurance-policies-title']").TextContent));
-        cut.FindAll("button").Single(button => button.TextContent == "Edit").Click();
+        cut.FindAll("button").Single(button => button.TextContent == "Edit policy and referrals").Click();
         var select = cut.FindAll("label").Single(label => label.TextContent.StartsWith("Payer type", StringComparison.Ordinal)).QuerySelector("select")!;
         Assert.Contains(select.QuerySelectorAll("option"), option => option.GetAttribute("value") == "Tricare" && option.TextContent == "TRICARE");
         select.Change("Commercial");
         cut.FindAll("label").Single(label => label.TextContent.StartsWith("Payer type", StringComparison.Ordinal)).QuerySelector("select")!.Change("Tricare");
-        cut.FindAll("button").Single(button => button.TextContent == "Save policy").Click();
-        cut.WaitForAssertion(() => insurance.Verify(service => service.UpsertPolicyAsync(patientId, policy.Id,
-            It.Is<UpsertInsurancePolicyRequest>(request => request.PayerType == InsurancePayerType.Tricare),
+        cut.FindAll("button").Single(button => button.TextContent == "Save policy and referrals").Click();
+        cut.WaitForAssertion(() => insurance.Verify(service => service.SaveWorkflowAsync(patientId, policy.Id,
+            It.Is<SaveInsurancePolicyWorkflowRequest>(request => request.Policy.PayerType == InsurancePayerType.Tricare),
             It.IsAny<CancellationToken>()), Times.Once));
     }
 
@@ -100,6 +100,7 @@ public sealed class PatientInsurancePoliciesPanelTests : TestContext
             Id = Guid.NewGuid(),
             PatientId = patientId,
             CarrierDisplayName = "Synthetic Carrier",
+            CarrierKey = "existing-carrier-key",
             CoveragePriority = InsuranceCoveragePriority.Primary,
             Status = InsurancePolicyStatus.Active,
             LastModifiedUtc = DateTime.UtcNow,
@@ -127,6 +128,7 @@ public sealed class PatientInsurancePoliciesPanelTests : TestContext
         cut.WaitForAssertion(() =>
         {
             Assert.NotNull(request);
+            Assert.Equal("existing-carrier-key", request.Policy.CarrierKey);
             Assert.Equal(20, request.TotalVisitLimit);
             Assert.Equal(policy.LastModifiedUtc, request.Policy.ExpectedLastModifiedUtc);
             var changed = Assert.Single(request.Authorizations);

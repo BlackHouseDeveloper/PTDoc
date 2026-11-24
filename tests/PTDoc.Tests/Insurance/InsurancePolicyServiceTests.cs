@@ -200,5 +200,65 @@ public sealed class InsurancePolicyServiceTests : IDisposable
         Assert.Equal("OLD-REF", (await db.PatientInsuranceAuthorizations.SingleAsync()).ReferenceNumber);
     }
 
+    [Fact]
+    public async Task LegacyCorrection_DoesNotReinsertReferralRenamedInPolicyEditor()
+    {
+        var before = """{"insuranceCompanyName":"Carrier","authorizationReferralHistory":[{"entryId":"history","recordType":"Referral","referenceNumber":"Original","notes":"Old"}]}""";
+        await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, before, null, null, Guid.NewGuid(), default);
+        await db.SaveChangesAsync();
+        var row = await db.PatientInsuranceAuthorizations.SingleAsync();
+        row.ReferenceNumber = "Corrected";
+        row.UsedUnits = 7;
+        await db.SaveChangesAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => IntakeDomainProjection.UpsertPatientRecordAsync(db, patient,
+            before.Replace("Old", "New"), null, null, Guid.NewGuid(), default, before));
+        db.ChangeTracker.Clear();
+        var saved = await db.PatientInsuranceAuthorizations.SingleAsync();
+        Assert.Equal(row.Id, saved.Id);
+        Assert.Equal("Corrected", saved.ReferenceNumber);
+        Assert.Equal(7, saved.UsedUnits);
+    }
+
+    [Fact]
+    public async Task LegacyPatch_AppliesIsolatedEditsAndClears_WithoutReplayingLimitsOrUsage()
+    {
+        var before = """{"insuranceCompanyName":"Carrier","payerType":"Commercial","authorizationNumber":"MAIN","visitsUsed":"2","adjusterFax":"old"}""";
+        var user = Guid.NewGuid();
+        await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, before, null, null, user, default);
+        await db.SaveChangesAsync();
+        var row = await db.PatientInsuranceAuthorizations.SingleAsync();
+        row.AuthorizedUnits = 15;
+        row.UsedUnits = 7;
+        var other = new PatientInsuranceAuthorization { PatientId = patient.Id, ClinicId = clinic, PatientInsurancePolicyId = row.PatientInsurancePolicyId, ReferenceNumber = "OTHER" };
+        db.PatientInsuranceAuthorizations.Add(other);
+        await db.SaveChangesAsync();
+        var after = """{"insuranceCompanyName":"Carrier","payerType":"Medicare","authorizationNumber":"MAIN","visitsUsed":"2","adjusterFax":"","authorizationType":"pcp_referral","visitLimitPeriod":"calendar_year","totalVisitLimit":"30"}""";
+        await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, after, null, null, user, default, before);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var policy = Assert.Single(await service.ListAsync(patient.Id, default));
+        Assert.Equal(InsurancePayerType.Medicare, policy.PayerType);
+        Assert.Null(policy.AdjusterFax);
+        Assert.Equal(30, policy.TotalVisitLimit);
+        var changed = Assert.Single(policy.Authorizations, a => a.Id == row.Id);
+        Assert.Equal(InsuranceVisitLimitPeriod.CalendarYear, changed.VisitLimitPeriod);
+        Assert.Equal(InsuranceAuthorizationType.Referral, changed.AuthorizationType);
+        Assert.Equal(15, changed.AuthorizedUnits);
+        Assert.Equal(7, changed.UsedUnits);
+        Assert.Equal(other.LastModifiedUtc, policy.Authorizations.Single(a => a.Id == other.Id).LastModifiedUtc);
+    }
+
+    [Fact]
+    public async Task LegacyOnlyStatusAndPeriod_DoNotCreateOrApproveAnAuthorization()
+    {
+        var original = """{"insuranceCompanyName":"Synthetic"}""";
+        await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, original, null, null, Guid.NewGuid(), default);
+        await db.SaveChangesAsync();
+        var updated = """{"insuranceCompanyName":"Synthetic","authorizationStatus":"active","visitLimitPeriod":"lifetime"}""";
+        await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, updated, null, null, Guid.NewGuid(), default, original);
+        await db.SaveChangesAsync();
+        Assert.Empty(await db.PatientInsuranceAuthorizations.ToListAsync());
+    }
+
     public void Dispose() => db.Dispose();
 }

@@ -107,6 +107,7 @@ public sealed class SaveInsurancePolicyWorkflowRequest
 public sealed class InsuranceAuthorizationEdit
 {
     public Guid? Id { get; set; }
+    public bool Archive { get; set; }
     public UpsertInsuranceAuthorizationRequest Values { get; set; } = new();
 }
 

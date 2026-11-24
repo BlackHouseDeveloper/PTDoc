@@ -7,21 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed - Plan 14 payer-data terminology
+### Changed - Patient insurance and referral editing
 
-- Clarify that the private field-copy helper applies coverage values, while the workflow endpoints enforce application access separately. All 93 insurance, migration and permission regressions pass.
-
-### Fixed - Plan 14 provider migrations
-
-- Keep visit-limit fields after SQL Server/PostgreSQL upgrades and remove them only on downgrade; preserve unrelated note-template indexes. Failing-first provider-operation regressions now pass.
-
-### Changed - Plan 14 validation clarity
-
-- Clarified that the insurance helper validates payer-approval fields; server access policies remain independent and unchanged. Insurance and authorization regression checks passed.
-
-### Changed - Client review Plan 14
-
-- Consolidated the patient insurance workflow, keeping policy and authorization/referral records distinct while coordinating one save with version checks. Reused Plan 12 patient concurrency for older payer forms; preserved historical values and unknown JSON.
+- The chart’s insurance entry opens a policy editor for plan year, visit limits, cost sharing, adjuster details and related authorizations. Staff can add, correct or archive individual referrals in the same save. A stale or invalid save keeps the draft available for correction or explicit discard.
+- Historical corrections retain referral identity and utilization. Older payer forms preserve unknown JSON fields and report a conflict when a previous referral cannot be identified. All three database providers gain two nullable policy-limit columns.
 
 ### Fixed - MAUI navigation to shared pages
 

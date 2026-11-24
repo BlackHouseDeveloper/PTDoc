@@ -100,7 +100,7 @@
                         var entry = authorizationEdits[index];
                         <section class="insurance-policies__authorization" @key="entry.Key" aria-label="@($"Authorization or referral {index + 1}")">
                             <h4>Entry @(index + 1)</h4>
-                            <div class="insurance-policies__grid">
+                            <fieldset class="insurance-policies__grid" disabled="@entry.Edit.Archive" aria-label="Entry details">
                         <label><span>Record type</span><select class="form-select" @bind="entry.Edit.Values.AuthorizationType">@foreach (var value in Enum.GetValues<InsuranceAuthorizationType>()) { <option value="@value">@value</option> }</select></label>
                         <label><span>Record status</span><select class="form-select" @bind="entry.Edit.Values.Status">@foreach (var value in Enum.GetValues<InsuranceAuthorizationStatus>()) { <option value="@value">@value</option> }</select></label>
                         <label><span>Reference number</span><input class="form-control" type="text"  @bind="entry.Edit.Values.ReferenceNumber" @bind:event="oninput" /></label>
@@ -113,8 +113,12 @@
                         <label><span>Reauthorization due</span><input class="form-control" type="date"  @bind="entry.Edit.Values.ReauthorizationDueDate" @bind:format="yyyy-MM-dd" /></label>
                         <label><span>Alert threshold</span><input class="form-control" type="number" min="0" step="1" @bind="entry.Edit.Values.VisitAlertThreshold" /></label>
                                 <label class="insurance-policies__full"><span>Notes</span><textarea class="form-control" maxlength="2000" @bind="entry.Edit.Values.Notes" @bind:event="oninput"></textarea></label>
-                            </div>
-                            @if (!entry.Edit.Id.HasValue) { <button type="button" class="btn btn-outline" @onclick="() => authorizationEdits.Remove(entry)">Remove unsaved entry</button> }
+                            </fieldset>
+                            @if (entry.Edit.Id.HasValue)
+                            {
+                                <label><input type="checkbox" @bind="entry.Edit.Archive" /> Archive this entry on save</label>
+                            }
+                            else { <button type="button" class="btn btn-outline" @onclick="() => authorizationEdits.Remove(entry)">Remove unsaved entry</button> }
                         </section>
                     }
                 </fieldset>
@@ -124,7 +128,7 @@
                 }
                 <div class="insurance-policies__actions">
                     <button type="button" class="btn btn-primary" @onclick="SaveAsync" disabled="@isSaving">@(isSaving ? "Saving…" : "Save policy and referrals")</button>
-                    <button type="button" class="btn btn-outline" @onclick="CancelEdit" disabled="@isSaving">Cancel</button>
+                    <button type="button" class="btn btn-outline" @onclick="DiscardAsync" disabled="@isSaving">@(string.IsNullOrWhiteSpace(error) ? "Cancel" : "Discard changes and reload")</button>
                 </div>
             </section>
         }
@@ -217,7 +221,9 @@
         {
             var match = IntakeReferenceData.SearchInsuranceCarriers(draft.CarrierDisplayName, 20)
                 .FirstOrDefault(item => string.Equals(item.Label, draft.CarrierDisplayName, StringComparison.OrdinalIgnoreCase));
-            draft.CarrierKey = match?.Id;
+            var original = policies.FirstOrDefault(policy => policy.Id == editingId);
+            if (original is null || !string.Equals(original.CarrierDisplayName, draft.CarrierDisplayName, StringComparison.OrdinalIgnoreCase))
+                draft.CarrierKey = match?.Id;
             if (string.IsNullOrWhiteSpace(draft.AdjusterEmail)) draft.AdjusterEmail = null;
             var saved = await InsurancePolicies.SaveWorkflowAsync(PatientId, editingId, new()
             {
@@ -244,6 +250,12 @@
         finally { isSaving = false; }
     }
 
+    private async Task DiscardAsync()
+    {
+        CancelEdit();
+        await LoadAsync();
+    }
+
     private void CancelEdit() { editing = false; error = null; authorizationEdits = []; }
     private InsuranceCoveragePriority NextPriority() => !CurrentPolicies.Any(p => p.CoveragePriority == InsuranceCoveragePriority.Primary)
         ? InsuranceCoveragePriority.Primary : !CurrentPolicies.Any(p => p.CoveragePriority == InsuranceCoveragePriority.Secondary)
@@ -256,6 +268,6 @@
         public Guid Key { get; } = edit.Id ?? Guid.NewGuid();
         public InsuranceAuthorizationEdit Edit { get; } = edit;
         private readonly string original = JsonSerializer.Serialize(edit.Values);
-        public bool IsChanged => !Edit.Id.HasValue || original != JsonSerializer.Serialize(Edit.Values);
+        public bool IsChanged => Edit.Archive || !Edit.Id.HasValue || original != JsonSerializer.Serialize(Edit.Values);
     }
 }

@@ -167,6 +167,7 @@
     {
         return new AuthorizationReferralHistoryEntryVm
         {
+            AdditionalFields = entry.AdditionalFields,
             EntryId = string.IsNullOrWhiteSpace(entry.EntryId) ? Guid.NewGuid().ToString("N") : entry.EntryId.Trim(),
             RecordType = string.IsNullOrWhiteSpace(entry.RecordType) ? "Authorization" : entry.RecordType.Trim(),
             ReferenceNumber = entry.ReferenceNumber ?? string.Empty,

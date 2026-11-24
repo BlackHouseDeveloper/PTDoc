@@ -207,7 +207,14 @@ public static class PatientEndpoints
         };
 
         db.Patients.Add(patient);
-        await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, patient.PayerInfoJson, patient.ReferringPhysician, patient.PhysicianNpi, userId, cancellationToken);
+        try
+        {
+            await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, patient.PayerInfoJson, patient.ReferringPhysician, patient.PhysicianNpi, userId, cancellationToken);
+        }
+        catch (Exception ex) when (ex is ArgumentException or JsonException)
+        {
+            return Results.UnprocessableEntity(new { error = ex is JsonException ? "Payer details must contain valid JSON." : ex.Message });
+        }
         await integrations.QueuePatientSynchronizationAsync(patient.Id, userId, patient.LastModifiedUtc, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
 
@@ -378,7 +385,8 @@ public static class PatientEndpoints
         {
             try
             {
-                await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, patient.PayerInfoJson, patient.ReferringPhysician, patient.PhysicianNpi, patient.ModifiedByUserId, cancellationToken, request.PayerInfoJson is null ? null : previousPayerInfoJson);
+                await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, request.PayerInfoJson ?? "{}", patient.ReferringPhysician, patient.PhysicianNpi, patient.ModifiedByUserId, cancellationToken, previousPayerInfoJson ?? "{}",
+                    refreshLegacyPayerType: request.ExpectedLastModifiedUtc is null && request.PayerInfoJson is not null && request.PayerInfoJson == previousPayerInfoJson);
             }
             catch (InvalidOperationException ex)
             {
@@ -394,8 +402,15 @@ public static class PatientEndpoints
             }
         }
 
-        await integrations.QueuePatientSynchronizationAsync(patient.Id, patient.ModifiedByUserId, patient.LastModifiedUtc, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await integrations.QueuePatientSynchronizationAsync(patient.Id, patient.ModifiedByUserId, patient.LastModifiedUtc, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException) when (request.PayerInfoJson is not null)
+        {
+            return Results.Conflict(new { error = "Insurance details changed while saving. Discard and reload to review the current values." });
+        }
 
         return Results.Ok(ToResponse(patient));
     }

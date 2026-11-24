@@ -61,12 +61,12 @@ public class SyncMetadataInterceptor : SaveChangesInterceptor
             // Always update LastModifiedUtc and ModifiedByUserId
             // PostgreSQL timestamps store microseconds. Return the same version that
             // a fresh request will read, without weakening exact concurrency checks.
-            entry.Entity.LastModifiedUtc = entry.Entity is (Patient or IntakeForm { EncounterNoteId: not null })
+            entry.Entity.LastModifiedUtc = entry.Entity is (Patient or PatientInsurancePolicy or PatientInsuranceAuthorization or IntakeForm { EncounterNoteId: not null })
                 && context.Database.IsNpgsql()
                     ? new DateTime(now.Ticks - now.Ticks % TimeSpan.TicksPerMicrosecond, DateTimeKind.Utc)
                     : now;
             if (entry.State == EntityState.Modified
-                && entry.Entity is (Patient or IntakeForm { EncounterNoteId: null, IsLocked: true, SubmittedAt: not null }))
+                && entry.Entity is (Patient or PatientInsurancePolicy or PatientInsuranceAuthorization or IntakeForm { EncounterNoteId: null, IsLocked: true, SubmittedAt: not null }))
             {
                 // The chart and standalone outcome projection both reject stale versions.
                 // Keep it strictly increasing even with a fixed/backward clock, at PostgreSQL precision.

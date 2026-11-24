@@ -61,10 +61,13 @@ public sealed class PatientApiService(HttpClient httpClient) : IPatientService
         UpdatePatientRequest request,
         CancellationToken cancellationToken = default)
     {
-        var response = await httpClient.PutAsJsonAsync($"/api/v1/patients/{id}", request, cancellationToken);
+        using var response = await httpClient.PutAsJsonAsync($"/api/v1/patients/{id}", request, cancellationToken);
 
         if (response.StatusCode == HttpStatusCode.NotFound)
             return null;
+
+        if (request.PayerInfoJson is not null && response.StatusCode is HttpStatusCode.Conflict or HttpStatusCode.UnprocessableEntity or HttpStatusCode.BadRequest)
+            throw new HttpRequestException(await ApiErrorReader.ReadMessageAsync(response, cancellationToken) ?? "Review the insurance details before saving.", null, response.StatusCode);
 
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<PatientResponse>(SerializerOptions, cancellationToken);

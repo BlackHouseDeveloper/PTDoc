@@ -296,6 +296,7 @@ public sealed class PatientInfoRouteTests : TestContext
             adjusterName = "Alex Adjuster",
             adjusterPhone = "555-0200",
             caseManagerAdjusterContactInfo = "Call Alex before re-auth submission.",
+            authorizationReferralHistory = new[] { new { entryId = "stable", recordType = "Referral", futureField = new { source = "historical evidence" } } },
             futureCoverageEvidence = new { source = "preserve-me" }
         }, SerializerOptions);
         UpdatePatientRequest? capturedRequest = null;
@@ -336,6 +337,7 @@ public sealed class PatientInfoRouteTests : TestContext
         Assert.Equal(
             "Call Alex before re-auth submission.",
             savedPayerInfo.RootElement.GetProperty("caseManagerAdjusterContactInfo").GetString());
+        Assert.Equal("historical evidence", savedPayerInfo.RootElement.GetProperty("authorizationReferralHistory")[0].GetProperty("futureField").GetProperty("source").GetString());
         Assert.Equal("preserve-me", savedPayerInfo.RootElement.GetProperty("futureCoverageEvidence").GetProperty("source").GetString());
     }
 

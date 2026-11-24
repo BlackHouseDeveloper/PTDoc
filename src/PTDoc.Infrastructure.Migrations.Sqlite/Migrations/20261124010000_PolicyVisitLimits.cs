@@ -29,8 +29,7 @@ namespace PTDoc.Infrastructure.Data.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            // The preceding hand-authored migration has no target model for EF's
-            // table rebuild. Use the same native DROP COLUMN pattern as that migration.
+            // Native DROP COLUMN preserves unrelated data and indexes without rebuilding the table.
             migrationBuilder.Sql("""
                 ALTER TABLE "PatientInsurancePolicies" DROP COLUMN "TotalVisitLimit";
                 ALTER TABLE "PatientInsurancePolicies" DROP COLUMN "VisitLimitType";

@@ -16,6 +16,49 @@ namespace PTDoc.Tests.Insurance;
 public sealed class InsuranceWorkflowSqliteTests
 {
     [Fact]
+    public async Task ExistingPolicy_InsertsNewChildAndArchivesSelectedEntryWithoutRewritingEvidence()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection, value => value.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Sqlite")).Options;
+        var clinicId = Guid.NewGuid();
+        var tenant = new Mock<ITenantContextAccessor>();
+        tenant.Setup(value => value.GetCurrentClinicId()).Returns(clinicId);
+        var identity = new Mock<IIdentityContextAccessor>();
+        identity.Setup(value => value.GetCurrentUserId()).Returns(Guid.NewGuid());
+        await using var db = new ApplicationDbContext(options, tenant.Object);
+        await db.Database.MigrateAsync();
+        var clinic = new Clinic { Id = clinicId, Name = "Synthetic Insurance", Slug = "synthetic-insurance" };
+        var patient = new Patient { ClinicId = clinicId, FirstName = "Synthetic", LastName = "Policy", DateOfBirth = new(1990, 1, 1) };
+        db.AddRange(clinic, patient);
+        await db.SaveChangesAsync();
+        var service = new InsurancePolicyService(db, tenant.Object, identity.Object);
+        var policy = await service.SaveWorkflowAsync(patient.Id, null, new()
+        {
+            Policy = new() { CarrierDisplayName = "Original Carrier", PayerType = InsurancePayerType.Commercial },
+            TotalVisitLimit = 20,
+            VisitLimitType = "visits",
+            Authorizations = [new() { Values = new() { ReferenceNumber = "AUTH-1", UsedUnits = 3 } }]
+        }, default);
+        var child = Assert.Single(policy.Authorizations);
+        await service.SaveWorkflowAsync(patient.Id, policy.Id, new()
+        {
+            Policy = new() { CarrierDisplayName = "Updated", ExpectedLastModifiedUtc = policy.LastModifiedUtc },
+            Authorizations = [
+                new() { Id = child.Id, Archive = true, Values = new() { ExpectedLastModifiedUtc = child.LastModifiedUtc } },
+                new() { Values = new() { ReferenceNumber = "NEW-REF", AuthorizationType = InsuranceAuthorizationType.Referral } }]
+        }, default);
+        db.ChangeTracker.Clear();
+        var saved = Assert.Single(await service.ListAsync(patient.Id, default));
+        Assert.Equal("NEW-REF", Assert.Single(saved.Authorizations).ReferenceNumber);
+        var archived = await db.PatientInsuranceAuthorizations.SingleAsync(a => a.Id == child.Id);
+        Assert.True(archived.IsArchived);
+        Assert.Equal("AUTH-1", archived.ReferenceNumber);
+        Assert.Equal(3, archived.UsedUnits);
+    }
+
+    [Fact]
     public async Task RacingChildUpdate_RollsBackPolicyAuditAndOtherChildren()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

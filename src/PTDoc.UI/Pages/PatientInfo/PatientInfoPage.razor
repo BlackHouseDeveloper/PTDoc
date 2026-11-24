@@ -391,6 +391,7 @@
         return entries
             .Select(entry => new AuthorizationReferralHistoryEntryVm
             {
+                AdditionalFields = entry.AdditionalFields,
                 EntryId = string.IsNullOrWhiteSpace(entry.EntryId) ? Guid.NewGuid().ToString("N") : entry.EntryId.Trim(),
                 RecordType = string.IsNullOrWhiteSpace(entry.RecordType) ? "Authorization" : entry.RecordType.Trim(),
                 ReferenceNumber = entry.ReferenceNumber ?? string.Empty,
@@ -492,8 +493,8 @@
         }
         catch (Exception ex)
         {
-            saveError = ex is HttpRequestException { StatusCode: System.Net.HttpStatusCode.Conflict }
-                ? "Insurance details changed in another session. Your edits are still here. Discard and reload before trying again."
+            saveError = ex is HttpRequestException { StatusCode: System.Net.HttpStatusCode.Conflict or System.Net.HttpStatusCode.UnprocessableEntity or System.Net.HttpStatusCode.BadRequest }
+                ? $"{ex.Message} Your edits are still here."
                 : "Insurance details could not be saved. Your edits are still here.";
             ToastService.ShowError(saveError);
         }

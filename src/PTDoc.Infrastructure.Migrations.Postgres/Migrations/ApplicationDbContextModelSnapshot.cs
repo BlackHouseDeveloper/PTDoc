@@ -22,62 +22,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("PTDoc.Core.Models.Organization", b =>
-            {
-                b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
-                b.Property<string>("Name").IsRequired().HasMaxLength(200).HasColumnType("character varying(200)");
-                b.Property<bool>("IsActive").HasColumnType("boolean");
-                b.Property<long>("Version").IsConcurrencyToken().HasColumnType("bigint");
-                b.Property<DateTime>("CreatedAtUtc").HasColumnType("timestamp with time zone");
-                b.HasKey("Id");
-                b.ToTable("Organizations");
-            });
-            modelBuilder.Entity("PTDoc.Core.Models.OrganizationMembership", b =>
-            {
-                b.Property<Guid>("OrganizationId").HasColumnType("uuid");
-                b.Property<Guid>("UserId").HasColumnType("uuid");
-                b.Property<int>("Role").HasColumnType("integer");
-                b.Property<bool>("IsActive").HasColumnType("boolean");
-                b.Property<long>("Version").IsConcurrencyToken().HasColumnType("bigint");
-                b.HasKey("OrganizationId", "UserId");
-                b.ToTable("OrganizationMemberships");
-                b.HasIndex("UserId");
-            });
-            modelBuilder.Entity("PTDoc.Core.Models.ClinicMembership", b =>
-            {
-                b.Property<Guid>("ClinicId").HasColumnType("uuid");
-                b.Property<Guid>("UserId").HasColumnType("uuid");
-                b.Property<string>("Role").IsRequired().HasMaxLength(50).HasColumnType("character varying(50)");
-                b.Property<bool>("IsActive").HasColumnType("boolean");
-                b.Property<long>("Version").IsConcurrencyToken().HasColumnType("bigint");
-                b.HasKey("ClinicId", "UserId");
-                b.ToTable("ClinicMemberships");
-                b.HasIndex("UserId");
-            });
-            modelBuilder.Entity("PTDoc.Core.Models.OrganizationInvitation", b =>
-            {
-                b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
-                b.Property<Guid>("OrganizationId").HasColumnType("uuid");
-                b.Property<string>("Email").IsRequired().HasMaxLength(255).HasColumnType("character varying(255)");
-                b.Property<string>("TokenHash").IsRequired().HasMaxLength(64).HasColumnType("character varying(64)");
-                b.Property<DateTime>("ExpiresAtUtc").HasColumnType("timestamp with time zone");
-                b.Property<DateTime?>("AcceptedAtUtc").HasColumnType("timestamp with time zone");
-                b.Property<Guid>("InvitedByUserId").HasColumnType("uuid");
-                b.Property<long>("Version").IsConcurrencyToken().HasColumnType("bigint");
-                b.HasKey("Id");
-                b.ToTable("OrganizationInvitations");
-                b.HasIndex("OrganizationId");
-                b.HasIndex("InvitedByUserId");
-                b.HasIndex("TokenHash").IsUnique();
-            });
-            modelBuilder.Entity("PTDoc.Core.Models.Clinic", b =>
-            {
-                b.Property<Guid?>("OrganizationId").HasColumnType("uuid");
-                b.HasIndex("OrganizationId");
-            });
-            modelBuilder.Entity("PTDoc.Core.Models.Session").Property<Guid?>("ClinicId").HasColumnType("uuid");
-
-
             modelBuilder.Entity("PTDoc.Core.Models.Appointment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -434,6 +378,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Slug")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -453,6 +400,8 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("IsActive");
+
+                    b.HasIndex("OrganizationId");
 
                     b.HasIndex("Slug")
                         .IsUnique();
@@ -506,6 +455,33 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("ClinicBusinessHours");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.ClinicMembership", b =>
+                {
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("ClinicId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("ClinicMemberships");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.ClinicSecurityPolicy", b =>
@@ -1435,6 +1411,97 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.ToTable("InboundFaxes", (string)null);
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.IndividualSubscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("ClinicId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CustomerProfileId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("InitialTransactionId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("IntervalMonths")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("InvoiceNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("PaidThroughUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PaymentProfileId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("PendingOperation")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ProviderStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("RecurringStartsAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RecurringSubscriptionId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClinicId")
+                        .IsUnique();
+
+                    b.HasIndex("InvoiceNumber")
+                        .IsUnique()
+                        .HasFilter("\"InvoiceNumber\" IS NOT NULL");
+
+                    b.HasIndex("OrganizationId")
+                        .IsUnique();
+
+                    b.HasIndex("RecurringSubscriptionId")
+                        .IsUnique()
+                        .HasFilter("\"RecurringSubscriptionId\" IS NOT NULL");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("IndividualSubscriptions");
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.IntakeForm", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1454,8 +1521,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .HasColumnType("text");
 
                     b.Property<bool>("EncounterIsReEvaluation")
-                        .HasDefaultValue(false)
-                        .HasColumnType("boolean");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<Guid?>("EncounterNoteId")
                         .HasColumnType("uuid");
@@ -2254,6 +2322,101 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.HasIndex("NoteId");
 
                     b.ToTable("ObjectiveMetrics");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.Organization", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Organizations");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.OrganizationInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AcceptedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("InvitedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvitedByUserId");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("OrganizationInvitations");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.OrganizationMembership", b =>
+                {
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("OrganizationId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("OrganizationMemberships");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.OutcomeMeasureResult", b =>
@@ -3325,6 +3488,9 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("ClinicId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -3460,6 +3626,28 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("StoredRefreshTokens");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.SubscriptionPayment", b =>
+                {
+                    b.Property<string>("TransactionId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("CoveredThroughUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("PaidAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("SubscriptionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("TransactionId");
+
+                    b.HasIndex("SubscriptionId");
+
+                    b.ToTable("SubscriptionPayments");
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.SyncConflictArchive", b =>
@@ -3995,6 +4183,14 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("Clinic");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.Clinic", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.ClinicBusinessHour", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
@@ -4004,6 +4200,21 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Clinic");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.ClinicMembership", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", null)
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.ClinicSecurityPolicy", b =>
@@ -4216,6 +4427,27 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("PatientDocument");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.IndividualSubscription", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Clinic", null)
+                        .WithMany()
+                        .HasForeignKey("ClinicId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.IntakeForm", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
@@ -4407,6 +4639,36 @@ namespace PTDoc.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Note");
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.OrganizationInvitation", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("InvitedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("PTDoc.Core.Models.OrganizationMembership", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PTDoc.Core.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("PTDoc.Core.Models.OutcomeMeasureResult", b =>
@@ -4707,6 +4969,15 @@ namespace PTDoc.Infrastructure.Data.Migrations
                     b.Navigation("SignedByUser");
                 });
 
+            modelBuilder.Entity("PTDoc.Core.Models.SubscriptionPayment", b =>
+                {
+                    b.HasOne("PTDoc.Core.Models.IndividualSubscription", null)
+                        .WithMany()
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("PTDoc.Core.Models.User", b =>
                 {
                     b.HasOne("PTDoc.Core.Models.Clinic", "Clinic")
@@ -4853,57 +5124,6 @@ namespace PTDoc.Infrastructure.Data.Migrations
 
                     b.Navigation("Sessions");
                 });
-#pragma warning disable 612, 618
-            ApplicationDbContext.ConfigureEnterpriseDataSnapshotModels(modelBuilder, "Postgres");
-            modelBuilder.Entity("PTDoc.Core.Models.OrganizationMembership").HasOne("PTDoc.Core.Models.Organization", null).WithMany().HasForeignKey("OrganizationId").OnDelete(DeleteBehavior.Restrict).IsRequired();
-            modelBuilder.Entity("PTDoc.Core.Models.OrganizationMembership").HasOne("PTDoc.Core.Models.User", null).WithMany().HasForeignKey("UserId").OnDelete(DeleteBehavior.Restrict).IsRequired();
-            modelBuilder.Entity("PTDoc.Core.Models.ClinicMembership").HasOne("PTDoc.Core.Models.Clinic", null).WithMany().HasForeignKey("ClinicId").OnDelete(DeleteBehavior.Restrict).IsRequired();
-            modelBuilder.Entity("PTDoc.Core.Models.ClinicMembership").HasOne("PTDoc.Core.Models.User", null).WithMany().HasForeignKey("UserId").OnDelete(DeleteBehavior.Restrict).IsRequired();
-            modelBuilder.Entity("PTDoc.Core.Models.OrganizationInvitation").HasOne("PTDoc.Core.Models.Organization", null).WithMany().HasForeignKey("OrganizationId").OnDelete(DeleteBehavior.Restrict).IsRequired();
-            modelBuilder.Entity("PTDoc.Core.Models.OrganizationInvitation").HasOne("PTDoc.Core.Models.User", null).WithMany().HasForeignKey("InvitedByUserId").OnDelete(DeleteBehavior.Restrict).IsRequired();
-            modelBuilder.Entity("PTDoc.Core.Models.Clinic").HasOne("PTDoc.Core.Models.Organization", null).WithMany().HasForeignKey("OrganizationId").OnDelete(DeleteBehavior.Restrict);
-            modelBuilder.Entity("PTDoc.Core.Models.IndividualSubscription", b =>
-            {
-                b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
-                b.Property<Guid>("UserId").HasColumnType("uuid");
-                b.Property<Guid>("OrganizationId").HasColumnType("uuid");
-                b.Property<Guid>("ClinicId").HasColumnType("uuid");
-                b.Property<decimal>("Amount").HasPrecision(18, 2).HasColumnType("numeric(18,2)");
-                b.Property<int>("IntervalMonths").HasColumnType("integer");
-                b.Property<string>("Environment").IsRequired().HasMaxLength(16).HasColumnType("character varying(16)");
-                b.Property<DateTime>("CreatedAtUtc").HasColumnType("timestamp with time zone");
-                b.Property<DateTime?>("PaidThroughUtc").HasColumnType("timestamp with time zone");
-                b.Property<string>("InvoiceNumber").HasMaxLength(20).HasColumnType("character varying(20)");
-                b.Property<string>("InitialTransactionId").HasMaxLength(64).HasColumnType("character varying(64)");
-                b.Property<string>("CustomerProfileId").HasMaxLength(64).HasColumnType("character varying(64)");
-                b.Property<string>("PaymentProfileId").HasMaxLength(64).HasColumnType("character varying(64)");
-                b.Property<string>("RecurringSubscriptionId").HasMaxLength(64).HasColumnType("character varying(64)");
-                b.Property<DateTime?>("RecurringStartsAtUtc").HasColumnType("timestamp with time zone");
-                b.Property<string>("ProviderStatus").IsRequired().HasMaxLength(32).HasColumnType("character varying(32)");
-                b.Property<string>("PendingOperation").HasMaxLength(32).HasColumnType("character varying(32)");
-                b.Property<long>("Version").IsConcurrencyToken().HasColumnType("bigint");
-                b.HasKey("Id");
-                b.HasIndex("UserId").IsUnique();
-                b.HasIndex("OrganizationId").IsUnique();
-                b.HasIndex("ClinicId").IsUnique();
-                b.HasIndex("InvoiceNumber").IsUnique().HasFilter("\"InvoiceNumber\" IS NOT NULL");
-                b.HasIndex("RecurringSubscriptionId").IsUnique().HasFilter("\"RecurringSubscriptionId\" IS NOT NULL");
-                b.ToTable("IndividualSubscriptions");
-                b.HasOne("PTDoc.Core.Models.User", null).WithMany().HasForeignKey("UserId").OnDelete(DeleteBehavior.Restrict).IsRequired();
-                b.HasOne("PTDoc.Core.Models.Organization", null).WithMany().HasForeignKey("OrganizationId").OnDelete(DeleteBehavior.Restrict).IsRequired();
-                b.HasOne("PTDoc.Core.Models.Clinic", null).WithMany().HasForeignKey("ClinicId").OnDelete(DeleteBehavior.Restrict).IsRequired();
-            });
-            modelBuilder.Entity("PTDoc.Core.Models.SubscriptionPayment", b =>
-            {
-                b.Property<string>("TransactionId").IsRequired().HasMaxLength(64).HasColumnType("character varying(64)");
-                b.Property<Guid>("SubscriptionId").HasColumnType("uuid");
-                b.Property<DateTime>("PaidAtUtc").HasColumnType("timestamp with time zone");
-                b.Property<DateTime>("CoveredThroughUtc").HasColumnType("timestamp with time zone");
-                b.HasKey("TransactionId");
-                b.HasIndex("SubscriptionId");
-                b.ToTable("SubscriptionPayments");
-                b.HasOne("PTDoc.Core.Models.IndividualSubscription", null).WithMany().HasForeignKey("SubscriptionId").OnDelete(DeleteBehavior.Restrict).IsRequired();
-            });
 #pragma warning restore 612, 618
         }
     }
