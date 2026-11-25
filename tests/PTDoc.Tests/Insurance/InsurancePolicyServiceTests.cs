@@ -248,6 +248,57 @@ public sealed class InsurancePolicyServiceTests : IDisposable
         Assert.Equal(other.LastModifiedUtc, policy.Authorizations.Single(a => a.Id == other.Id).LastModifiedUtc);
     }
 
+    [Theory]
+    [InlineData("secondaryMemberIdPolicyNumber")]
+    [InlineData("secondaryMemberOrPolicyNumber")]
+    public async Task LegacySecondaryMemberAliases_OnlyProjectAnActualEdit(string originalKey)
+    {
+        var before = $$"""{"secondaryInsuranceCompanyName":"Secondary","{{originalKey}}":"OLD"}""";
+        var both = """{"secondaryInsuranceCompanyName":"Secondary","secondaryMemberIdPolicyNumber":"OLD","secondaryMemberOrPolicyNumber":"OLD","notesComments":"note"}""";
+        var user = Guid.NewGuid();
+        await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, before, null, null, user, default);
+        await db.SaveChangesAsync();
+        var policy = await db.PatientInsurancePolicies.SingleAsync();
+        policy.MemberOrPolicyNumber = "CORRECTED";
+        await db.SaveChangesAsync();
+        var version = policy.LastModifiedUtc;
+
+        await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, both, null, null, user, default, before);
+        await db.SaveChangesAsync();
+        Assert.Equal("CORRECTED", policy.MemberOrPolicyNumber);
+        Assert.Equal(version, policy.LastModifiedUtc);
+
+        var edited = both.Replace("OLD", "NEW");
+        await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, edited, null, null, user, default, both);
+        await db.SaveChangesAsync();
+        Assert.Equal("NEW", policy.MemberOrPolicyNumber);
+        await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, edited.Replace("NEW", ""), null, null, user, default, edited);
+        await db.SaveChangesAsync();
+        Assert.Null((await db.PatientInsurancePolicies.AsNoTracking().SingleAsync()).MemberOrPolicyNumber);
+    }
+
+    [Fact]
+    public async Task LegacyPayerType_CanonicalSelfPayCreatesPolicyAndAliasOnlyEditsPreserveCorrections()
+    {
+        var before = """{"providerType":"commercial","payerType":"Self Pay"}""";
+        var user = Guid.NewGuid();
+        await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, before, null, null, user, default);
+        await db.SaveChangesAsync();
+        var policy = await db.PatientInsurancePolicies.SingleAsync();
+        Assert.Equal(InsurancePayerType.SelfPay, policy.PayerType);
+        policy.PayerType = InsurancePayerType.Tricare;
+        await db.SaveChangesAsync();
+        var aliasOnly = before.Replace("commercial", "medicaid");
+        await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, aliasOnly, null, null, user, default, before);
+        await db.SaveChangesAsync();
+        Assert.Equal(InsurancePayerType.Tricare, policy.PayerType);
+
+        var edited = aliasOnly.Replace("Self Pay", "Medicare");
+        await IntakeDomainProjection.UpsertPatientRecordAsync(db, patient, edited, null, null, user, default, aliasOnly);
+        await db.SaveChangesAsync();
+        Assert.Equal(InsurancePayerType.Medicare, (await db.PatientInsurancePolicies.AsNoTracking().SingleAsync()).PayerType);
+    }
+
     [Fact]
     public async Task LegacyOnlyStatusAndPeriod_DoNotCreateOrApproveAnAuthorization()
     {

@@ -59,20 +59,35 @@ public static class IntakeDomainProjection
         if (after.RootElement.ValueKind != JsonValueKind.Object)
             throw new ArgumentException("Payer details must be a JSON object.");
 
-        var fields = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        var submitted = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         foreach (var property in after.RootElement.EnumerateObject())
         {
-            if (property.Value.ValueKind is not (JsonValueKind.String or JsonValueKind.Null)) continue;
-            var value = Trim(property.Value.GetString());
-            if (value != GetJson(before.RootElement, property.Name)) fields[property.Name] = value;
+            if (property.Value.ValueKind is JsonValueKind.String or JsonValueKind.Null)
+                submitted[property.Name] = Trim(property.Value.GetString());
         }
-        // Older chart clients resubmit the saved payer type to repair the intake prefill.
-        // Versioned edits project only changed fields, including explicit clears.
-        if (refreshLegacyPayerType && GetJson(after.RootElement, "payerType", "providerType") is not null)
+        var fields = submitted.Where(pair => pair.Value != GetJson(before.RootElement, pair.Key))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+
+        // The form can emit both names even when only one existed in the saved JSON.
+        void ResolveAlias(string name, string alias, bool isPayerType = false)
         {
-            var canonical = GetJson(after.RootElement, "payerType") ?? GetJson(after.RootElement, "providerType");
-            fields["payerType"] = canonical;
+            fields.Remove(name);
+            fields.Remove(alias);
+            if (!submitted.TryGetValue(name, out var current) && !submitted.ContainsKey(alias)) return;
+            current ??= submitted.GetValueOrDefault(alias);
+            var previous = GetJson(before.RootElement, name) ?? GetJson(before.RootElement, alias);
+            if (isPayerType)
+            {
+                current = IntakeProfilePrefill.NormalizeProviderType(current) ?? current;
+                previous = IntakeProfilePrefill.NormalizeProviderType(previous) ?? previous;
+            }
+            // Unversioned chart clients may also resubmit an existing type to repair prefill.
+            if (current != previous || (isPayerType && refreshLegacyPayerType && current is not null))
+                fields[name] = current;
+            submitted[name] = current;
         }
+        ResolveAlias("secondaryMemberIdPolicyNumber", "secondaryMemberOrPolicyNumber");
+        ResolveAlias("payerType", "providerType", isPayerType: true);
         if (previousPayerInfoJson is null && !fields.ContainsKey("authorizationNumber") && Trim(patient.AuthorizationNumber) is { } reference)
             fields["authorizationNumber"] = reference;
 
@@ -80,7 +95,7 @@ public static class IntakeDomainProjection
         await UpsertProviderAsync(db, patient, referringProviderName ?? fields.GetValueOrDefault("referringDoctorName"),
             fields.GetValueOrDefault("referringDoctorPhone"), referringProviderNpi ?? fields.GetValueOrDefault("referringDoctorNpi"), PatientProviderRole.Referring, userId, ct);
 
-        var primary = await PatchLegacyPolicyAsync(db, patient, fields, InsuranceCoveragePriority.Primary, userId, ct);
+        var primary = await PatchLegacyPolicyAsync(db, patient, fields, InsuranceCoveragePriority.Primary, userId, ct, submitted);
         await PatchLegacyPolicyAsync(db, patient, fields, InsuranceCoveragePriority.Secondary, userId, ct);
         if (primary is not null)
             await PatchLegacyAuthorizationAsync(db, patient, primary, fields, before.RootElement, userId, ct);
@@ -89,18 +104,34 @@ public static class IntakeDomainProjection
     }
 
     private static async Task<PatientInsurancePolicy?> PatchLegacyPolicyAsync(ApplicationDbContext db, Patient patient,
-        Dictionary<string, string?> fields, InsuranceCoveragePriority priority, Guid userId, CancellationToken ct)
+        Dictionary<string, string?> fields, InsuranceCoveragePriority priority, Guid userId, CancellationToken ct,
+        IReadOnlyDictionary<string, string?>? primarySnapshot = null)
     {
         var policy = await db.PatientInsurancePolicies.SingleOrDefaultAsync(p => p.PatientId == patient.Id && p.ClinicId == patient.ClinicId
             && p.CoveragePriority == priority && !p.IsArchived && p.Status == InsurancePolicyStatus.Active, ct);
+        if (primarySnapshot is not null)
+        {
+            if (fields.TryGetValue("coinsurancePercent", out var coinsurance) && LegacyAmount(coinsurance) > 100)
+                throw new ArgumentException("Coinsurance percent must be between 0 and 100.");
+            if (fields.ContainsKey("effectiveStartDate") || fields.ContainsKey("effectiveEndDate"))
+            {
+                var start = policy is null || fields.ContainsKey("effectiveStartDate")
+                    ? LegacyDate(primarySnapshot.GetValueOrDefault("effectiveStartDate")) : policy.EffectiveStartDate;
+                var end = policy is null || fields.ContainsKey("effectiveEndDate")
+                    ? LegacyDate(primarySnapshot.GetValueOrDefault("effectiveEndDate")) : policy.EffectiveEndDate;
+                if (start > end) throw new ArgumentException("Policy effective start date must not be after the end date.");
+            }
+        }
         var prefix = priority == InsuranceCoveragePriority.Secondary ? "secondary" : "";
         if (policy is null)
         {
+            var payerTypeOnCreate = primarySnapshot?.GetValueOrDefault("payerType");
             if (fields.GetValueOrDefault(prefix + "insuranceCompanyName") is null && fields.GetValueOrDefault(prefix + "memberOrPolicyNumber") is null
                 && fields.GetValueOrDefault(prefix + "memberIdPolicyNumber") is null && fields.GetValueOrDefault(prefix + "groupNumber") is null
-                && !(priority == InsuranceCoveragePriority.Primary && ParsePayerType(fields.GetValueOrDefault("providerType") ?? fields.GetValueOrDefault("payerType") ?? "") == InsurancePayerType.SelfPay))
+                && ParsePayerType(payerTypeOnCreate ?? "") != InsurancePayerType.SelfPay)
                 return null;
             policy = new() { PatientId = patient.Id, ClinicId = patient.ClinicId, CoveragePriority = priority, Status = InsurancePolicyStatus.Active };
+            if (payerTypeOnCreate is not null) fields["payerType"] = payerTypeOnCreate;
             db.PatientInsurancePolicies.Add(policy);
         }
         bool touched = false;
@@ -120,7 +151,6 @@ public static class IntakeDomainProjection
         Apply(prefix + "groupNumber", v => policy.GroupNumber = v);
         if (priority == InsuranceCoveragePriority.Primary)
         {
-            Apply("providerType", v => policy.PayerType = ParsePayerType(v ?? ""));
             Apply("payerType", v => policy.PayerType = ParsePayerType(v ?? ""));
             Apply("adjusterName", v => policy.AdjusterName = v);
             Apply("adjusterPhone", v => policy.AdjusterPhone = v);

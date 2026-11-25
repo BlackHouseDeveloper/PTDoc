@@ -341,14 +341,18 @@ public sealed class PatientInfoRouteTests : TestContext
         Assert.Equal("preserve-me", savedPayerInfo.RootElement.GetProperty("futureCoverageEvidence").GetProperty("source").GetString());
     }
 
-    [Fact]
-    public void Save_NormalizesLegacyPayerDisplayValuesAndSkipsBlankFaxLabel()
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("Medicare", false)]
+    [InlineData("Medicare", true)]
+    public void Save_NormalizesLegacyPayerDisplayValuesAndSkipsBlankFaxLabel(string? canonical, bool editType)
     {
         var patientId = Guid.NewGuid();
         var payerInfoJson = JsonSerializer.Serialize(new
         {
             insuranceCompanyName = "Primary Health",
             providerType = "Commercial",
+            payerType = canonical,
             insurancePriority = "Primary",
             caseManagerAdjusterContactInfo = "   ",
             adjusterName = " Alex Adjuster ",
@@ -383,13 +387,14 @@ public sealed class PatientInfoRouteTests : TestContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Equal("commercial", cut.Find("#pi-provider-type").GetAttribute("value"));
+            Assert.Equal(canonical is null ? "commercial" : "medicare", cut.Find("#pi-provider-type").GetAttribute("value"));
             Assert.Equal("primary", cut.Find("#pi-insurance-priority").GetAttribute("value"));
             Assert.Contains("Alex Adjuster", cut.Find("#pi-case-manager").TextContent, StringComparison.Ordinal);
             Assert.DoesNotContain("Fax:", cut.Find("#pi-case-manager").TextContent, StringComparison.Ordinal);
         });
 
         Assert.Empty(cut.FindAll("textarea#pi-case-manager"));
+        if (editType) cut.Find("#pi-provider-type").Change("workers_comp");
         cut.Find("#pi-insurance-name").Input("Updated Primary Health");
         cut.Find("button[aria-label='Save Changes']").Click();
 
@@ -397,7 +402,8 @@ public sealed class PatientInfoRouteTests : TestContext
 
         using var savedPayerInfo = JsonDocument.Parse(capturedRequest!.PayerInfoJson!);
         var root = savedPayerInfo.RootElement;
-        Assert.Equal("commercial", root.GetProperty("providerType").GetString());
+        Assert.Equal(editType ? "workers_comp" : canonical is null ? "commercial" : "medicare", root.GetProperty("providerType").GetString());
+        if (canonical is not null) Assert.Equal(editType ? "Workers' Compensation" : canonical, root.GetProperty("payerType").GetString());
         Assert.Equal("primary", root.GetProperty("insurancePriority").GetString());
         Assert.Equal("Alex Adjuster", root.GetProperty("adjusterName").GetString());
         Assert.Equal("555-0200", root.GetProperty("adjusterPhone").GetString());

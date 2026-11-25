@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The chart’s insurance entry opens a policy editor for plan year, visit limits, cost sharing, adjuster details and related authorizations. Staff can add, correct or archive individual referrals in the same save. A stale or invalid save keeps the draft available for correction or explicit discard.
 - Historical corrections retain referral identity and utilization. Older payer forms preserve unknown JSON fields and report a conflict when a previous referral cannot be identified. All three database providers gain two nullable policy-limit columns.
+- Editing older payer forms preserves corrected secondary member numbers and keeps the selected payer type consistent across saved fields. Coverage dates and coinsurance are validated before a policy update is saved. Accepting the current primary policy during intake refreshes its visit limit, including a cleared limit.
 
 ### Fixed - MAUI navigation to shared pages
 

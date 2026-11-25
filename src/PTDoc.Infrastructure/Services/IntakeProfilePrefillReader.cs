@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Intake;
@@ -75,6 +76,7 @@ public static class IntakeProfilePrefillReader
             profile.InsuranceCompanyName = p.CarrierDisplayName;
             profile.MemberOrPolicyNumber = p.MemberOrPolicyNumber;
             profile.GroupNumber = p.GroupNumber;
+            profile.TotalVisitLimit = p.TotalVisitLimit?.ToString("G29", CultureInfo.InvariantCulture);
             profile.PayerType = p.PayerType switch
             {
                 InsurancePayerType.WorkersCompensation => "Workers' Compensation",
@@ -95,14 +97,17 @@ public static class IntakeProfilePrefillReader
             profile.InsuranceCompanyName = legacy.InsuranceCompanyName;
             profile.MemberOrPolicyNumber = legacy.MemberOrPolicyNumber;
             profile.GroupNumber = legacy.GroupNumber;
+            profile.TotalVisitLimit = legacy.TotalVisitLimit;
             profile.PayerType = legacy.PayerType;
             profile.AdjusterName = legacy.AdjusterName;
             profile.AdjusterPhone = legacy.AdjusterPhone;
             profile.AdjusterEmail = legacy.AdjusterEmail;
             profile.AdjusterFax = legacy.AdjusterFax;
-            profile.PrimaryLegacyPayerFingerprint = LegacyFingerprint(legacy.InsuranceCompanyName,
-                legacy.MemberOrPolicyNumber, legacy.GroupNumber, legacy.PayerType,
-                legacy.AdjusterName, legacy.AdjusterPhone, legacy.AdjusterEmail, legacy.AdjusterFax);
+            List<string?> sourceFields = [legacy.InsuranceCompanyName, legacy.MemberOrPolicyNumber, legacy.GroupNumber,
+                legacy.PayerType, legacy.AdjusterName, legacy.AdjusterPhone, legacy.AdjusterEmail, legacy.AdjusterFax];
+            // Preserve the existing source fingerprint for legacy records without a limit.
+            if (!string.IsNullOrWhiteSpace(legacy.TotalVisitLimit)) sourceFields.Add(legacy.TotalVisitLimit);
+            profile.PrimaryLegacyPayerFingerprint = LegacyFingerprint(sourceFields.ToArray());
         }
         var secondary = policies.Where(p => p.CoveragePriority == InsuranceCoveragePriority.Secondary).ToArray();
         if (secondary.Length == 1)

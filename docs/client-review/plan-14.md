@@ -28,7 +28,23 @@ The three provider migrations append nullable `TotalVisitLimit` and `VisitLimitT
 | [Adding a child to a saved policy](https://github.com/BlackHouseDeveloper/PTDoc/pull/169#discussion_r4376942043) | Valid | Explicitly track new children as Added. A relational SQLite test reloads a new referral and checks archived evidence. |
 | [Isolated fields skipped by the legacy projection](https://github.com/BlackHouseDeveloper/PTDoc/pull/169#discussion_r4376942075) | Valid | Project changed policy and authorization fields, including clears. Bind authorization edits to their previous reference and reject ambiguity. Preserve unknown compatible history fields and unrelated usage. |
 | [Per-entry archive missing](https://github.com/BlackHouseDeveloper/PTDoc/pull/169#discussion_r4376942119) | Valid | The editor stages archival in the coordinated, version-checked save. The archived row retains the reference and usage it had before archival. |
-| Six review-summary links | Duplicate | Each links to the corresponding inline finding. Two reviews, seven inline threads and zero conversation comments were visible. Neither review included a separate previously missed section. |
+| Six review-summary links | Duplicate | Each links to the corresponding inline finding. On November 24, two reviews, seven inline threads and zero conversation comments were visible. Neither review included a separate previously missed section. |
+
+### November 25 review of `4bd8f872`
+
+GitHub exposed three review submissions, 12 inline threads, zero minimized inline comments and zero conversation comments. The six links in the October review and the eleven links in the November review all repeat inline findings. Neither Copilot review exposes a suppressed-comments or Previously missed section. The three generated migration designers listed as unreviewed carry no findings. [November review](https://github.com/BlackHouseDeveloper/PTDoc/pull/169#pullrequestreview-6050838713)
+
+The access-bypass report remains invalid and both migration reports remain outdated for the reasons above. The four formerly valid findings are outdated on this published head. `LegacyCorrection_DoesNotReinsertReferralRenamedInPolicyEditor` covers the missing match. `ExistingPolicy_InsertsNewChildAndArchivesSelectedEntryWithoutRewritingEvidence` covers insertion and archival. `LegacyPatch_AppliesIsolatedEditsAndClears_WithoutReplayingLimitsOrUsage` covers the original field-level examples.
+
+| New finding | Classification | Implementation and regression |
+| --- | --- | --- |
+| [Secondary member number](https://github.com/BlackHouseDeveloper/PTDoc/pull/169#discussion_r4689525317) | Valid | The form emits both aliases. The server now compares the resolved values in the two snapshots. Coverage includes each original spelling, an unrelated save after a correction, an intentional edit and a clear. |
+| [Payer type and Self Pay creation](https://github.com/BlackHouseDeveloper/PTDoc/pull/169#discussion_r4689525385) | Valid | The patch and creation guard use the canonical payer type with an alias fallback. The compatibility page reads the same precedence and updates both keys on intentional selection. Service and component tests cover conflicting keys and carrier-free Self Pay. |
+| [Effective date range](https://github.com/BlackHouseDeveloper/PTDoc/pull/169#discussion_r4689525440) | Valid | The patient write validates a changed endpoint against the stored policy endpoint. API tests cover both directions, rejection without partial persistence, and a valid same-day boundary. |
+| [Coinsurance percentage](https://github.com/BlackHouseDeveloper/PTDoc/pull/169#discussion_r4689525501) | Valid | The legacy patient write enforces the workflow's 0–100 range. API tests reject 100.01, preserve the prior JSON and policy, and accept 100. |
+| [Stale intake limit](https://github.com/BlackHouseDeveloper/PTDoc/pull/169#discussion_r4689525553) | Valid | The accepted primary snapshot now carries its visit limit through prefill, draft persistence and reconciliation. API regression cases submit after accepting a corrected or cleared limit on the same policy. |
+
+The detailed results below apply to the November 24 commit. The repository owner confirmed that the local build and tests passed for the five November 25 fixes before publication.
 
 ## Dependencies, blockers and owners
 

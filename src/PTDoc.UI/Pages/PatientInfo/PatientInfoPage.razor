@@ -4,6 +4,7 @@
 @using PTDoc.UI.Components.PatientInfo
 @using PTDoc.UI.Components.PatientInfo.Models
 @using PTDoc.Application.Services
+@using PTDoc.Application.Intake
 @using PTDoc.Application.DTOs
 @using System.Globalization
 @using System.Text.Json
@@ -241,7 +242,7 @@
                 OutOfPocketMet = payer?.OutOfPocketMet ?? string.Empty,
                 CopayAmount = payer?.CopayAmount ?? string.Empty,
                 CoinsurancePercent = payer?.CoinsurancePercent ?? string.Empty,
-                ProviderType = NormalizeProviderType(payer?.ProviderType),
+                ProviderType = ResolveProviderType(payer),
                 InsurancePriority = NormalizeInsurancePriority(payer?.InsurancePriority),
                 YearType = payer?.YearType ?? string.Empty,
                 EffectiveStartDate = payer?.EffectiveStartDate ?? string.Empty,
@@ -344,6 +345,9 @@
         return string.Empty;
     }
 
+    private static string ResolveProviderType(PayerInfoStorage? payer) =>
+        NormalizeProviderType(FirstNonWhiteSpace(payer?.PayerType, payer?.ProviderType));
+
     private static string NormalizeProviderType(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -445,6 +449,9 @@
                 OutOfPocketMet = Vm.PatientPayer.OutOfPocketMet,
                 CopayAmount = Vm.PatientPayer.CopayAmount,
                 CoinsurancePercent = Vm.PatientPayer.CoinsurancePercent,
+                PayerType = Vm.PatientPayer.ProviderType == ResolveProviderType(loadedPayerInfo)
+                    ? loadedPayerInfo?.PayerType
+                    : IntakeProfilePrefill.NormalizeProviderType(Vm.PatientPayer.ProviderType) ?? Vm.PatientPayer.ProviderType,
                 ProviderType = NormalizeProviderType(Vm.PatientPayer.ProviderType),
                 InsurancePriority = NormalizeInsurancePriority(Vm.PatientPayer.InsurancePriority),
                 YearType = Vm.PatientPayer.YearType,
@@ -564,6 +571,7 @@
         public string? OutOfPocketMet { get; set; }
         public string? CopayAmount { get; set; }
         public string? CoinsurancePercent { get; set; }
+        public string? PayerType { get; set; }
         public string? ProviderType { get; set; }
         public string? InsurancePriority { get; set; }
         public string? YearType { get; set; }

@@ -673,6 +673,7 @@ public sealed class IntakeService : IIntakeService
         target.InsuranceCompanyName = source.InsuranceCompanyName;
         target.MemberOrPolicyNumber = source.MemberOrPolicyNumber;
         target.GroupNumber = source.GroupNumber;
+        target.TotalVisitLimit = source.TotalVisitLimit;
         target.PayerType = source.PayerType;
         target.InsuranceCoverageType = source.InsuranceCoverageType;
         target.SecondaryInsuranceCompanyName = source.SecondaryInsuranceCompanyName;
