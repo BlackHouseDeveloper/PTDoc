@@ -32,6 +32,7 @@ public sealed class IntakeProfilePrefill
     public string? MemberOrPolicyNumber { get; set; }
     public string? GroupNumber { get; set; }
     public string? PayerType { get; set; }
+    public string? TotalVisitLimit { get; set; }
     public string? SecondaryInsuranceCompanyName { get; set; }
     public string? SecondaryMemberOrPolicyNumber { get; set; }
     public string? SecondaryGroupNumber { get; set; }
@@ -53,11 +54,11 @@ public sealed class IntakeProfilePrefill
             || string.IsNullOrWhiteSpace(draft.EmergencyContactPhone) && !string.IsNullOrWhiteSpace(EmergencyContactPhone)
             || draft.DateOfBirth is null && DateOfBirth is not null
             || !draft.OmitPrimaryPolicy && !PrimaryPolicyAmbiguous && string.IsNullOrWhiteSpace(draft.InsuranceCompanyName) && string.IsNullOrWhiteSpace(draft.MemberOrPolicyNumber)
-                && string.IsNullOrWhiteSpace(draft.GroupNumber) && string.IsNullOrWhiteSpace(draft.PayerType)
+                && string.IsNullOrWhiteSpace(draft.GroupNumber) && string.IsNullOrWhiteSpace(draft.PayerType) && string.IsNullOrWhiteSpace(draft.TotalVisitLimit)
                 && string.IsNullOrWhiteSpace(draft.AdjusterName) && string.IsNullOrWhiteSpace(draft.AdjusterPhone)
                 && string.IsNullOrWhiteSpace(draft.AdjusterEmail) && string.IsNullOrWhiteSpace(draft.AdjusterFax)
                 && (!string.IsNullOrWhiteSpace(InsuranceCompanyName) || !string.IsNullOrWhiteSpace(MemberOrPolicyNumber)
-                    || !string.IsNullOrWhiteSpace(GroupNumber) || !string.IsNullOrWhiteSpace(PayerType)
+                    || !string.IsNullOrWhiteSpace(GroupNumber) || !string.IsNullOrWhiteSpace(PayerType) || !string.IsNullOrWhiteSpace(TotalVisitLimit)
                     || !string.IsNullOrWhiteSpace(AdjusterName) || !string.IsNullOrWhiteSpace(AdjusterPhone)
                     || !string.IsNullOrWhiteSpace(AdjusterEmail) || !string.IsNullOrWhiteSpace(AdjusterFax))
             || !draft.OmitSecondaryPolicy && !SecondaryPolicyAmbiguous && string.IsNullOrWhiteSpace(draft.SecondaryInsuranceCompanyName)
@@ -108,6 +109,7 @@ public sealed class IntakeProfilePrefill
             "memberOrPolicyNumber",
             "groupNumber",
             "payerType",
+            "totalVisitLimit",
             "secondaryInsuranceCompanyName",
             "secondaryMemberOrPolicyNumber",
             "secondaryGroupNumber",
@@ -158,7 +160,7 @@ public sealed class IntakeProfilePrefill
         "medicare" => "Medicare",
         "medicaid" => "Medicaid",
         "tricare" => "TRICARE",
-        "workers_comp" or "workers compensation" or "workers' compensation" => "Workers' Compensation",
+        "workers_comp" or "workers_compensation" or "workers compensation" or "workers' compensation" => "Workers' Compensation",
         "motor_vehicle" or "motor vehicle" => "Motor Vehicle",
         "liability" => "Liability",
         "self_pay" or "self pay" or "self-pay" => "Self Pay",
@@ -186,13 +188,14 @@ public sealed class IntakeProfilePrefill
         draft.DateOfBirth ??= DateOfBirth;
         // A policy is copied as a unit; never combine one carrier with another policy's member number.
         if (!draft.OmitPrimaryPolicy && !PrimaryPolicyAmbiguous && Empty(draft.InsuranceCompanyName) && Empty(draft.MemberOrPolicyNumber) && Empty(draft.GroupNumber)
-            && Empty(draft.PayerType) && Empty(draft.AdjusterName) && Empty(draft.AdjusterPhone)
+            && Empty(draft.PayerType) && Empty(draft.TotalVisitLimit) && Empty(draft.AdjusterName) && Empty(draft.AdjusterPhone)
             && Empty(draft.AdjusterEmail) && Empty(draft.AdjusterFax))
         {
             draft.InsuranceCompanyName = InsuranceCompanyName;
             draft.MemberOrPolicyNumber = MemberOrPolicyNumber;
             draft.GroupNumber = GroupNumber;
             draft.PayerType = PayerType;
+            draft.TotalVisitLimit = TotalVisitLimit;
             draft.AdjusterName = AdjusterName;
             draft.AdjusterPhone = AdjusterPhone;
             draft.AdjusterEmail = AdjusterEmail;

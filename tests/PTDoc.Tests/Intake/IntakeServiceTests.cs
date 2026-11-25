@@ -531,7 +531,7 @@ public sealed class IntakeServiceTests : IDisposable
         patient.AddressLine1 = "100 Fixture Lane";
         patient.EmergencyContactName = "Fixture Contact";
         patient.EmergencyContactPhone = "555-0108";
-        var primary = new PatientInsurancePolicy { PatientId = patient.Id, ClinicId = _clinicId, CarrierDisplayName = "Primary Fixture", MemberOrPolicyNumber = "PRIMARY-7", CoveragePriority = InsuranceCoveragePriority.Primary };
+        var primary = new PatientInsurancePolicy { PatientId = patient.Id, ClinicId = _clinicId, CarrierDisplayName = "Primary Fixture", MemberOrPolicyNumber = "PRIMARY-7", TotalVisitLimit = 12.5m, CoveragePriority = InsuranceCoveragePriority.Primary };
         var secondary = new PatientInsurancePolicy { PatientId = patient.Id, ClinicId = _clinicId, CarrierDisplayName = "Secondary Fixture", MemberOrPolicyNumber = "SECONDARY-7", CoveragePriority = InsuranceCoveragePriority.Secondary };
         _context.Patients.Add(patient);
         _context.PatientInsurancePolicies.AddRange(secondary, primary);
@@ -541,6 +541,7 @@ public sealed class IntakeServiceTests : IDisposable
         Assert.Equal(patient.Phone, created.PhoneNumber);
         Assert.Equal(patient.AddressLine1, created.AddressLine1);
         Assert.Equal(primary.MemberOrPolicyNumber, created.MemberOrPolicyNumber);
+        Assert.Equal("12.5", created.TotalVisitLimit);
         Assert.Equal(secondary.MemberOrPolicyNumber, created.SecondaryMemberOrPolicyNumber);
         Assert.Equal(primary.Id, created.PrefilledPrimaryPolicyId);
         Assert.Equal(secondary.Id, created.PrefilledSecondaryPolicyId);
@@ -550,6 +551,7 @@ public sealed class IntakeServiceTests : IDisposable
         var storedBefore = (await _context.IntakeForms.SingleAsync()).ResponseJson;
         var reopened = (await _service.GetLatestByPatientIdAsync(patient.Id))!;
         Assert.Equal("", reopened.PhoneNumber);
+        Assert.Equal("12.5", reopened.TotalVisitLimit);
         Assert.Equal("Patient correction", reopened.AddressLine1);
         Assert.Equal(patient.Phone, reopened.ProfilePrefill!.PhoneNumber);
         Assert.Equal(storedBefore, (await _context.IntakeForms.SingleAsync()).ResponseJson);

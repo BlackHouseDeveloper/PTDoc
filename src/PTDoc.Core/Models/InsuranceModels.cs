@@ -14,6 +14,8 @@ public sealed class PatientInsurancePolicy : ISyncTrackedEntity
     public DateTime? EffectiveStartDate { get; set; }
     public DateTime? EffectiveEndDate { get; set; }
     public InsurancePlanYearType PlanYearType { get; set; }
+    public decimal? TotalVisitLimit { get; set; }
+    public string? VisitLimitType { get; set; }
     public decimal? DeductibleAmount { get; set; }
     public decimal? DeductibleMet { get; set; }
     public decimal? OutOfPocketMaximum { get; set; }

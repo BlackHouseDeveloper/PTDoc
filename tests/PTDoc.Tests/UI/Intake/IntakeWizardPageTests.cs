@@ -746,9 +746,10 @@ public sealed class IntakeWizardPageTests : TestContext
             CurrentStep = (int)IntakeStep.PainAssessment,
             InsuranceCompanyName = "Stale",
             MemberOrPolicyNumber = "OLD",
+            TotalVisitLimit = "20",
             MedicalHistoryNotes = "Keep me",
             ProfileSourceRevision = Guid.NewGuid(),
-            ProfilePrefill = new IntakeProfilePrefill { InsuranceCompanyName = "Current", MemberOrPolicyNumber = "NEW", Fingerprint = "current-offer" }
+            ProfilePrefill = new IntakeProfilePrefill { InsuranceCompanyName = "Current", MemberOrPolicyNumber = "NEW", TotalVisitLimit = "30", Fingerprint = "current-offer" }
         };
         var service = CreateIntakeServiceMock(initial);
         IntakeResponseDraft? accepted = null;
@@ -759,6 +760,8 @@ public sealed class IntakeWizardPageTests : TestContext
                 Assert.Equal("current-offer", draft.ProfileUpdate.ExpectedFingerprint);
                 Assert.Equal(initial.ProfileSourceRevision, draft.ProfileSourceRevision);
                 Assert.Equal("Keep me", draft.MedicalHistoryNotes);
+                Assert.Equal("20", draft.TotalVisitLimit);
+                draft.TotalVisitLimit = omit ? null : "30";
                 draft.InsuranceCompanyName = omit ? null : "Current";
                 draft.MemberOrPolicyNumber = omit ? null : "NEW";
                 draft.OmitPrimaryPolicy = omit;
@@ -774,6 +777,7 @@ public sealed class IntakeWizardPageTests : TestContext
         cut.WaitForAssertion(() => Assert.Equal(omit ? null : "NEW", GetWizardState(cut).MemberOrPolicyNumber));
         Assert.Equal("Keep me", GetWizardState(cut).MedicalHistoryNotes);
         Assert.Equal(omit, GetWizardState(cut).OmitPrimaryPolicy);
+        Assert.Equal(omit ? null : "30", GetWizardState(cut).TotalVisitLimit);
         Assert.Equal(accepted!.ProfileSourceRevision, GetWizardState(cut).ProfileSourceRevision);
     }
 

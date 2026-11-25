@@ -725,6 +725,7 @@ public sealed class IntakeProfilePrefillIntegrationTests : IClassFixture<PtDocAp
     [InlineData("medicaid", "Medicaid", InsurancePayerType.Medicaid, false)]
     [InlineData("tricare", "TRICARE", InsurancePayerType.Tricare, false)]
     [InlineData("workers_comp", "Workers' Compensation", InsurancePayerType.WorkersCompensation, false)]
+    [InlineData("workers_compensation", "Workers' Compensation", InsurancePayerType.WorkersCompensation, false)]
     [InlineData("motor_vehicle", "Motor Vehicle", InsurancePayerType.MotorVehicle, false)]
     [InlineData("liability", "Liability", InsurancePayerType.Liability, false)]
     [InlineData("self_pay", "Self Pay", InsurancePayerType.SelfPay, false)]
@@ -782,6 +783,110 @@ public sealed class IntakeProfilePrefillIntegrationTests : IClassFixture<PtDocAp
         });
         Assert.Equal(HttpStatusCode.OK, canonicalUpdate.StatusCode);
         Assert.Equal(InsurancePayerType.Medicare, (await db.PatientInsurancePolicies.AsNoTracking().SingleAsync(p => p.PatientId == patient.Id)).PayerType);
+    }
+
+    [Theory]
+    [InlineData("effectiveStartDate", "2026-04-01", "2026-03-31")]
+    [InlineData("effectiveEndDate", "2026-01-31", "2026-02-01")]
+    [InlineData("coinsurancePercent", "100.01", "100")]
+    public async Task LegacyPatientUpdate_ValidatesAgainstStoredCoverageBeforeSaving(string field, string invalid, string valid)
+    {
+        using var staff = _factory.CreateClientWithRole(Roles.PT);
+        var (patient, _) = await CreateReviewFixtureAsync(staff);
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var policy = await db.PatientInsurancePolicies.SingleAsync(p => p.PatientId == patient.Id && p.CoveragePriority == InsuranceCoveragePriority.Primary);
+        policy.EffectiveStartDate = new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc);
+        policy.EffectiveEndDate = new DateTime(2026, 3, 31, 0, 0, 0, DateTimeKind.Utc);
+        policy.CoinsurancePercent = 25;
+        await db.SaveChangesAsync();
+        var original = await db.Patients.AsNoTracking().SingleAsync(p => p.Id == patient.Id);
+        var payload = JsonSerializer.Deserialize<Dictionary<string, string>>(original.PayerInfoJson)!;
+        payload[field] = invalid;
+        var path = $"/api/v1/patients/{patient.Id}";
+        using var rejected = await staff.PutAsJsonAsync(path, new UpdatePatientRequest
+        {
+            ExpectedLastModifiedUtc = original.LastModifiedUtc,
+            PayerInfoJson = JsonSerializer.Serialize(payload)
+        });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, rejected.StatusCode);
+        var unchanged = await db.Patients.AsNoTracking().SingleAsync(p => p.Id == patient.Id);
+        Assert.Equal(original.PayerInfoJson, unchanged.PayerInfoJson);
+        Assert.Equal(original.LastModifiedUtc, unchanged.LastModifiedUtc);
+        var stored = await db.PatientInsurancePolicies.AsNoTracking().SingleAsync(p => p.Id == policy.Id);
+        Assert.Equal(policy.EffectiveStartDate, stored.EffectiveStartDate);
+        Assert.Equal(policy.EffectiveEndDate, stored.EffectiveEndDate);
+        Assert.Equal(25m, stored.CoinsurancePercent);
+
+        payload[field] = valid;
+        using var accepted = await staff.PutAsJsonAsync(path, new UpdatePatientRequest
+        {
+            ExpectedLastModifiedUtc = original.LastModifiedUtc,
+            PayerInfoJson = JsonSerializer.Serialize(payload)
+        });
+        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+        var saved = await db.PatientInsurancePolicies.AsNoTracking().SingleAsync(p => p.Id == policy.Id);
+        if (field == "coinsurancePercent") Assert.Equal(100m, saved.CoinsurancePercent);
+        else Assert.Equal(saved.EffectiveStartDate, saved.EffectiveEndDate);
+    }
+
+    [Theory]
+    [InlineData("""{"effectiveStartDate":"2026-05-01","effectiveEndDate":"2026-04-30"}""")]
+    [InlineData("""{"coinsurancePercent":"101"}""")]
+    public async Task LegacyPatientUpdate_RejectsInvalidCoverageWithoutAnActivePolicy(string payerJson)
+    {
+        using var staff = _factory.CreateClientWithRole(Roles.PT);
+        var (patient, _) = await CreateReviewFixtureAsync(staff, withPolicies: false);
+        var path = $"/api/v1/patients/{patient.Id}";
+        using var rejected = await staff.PutAsJsonAsync(path, new UpdatePatientRequest { PayerInfoJson = payerJson });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, rejected.StatusCode);
+        var stored = await staff.GetFromJsonAsync<PatientResponse>(path);
+        Assert.Equal(patient.PayerInfoJson, stored!.PayerInfoJson);
+    }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(null)]
+    public async Task UseCurrentPrimary_ReplacesStaleLimitBeforeSubmittingSamePolicy(int? currentLimit)
+    {
+        using var staff = _factory.CreateClientWithRole(Roles.PT);
+        var (patient, intake) = await CreateReviewFixtureAsync(staff);
+        var path = $"/api/v1/intake/{intake.Id}";
+        var draft = JsonSerializer.Deserialize<IntakeResponseDraft>(intake.ResponseJson, ReviewJson)!;
+        draft.TotalVisitLimit = "20";
+        using var initial = await staff.PutAsJsonAsync(path, new UpdateIntakeRequest
+        {
+            ResponseJson = IntakeDraftPersistence.SerializePersistenceJson(draft),
+            Consents = ReviewConsents
+        });
+        Assert.Equal(HttpStatusCode.OK, initial.StatusCode);
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var policy = await db.PatientInsurancePolicies.SingleAsync(p => p.Id == draft.PrefilledPrimaryPolicyId);
+        policy.TotalVisitLimit = currentLimit;
+        policy.LastModifiedUtc = policy.LastModifiedUtc.AddSeconds(1);
+        await db.SaveChangesAsync();
+        using var stale = await staff.PostAsync(path + "/submit", null);
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+
+        var latest = (await staff.GetFromJsonAsync<IntakeResponse>($"/api/v1/intake/patient/{patient.Id}/latest"))!;
+        var offer = latest.ProfilePrefill!;
+        Assert.Equal(currentLimit?.ToString(), offer.TotalVisitLimit);
+        draft = JsonSerializer.Deserialize<IntakeResponseDraft>(latest.ResponseJson, ReviewJson)!;
+        Assert.Equal("20", draft.TotalVisitLimit);
+        draft.ProfileUpdate = new IntakeProfileUpdate { Action = IntakeProfileAction.UsePrimary, ExpectedFingerprint = offer.Fingerprint };
+        using var reconcile = await staff.PutAsJsonAsync(path, new UpdateIntakeRequest
+        {
+            ResponseJson = IntakeDraftPersistence.SerializePersistenceJson(draft),
+            Consents = ReviewConsents
+        });
+        Assert.Equal(HttpStatusCode.OK, reconcile.StatusCode);
+        var accepted = (await reconcile.Content.ReadFromJsonAsync<IntakeResponse>())!;
+        Assert.Equal(offer.TotalVisitLimit, JsonSerializer.Deserialize<IntakeResponseDraft>(accepted.ResponseJson, ReviewJson)!.TotalVisitLimit);
+        using var submitted = await staff.PostAsync(path + "/submit", null);
+        Assert.Equal(HttpStatusCode.OK, submitted.StatusCode);
+        var saved = await db.PatientInsurancePolicies.AsNoTracking().SingleAsync(p => p.Id == policy.Id);
+        Assert.Equal((decimal?)currentLimit, saved.TotalVisitLimit);
     }
 
     private static async Task<(PatientResponse Patient, IntakeResponse Intake)> CreateReviewFixtureAsync(HttpClient staff, bool withPolicies = true)

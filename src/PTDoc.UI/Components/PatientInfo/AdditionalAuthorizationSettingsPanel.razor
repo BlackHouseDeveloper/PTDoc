@@ -1,7 +1,7 @@
 @* AdditionalAuthorizationSettingsPanel — status/type dropdowns and alerting fields *@
 @using PTDoc.UI.Components.PatientInfo.Models
 
-<PatientInfoSectionPanel Title="Authorization / PCP Referral Settings">
+<PatientInfoSectionPanel Embedded="@Embedded" Title="Authorization / PCP Referral Settings">
     <PatientInfoFormGrid>
 
         <PatientInfoField Label="Authorization / PCP Referral Required?" ForId="pi-auth-required" Error="@GetError("authRequired")">
@@ -52,6 +52,7 @@
 </PatientInfoSectionPanel>
 
 @code {
+    [Parameter] public bool Embedded { get; set; }
     [Parameter, EditorRequired] public AdditionalAuthorizationSettingsVm Model { get; set; } = null!;
     [Parameter] public EventCallback<AdditionalAuthorizationSettingsVm> ModelChanged { get; set; }
     [Parameter] public IReadOnlyList<PatientInfoSelectOptionVm> AuthorizationStatusOptions { get; set; } = Array.Empty<PatientInfoSelectOptionVm>();

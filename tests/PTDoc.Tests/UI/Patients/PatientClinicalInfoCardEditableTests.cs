@@ -381,7 +381,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
     }
 
     [Fact]
-    public void RoutedInitialTabAndInsuranceLink_AreRenderedAsChartNavigation()
+    public void RoutedInitialTab_RendersWithoutDuplicateInsuranceEntry()
     {
         var patient = CreatePatient();
         var cut = RenderComponent<PatientClinicalInfoCardEditable>(parameters => parameters
@@ -395,10 +395,7 @@ public sealed class PatientClinicalInfoCardEditableTests : TestContext
             Assert.Equal(
                 $"/patient/{patient.Id}?tab=documents",
                 cut.Find("[data-testid='patient-profile-tab-documents']").GetAttribute("href"));
-            Assert.Equal(
-                $"/patient/{patient.Id}/info",
-                cut.Find("[data-testid='patient-profile-tab-insurance-authorization']").GetAttribute("href"));
-            Assert.Empty(cut.Find("[data-testid='patient-profile-tabs']").QuerySelectorAll("[data-testid='patient-profile-tab-insurance-authorization']"));
+            Assert.Empty(cut.FindAll("[data-testid='patient-profile-tab-insurance-authorization']"));
         });
     }
 

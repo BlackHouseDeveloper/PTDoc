@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace PTDoc.UI.Components.PatientInfo.Models;
 
 /// <summary>
@@ -5,6 +8,7 @@ namespace PTDoc.UI.Components.PatientInfo.Models;
 /// </summary>
 public class AuthorizationReferralHistoryEntryVm
 {
+    [JsonExtensionData] public Dictionary<string, JsonElement>? AdditionalFields { get; set; }
     public string EntryId { get; set; } = Guid.NewGuid().ToString("N");
     public string RecordType { get; set; } = "Authorization";
     public string ReferenceNumber { get; set; } = string.Empty;

@@ -1,7 +1,10 @@
 using System.Globalization;
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PTDoc.Application.Identity;
+using PTDoc.Application.Compliance;
+using PTDoc.Infrastructure.Compliance;
 using PTDoc.Application.Insurance;
 using PTDoc.Application.Intake;
 using PTDoc.Core.Models;
@@ -46,26 +49,143 @@ public sealed class InsurancePolicyService(
         Apply(policy, request);
         Touch(policy, userId);
         if (!policyId.HasValue) db.PatientInsurancePolicies.Add(policy);
+        Touch(patient, userId);
         await db.SaveChangesAsync(cancellationToken);
         return Map(policy);
     }
 
+    public async Task<InsurancePolicyDto> SaveWorkflowAsync(Guid patientId, Guid? policyId, SaveInsurancePolicyWorkflowRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Policy);
+        ArgumentNullException.ThrowIfNull(request.Authorizations);
+        ValidatePolicy(request.Policy);
+        ValidateAnnotations(request.Policy);
+        if (request.TotalVisitLimit < 0 || request.VisitLimitType is not (null or "" or "visits" or "units" or "combined" or "none" or "unknown"))
+            throw new ArgumentException("Choose a supported visit limit type and a non-negative limit.");
+        if (request.Authorizations.Count > 100 || request.Authorizations.Any(edit => edit is null || edit.Values is null))
+            throw new ArgumentException("Authorization changes are invalid.");
+        var editedIds = request.Authorizations.Where(edit => edit.Id.HasValue).Select(edit => edit.Id!.Value).ToList();
+        if (editedIds.Count != editedIds.Distinct().Count())
+            throw new ArgumentException("Each authorization can be edited only once per save.");
+        foreach (var edit in request.Authorizations)
+        {
+            if (edit.Archive && !edit.Id.HasValue) throw new ArgumentException("Only saved entries can be archived.");
+            ValidateCoverageFields(edit.Values);
+            ValidateAnnotations(edit.Values);
+        }
+
+        var patient = await RequirePatientAsync(patientId, cancellationToken);
+        var policy = policyId.HasValue
+            ? await db.PatientInsurancePolicies.Include(value => value.Authorizations)
+                .FirstOrDefaultAsync(value => value.Id == policyId && value.PatientId == patientId && value.ClinicId == patient.ClinicId && !value.IsArchived, cancellationToken)
+                ?? throw new KeyNotFoundException("Insurance policy not found.")
+            : new PatientInsurancePolicy { PatientId = patientId, ClinicId = patient.ClinicId };
+        if (policyId.HasValue && (!request.Policy.ExpectedLastModifiedUtc.HasValue || policy.LastModifiedUtc != request.Policy.ExpectedLastModifiedUtc))
+            throw new DbUpdateConcurrencyException("The insurance policy changed in another session. Your edits have not been saved.");
+        if (request.Policy.Status == InsurancePolicyStatus.Active && await db.PatientInsurancePolicies.AnyAsync(value =>
+            value.PatientId == patientId && value.Id != policy.Id && !value.IsArchived && value.Status == InsurancePolicyStatus.Active
+            && value.CoveragePriority == request.Policy.CoveragePriority, cancellationToken))
+            throw new InvalidOperationException($"The patient already has an active {request.Policy.CoveragePriority} policy.");
+
+        // Resolve and validate every child before changing any tracked values.
+        var changes = new List<(PatientInsuranceAuthorization Entity, InsuranceAuthorizationEdit Edit)>();
+        foreach (var edit in request.Authorizations)
+        {
+            var entity = edit.Id.HasValue
+                ? policy.Authorizations.FirstOrDefault(value => value.Id == edit.Id && value.PatientId == patientId && value.ClinicId == policy.ClinicId && !value.IsArchived)
+                    ?? throw new KeyNotFoundException("Insurance authorization not found in this policy.")
+                : new PatientInsuranceAuthorization { PatientId = patientId, PatientInsurancePolicyId = policy.Id, ClinicId = policy.ClinicId };
+            if (edit.Id.HasValue && (!edit.Values.ExpectedLastModifiedUtc.HasValue || entity.LastModifiedUtc != edit.Values.ExpectedLastModifiedUtc))
+                throw new DbUpdateConcurrencyException("An authorization or referral changed in another session. None of your changes have been saved.");
+            changes.Add((entity, edit));
+        }
+
+        Apply(policy, request.Policy);
+        policy.TotalVisitLimit = request.TotalVisitLimit;
+        policy.VisitLimitType = Trim(request.VisitLimitType);
+        Touch(policy, identityContext.GetCurrentUserId());
+        if (!policyId.HasValue) db.PatientInsurancePolicies.Add(policy);
+        foreach (var (entity, edit) in changes)
+        {
+            if (edit.Archive)
+            {
+                entity.IsArchived = true;
+                entity.LastModifiedUtc = DateTime.UtcNow;
+                entity.ModifiedByUserId = identityContext.GetCurrentUserId();
+                entity.SyncState = SyncState.Pending;
+            }
+            else
+            {
+                ApplyCoverageFields(entity, edit.Values);
+                if (!edit.Id.HasValue) db.PatientInsuranceAuthorizations.Add(entity);
+            }
+        }
+        db.AuditLogs.Add(AuditService.CreateAuditLog(new AuditEvent
+        {
+            EventType = "InsuranceWorkflowSaved",
+            EntityType = "PatientInsurancePolicy",
+            EntityId = policy.Id,
+            UserId = identityContext.GetCurrentUserId(),
+            Success = true,
+            Metadata = new() { ["EditedAuthorizationCount"] = changes.Count.ToString(CultureInfo.InvariantCulture) }
+        }));
+        // Invalidate older patient-level payer editors when normalized coverage changes.
+        Touch(patient, identityContext.GetCurrentUserId());
+        // EF commits the policy and all edited children in one transaction. Existing
+        // concurrency tokens protect every updated row against racing writers.
+        await db.SaveChangesAsync(cancellationToken);
+        return Map(policy);
+    }
+
+    private static void ValidateAnnotations(object request)
+    {
+        var errors = new List<System.ComponentModel.DataAnnotations.ValidationResult>();
+        if (!Validator.TryValidateObject(request, new ValidationContext(request), errors, validateAllProperties: true))
+            throw new ArgumentException(string.Join(" ", errors.Select(error => error.ErrorMessage)));
+    }
+
+    // Validates payer-approval data; endpoint authorization policies enforce access independently.
+    private static void ValidateCoverageFields(UpsertInsuranceAuthorizationRequest request)
+    {
+        if (!Enum.IsDefined(request.AuthorizationType)
+            || !Enum.IsDefined(request.Status)
+            || !Enum.IsDefined(request.VisitLimitPeriod))
+            throw new ArgumentException("Authorization type, status, and visit-limit period must be supported values.");
+        if (request.StartDate.HasValue && request.EndDate.HasValue && request.StartDate > request.EndDate) throw new ArgumentException("Authorization start date must not be after the end date.");
+        if (request.AuthorizedUnits < 0 || request.UsedUnits < 0 || request.VisitAlertThreshold < 0)
+            throw new ArgumentException("Authorization units and alert threshold cannot be negative.");
+    }
+
+    // Copies insurance payer-approval fields; this helper does not grant application access.
+    private void ApplyCoverageFields(PatientInsuranceAuthorization authorization, UpsertInsuranceAuthorizationRequest request)
+    {
+        authorization.AuthorizationType = request.AuthorizationType; authorization.ReferenceNumber = Trim(request.ReferenceNumber); authorization.Status = request.Status;
+        authorization.ReceivedDate = CoverageDate(request.ReceivedDate); authorization.StartDate = CoverageDate(request.StartDate); authorization.EndDate = CoverageDate(request.EndDate);
+        authorization.AuthorizedUnits = request.AuthorizedUnits; authorization.UsedUnits = request.UsedUnits; authorization.VisitLimitPeriod = request.VisitLimitPeriod;
+        authorization.ReauthorizationDueDate = CoverageDate(request.ReauthorizationDueDate); authorization.VisitAlertThreshold = request.VisitAlertThreshold; authorization.Notes = Trim(request.Notes);
+        authorization.IsArchived = false; authorization.LastModifiedUtc = DateTime.UtcNow; authorization.ModifiedByUserId = identityContext.GetCurrentUserId(); authorization.SyncState = SyncState.Pending;
+    }
+
     public async Task ArchivePolicyAsync(Guid patientId, Guid policyId, CancellationToken cancellationToken)
     {
+        var patient = await RequirePatientAsync(patientId, cancellationToken);
         var policy = await db.PatientInsurancePolicies.FirstOrDefaultAsync(p => p.Id == policyId && p.PatientId == patientId, cancellationToken) ?? throw new KeyNotFoundException("Insurance policy not found.");
+        Touch(patient, identityContext.GetCurrentUserId());
         policy.IsArchived = true; policy.Status = InsurancePolicyStatus.Inactive; Touch(policy, identityContext.GetCurrentUserId());
         await db.SaveChangesAsync(cancellationToken);
     }
 
     public async Task ReorderAsync(Guid patientId, IReadOnlyDictionary<Guid, InsuranceCoveragePriority> priorities, CancellationToken cancellationToken)
     {
-        await RequirePatientAsync(patientId, cancellationToken);
+        var patient = await RequirePatientAsync(patientId, cancellationToken);
         if (priorities.Count != priorities.Values.Distinct().Count()) throw new InvalidOperationException("Coverage priorities must be unique.");
         var rows = await db.PatientInsurancePolicies.Where(p => p.PatientId == patientId && priorities.Keys.Contains(p.Id) && !p.IsArchived).ToListAsync(cancellationToken);
         if (rows.Count != priorities.Count) throw new KeyNotFoundException("One or more insurance policies were not found.");
         var occupiedByOtherPolicy = await db.PatientInsurancePolicies.AnyAsync(p => p.PatientId == patientId && !p.IsArchived && p.Status == InsurancePolicyStatus.Active && !priorities.Keys.Contains(p.Id) && priorities.Values.Contains(p.CoveragePriority), cancellationToken);
         if (occupiedByOtherPolicy) throw new InvalidOperationException("A requested coverage priority is assigned to another active policy.");
         var userId = identityContext.GetCurrentUserId();
+        if (rows.Count > 0) Touch(patient, userId);
         var originalStatuses = rows.ToDictionary(row => row.Id, row => row.Status);
         if (db.Database.IsRelational())
         {
@@ -85,24 +205,16 @@ public sealed class InsurancePolicyService(
 
     public async Task<InsuranceAuthorizationDto> UpsertAuthorizationAsync(Guid patientId, Guid policyId, Guid? authorizationId, UpsertInsuranceAuthorizationRequest request, CancellationToken cancellationToken)
     {
-        if (!Enum.IsDefined(request.AuthorizationType)
-            || !Enum.IsDefined(request.Status)
-            || !Enum.IsDefined(request.VisitLimitPeriod))
-            throw new ArgumentException("Authorization type, status, and visit-limit period must be supported values.");
-        if (request.StartDate.HasValue && request.EndDate.HasValue && request.StartDate > request.EndDate) throw new ArgumentException("Authorization start date must not be after the end date.");
-        if (request.AuthorizedUnits < 0 || request.UsedUnits < 0 || request.VisitAlertThreshold < 0)
-            throw new ArgumentException("Authorization units and alert threshold cannot be negative.");
+        var patient = await RequirePatientAsync(patientId, cancellationToken);
+        ValidateCoverageFields(request);
         var policy = await db.PatientInsurancePolicies.FirstOrDefaultAsync(p => p.Id == policyId && p.PatientId == patientId && !p.IsArchived, cancellationToken) ?? throw new KeyNotFoundException("Insurance policy not found.");
         var authorization = authorizationId.HasValue
             ? await db.PatientInsuranceAuthorizations.FirstOrDefaultAsync(a => a.Id == authorizationId.Value && a.PatientInsurancePolicyId == policyId && a.PatientId == patientId, cancellationToken) ?? throw new KeyNotFoundException("Insurance authorization not found.")
             : new PatientInsuranceAuthorization { PatientId = patientId, PatientInsurancePolicyId = policyId, ClinicId = policy.ClinicId };
         if (request.ExpectedLastModifiedUtc.HasValue && authorizationId.HasValue && authorization.LastModifiedUtc != request.ExpectedLastModifiedUtc.Value)
             throw new DbUpdateConcurrencyException("The insurance authorization changed in another session.");
-        authorization.AuthorizationType = request.AuthorizationType; authorization.ReferenceNumber = Trim(request.ReferenceNumber); authorization.Status = request.Status;
-        authorization.ReceivedDate = request.ReceivedDate; authorization.StartDate = request.StartDate; authorization.EndDate = request.EndDate;
-        authorization.AuthorizedUnits = request.AuthorizedUnits; authorization.UsedUnits = request.UsedUnits; authorization.VisitLimitPeriod = request.VisitLimitPeriod;
-        authorization.ReauthorizationDueDate = request.ReauthorizationDueDate; authorization.VisitAlertThreshold = request.VisitAlertThreshold; authorization.Notes = Trim(request.Notes);
-        authorization.IsArchived = false; authorization.LastModifiedUtc = DateTime.UtcNow; authorization.ModifiedByUserId = identityContext.GetCurrentUserId(); authorization.SyncState = SyncState.Pending;
+        Touch(patient, identityContext.GetCurrentUserId());
+        ApplyCoverageFields(authorization, request);
         if (!authorizationId.HasValue) db.PatientInsuranceAuthorizations.Add(authorization);
         await db.SaveChangesAsync(cancellationToken);
         return Map(authorization);
@@ -110,7 +222,9 @@ public sealed class InsurancePolicyService(
 
     public async Task ArchiveAuthorizationAsync(Guid patientId, Guid policyId, Guid authorizationId, CancellationToken cancellationToken)
     {
+        var patient = await RequirePatientAsync(patientId, cancellationToken);
         var row = await db.PatientInsuranceAuthorizations.FirstOrDefaultAsync(a => a.Id == authorizationId && a.PatientInsurancePolicyId == policyId && a.PatientId == patientId, cancellationToken) ?? throw new KeyNotFoundException("Insurance authorization not found.");
+        Touch(patient, identityContext.GetCurrentUserId());
         row.IsArchived = true; row.LastModifiedUtc = DateTime.UtcNow; row.ModifiedByUserId = identityContext.GetCurrentUserId(); row.SyncState = SyncState.Pending;
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -132,7 +246,7 @@ public sealed class InsurancePolicyService(
                 var primary = await db.PatientInsurancePolicies.FirstOrDefaultAsync(p => p.PatientId == patient.Id && p.CoveragePriority == InsuranceCoveragePriority.Primary && !p.IsArchived && p.Status == InsurancePolicyStatus.Active, cancellationToken);
                 if (primary is not null && !await db.PatientInsuranceAuthorizations.AnyAsync(a => a.PatientInsurancePolicyId == primary.Id && !a.IsArchived, cancellationToken) && HasAny(root, "authorizationNumber", "authorizationStartDate", "authorizationEndDate", "numberOfVisitsOrUnitsAuthorized"))
                 {
-                    db.PatientInsuranceAuthorizations.Add(new PatientInsuranceAuthorization { PatientInsurancePolicyId = primary.Id, PatientId = patient.Id, ClinicId = patient.ClinicId, AuthorizationType = InsuranceAuthorizationType.Authorization, ReferenceNumber = Get(root, "authorizationNumber"), Status = ParseAuthorizationStatus(Get(root, "authorizationStatus")), ReceivedDate = Date(Get(root, "dateAuthorizationReceived")), StartDate = Date(Get(root, "authorizationStartDate")), EndDate = Date(Get(root, "authorizationEndDate")), AuthorizedUnits = Decimal(Get(root, "numberOfVisitsOrUnitsAuthorized")) ?? Decimal(Get(root, "totalVisitLimit")), UsedUnits = Decimal(Get(root, "visitsUsed")), ReauthorizationDueDate = Date(Get(root, "reAuthorizationDueDate")), VisitAlertThreshold = Int(Get(root, "visitAlertThreshold")), Notes = Get(root, "notesComments"), LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = identityContext.GetCurrentUserId(), SyncState = SyncState.Pending });
+                    db.PatientInsuranceAuthorizations.Add(new PatientInsuranceAuthorization { PatientInsurancePolicyId = primary.Id, PatientId = patient.Id, ClinicId = patient.ClinicId, AuthorizationType = InsuranceAuthorizationType.Authorization, ReferenceNumber = Get(root, "authorizationNumber"), Status = ParseAuthorizationStatus(Get(root, "authorizationStatus")), ReceivedDate = Date(Get(root, "dateAuthorizationReceived")), StartDate = Date(Get(root, "authorizationStartDate")), EndDate = Date(Get(root, "authorizationEndDate")), AuthorizedUnits = Decimal(Get(root, "numberOfVisitsOrUnitsAuthorized")), UsedUnits = Decimal(Get(root, "visitsUsed")), ReauthorizationDueDate = Date(Get(root, "reAuthorizationDueDate")), VisitAlertThreshold = Int(Get(root, "visitAlertThreshold")), Notes = Get(root, "notesComments"), LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = identityContext.GetCurrentUserId(), SyncState = SyncState.Pending });
                     authCount++;
                 }
                 if (primary is not null) authCount += await ImportAuthorizationHistoryAsync(patient, primary, root, cancellationToken);
@@ -161,7 +275,7 @@ public sealed class InsurancePolicyService(
         var carrier = Get(root, carrierKey); var member = Get(root, memberKey) ?? (priority == InsuranceCoveragePriority.Primary ? Get(root, "memberOrPolicyNumber") : Get(root, "secondaryMemberOrPolicyNumber")); var group = Get(root, groupKey);
         if (string.IsNullOrWhiteSpace(carrier) && string.IsNullOrWhiteSpace(member) && string.IsNullOrWhiteSpace(group)) return 0;
         if (await db.PatientInsurancePolicies.AnyAsync(p => p.PatientId == patient.Id && p.CoveragePriority == priority && !p.IsArchived && p.Status == InsurancePolicyStatus.Active, ct)) return 0;
-        db.PatientInsurancePolicies.Add(new PatientInsurancePolicy { PatientId = patient.Id, ClinicId = patient.ClinicId, CoveragePriority = priority, CarrierKey = Slug(carrier), CarrierDisplayName = carrier, PayerType = ParsePayerType(Get(root, "payerType") ?? Get(root, "providerType")), MemberOrPolicyNumber = member, GroupNumber = group, EffectiveStartDate = Date(Get(root, "effectiveStartDate")), EffectiveEndDate = Date(Get(root, "effectiveEndDate")), PlanYearType = ParsePlanYear(Get(root, "yearType")), DeductibleAmount = Decimal(Get(root, "deductibleAmount")), DeductibleMet = Decimal(Get(root, "deductibleMet")), OutOfPocketMaximum = Decimal(Get(root, "outOfPocketMaximum")), OutOfPocketMet = Decimal(Get(root, "outOfPocketMet")), CopayAmount = Decimal(Get(root, "copayAmount")), CoinsurancePercent = Decimal(Get(root, "coinsurancePercent")), AdjusterName = Get(root, "adjusterName"), AdjusterPhone = Get(root, "adjusterPhone"), AdjusterEmail = Get(root, "adjusterEmail"), AdjusterFax = Get(root, "adjusterFax"), Status = InsurancePolicyStatus.Active, LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = identityContext.GetCurrentUserId(), SyncState = SyncState.Pending });
+        db.PatientInsurancePolicies.Add(new PatientInsurancePolicy { PatientId = patient.Id, ClinicId = patient.ClinicId, CoveragePriority = priority, CarrierKey = Slug(carrier), CarrierDisplayName = carrier, PayerType = ParsePayerType(Get(root, "payerType") ?? Get(root, "providerType")), MemberOrPolicyNumber = member, GroupNumber = group, EffectiveStartDate = Date(Get(root, "effectiveStartDate")), EffectiveEndDate = Date(Get(root, "effectiveEndDate")), PlanYearType = ParsePlanYear(Get(root, "yearType")), TotalVisitLimit = priority == InsuranceCoveragePriority.Primary ? Decimal(Get(root, "totalVisitLimit")) : null, VisitLimitType = priority == InsuranceCoveragePriority.Primary ? Get(root, "visitLimitType") : null, DeductibleAmount = Decimal(Get(root, "deductibleAmount")), DeductibleMet = Decimal(Get(root, "deductibleMet")), OutOfPocketMaximum = Decimal(Get(root, "outOfPocketMaximum")), OutOfPocketMet = Decimal(Get(root, "outOfPocketMet")), CopayAmount = Decimal(Get(root, "copayAmount")), CoinsurancePercent = Decimal(Get(root, "coinsurancePercent")), AdjusterName = Get(root, "adjusterName"), AdjusterPhone = Get(root, "adjusterPhone"), AdjusterEmail = Get(root, "adjusterEmail"), AdjusterFax = Get(root, "adjusterFax"), Status = InsurancePolicyStatus.Active, LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = identityContext.GetCurrentUserId(), SyncState = SyncState.Pending });
         await db.SaveChangesAsync(ct); return 1;
     }
 
@@ -182,7 +296,11 @@ public sealed class InsurancePolicyService(
     }
 
     private ProviderDirectoryEntry CreateLegacyProvider(Patient patient, string display, string? npi) { var parts = display.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries); return new ProviderDirectoryEntry { ClinicId = patient.ClinicId, FirstName = parts.Length > 1 ? string.Join(' ', parts[..^1]) : string.Empty, LastName = parts[^1], Npi = npi, Status = ProviderDirectoryStatus.Pending, SubmissionSource = ProviderSubmissionSource.LegacyMigration, SubmittedAtUtc = DateTime.UtcNow, LastModifiedUtc = DateTime.UtcNow, ModifiedByUserId = identityContext.GetCurrentUserId(), SyncState = SyncState.Pending }; }
-    private async Task<Patient> RequirePatientAsync(Guid id, CancellationToken ct) => await db.Patients.FirstOrDefaultAsync(p => p.Id == id, ct) ?? throw new KeyNotFoundException("Patient not found.");
+    private async Task<Patient> RequirePatientAsync(Guid id, CancellationToken ct)
+    {
+        var clinicId = tenantContext.GetCurrentClinicId() ?? throw new InvalidOperationException("Select a clinic to access insurance policies.");
+        return await db.Patients.FirstOrDefaultAsync(p => p.Id == id && p.ClinicId == clinicId, ct) ?? throw new KeyNotFoundException("Patient not found.");
+    }
     private static void ValidatePolicy(UpsertInsurancePolicyRequest request)
     {
         if (!Enum.IsDefined(request.CoveragePriority)
@@ -208,9 +326,10 @@ public sealed class InsurancePolicyService(
             || request.CoinsurancePercent > 100)
             throw new ArgumentException("Insurance cost-sharing values must be within their valid ranges.");
     }
-    private static void Apply(PatientInsurancePolicy p, UpsertInsurancePolicyRequest r) { p.CoveragePriority = r.CoveragePriority; p.CarrierKey = Trim(r.CarrierKey); p.CarrierDisplayName = Trim(r.CarrierDisplayName); p.PayerType = r.PayerType; p.MemberOrPolicyNumber = Trim(r.MemberOrPolicyNumber); p.GroupNumber = Trim(r.GroupNumber); p.EffectiveStartDate = r.EffectiveStartDate; p.EffectiveEndDate = r.EffectiveEndDate; p.PlanYearType = r.PlanYearType; p.DeductibleAmount = r.DeductibleAmount; p.DeductibleMet = r.DeductibleMet; p.OutOfPocketMaximum = r.OutOfPocketMaximum; p.OutOfPocketMet = r.OutOfPocketMet; p.CopayAmount = r.CopayAmount; p.CoinsurancePercent = r.CoinsurancePercent; p.AdjusterName = Trim(r.AdjusterName); p.AdjusterPhone = Trim(r.AdjusterPhone); p.AdjusterEmail = Trim(r.AdjusterEmail); p.AdjusterFax = Trim(r.AdjusterFax); p.Status = r.Status; p.IsArchived = false; }
-    private static void Touch(PatientInsurancePolicy p, Guid user) { p.LastModifiedUtc = DateTime.UtcNow; p.ModifiedByUserId = user; p.SyncState = SyncState.Pending; }
-    private static InsurancePolicyDto Map(PatientInsurancePolicy p) => new() { Id = p.Id, PatientId = p.PatientId, CoveragePriority = p.CoveragePriority, CarrierKey = p.CarrierKey, CarrierDisplayName = p.CarrierDisplayName, PayerType = p.PayerType, MemberOrPolicyNumber = p.MemberOrPolicyNumber, GroupNumber = p.GroupNumber, EffectiveStartDate = p.EffectiveStartDate, EffectiveEndDate = p.EffectiveEndDate, PlanYearType = p.PlanYearType, DeductibleAmount = p.DeductibleAmount, DeductibleMet = p.DeductibleMet, OutOfPocketMaximum = p.OutOfPocketMaximum, OutOfPocketMet = p.OutOfPocketMet, CopayAmount = p.CopayAmount, CoinsurancePercent = p.CoinsurancePercent, AdjusterName = p.AdjusterName, AdjusterPhone = p.AdjusterPhone, AdjusterEmail = p.AdjusterEmail, AdjusterFax = p.AdjusterFax, Status = p.Status, IsArchived = p.IsArchived, LastModifiedUtc = p.LastModifiedUtc, Authorizations = p.Authorizations.Where(a => !a.IsArchived).Select(Map).ToList() };
+    private static void Apply(PatientInsurancePolicy p, UpsertInsurancePolicyRequest r) { p.CoveragePriority = r.CoveragePriority; p.CarrierKey = Trim(r.CarrierKey); p.CarrierDisplayName = Trim(r.CarrierDisplayName); p.PayerType = r.PayerType; p.MemberOrPolicyNumber = Trim(r.MemberOrPolicyNumber); p.GroupNumber = Trim(r.GroupNumber); p.EffectiveStartDate = CoverageDate(r.EffectiveStartDate); p.EffectiveEndDate = CoverageDate(r.EffectiveEndDate); p.PlanYearType = r.PlanYearType; p.DeductibleAmount = r.DeductibleAmount; p.DeductibleMet = r.DeductibleMet; p.OutOfPocketMaximum = r.OutOfPocketMaximum; p.OutOfPocketMet = r.OutOfPocketMet; p.CopayAmount = r.CopayAmount; p.CoinsurancePercent = r.CoinsurancePercent; p.AdjusterName = Trim(r.AdjusterName); p.AdjusterPhone = Trim(r.AdjusterPhone); p.AdjusterEmail = Trim(r.AdjusterEmail); p.AdjusterFax = Trim(r.AdjusterFax); p.Status = r.Status; p.IsArchived = false; }
+    private static DateTime? CoverageDate(DateTime? value) => value.HasValue ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc) : null;
+    private static void Touch(ISyncTrackedEntity p, Guid user) { p.LastModifiedUtc = DateTime.UtcNow; p.ModifiedByUserId = user; p.SyncState = SyncState.Pending; }
+    private static InsurancePolicyDto Map(PatientInsurancePolicy p) => new() { Id = p.Id, PatientId = p.PatientId, CoveragePriority = p.CoveragePriority, CarrierKey = p.CarrierKey, CarrierDisplayName = p.CarrierDisplayName, PayerType = p.PayerType, MemberOrPolicyNumber = p.MemberOrPolicyNumber, GroupNumber = p.GroupNumber, EffectiveStartDate = p.EffectiveStartDate, EffectiveEndDate = p.EffectiveEndDate, PlanYearType = p.PlanYearType, TotalVisitLimit = p.TotalVisitLimit, VisitLimitType = p.VisitLimitType, DeductibleAmount = p.DeductibleAmount, DeductibleMet = p.DeductibleMet, OutOfPocketMaximum = p.OutOfPocketMaximum, OutOfPocketMet = p.OutOfPocketMet, CopayAmount = p.CopayAmount, CoinsurancePercent = p.CoinsurancePercent, AdjusterName = p.AdjusterName, AdjusterPhone = p.AdjusterPhone, AdjusterEmail = p.AdjusterEmail, AdjusterFax = p.AdjusterFax, Status = p.Status, IsArchived = p.IsArchived, LastModifiedUtc = p.LastModifiedUtc, Authorizations = p.Authorizations.Where(a => !a.IsArchived).Select(Map).ToList() };
     private static InsuranceAuthorizationDto Map(PatientInsuranceAuthorization a) => new() { Id = a.Id, PolicyId = a.PatientInsurancePolicyId, AuthorizationType = a.AuthorizationType, ReferenceNumber = a.ReferenceNumber, Status = a.Status, ReceivedDate = a.ReceivedDate, StartDate = a.StartDate, EndDate = a.EndDate, AuthorizedUnits = a.AuthorizedUnits, UsedUnits = a.UsedUnits, VisitLimitPeriod = a.VisitLimitPeriod, ReauthorizationDueDate = a.ReauthorizationDueDate, VisitAlertThreshold = a.VisitAlertThreshold, Notes = a.Notes, LastModifiedUtc = a.LastModifiedUtc };
     private static string? Trim(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim(); private static string? Get(JsonElement r, string n) => r.TryGetProperty(n, out var e) && e.ValueKind == JsonValueKind.String ? Trim(e.GetString()) : null; private static bool HasAny(JsonElement r, params string[] n) => n.Any(x => !string.IsNullOrWhiteSpace(Get(r, x))); private static DateTime? Date(string? v) => DateTime.TryParse(v, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var x) ? x : null; private static decimal? Decimal(string? v) => decimal.TryParse(v, NumberStyles.Number, CultureInfo.InvariantCulture, out var x) ? x : null; private static int? Int(string? v) => int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out var x) ? x : null; private static string? Slug(string? v) => string.IsNullOrWhiteSpace(v) ? null : string.Join('-', v.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries));
     private static InsurancePayerType ParsePayerType(string? v) => (IntakeProfilePrefill.NormalizeProviderType(v) ?? v)?.Trim().ToLowerInvariant() switch { "medicare" => InsurancePayerType.Medicare, "medicaid" => InsurancePayerType.Medicaid, "tricare" => InsurancePayerType.Tricare, "workers' compensation" or "workers compensation" or "workers_comp" => InsurancePayerType.WorkersCompensation, "motor vehicle" or "motor_vehicle" => InsurancePayerType.MotorVehicle, "liability" => InsurancePayerType.Liability, "self pay" or "self_pay" => InsurancePayerType.SelfPay, "commercial" => InsurancePayerType.Commercial, _ => InsurancePayerType.Other };

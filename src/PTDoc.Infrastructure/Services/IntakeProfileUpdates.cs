@@ -56,6 +56,7 @@ public static class IntakeProfileUpdates
                         draft.MemberOrPolicyNumber = profile.MemberOrPolicyNumber;
                         draft.GroupNumber = profile.GroupNumber;
                         draft.PayerType = profile.PayerType;
+                        draft.TotalVisitLimit = profile.TotalVisitLimit;
                         draft.AdjusterName = profile.AdjusterName;
                         draft.AdjusterPhone = profile.AdjusterPhone;
                         draft.AdjusterEmail = profile.AdjusterEmail;
@@ -125,7 +126,7 @@ public static class IntakeProfileUpdates
 
     private static void ClearPrimary(IntakeResponseDraft draft)
     {
-        draft.InsuranceCompanyName = draft.MemberOrPolicyNumber = draft.GroupNumber = draft.PayerType = null;
+        draft.InsuranceCompanyName = draft.MemberOrPolicyNumber = draft.GroupNumber = draft.PayerType = draft.TotalVisitLimit = null;
         draft.AdjusterName = draft.AdjusterPhone = draft.AdjusterEmail = draft.AdjusterFax = null;
     }
 
@@ -136,7 +137,7 @@ public static class IntakeProfileUpdates
     {
         draft.AuthorizationType = draft.AuthorizationNumber = draft.AuthorizationStatus = draft.DateAuthorizationReceived = null;
         draft.AuthorizationStartDate = draft.AuthorizationEndDate = draft.NumberOfVisitsOrUnitsAuthorized = null;
-        draft.TotalVisitLimit = draft.VisitsUsed = draft.VisitLimitPeriod = draft.ReAuthorizationDueDate = null;
+        draft.VisitsUsed = draft.VisitLimitPeriod = draft.ReAuthorizationDueDate = null;
         draft.VisitAlertThreshold = draft.AuthorizationNotes = draft.NotesComments = null;
     }
 }

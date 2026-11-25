@@ -287,14 +287,17 @@ public sealed class PatientInfoRouteTests : TestContext
     }
 
     [Fact]
-    public void Save_PersistsEditedCaseManagerAdjusterContactInfo()
+    public void Save_PreservesPreviousAdjusterContactWithoutDuplicateEntry()
     {
         var patientId = Guid.NewGuid();
         var payerInfoJson = JsonSerializer.Serialize(new
         {
             insuranceCompanyName = "Primary Health",
             adjusterName = "Alex Adjuster",
-            adjusterPhone = "555-0200"
+            adjusterPhone = "555-0200",
+            caseManagerAdjusterContactInfo = "Call Alex before re-auth submission.",
+            authorizationReferralHistory = new[] { new { entryId = "stable", recordType = "Referral", futureField = new { source = "historical evidence" } } },
+            futureCoverageEvidence = new { source = "preserve-me" }
         }, SerializerOptions);
         UpdatePatientRequest? capturedRequest = null;
 
@@ -322,9 +325,10 @@ public sealed class PatientInfoRouteTests : TestContext
             .Add(component => component.Id, patientId.ToString()));
 
         cut.WaitForAssertion(() =>
-            Assert.Contains("Alex Adjuster", cut.Find("#pi-case-manager").TextContent, StringComparison.Ordinal));
+            Assert.Contains("Call Alex", cut.Find("#pi-case-manager").TextContent, StringComparison.Ordinal));
 
-        cut.Find("#pi-case-manager").Input("Call Alex before re-auth submission.");
+        Assert.Empty(cut.FindAll("textarea#pi-case-manager"));
+        cut.Find("#pi-insurance-name").Input("Corrected Primary Health");
         cut.Find("button[aria-label='Save Changes']").Click();
 
         cut.WaitForAssertion(() => Assert.NotNull(capturedRequest?.PayerInfoJson));
@@ -333,16 +337,22 @@ public sealed class PatientInfoRouteTests : TestContext
         Assert.Equal(
             "Call Alex before re-auth submission.",
             savedPayerInfo.RootElement.GetProperty("caseManagerAdjusterContactInfo").GetString());
+        Assert.Equal("historical evidence", savedPayerInfo.RootElement.GetProperty("authorizationReferralHistory")[0].GetProperty("futureField").GetProperty("source").GetString());
+        Assert.Equal("preserve-me", savedPayerInfo.RootElement.GetProperty("futureCoverageEvidence").GetProperty("source").GetString());
     }
 
-    [Fact]
-    public void Save_NormalizesLegacyPayerDisplayValuesAndSkipsBlankFaxLabel()
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("Medicare", false)]
+    [InlineData("Medicare", true)]
+    public void Save_NormalizesLegacyPayerDisplayValuesAndSkipsBlankFaxLabel(string? canonical, bool editType)
     {
         var patientId = Guid.NewGuid();
         var payerInfoJson = JsonSerializer.Serialize(new
         {
             insuranceCompanyName = "Primary Health",
             providerType = "Commercial",
+            payerType = canonical,
             insurancePriority = "Primary",
             caseManagerAdjusterContactInfo = "   ",
             adjusterName = " Alex Adjuster ",
@@ -377,13 +387,14 @@ public sealed class PatientInfoRouteTests : TestContext
 
         cut.WaitForAssertion(() =>
         {
-            Assert.Equal("commercial", cut.Find("#pi-provider-type").GetAttribute("value"));
+            Assert.Equal(canonical is null ? "commercial" : "medicare", cut.Find("#pi-provider-type").GetAttribute("value"));
             Assert.Equal("primary", cut.Find("#pi-insurance-priority").GetAttribute("value"));
             Assert.Contains("Alex Adjuster", cut.Find("#pi-case-manager").TextContent, StringComparison.Ordinal);
             Assert.DoesNotContain("Fax:", cut.Find("#pi-case-manager").TextContent, StringComparison.Ordinal);
         });
 
-        cut.Find("#pi-case-manager").Input("   ");
+        Assert.Empty(cut.FindAll("textarea#pi-case-manager"));
+        if (editType) cut.Find("#pi-provider-type").Change("workers_comp");
         cut.Find("#pi-insurance-name").Input("Updated Primary Health");
         cut.Find("button[aria-label='Save Changes']").Click();
 
@@ -391,7 +402,8 @@ public sealed class PatientInfoRouteTests : TestContext
 
         using var savedPayerInfo = JsonDocument.Parse(capturedRequest!.PayerInfoJson!);
         var root = savedPayerInfo.RootElement;
-        Assert.Equal("commercial", root.GetProperty("providerType").GetString());
+        Assert.Equal(editType ? "workers_comp" : canonical is null ? "commercial" : "medicare", root.GetProperty("providerType").GetString());
+        if (canonical is not null) Assert.Equal(editType ? "Workers' Compensation" : canonical, root.GetProperty("payerType").GetString());
         Assert.Equal("primary", root.GetProperty("insurancePriority").GetString());
         Assert.Equal("Alex Adjuster", root.GetProperty("adjusterName").GetString());
         Assert.Equal("555-0200", root.GetProperty("adjusterPhone").GetString());
@@ -493,7 +505,7 @@ public sealed class PatientInfoRouteTests : TestContext
             FirstName = "Beta",
             LastName = "Patient",
             DateOfBirth = new DateTime(1990, 1, 1),
-            PayerInfoJson = "{}"
+            PayerInfoJson = """{"legacyRecord":true}"""
         };
 
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
@@ -537,7 +549,7 @@ public sealed class PatientInfoRouteTests : TestContext
             FirstName = "Beta",
             LastName = "Patient",
             DateOfBirth = new DateTime(1990, 1, 1),
-            PayerInfoJson = "{}"
+            PayerInfoJson = """{"legacyRecord":true}"""
         };
 
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
@@ -578,7 +590,7 @@ public sealed class PatientInfoRouteTests : TestContext
             FirstName = "Beta",
             LastName = "Patient",
             DateOfBirth = new DateTime(1990, 1, 1),
-            PayerInfoJson = "{}"
+            PayerInfoJson = """{"legacyRecord":true}"""
         };
 
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
@@ -625,7 +637,7 @@ public sealed class PatientInfoRouteTests : TestContext
                 FirstName = "Beta",
                 LastName = "Patient",
                 DateOfBirth = new DateTime(1990, 1, 1),
-                PayerInfoJson = "{}"
+                PayerInfoJson = """{"legacyRecord":true}"""
             };
 
             var patientService = new Mock<IPatientService>(MockBehavior.Strict);
@@ -668,7 +680,7 @@ public sealed class PatientInfoRouteTests : TestContext
             FirstName = "Beta",
             LastName = "Patient",
             DateOfBirth = new DateTime(1990, 1, 1),
-            PayerInfoJson = "{}"
+            PayerInfoJson = """{"legacyRecord":true}"""
         };
 
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
@@ -748,7 +760,7 @@ public sealed class PatientInfoRouteTests : TestContext
             FirstName = "Beta",
             LastName = "Patient",
             DateOfBirth = new DateTime(1990, 1, 1),
-            PayerInfoJson = "{}"
+            PayerInfoJson = """{"legacyRecord":true}"""
         };
 
         var patientService = new Mock<IPatientService>(MockBehavior.Strict);
@@ -798,7 +810,7 @@ public sealed class PatientInfoRouteTests : TestContext
                 FirstName = "Beta",
                 LastName = "Patient",
                 DateOfBirth = new DateTime(1990, 1, 1),
-                PayerInfoJson = "{}"
+                PayerInfoJson = """{"legacyRecord":true}"""
             };
 
             var patientService = new Mock<IPatientService>(MockBehavior.Strict);
@@ -838,4 +850,49 @@ public sealed class PatientInfoRouteTests : TestContext
             CultureInfo.CurrentUICulture = originalUICulture;
         }
     }
+    [Fact]
+    public void LegacySave_UsesLoadedPatientVersion_AndKeepsEditsOnConflict()
+    {
+        var patient = new PatientResponse
+        {
+            Id = Guid.NewGuid(),
+            FirstName = "Synthetic",
+            LastName = "Legacy",
+            LastModifiedUtc = DateTime.UtcNow,
+            PayerInfoJson = """{"insuranceCompanyName":"Original"}"""
+        };
+        var patientService = new Mock<IPatientService>();
+        patientService.Setup(x => x.GetByIdAsync(patient.Id, It.IsAny<CancellationToken>())).ReturnsAsync(patient);
+        UpdatePatientRequest? captured = null;
+        patientService.Setup(x => x.UpdateAsync(patient.Id, It.IsAny<UpdatePatientRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, UpdatePatientRequest, CancellationToken>((_, value, _) => captured = value)
+            .ThrowsAsync(new HttpRequestException("Conflict", null, System.Net.HttpStatusCode.Conflict));
+        Services.AddSingleton(patientService.Object);
+        Services.AddSingleton<IToastService, ToastService>();
+        var cut = RenderComponent<PatientInfoPage>(parameters => parameters.Add(c => c.Id, patient.Id.ToString()));
+        cut.Find("#pi-insurance-name").Input("Retained edit");
+        cut.Find("button[aria-label='Save Changes']").Click();
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(patient.LastModifiedUtc, captured!.ExpectedLastModifiedUtc);
+            Assert.Contains("Your edits are still here", cut.Find(".pi-save-error").TextContent);
+            Assert.Equal("Retained edit", cut.Find("#pi-insurance-name").GetAttribute("value"));
+        });
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Discard changes and reload").Click();
+        cut.WaitForAssertion(() => Assert.Equal("Original", cut.Find("#pi-insurance-name").GetAttribute("value")));
+    }
+
+    [Fact]
+    public void NewPatient_UsesPolicyEditorWithoutDuplicateEmptyLegacyForm()
+    {
+        var patient = new PatientResponse { Id = Guid.NewGuid(), FirstName = "Synthetic", LastName = "New", PayerInfoJson = "{}" };
+        var service = new Mock<IPatientService>();
+        service.Setup(x => x.GetByIdAsync(patient.Id, It.IsAny<CancellationToken>())).ReturnsAsync(patient);
+        Services.AddSingleton(service.Object);
+        Services.AddSingleton<IToastService, ToastService>();
+        var cut = RenderComponent<PatientInfoPage>(parameters => parameters.Add(c => c.Id, patient.Id.ToString()));
+        Assert.Empty(cut.FindAll("#pi-insurance-name"));
+        Assert.Single(cut.FindAll("button").Where(b => b.TextContent.Trim() == "Add policy"));
+    }
+
 }

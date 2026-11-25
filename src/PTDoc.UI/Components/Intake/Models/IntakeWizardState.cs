@@ -75,6 +75,7 @@ public sealed class IntakeWizardState
     public string? InsuranceCompanyName { get; set; }
     public string? MemberOrPolicyNumber { get; set; }
     public string? GroupNumber { get; set; }
+    public string? TotalVisitLimit { get; set; }
     public string? PayerType { get; set; }
     public string? InsuranceCoverageType { get; set; }
     public string? SecondaryInsuranceCompanyName { get; set; }

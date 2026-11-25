@@ -137,6 +137,10 @@
                             {
                                 <p>Primary: @(profile.InsuranceCompanyName ?? profile.PayerType ?? "None") — @(profile.MemberOrPolicyNumber ?? "No member number")</p>
                                 <p>Type: @(profile.PayerType ?? "Unspecified"); group: @(profile.GroupNumber ?? "None"). Adjuster: @(profile.AdjusterName ?? "None"); phone: @(profile.AdjusterPhone ?? "None"); email: @(profile.AdjusterEmail ?? "None"); fax: @(profile.AdjusterFax ?? "None").</p>
+                                @if (profile.TotalVisitLimit is { } limit)
+                                {
+                                    <p>Policy visit limit: @limit</p>
+                                }
                                 @if (profile.PrimaryPolicyAmbiguous)
                                 {
                                     <p>Multiple primary policies are active. Ask the clinic to reconcile them, or omit primary insurance from this intake.</p>
@@ -1143,6 +1147,7 @@
             InsuranceCompanyName = state.InsuranceCompanyName,
             MemberOrPolicyNumber = state.MemberOrPolicyNumber,
             GroupNumber = state.GroupNumber,
+            TotalVisitLimit = state.TotalVisitLimit,
             PayerType = state.PayerType,
             InsuranceCoverageType = state.InsuranceCoverageType,
             SecondaryInsuranceCompanyName = state.SecondaryInsuranceCompanyName,
@@ -1285,6 +1290,7 @@
             InsuranceCompanyName = hydratedDraft.InsuranceCompanyName,
             MemberOrPolicyNumber = hydratedDraft.MemberOrPolicyNumber,
             GroupNumber = hydratedDraft.GroupNumber,
+            TotalVisitLimit = hydratedDraft.TotalVisitLimit,
             PayerType = hydratedDraft.PayerType,
             InsuranceCoverageType = hydratedDraft.InsuranceCoverageType,
             SecondaryInsuranceCompanyName = hydratedDraft.SecondaryInsuranceCompanyName,

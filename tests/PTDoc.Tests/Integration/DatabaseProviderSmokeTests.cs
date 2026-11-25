@@ -36,6 +36,48 @@ public sealed class DatabaseProviderSmokeTests : IDisposable
     private SqliteConnection? _sqliteConnection;
 
     [SkippableFact]
+    public async Task PostgresInsuranceWorkflow_ReturnsReusablePolicyAndChildVersions()
+    {
+        Skip.If(!string.Equals(Environment.GetEnvironmentVariable(ProviderVariable), "postgres", StringComparison.OrdinalIgnoreCase),
+            "This regression exercises PostgreSQL timestamp storage.");
+        var identity = new Mock<IIdentityContextAccessor>();
+        identity.Setup(accessor => accessor.GetCurrentUserId()).Returns(Guid.NewGuid());
+        var clock = new Mock<TimeProvider>();
+        clock.Setup(provider => provider.GetUtcNow()).Returns(new DateTimeOffset(2026, 11, 24, 12, 0, 0, TimeSpan.Zero).AddTicks(7));
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseNpgsql(Environment.GetEnvironmentVariable("Database__ConnectionString"), provider => provider.MigrationsAssembly("PTDoc.Infrastructure.Migrations.Postgres"))
+            .AddInterceptors(new SyncMetadataInterceptor(identity.Object, clock.Object)).Options;
+        await using var db = new ApplicationDbContext(options);
+        if (ShouldApplyRuntimeMigrations()) await db.Database.MigrateAsync();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var clinic = new Clinic { Name = "Insurance precision", Slug = $"insurance-precision-{Guid.NewGuid():N}" };
+        var patient = new Patient { ClinicId = clinic.Id, FirstName = "Synthetic", LastName = "Coverage", DateOfBirth = DateTime.UnixEpoch };
+        db.AddRange(clinic, patient);
+        await db.SaveChangesAsync();
+        var tenant = new Mock<ITenantContextAccessor>();
+        tenant.Setup(accessor => accessor.GetCurrentClinicId()).Returns(clinic.Id);
+        var service = new InsurancePolicyService(db, tenant.Object, identity.Object);
+        var created = await service.SaveWorkflowAsync(patient.Id, null, new()
+        {
+            Policy = new() { CarrierDisplayName = "Synthetic payer", EffectiveStartDate = new(2026, 1, 1) },
+            Authorizations = [new() { Values = new() { ReferenceNumber = "Original", StartDate = new(2026, 1, 2) } }]
+        }, default);
+        var child = Assert.Single(created.Authorizations);
+        db.ChangeTracker.Clear();
+        var saved = await service.SaveWorkflowAsync(patient.Id, created.Id, new()
+        {
+            Policy = new() { CarrierDisplayName = "Synthetic payer", ExpectedLastModifiedUtc = created.LastModifiedUtc },
+            Authorizations = [new() { Id = child.Id, Values = new() { ReferenceNumber = "Corrected", ExpectedLastModifiedUtc = child.LastModifiedUtc } }]
+        }, default);
+        Assert.True(saved.LastModifiedUtc > created.LastModifiedUtc);
+        Assert.True(Assert.Single(saved.Authorizations).LastModifiedUtc > child.LastModifiedUtc);
+        db.ChangeTracker.Clear();
+        var reloaded = Assert.Single(await service.ListAsync(patient.Id, default));
+        Assert.Equal(saved.LastModifiedUtc, reloaded.LastModifiedUtc);
+        Assert.Equal(saved.Authorizations[0].LastModifiedUtc, Assert.Single(reloaded.Authorizations).LastModifiedUtc);
+    }
+
+    [SkippableFact]
     public async Task PostgresPatientCreateAndUpdates_ReturnUsableVersionsAndRejectStaleSave()
     {
         Skip.If(!string.Equals(Environment.GetEnvironmentVariable(ProviderVariable), "postgres", StringComparison.OrdinalIgnoreCase),
